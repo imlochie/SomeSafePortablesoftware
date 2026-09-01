@@ -1,6 +1,6 @@
-# [Project name]
+# ARCHIVE ASSISTANT
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Windows-first local media archive control system. Phase 1 provides the shell, local SQLite foundation, honest system readouts, persistent settings, and extension points for future media integrations.
 
 ## Run & Operate
 
@@ -9,7 +9,7 @@ _Replace the heading above with the project's name, and this line with one sente
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Local API storage uses the embedded Node.js `node:sqlite` runtime. `ARCHIVE_DB_PATH` can override the SQLite file location.
 
 ## Stack
 
@@ -19,26 +19,36 @@ _Replace the heading above with the project's name, and this line with one sente
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
+- Frontend: React + Vite + Wouter + TanStack Query
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/archive-assistant` — React/Vite application and the Phase 1 UI.
+- `artifacts/api-server/src/lib/archive-db.ts` — SQLite initialization, schema foundation, settings, and event storage.
+- `artifacts/api-server/src/routes/` — health, system diagnostics, settings, and Plex configuration APIs.
+- `lib/api-spec/openapi.yaml` — API contract source of truth.
+- `install.ps1`, `start.ps1`, `start.bat`, `README.md` — Windows local setup and launch.
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- SQLite is initialized through Node's embedded `node:sqlite` runtime so a separate database service is not required for the Windows-first product.
+- The API never returns Plex tokens; configuration endpoints expose only safe status fields.
+- Phase 1 uses real persistence for settings and events while future external services remain explicit placeholders.
+- Optional dependency detection uses direct process execution without a shell and never accepts arbitrary commands from the UI.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+The app gives a personal media archivist a calm control room for local archive state, dependency readiness, system events, Plex configuration, and persistent local preferences. Assistant, queue, archive browser, sources, and history workflows are reserved for later phases.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Keep the product local-first and Windows-first.
+- Do not claim Plex, AI, yt-dlp, FFmpeg, downloading, processing, or archive workflows are implemented until they are actually wired.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Node.js 22+ is required for the embedded `node:sqlite` runtime.
+- The local launcher starts the API on port 5000 and the Vite UI on port 3000.
 
 ## Pointers
 

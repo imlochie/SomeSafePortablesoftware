@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "ARCHIVE ASSISTANT"
+description = "A local-first personal media archive control system for Windows. Phase 1 provides a dark desktop shell, navigation, persistent local settings, honest system health, mock mode, logging, and dependency detection while reserving clean interfaces for future Plex, AI, downloader, and media processing integrations."
+version = "1.0.0"
+id = "artifacts/archive-assistant"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21866
+
+[services.development]
+run = "pnpm --filter @workspace/archive-assistant run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/archive-assistant", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/archive-assistant/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21866"
+BASE_PATH = "/"

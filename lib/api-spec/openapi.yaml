@@ -10,6 +10,12 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: system
+    description: Local system status and diagnostics
+  - name: settings
+    description: Local application settings
+  - name: plex
+    description: Plex connection configuration
 paths:
   /healthz:
     get:
@@ -24,6 +30,104 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /system/overview:
+    get:
+      operationId: getSystemOverview
+      tags: [system]
+      summary: Get archive system overview
+      responses:
+        "200":
+          description: Current system overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemOverview"
+  /system/dependencies:
+    get:
+      operationId: getSystemDependencies
+      tags: [system]
+      summary: Detect optional local dependencies
+      responses:
+        "200":
+          description: Detected dependency statuses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DependencyStatus"
+  /system/events:
+    get:
+      operationId: getSystemEvents
+      tags: [system]
+      summary: Get recent system events
+      responses:
+        "200":
+          description: Recent events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SystemEvent"
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get application settings
+      responses:
+        "200":
+          description: Current settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+    patch:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update application settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppSettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSettings"
+  /plex/config:
+    get:
+      operationId: getPlexConfig
+      tags: [plex]
+      summary: Get Plex configuration status
+      responses:
+        "200":
+          description: Plex configuration without secrets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlexConfig"
+    patch:
+      operationId: updatePlexConfig
+      tags: [plex]
+      summary: Update Plex configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlexConfigUpdate"
+      responses:
+        "200":
+          description: Updated Plex configuration status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlexConfig"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +137,121 @@ components:
           type: string
       required:
         - status
+    StatusValue:
+      type: string
+      enum: [ready, connected, idle, placeholder, warning, unavailable, processing]
+    SystemOverview:
+      type: object
+      required: [archiveStatus, plexStatus, queueStatus, processingStatus, storageStatus, aiStatus, lastSync, activity]
+      properties:
+        archiveStatus:
+          $ref: "#/components/schemas/StatusValue"
+        plexStatus:
+          $ref: "#/components/schemas/StatusValue"
+        queueStatus:
+          $ref: "#/components/schemas/StatusValue"
+        processingStatus:
+          $ref: "#/components/schemas/StatusValue"
+        storageStatus:
+          $ref: "#/components/schemas/StatusValue"
+        aiStatus:
+          $ref: "#/components/schemas/StatusValue"
+        lastSync:
+          type: ["string", "null"]
+          format: date-time
+        activity:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemEvent"
+    DependencyStatus:
+      type: object
+      required: [name, command, status, detail, version]
+      properties:
+        name:
+          type: string
+        command:
+          type: string
+        status:
+          type: string
+          enum: [available, missing, not_configured]
+        detail:
+          type: string
+        version:
+          type: ["string", "null"]
+    SystemEvent:
+      type: object
+      required: [id, level, message, timestamp, source]
+      properties:
+        id:
+          type: string
+        level:
+          type: string
+          enum: [info, success, warning, error]
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+    AppSettings:
+      type: object
+      required: [mockMode, dataDirectory, downloadDirectory, archiveDirectory, logLevel, hardwareAcceleration, networkMode]
+      properties:
+        mockMode:
+          type: boolean
+        dataDirectory:
+          type: string
+        downloadDirectory:
+          type: string
+        archiveDirectory:
+          type: string
+        logLevel:
+          type: string
+          enum: [info, debug, warn, error]
+        hardwareAcceleration:
+          type: boolean
+        networkMode:
+          type: string
+          enum: [offline, local_only, allow_network]
+    AppSettingsUpdate:
+      type: object
+      properties:
+        mockMode:
+          type: boolean
+        dataDirectory:
+          type: string
+        downloadDirectory:
+          type: string
+        archiveDirectory:
+          type: string
+        logLevel:
+          type: string
+          enum: [info, debug, warn, error]
+        hardwareAcceleration:
+          type: boolean
+        networkMode:
+          type: string
+          enum: [offline, local_only, allow_network]
+    PlexConfig:
+      type: object
+      required: [serverUrl, configured, hasToken, status]
+      properties:
+        serverUrl:
+          type: string
+        configured:
+          type: boolean
+        hasToken:
+          type: boolean
+        status:
+          type: string
+          enum: [not_configured, ready, connected, error]
+    PlexConfigUpdate:
+      type: object
+      properties:
+        serverUrl:
+          type: string
+        token:
+          type: string
+          writeOnly: true
 

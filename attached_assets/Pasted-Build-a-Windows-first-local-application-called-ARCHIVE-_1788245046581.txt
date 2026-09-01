@@ -1,0 +1,204 @@
+Build a Windows-first local application called ARCHIVE ASSISTANT.
+
+This is a personal media archive control system, not simply a video downloader.
+
+The application should eventually combine:
+
+- AI assistant
+- Plex library inventory
+- yt-dlp
+- FFmpeg
+- local filesystem monitoring
+- media downloading
+- media processing
+- duplicate detection
+- archive history
+- quality comparison
+- persistent job queue
+
+The primary target computer is:
+
+Intel Core Ultra 5 125H
+14 cores / 18 threads
+16 GB LPDDR5
+Intel Arc integrated GPU
+Intel AI Boost NPU
+~1 TB NVMe SSD
+Windows
+
+IMPORTANT ARCHITECTURE:
+
+The finished application must run locally on the user's Windows laptop.
+
+Do not make Replit hosting a requirement for the finished product.
+
+Replit is being used to build the application.
+
+Use a modular architecture so components can be added independently.
+
+Recommended stack:
+
+- TypeScript
+- Node.js
+- React
+- Vite
+- Express or Fastify
+- SQLite
+
+Keep the architecture simple and local-first.
+
+INITIAL VERSION ONLY:
+
+Build Phase 1.
+
+Create:
+
+1. Application shell
+2. Dark modern UI
+3. Navigation
+4. SQLite database
+5. Settings system
+6. System health page
+7. Local configuration
+8. Mock/demo mode
+9. Basic logging
+10. Dependency detection
+11. Clean architecture for future AI, Plex, yt-dlp and FFmpeg integrations
+
+Navigation should contain:
+
+HOME
+ASSISTANT
+QUEUE
+ARCHIVE
+PLEX
+SOURCES
+HISTORY
+SETTINGS
+
+HOME should display:
+
+Archive status
+Plex status
+Queue status
+Processing status
+Storage status
+AI status
+Last synchronization
+Recent activity
+
+ASSISTANT should initially be a UI shell only.
+
+QUEUE should initially be a UI shell only.
+
+ARCHIVE should initially be a UI shell only.
+
+PLEX should initially contain configuration fields but should not pretend to be connected.
+
+SOURCES should initially be a UI shell only.
+
+HISTORY should initially be a UI shell only.
+
+SETTINGS should contain:
+
+General
+Downloads
+Archive
+Plex
+AI
+Local Model
+OpenAI
+FFmpeg
+Hardware Acceleration
+Network
+Security
+Logging
+
+Create a proper database schema foundation for:
+
+PlexLibrary
+PlexItem
+PlexMedia
+PlexPart
+ArchiveItem
+SourceRecord
+DownloadJob
+ProcessingJob
+QueueItem
+FileRecord
+AssistantConversation
+AssistantMessage
+SystemEvent
+Setting
+
+Do not implement all functionality yet.
+
+Create interfaces/services for future:
+
+AI provider
+Plex connector
+Media extractor
+Download engine
+FFmpeg processor
+Archive manager
+
+The AI provider must eventually support:
+
+1. Local AI
+2. Optional OpenAI API
+
+The media extractor will eventually use yt-dlp.
+
+The media processor will eventually use FFmpeg.
+
+Do NOT allow arbitrary shell commands from the future AI system.
+
+All filesystem operations must eventually be restricted to user-configured directories.
+
+Security requirements:
+
+- never expose API keys to the browser
+- never expose Plex tokens to the browser
+- prevent path traversal
+- keep secrets server-side
+- use environment variables or secure local configuration
+
+Create:
+
+install.ps1
+start.ps1
+start.bat
+README.md
+
+The application should eventually launch locally through:
+
+http://localhost:3000
+
+or an automatically selected available local port.
+
+Include a mock mode so the UI can be developed without Plex, yt-dlp, FFmpeg or an AI provider.
+
+IMPORTANT:
+
+Do not build fake functionality and claim it works.
+
+Clearly separate:
+
+IMPLEMENTED
+PLACEHOLDER
+NOT YET IMPLEMENTED
+
+After building Phase 1:
+
+- run the application
+- run available tests
+- verify the database initializes
+- verify the UI loads
+- verify navigation works
+- verify settings persist
+- verify mock mode works
+- verify dependency detection works
+
+Then stop and report what was actually completed.
+
+Do not proceed to later phases until Phase 1 is working.

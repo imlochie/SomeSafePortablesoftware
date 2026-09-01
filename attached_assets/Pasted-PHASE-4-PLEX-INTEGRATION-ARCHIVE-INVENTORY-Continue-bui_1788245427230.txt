@@ -1,0 +1,989 @@
+PHASE 4: PLEX INTEGRATION + ARCHIVE INVENTORY
+
+Continue building ARCHIVE ASSISTANT from the existing Phase 1, Phase 2 and Phase 3 implementation.
+
+IMPORTANT:
+
+Do NOT rebuild the application.
+
+Do NOT remove working functionality.
+
+Do NOT replace the existing database architecture.
+
+Do NOT break the existing download engine.
+
+This phase adds the Plex integration and creates the application's real archive inventory.
+
+The application must remain:
+
+- Windows-first
+- local-first
+- privacy-conscious
+- modular
+- safe with existing media
+
+==================================================
+GOAL
+==================================================
+
+Connect ARCHIVE ASSISTANT to the user's Plex Media Server.
+
+The application should be able to understand:
+
+- what media exists in Plex
+- which libraries exist
+- where media files are located
+- technical quality of existing files
+- what has recently been added
+- what files are associated with each Plex item
+- what media could potentially be upgraded later
+
+The application must NOT copy media files into itself.
+
+The application stores metadata about the user's media.
+
+The actual media remains where it already lives.
+
+==================================================
+1. PLEX CONNECTOR
+==================================================
+
+Implement the PlexConnector service.
+
+Use Plex's API.
+
+Configuration:
+
+Plex Server URL
+Plex Token
+Connection status
+Server name
+Machine identifier
+
+The Plex token must NEVER be sent to the browser.
+
+The frontend should communicate only with the local backend.
+
+The backend owns Plex authentication.
+
+==================================================
+2. PLEX SETTINGS
+==================================================
+
+Make the existing PLEX Settings page functional.
+
+Fields:
+
+Plex Server URL
+Plex Token
+
+Buttons:
+
+[Test Connection]
+[Save]
+
+Show:
+
+CONNECTED
+or
+DISCONNECTED
+
+When connected display:
+
+Server Name
+Plex Version if available
+Machine Identifier
+Connection latency if practical
+
+Never display the complete token after it has been saved.
+
+Mask it.
+
+==================================================
+3. TOKEN STORAGE
+==================================================
+
+Do not store the Plex token in React state permanently.
+
+Do not put it in frontend JavaScript.
+
+Do not expose it through an API response.
+
+Store it securely in the local backend configuration.
+
+If secure OS credential storage is practical on Windows, use it.
+
+Otherwise use an appropriately protected local configuration mechanism.
+
+Never write the token to logs.
+
+==================================================
+4. LIBRARY DISCOVERY
+==================================================
+
+When connected:
+
+retrieve Plex library sections.
+
+For each library record:
+
+- library ID
+- title
+- type
+- agent/scanner information if available
+- location paths if available
+- Plex key
+
+Store them in:
+
+PlexLibrary
+
+Example types may include:
+
+movie
+show
+artist
+photo
+other
+
+Do not assume the user only has movies and TV.
+
+==================================================
+5. PLEX INVENTORY SYNC
+==================================================
+
+Implement:
+
+syncPlex()
+
+It should:
+
+1. Connect to Plex
+2. Retrieve libraries
+3. Retrieve library contents
+4. Retrieve metadata
+5. Retrieve media information
+6. Retrieve file information
+7. Compare against local database
+8. Insert new items
+9. Update changed items
+10. Mark removed items
+11. Record synchronization timestamp
+
+Do not delete historical records simply because Plex is temporarily unreachable.
+
+==================================================
+6. MOVIE INVENTORY
+==================================================
+
+For movie libraries retrieve:
+
+- title
+- year
+- summary
+- duration
+- rating
+- genres if available
+- studio if available
+- content rating if available
+- added date
+- updated date
+- Plex rating key
+- GUIDs
+- file path
+- file size
+- container
+- video codec
+- audio codec
+- resolution
+- bitrate
+- FPS
+- HDR information where available
+
+Store structured data.
+
+==================================================
+7. TV INVENTORY
+==================================================
+
+For TV libraries support:
+
+Show
+Season
+Episode
+
+Retrieve:
+
+SHOW:
+
+- title
+- year
+- summary
+- genres
+- Plex rating key
+- GUIDs
+
+SEASON:
+
+- season number
+- title
+- Plex rating key
+
+EPISODE:
+
+- episode number
+- season number
+- title
+- summary
+- duration
+- added date
+- Plex rating key
+- GUIDs
+
+MEDIA:
+
+- file path
+- file size
+- container
+- resolution
+- video codec
+- audio codec
+- bitrate
+- FPS
+- HDR where available
+
+Do not assume every Plex item has identical metadata.
+
+==================================================
+8. FILE INFORMATION
+==================================================
+
+Where Plex provides media-part/file information, store:
+
+full local path
+filename
+extension
+file size
+
+Do not move or modify these files during synchronization.
+
+Plex synchronization is READ-ONLY.
+
+This is extremely important.
+
+The initial Plex integration must never:
+
+- rename existing files
+- move existing files
+- delete files
+- overwrite files
+- convert files
+
+It only reads and indexes.
+
+==================================================
+9. DATABASE RELATIONSHIPS
+==================================================
+
+Fully connect:
+
+PlexLibrary
+PlexItem
+PlexMedia
+PlexPart
+ArchiveItem
+FileRecord
+
+A Plex item may have:
+
+one or more media records
+
+A media record may have:
+
+one or more parts/files
+
+Do not assume a single file per item.
+
+Preserve Plex's structure.
+
+==================================================
+10. ARCHIVE INVENTORY
+==================================================
+
+Create a unified archive inventory.
+
+The archive inventory should combine:
+
+Plex metadata
++
+local FileRecord metadata
++
+download history
+
+The user's existing Plex library should be considered:
+
+EXISTING ARCHIVE
+
+Downloaded-but-not-yet-Plexed files should be:
+
+PENDING ARCHIVE
+
+Failed jobs should be:
+
+FAILED ARCHIVE JOBS
+
+==================================================
+11. ARCHIVE PAGE
+==================================================
+
+Make ARCHIVE functional.
+
+Display:
+
+Total items
+Movies
+Shows
+Episodes
+Other
+
+Show searchable inventory.
+
+Columns:
+
+Title
+Year
+Type
+Quality
+Codec
+Size
+Plex Library
+Path
+Status
+
+Click an item to open a detailed view.
+
+==================================================
+12. ITEM DETAIL
+==================================================
+
+Create a detailed archive item page.
+
+Display:
+
+TITLE
+YEAR
+TYPE
+PLEX LIBRARY
+
+MEDIA
+
+Resolution
+FPS
+Video codec
+Audio codec
+Bitrate
+Container
+Duration
+File size
+
+FILE
+
+Filename
+Path
+Date added
+
+PLEX
+
+Plex status
+Plex rating key
+
+SOURCE
+
+If the item came from a recorded download job, show source information.
+
+Do not invent source information for pre-existing Plex items.
+
+If source is unknown:
+
+SOURCE:
+Unknown
+
+==================================================
+13. SEARCH
+==================================================
+
+Implement archive search.
+
+Search across:
+
+title
+year
+filename
+show
+episode
+library
+codec
+resolution
+
+Support fuzzy title matching where practical.
+
+Example:
+
+Searching:
+
+"four eyez"
+
+should be able to find:
+
+"4 Your Eyez Only"
+
+when the data exists.
+
+Do not rely exclusively on exact matching.
+
+==================================================
+14. NORMALIZED TITLES
+==================================================
+
+Create normalized search fields.
+
+Normalize things such as:
+
+- case
+- punctuation
+- common whitespace
+- common filename separators
+
+Do NOT aggressively remove meaningful numbers.
+
+For example:
+
+"4 Your Eyez Only"
+
+must remain distinguishable from unrelated titles.
+
+==================================================
+15. DUPLICATE DETECTION
+==================================================
+
+Implement initial archive duplicate detection.
+
+Compare:
+
+- normalized title
+- year
+- duration
+- Plex GUIDs where available
+- source IDs where available
+- filename
+
+Classify:
+
+EXACT MATCH
+LIKELY MATCH
+POSSIBLE MATCH
+NO MATCH
+
+Do not automatically delete duplicates.
+
+Do not automatically replace files.
+
+Only report them.
+
+==================================================
+16. QUALITY INVENTORY
+==================================================
+
+Create an archive quality profile.
+
+For each media item record:
+
+Resolution
+FPS
+Video codec
+Audio codec
+Bitrate
+HDR
+Container
+File size
+
+Allow filtering by:
+
+2160p
+1440p
+1080p
+720p
+SD
+
+and codecs where available.
+
+==================================================
+17. POTENTIAL UPGRADE FLAG
+==================================================
+
+Create the concept of:
+
+POTENTIAL UPGRADE
+
+Do not automatically find upgrades yet.
+
+This phase only establishes the data required for future comparison.
+
+Example:
+
+Existing:
+1080p H.264
+
+Potential upgrade:
+unknown
+
+The source comparison engine will be added later.
+
+==================================================
+18. PLEX SYNC SCHEDULER
+==================================================
+
+Implement automatic synchronization.
+
+Default:
+
+every 30 minutes
+
+Make configurable.
+
+Settings:
+
+Automatic Plex Sync:
+ON/OFF
+
+Sync interval:
+30 minutes
+
+Also provide:
+
+[SYNC NOW]
+
+Do not start multiple simultaneous Plex syncs.
+
+If a sync is already running:
+
+show:
+
+SYNC IN PROGRESS
+
+==================================================
+19. SYNC PROGRESS
+==================================================
+
+Show synchronization status.
+
+Example:
+
+PLEX SYNC
+
+Connecting...
+✓ Connected
+
+Libraries:
+5
+
+Movies:
+852 / 852
+
+Shows:
+498 / 498
+
+Episodes:
+12,403 / 12,403
+
+Updating database...
+
+Complete.
+
+Do not freeze the UI.
+
+Use WebSockets or SSE for progress.
+
+==================================================
+20. SYNC SAFETY
+==================================================
+
+Plex synchronization must be idempotent.
+
+Running sync twice should not create duplicate database records.
+
+Use stable Plex identifiers.
+
+Prefer:
+
+Plex rating key
+GUID
+media/part identifiers
+
+where appropriate.
+
+==================================================
+21. PLEX FAILURE HANDLING
+==================================================
+
+If Plex cannot be reached:
+
+Do not destroy the local inventory.
+
+Show:
+
+"PLEX UNAVAILABLE"
+
+and:
+
+"Your local archive inventory remains available but may be out of date."
+
+Keep the previous:
+
+Last successful sync
+
+timestamp.
+
+==================================================
+22. REMOVED ITEMS
+==================================================
+
+If an item disappears from Plex:
+
+Do NOT immediately hard-delete the local database record.
+
+Mark it:
+
+REMOVED_FROM_PLEX
+
+Keep historical information.
+
+This allows future archive history and auditing.
+
+If the item later reappears:
+
+restore its active status.
+
+==================================================
+23. FILESYSTEM CROSS-CHECK
+==================================================
+
+For every Plex file path:
+
+Check whether the path exists locally when practical.
+
+Record:
+
+FILE EXISTS
+FILE MISSING
+NOT CHECKED
+
+Do not modify the file.
+
+If a Plex record points to a missing file:
+
+flag:
+
+MISSING FILE
+
+Do not automatically remove it from the inventory.
+
+==================================================
+24. PATH NORMALIZATION
+==================================================
+
+Windows paths may differ in formatting.
+
+Normalize safely for comparison.
+
+Do not change the actual stored path returned by Plex unless required.
+
+Never convert a Windows path into a Unix path incorrectly.
+
+Support:
+
+C:\Media\...
+D:\Media\...
+network paths where accessible
+
+==================================================
+25. ARCHIVE STATISTICS
+==================================================
+
+Update the Home dashboard.
+
+Show real data from the local database:
+
+ARCHIVE
+X items
+
+MOVIES
+X
+
+SHOWS
+X
+
+EPISODES
+X
+
+MISSING FILES
+X
+
+RECENTLY ADDED
+X
+
+PLEX
+CONNECTED / DISCONNECTED
+
+LAST SYNC
+timestamp
+
+Do not use hardcoded numbers.
+
+==================================================
+26. HISTORY
+==================================================
+
+Record Plex synchronization events.
+
+Example:
+
+01 Sep 2026
+Plex Sync
+12,403 episodes indexed
+7 new items
+2 updated
+0 removed
+
+Store synchronization history.
+
+==================================================
+27. PERFORMANCE
+==================================================
+
+The target archive may contain thousands of media items.
+
+The application must not load the entire Plex inventory into the browser at once.
+
+Use pagination.
+
+Use server-side search/filtering.
+
+Use database indexes.
+
+Important indexes:
+
+normalized title
+year
+Plex rating key
+library ID
+type
+status
+file path
+
+==================================================
+28. LARGE LIBRARY HANDLING
+==================================================
+
+Design for:
+
+thousands
+tens of thousands
+
+of media records.
+
+Do not assume the library is small.
+
+Avoid N+1 API requests where practical.
+
+Batch requests when Plex supports them.
+
+Do not perform expensive full-file hashing during Plex synchronization.
+
+==================================================
+29. PLEX PAGE
+==================================================
+
+Make PLEX page functional.
+
+Display:
+
+Connection status
+Server name
+Server version if available
+Libraries
+Library counts
+Last successful sync
+
+Buttons:
+
+[Test Connection]
+[Sync Now]
+
+Clicking a library should show:
+
+Library name
+Type
+Location
+Item count
+Last sync
+
+==================================================
+30. SECURITY
+==================================================
+
+Plex integration must be backend-only.
+
+The browser must never receive:
+
+Plex token
+credentials
+
+Do not expose the token through:
+
+React props
+API responses
+browser storage
+logs
+
+Validate Plex URLs.
+
+Only connect to the configured Plex server.
+
+==================================================
+31. MOCK MODE
+==================================================
+
+Preserve existing mock mode.
+
+Add realistic fake Plex data.
+
+Example:
+
+Movies:
+852
+
+Shows:
+498
+
+Episodes:
+multiple thousands
+
+Include:
+
+different resolutions
+different codecs
+multiple libraries
+missing file examples
+duplicate examples
+
+Clearly display:
+
+DEMO MODE
+
+when enabled.
+
+==================================================
+32. TESTING
+==================================================
+
+Create tests for:
+
+Plex authentication
+library discovery
+movie parsing
+show parsing
+season parsing
+episode parsing
+media parsing
+part parsing
+database synchronization
+idempotent synchronization
+removed-item detection
+missing-file detection
+normalized title matching
+duplicate detection
+quality metadata
+path normalization
+Plex failure handling
+
+Create mocked Plex API responses.
+
+Unit tests must not require a live Plex server.
+
+==================================================
+33. REAL CONNECTION TEST
+==================================================
+
+Create a simple integration test path for a real Plex server.
+
+Do not require credentials to run automated tests.
+
+When the user configures Plex manually:
+
+[Test Connection]
+
+should perform a real connection attempt.
+
+Report the actual result.
+
+==================================================
+34. DO NOT IMPLEMENT YET
+==================================================
+
+Do NOT implement:
+
+- AI provider
+- OpenAI
+- local AI
+- AI tool calling
+- automatic upgrade searching
+- automatic source searching
+- automatic downloading from Plex comparisons
+- automatic duplicate deletion
+- automatic file replacement
+- archive cleanup
+
+Those belong to later phases.
+
+==================================================
+35. FINAL VERIFICATION
+==================================================
+
+After implementation:
+
+1. Run all tests.
+2. Start the application.
+3. Verify Phase 1 works.
+4. Verify Phase 2 works.
+5. Verify Phase 3 works.
+6. Verify Plex settings.
+7. Verify mocked Plex connection.
+8. Verify mocked synchronization.
+9. Verify database inventory.
+10. Verify Archive page.
+11. Verify search.
+12. Verify item detail.
+13. Verify duplicate detection.
+14. Verify missing-file detection.
+15. Verify sync progress.
+16. Verify sync history.
+17. Verify failed Plex connection does not destroy inventory.
+18. Verify Plex token is never exposed to frontend code.
+19. Verify existing media is never modified by synchronization.
+20. If a real Plex server is configured, perform a real read-only connection test.
+
+Do not claim live Plex functionality works unless it has actually been tested.
+
+At the end report:
+
+IMPLEMENTED
+TESTED
+LIVE TEST RESULTS
+NOT YET IMPLEMENTED
+KNOWN LIMITATIONS
+HOW TO RUN
+
+Do not automatically proceed to Phase 5.
+
+Stop after Phase 4 is working.

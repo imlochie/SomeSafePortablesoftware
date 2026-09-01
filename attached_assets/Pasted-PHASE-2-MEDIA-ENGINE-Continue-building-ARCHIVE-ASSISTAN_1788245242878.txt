@@ -1,0 +1,659 @@
+PHASE 2: MEDIA ENGINE
+
+Continue building ARCHIVE ASSISTANT from the existing Phase 1 implementation.
+
+Do NOT rebuild the application from scratch.
+
+Do NOT remove working Phase 1 functionality.
+
+This phase adds the local media engine:
+
+- yt-dlp
+- FFmpeg
+- URL inspection
+- format inspection
+- quality scoring
+- best-source selection
+- media metadata extraction
+
+Do NOT implement Plex integration yet.
+Do NOT implement the AI provider yet.
+Do NOT implement the full download queue yet.
+
+Build these systems as modular services so later phases can call them.
+
+==================================================
+1. DEPENDENCY DETECTION
+==================================================
+
+Add robust detection for:
+
+- yt-dlp
+- FFmpeg
+
+The application must detect whether they are installed and usable.
+
+Show their versions.
+
+System Health should now display:
+
+✓ yt-dlp
+✓ FFmpeg
+
+or:
+
+✗ yt-dlp
+✗ FFmpeg
+
+If missing, provide a clear explanation and installation guidance.
+
+Do not silently install software.
+
+The application must work with user-installed versions.
+
+==================================================
+2. MEDIA EXTRACTOR
+==================================================
+
+Create a MediaExtractor service.
+
+Use yt-dlp as the extraction engine.
+
+Do not implement individual YouTube/Vimeo scrapers.
+
+Support whatever sites are supported by the installed yt-dlp version.
+
+The extractor should accept a URL and return structured metadata.
+
+It should support:
+
+- YouTube
+- Vimeo
+- other yt-dlp-supported sites
+- direct media URLs where practical
+- HLS/m3u8 URLs
+- DASH sources where supported
+
+Do not bypass DRM.
+
+Do not bypass paywalls, authentication or access controls.
+
+Only operate on media the user is authorized to download.
+
+==================================================
+3. URL INSPECTION
+==================================================
+
+Implement:
+
+inspect_url(url)
+
+It should retrieve:
+
+- title
+- uploader
+- channel/creator if available
+- description if available
+- duration
+- upload date if available
+- thumbnail URL if available
+- webpage URL
+- extractor/site
+- source ID
+- playlist/collection information if available
+
+Return structured data.
+
+Do not download the media during inspection.
+
+==================================================
+4. FORMAT INSPECTION
+==================================================
+
+Implement:
+
+get_available_formats(url)
+
+Use yt-dlp's format information.
+
+Return structured information for every usable format.
+
+Capture:
+
+- format ID
+- extension
+- protocol
+- width
+- height
+- resolution
+- FPS
+- video codec
+- audio codec
+- bitrate
+- filesize if available
+- estimated filesize if available
+- dynamic range / HDR if available
+- audio language
+- video language
+- container
+- whether video-only
+- whether audio-only
+- whether audio and video are already muxed
+- manifest/protocol information
+- HLS availability
+- DASH availability
+
+Normalize the data into a predictable internal format.
+
+Do not expose raw yt-dlp output directly to the frontend.
+
+==================================================
+5. SOURCE INSPECTOR UI
+==================================================
+
+Make the SOURCES page functional.
+
+Create:
+
+URL input
+[ Inspect ]
+
+After inspection show:
+
+TITLE
+Uploader
+Duration
+Source site
+Upload date
+
+Then:
+
+AVAILABLE SOURCES
+
+Create a table containing:
+
+Quality
+Resolution
+FPS
+Video codec
+Audio codec
+Bitrate
+Protocol
+Container
+Estimated size
+
+Highlight the recommended source.
+
+Allow the user to click a format to see detailed technical information.
+
+==================================================
+6. QUALITY SELECTION ENGINE
+==================================================
+
+Create a deterministic service:
+
+select_best_source(formats)
+
+Do NOT simply choose the highest resolution.
+
+Score sources using:
+
+1. Resolution
+2. Bitrate
+3. Video codec
+4. Audio codec
+5. FPS
+6. HDR/dynamic range
+7. Protocol
+8. Container
+9. Whether audio/video are separate
+10. Whether FFmpeg can mux without transcoding
+11. Estimated file size
+12. Overall archival suitability
+
+The primary objective is:
+
+BEST AVAILABLE LEGITIMATE SOURCE
+
+not:
+
+HIGHEST RESOLUTION ONLY
+
+and not:
+
+M3U8 ONLY
+
+If an HLS/m3u8 source is the best available source, select it.
+
+If DASH or another source is technically superior, select that instead.
+
+The scoring system must be deterministic.
+
+Do not let an AI model decide the numerical score.
+
+The AI can later explain the result, but the underlying selection should be deterministic.
+
+==================================================
+7. QUALITY EXPLANATION
+==================================================
+
+Return a human-readable explanation alongside the selected source.
+
+Example:
+
+"Recommended: 2160p HLS.
+
+This provides the highest available resolution and strong bitrate while allowing the video and audio streams to be combined without unnecessary transcoding."
+
+The explanation must be generated from actual format data.
+
+Never invent technical properties.
+
+==================================================
+8. FORMAT FILTERING
+==================================================
+
+Create separate concepts for:
+
+RAW AVAILABLE FORMATS
+USABLE FORMATS
+RECOMMENDED FORMAT
+
+Remove obviously unusable formats.
+
+Do not remove legitimate unusual formats merely because they are uncommon.
+
+Keep the raw source information available for debugging.
+
+==================================================
+9. FFmpeg SERVICE
+==================================================
+
+Create an FFmpeg service.
+
+Implement basic capabilities:
+
+- detect FFmpeg
+- get FFmpeg version
+- inspect media file
+- inspect streams
+- mux audio + video
+- stream copy when possible
+- convert container when necessary
+
+Do NOT automatically transcode everything.
+
+Prefer:
+
+-copy
+
+where appropriate.
+
+Example:
+
+video stream
++
+audio stream
+↓
+FFmpeg
+↓
+MP4
+
+without re-encoding.
+
+==================================================
+10. MEDIA INSPECTION
+==================================================
+
+Implement:
+
+inspect_local_file(path)
+
+Return:
+
+- filename
+- extension
+- filesize
+- duration
+- video streams
+- audio streams
+- resolution
+- FPS
+- video codec
+- audio codec
+- bitrate
+- container
+- HDR information where available
+
+Use FFmpeg/ffprobe.
+
+Do not upload files anywhere.
+
+Everything must happen locally.
+
+==================================================
+11. HARDWARE ACCELERATION
+==================================================
+
+Add detection for available FFmpeg hardware acceleration.
+
+The target machine has:
+
+Intel Core Ultra 5 125H
+Intel Arc integrated graphics
+Intel AI Boost NPU
+
+Do not assume any particular acceleration backend is available.
+
+Detect what the installed FFmpeg build actually supports.
+
+Expose:
+
+Hardware acceleration:
+Auto
+Disabled
+
+Auto should select an available compatible option when appropriate.
+
+Do not force hardware encoding.
+
+For muxing and stream copying, hardware acceleration is unnecessary.
+
+==================================================
+12. TEMPORARY FILE SYSTEM
+==================================================
+
+Create a configurable temporary media directory.
+
+Do NOT hardcode a user-specific path.
+
+Example configuration:
+
+Temporary directory:
+[ user-selected folder ]
+
+All temporary downloads and intermediate files should use this location.
+
+Never allow arbitrary paths from frontend input to be executed.
+
+Validate all filesystem paths.
+
+Prevent:
+
+../
+
+path traversal
+
+and access outside configured directories.
+
+==================================================
+13. SOURCE INSPECTION CACHE
+==================================================
+
+Add a small cache for recent URL inspections.
+
+Do not repeatedly call yt-dlp for the exact same URL unnecessarily.
+
+Cache:
+
+URL
+inspection time
+metadata
+format information
+
+Make the cache expiration configurable.
+
+Default:
+
+15 minutes
+
+Provide:
+
+[Refresh source]
+
+to force a fresh inspection.
+
+==================================================
+14. ERROR HANDLING
+==================================================
+
+Handle common cases cleanly.
+
+Examples:
+
+Invalid URL:
+
+"That URL could not be inspected."
+
+Unsupported site:
+
+"This source is not supported by the installed yt-dlp version."
+
+yt-dlp missing:
+
+"yt-dlp is not installed or could not be executed."
+
+FFmpeg missing:
+
+"FFmpeg is required for this operation."
+
+No formats:
+
+"No usable media formats were found."
+
+Network error:
+
+"The source could not be reached."
+
+Never show raw stack traces by default.
+
+Allow:
+
+[Technical details]
+
+==================================================
+15. TESTING
+==================================================
+
+Add unit tests for:
+
+- format normalization
+- format filtering
+- quality scoring
+- best-source selection
+- codec ranking
+- resolution ranking
+- bitrate comparison
+- mux suitability
+- path validation
+- URL validation
+
+Create mocked yt-dlp format fixtures.
+
+Do not require internet access for unit tests.
+
+Create at least several example format datasets:
+
+Example A:
+2160p HLS
+1440p HLS
+1080p MP4
+
+Example B:
+2160p DASH
+1080p HLS
+
+Example C:
+separate video/audio streams
+
+Example D:
+only 1080p available
+
+Example E:
+unusual but valid formats
+
+Verify the deterministic selector chooses sensible results.
+
+==================================================
+16. DEVELOPMENT MOCK MODE
+==================================================
+
+Preserve Phase 1 mock mode.
+
+Add mock media-source data.
+
+When mock mode is enabled:
+
+The SOURCES page should be able to demonstrate:
+
+URL inspection
+metadata
+format table
+recommended source
+
+without requiring yt-dlp or internet access.
+
+Clearly display:
+
+DEMO MODE
+
+when active.
+
+==================================================
+17. DOWNLOAD PREPARATION
+==================================================
+
+Do NOT build the full download queue yet.
+
+However, create the interfaces needed for Phase 3.
+
+Create:
+
+DownloadEngine
+
+with an interface capable of eventually supporting:
+
+createJob()
+startJob()
+pauseJob()
+resumeJob()
+cancelJob()
+getJob()
+getJobs()
+
+For now, do not implement the persistent queue.
+
+The source inspector should have:
+
+[ Prepare Download ]
+
+which creates a structured download specification but does not necessarily start downloading.
+
+Example:
+
+{
+  sourceUrl,
+  title,
+  selectedFormat,
+  outputContainer,
+  temporaryDirectory,
+  destinationDirectory
+}
+
+==================================================
+18. ARCHITECTURE
+==================================================
+
+Keep services separated.
+
+Suggested structure:
+
+/src
+  /ai
+  /archive
+  /database
+  /downloads
+  /ffmpeg
+  /media
+  /plex
+  /settings
+  /system
+  /ui
+
+Media services should not directly manipulate React components.
+
+React should communicate through the backend API.
+
+Keep frontend and backend responsibilities separate.
+
+==================================================
+19. SECURITY
+==================================================
+
+Never allow:
+
+- arbitrary shell execution
+- arbitrary filesystem access
+- arbitrary command construction from user input
+
+Use argument arrays rather than unsafe shell-string construction when spawning yt-dlp or FFmpeg.
+
+Validate URLs.
+
+Validate paths.
+
+Restrict filesystem access to configured directories.
+
+Log operations without logging secrets.
+
+==================================================
+20. WHAT NOT TO BUILD YET
+==================================================
+
+Do NOT implement:
+
+- Plex synchronization
+- Plex library scanning
+- AI tool calling
+- OpenAI integration
+- local AI integration
+- full download queue
+- archive intelligence
+- duplicate detection
+- automatic Plex scanning
+
+Those belong to later phases.
+
+==================================================
+21. FINAL VERIFICATION
+==================================================
+
+After implementation:
+
+1. Start the application.
+2. Run tests.
+3. Verify the UI loads.
+4. Verify System Health detects yt-dlp.
+5. Verify System Health detects FFmpeg.
+6. Verify mock source inspection.
+7. Verify format table.
+8. Verify quality scoring.
+9. Verify recommended-source selection.
+10. Verify FFmpeg media inspection.
+11. Verify path validation.
+12. Verify no arbitrary shell execution exists.
+13. Verify Phase 1 functionality still works.
+
+Do not claim anything works unless it was actually tested.
+
+At the end, report:
+
+IMPLEMENTED
+TESTED
+NOT YET IMPLEMENTED
+KNOWN LIMITATIONS
+HOW TO RUN
+
+Do not proceed to Phase 3 automatically.
+
+Stop after Phase 2 is working.

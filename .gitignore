@@ -47,3 +47,11 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Local ARCHIVE ASSISTANT runtime data
+artifacts/api-server/data/*.sqlite
+artifacts/api-server/data/*.sqlite-shm
+artifacts/api-server/data/*.sqlite-wal
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
