@@ -3,6 +3,8 @@ import healthRouter from "./health";
 import systemRouter from "./system";
 import settingsRouter from "./settings";
 import plexRouter from "./plex";
+import mediaRouter from "./media";
+import downloadsRouter from "./downloads";
 
 const router: IRouter = Router();
 
@@ -10,5 +12,7 @@ router.use(healthRouter);
 router.use(systemRouter);
 router.use(settingsRouter);
 router.use(plexRouter);
+router.use(mediaRouter);
+router.use(downloadsRouter);
 
 export default router;

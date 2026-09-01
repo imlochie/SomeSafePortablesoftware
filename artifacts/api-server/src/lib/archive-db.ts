@@ -122,14 +122,76 @@ archiveDb.exec(`
   );
 `);
 
+function ensureColumn(table: string, column: string, definition: string) {
+  const columns = archiveDb
+    .prepare(`PRAGMA table_info(${table})`)
+    .all() as Array<{ name: string }>;
+  if (!columns.some((candidate) => candidate.name === column)) {
+    archiveDb.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+// Phase 2/3 migrations are additive so an existing Phase 1 database is retained.
+const downloadColumns: Array<[string, string]> = [
+  ["source_url", "TEXT"],
+  ["source_site", "TEXT"],
+  ["source_id_text", "TEXT"],
+  ["title", "TEXT NOT NULL DEFAULT 'Untitled media'"],
+  ["selected_format_id", "TEXT NOT NULL DEFAULT 'best'"],
+  ["selected_video_format_id", "TEXT"],
+  ["selected_audio_format_id", "TEXT"],
+  ["output_container", "TEXT NOT NULL DEFAULT 'mp4'"],
+  ["temporary_directory", "TEXT NOT NULL DEFAULT ''"],
+  ["destination_directory", "TEXT NOT NULL DEFAULT ''"],
+  ["final_filename", "TEXT NOT NULL DEFAULT 'download'"],
+  ["final_path", "TEXT"],
+  ["total_bytes", "INTEGER"],
+  ["downloaded_bytes", "INTEGER NOT NULL DEFAULT 0"],
+  ["download_speed", "REAL"],
+  ["eta_seconds", "INTEGER"],
+  ["started_at", "TEXT"],
+  ["completed_at", "TEXT"],
+  ["error_message", "TEXT"],
+  ["retry_count", "INTEGER NOT NULL DEFAULT 0"],
+  ["process_id", "INTEGER"],
+  ["current_phase", "TEXT NOT NULL DEFAULT 'queued'"],
+  ["verification", "TEXT NOT NULL DEFAULT 'waiting'"],
+  ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
+];
+for (const [column, definition] of downloadColumns) {
+  ensureColumn("download_job", column, definition);
+}
+const processingColumns: Array<[string, string]> = [
+  ["download_job_id", "INTEGER"],
+  ["input_file", "TEXT"],
+  ["output_file", "TEXT"],
+  ["operation", "TEXT NOT NULL DEFAULT 'verify'"],
+  ["started_at", "TEXT"],
+  ["completed_at", "TEXT"],
+  ["error_message", "TEXT"],
+  ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
+];
+for (const [column, definition] of processingColumns) {
+  ensureColumn("processing_job", column, definition);
+}
+
 const defaultSettings = {
   mockMode: true,
   dataDirectory: "~/ARCHIVE/data",
   downloadDirectory: "~/ARCHIVE/downloads",
   archiveDirectory: "~/ARCHIVE/library",
+  temporaryDirectory: "~/ARCHIVE/tmp",
   logLevel: "info",
   hardwareAcceleration: true,
+  hardwareAccelerationMode: "auto",
   networkMode: "local_only",
+  concurrentDownloads: 2,
+  maxRetries: 2,
+  bandwidthLimit: 0,
+  outputContainer: "mp4",
+  inspectionCacheMinutes: 15,
+  warningFreePercent: 15,
+  criticalFreePercent: 5,
 } as const;
 
 const settingStatement = archiveDb.prepare(
@@ -201,4 +263,17 @@ export function readEvents(limit = 12) {
     timestamp: string;
     source: string;
   }>;
+}
+
+export function addEvent(
+  level: "info" | "success" | "warning" | "error",
+  message: string,
+  source: string,
+) {
+  const id = `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  archiveDb
+    .prepare(
+      "INSERT INTO system_event (id, level, message, source, timestamp) VALUES (?, ?, ?, ?, ?)",
+    )
+    .run(id, level, message, source, new Date().toISOString());
 }

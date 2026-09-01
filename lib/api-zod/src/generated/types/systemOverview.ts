@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { StatusValue } from './statusValue';
+import type { StorageSummary } from './storageSummary';
 import type { SystemEvent } from './systemEvent';
 
 export interface SystemOverview {
@@ -18,4 +19,10 @@ export interface SystemOverview {
   /** @nullable */
   lastSync: Date | null;
   activity: SystemEvent[];
+  activeDownloads: number;
+  queuedJobs: number;
+  processingJobs: number;
+  completedToday: number;
+  failedToday: number;
+  storage: StorageSummary;
 }

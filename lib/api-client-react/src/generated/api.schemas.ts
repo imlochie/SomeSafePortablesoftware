@@ -40,6 +40,25 @@ export interface SystemEvent {
   source: string;
 }
 
+export type StorageSummaryStatus = typeof StorageSummaryStatus[keyof typeof StorageSummaryStatus];
+
+
+export const StorageSummaryStatus = {
+  ready: 'ready',
+  warning: 'warning',
+  critical: 'critical',
+  unavailable: 'unavailable',
+} as const;
+
+export interface StorageSummary {
+  path: string;
+  freeBytes: number;
+  totalBytes: number;
+  usedBytes: number;
+  freePercent: number;
+  status: StorageSummaryStatus;
+}
+
 export interface SystemOverview {
   archiveStatus: StatusValue;
   plexStatus: StatusValue;
@@ -50,6 +69,12 @@ export interface SystemOverview {
   /** @nullable */
   lastSync: string | null;
   activity: SystemEvent[];
+  activeDownloads: number;
+  queuedJobs: number;
+  processingJobs: number;
+  completedToday: number;
+  failedToday: number;
+  storage: StorageSummary;
 }
 
 export type DependencyStatusStatus = typeof DependencyStatusStatus[keyof typeof DependencyStatusStatus];
@@ -68,6 +93,7 @@ export interface DependencyStatus {
   detail: string;
   /** @nullable */
   version: string | null;
+  capabilities: string[];
 }
 
 export type AppSettingsLogLevel = typeof AppSettingsLogLevel[keyof typeof AppSettingsLogLevel];
@@ -80,6 +106,14 @@ export const AppSettingsLogLevel = {
   error: 'error',
 } as const;
 
+export type AppSettingsHardwareAccelerationMode = typeof AppSettingsHardwareAccelerationMode[keyof typeof AppSettingsHardwareAccelerationMode];
+
+
+export const AppSettingsHardwareAccelerationMode = {
+  auto: 'auto',
+  disabled: 'disabled',
+} as const;
+
 export type AppSettingsNetworkMode = typeof AppSettingsNetworkMode[keyof typeof AppSettingsNetworkMode];
 
 
@@ -89,14 +123,53 @@ export const AppSettingsNetworkMode = {
   allow_network: 'allow_network',
 } as const;
 
+export type AppSettingsOutputContainer = typeof AppSettingsOutputContainer[keyof typeof AppSettingsOutputContainer];
+
+
+export const AppSettingsOutputContainer = {
+  mp4: 'mp4',
+  mkv: 'mkv',
+  webm: 'webm',
+} as const;
+
 export interface AppSettings {
   mockMode: boolean;
   dataDirectory: string;
   downloadDirectory: string;
   archiveDirectory: string;
+  temporaryDirectory: string;
   logLevel: AppSettingsLogLevel;
   hardwareAcceleration: boolean;
+  hardwareAccelerationMode: AppSettingsHardwareAccelerationMode;
   networkMode: AppSettingsNetworkMode;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  concurrentDownloads: number;
+  /**
+     * @minimum 0
+     * @maximum 10
+     */
+  maxRetries: number;
+  /** @minimum 0 */
+  bandwidthLimit: number;
+  outputContainer: AppSettingsOutputContainer;
+  /**
+     * @minimum 1
+     * @maximum 120
+     */
+  inspectionCacheMinutes: number;
+  /**
+     * @minimum 1
+     * @maximum 50
+     */
+  warningFreePercent: number;
+  /**
+     * @minimum 1
+     * @maximum 25
+     */
+  criticalFreePercent: number;
 }
 
 export type AppSettingsUpdateLogLevel = typeof AppSettingsUpdateLogLevel[keyof typeof AppSettingsUpdateLogLevel];
@@ -109,6 +182,14 @@ export const AppSettingsUpdateLogLevel = {
   error: 'error',
 } as const;
 
+export type AppSettingsUpdateHardwareAccelerationMode = typeof AppSettingsUpdateHardwareAccelerationMode[keyof typeof AppSettingsUpdateHardwareAccelerationMode];
+
+
+export const AppSettingsUpdateHardwareAccelerationMode = {
+  auto: 'auto',
+  disabled: 'disabled',
+} as const;
+
 export type AppSettingsUpdateNetworkMode = typeof AppSettingsUpdateNetworkMode[keyof typeof AppSettingsUpdateNetworkMode];
 
 
@@ -118,14 +199,53 @@ export const AppSettingsUpdateNetworkMode = {
   allow_network: 'allow_network',
 } as const;
 
+export type AppSettingsUpdateOutputContainer = typeof AppSettingsUpdateOutputContainer[keyof typeof AppSettingsUpdateOutputContainer];
+
+
+export const AppSettingsUpdateOutputContainer = {
+  mp4: 'mp4',
+  mkv: 'mkv',
+  webm: 'webm',
+} as const;
+
 export interface AppSettingsUpdate {
   mockMode?: boolean;
   dataDirectory?: string;
   downloadDirectory?: string;
   archiveDirectory?: string;
+  temporaryDirectory?: string;
   logLevel?: AppSettingsUpdateLogLevel;
   hardwareAcceleration?: boolean;
+  hardwareAccelerationMode?: AppSettingsUpdateHardwareAccelerationMode;
   networkMode?: AppSettingsUpdateNetworkMode;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  concurrentDownloads?: number;
+  /**
+     * @minimum 0
+     * @maximum 10
+     */
+  maxRetries?: number;
+  /** @minimum 0 */
+  bandwidthLimit?: number;
+  outputContainer?: AppSettingsUpdateOutputContainer;
+  /**
+     * @minimum 1
+     * @maximum 120
+     */
+  inspectionCacheMinutes?: number;
+  /**
+     * @minimum 1
+     * @maximum 50
+     */
+  warningFreePercent?: number;
+  /**
+     * @minimum 1
+     * @maximum 25
+     */
+  criticalFreePercent?: number;
 }
 
 export type PlexConfigStatus = typeof PlexConfigStatus[keyof typeof PlexConfigStatus];
@@ -148,5 +268,252 @@ export interface PlexConfig {
 export interface PlexConfigUpdate {
   serverUrl?: string;
   token?: string;
+}
+
+export interface MediaInspectInput {
+  /** @minLength 8 */
+  url: string;
+  forceRefresh?: boolean;
+}
+
+export interface LocalMediaInspectInput {
+  /** @minLength 1 */
+  path: string;
+}
+
+export interface MediaMetadata {
+  title: string;
+  /** @nullable */
+  uploader: string | null;
+  /** @nullable */
+  channel: string | null;
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  durationSeconds: number | null;
+  /** @nullable */
+  uploadDate: string | null;
+  /** @nullable */
+  thumbnailUrl: string | null;
+  webpageUrl: string;
+  /** @nullable */
+  extractor: string | null;
+  /** @nullable */
+  sourceId: string | null;
+  /** @nullable */
+  playlistTitle: string | null;
+  /** @nullable */
+  playlistIndex: number | null;
+}
+
+export interface MediaFormat {
+  formatId: string;
+  /** @nullable */
+  extension: string | null;
+  /** @nullable */
+  protocol: string | null;
+  /** @nullable */
+  width: number | null;
+  /** @nullable */
+  height: number | null;
+  resolution: string;
+  /** @nullable */
+  fps: number | null;
+  /** @nullable */
+  videoCodec: string | null;
+  /** @nullable */
+  audioCodec: string | null;
+  /** @nullable */
+  bitrate: number | null;
+  /** @nullable */
+  filesize: number | null;
+  /** @nullable */
+  estimatedFilesize: number | null;
+  /** @nullable */
+  dynamicRange: string | null;
+  /** @nullable */
+  audioLanguage: string | null;
+  /** @nullable */
+  videoLanguage: string | null;
+  /** @nullable */
+  container: string | null;
+  videoOnly: boolean;
+  audioOnly: boolean;
+  muxed: boolean;
+  /** @nullable */
+  manifestProtocol: string | null;
+  hls: boolean;
+  dash: boolean;
+  usable: boolean;
+  score: number;
+}
+
+export interface MediaInspection {
+  metadata: MediaMetadata;
+  formats: MediaFormat[];
+  rawFormatCount: number;
+  /** @nullable */
+  recommendedFormatId: string | null;
+  /** @nullable */
+  recommendedVideoFormatId: string | null;
+  /** @nullable */
+  recommendedAudioFormatId: string | null;
+  recommendationExplanation: string;
+  demoMode: boolean;
+  cachedAt: string;
+}
+
+export type LocalMediaInspectionVerification = typeof LocalMediaInspectionVerification[keyof typeof LocalMediaInspectionVerification];
+
+
+export const LocalMediaInspectionVerification = {
+  passed: 'passed',
+  failed: 'failed',
+} as const;
+
+export interface LocalMediaInspection {
+  filename: string;
+  path: string;
+  extension: string;
+  filesize: number;
+  /** @nullable */
+  durationSeconds: number | null;
+  videoStreams: number;
+  audioStreams: number;
+  /** @nullable */
+  width: number | null;
+  /** @nullable */
+  height: number | null;
+  /** @nullable */
+  fps: number | null;
+  /** @nullable */
+  videoCodec: string | null;
+  /** @nullable */
+  audioCodec: string | null;
+  /** @nullable */
+  bitrate: number | null;
+  /** @nullable */
+  container: string | null;
+  /** @nullable */
+  dynamicRange: string | null;
+  verification: LocalMediaInspectionVerification;
+}
+
+export type DownloadPreparationInputOutputContainer = typeof DownloadPreparationInputOutputContainer[keyof typeof DownloadPreparationInputOutputContainer];
+
+
+export const DownloadPreparationInputOutputContainer = {
+  mp4: 'mp4',
+  mkv: 'mkv',
+  webm: 'webm',
+} as const;
+
+export interface DownloadPreparationInput {
+  sourceUrl: string;
+  title: string;
+  /** @nullable */
+  sourceSite?: string | null;
+  selectedFormatId: string;
+  /** @nullable */
+  selectedVideoFormatId?: string | null;
+  /** @nullable */
+  selectedAudioFormatId?: string | null;
+  outputContainer?: DownloadPreparationInputOutputContainer;
+  temporaryDirectory?: string;
+  destinationDirectory?: string;
+  finalFilename?: string;
+}
+
+export interface DownloadSpecification {
+  sourceUrl: string;
+  title: string;
+  /** @nullable */
+  sourceSite: string | null;
+  selectedFormatId: string;
+  /** @nullable */
+  selectedVideoFormatId: string | null;
+  /** @nullable */
+  selectedAudioFormatId: string | null;
+  outputContainer: string;
+  temporaryDirectory: string;
+  destinationDirectory: string;
+  finalFilename: string;
+  validated: boolean;
+}
+
+export type DownloadJobInput = DownloadPreparationInput;
+
+export type DownloadJobStatus = typeof DownloadJobStatus[keyof typeof DownloadJobStatus];
+
+
+export const DownloadJobStatus = {
+  queued: 'queued',
+  inspecting: 'inspecting',
+  downloading: 'downloading',
+  downloaded: 'downloaded',
+  processing: 'processing',
+  verifying: 'verifying',
+  moving: 'moving',
+  complete: 'complete',
+  failed: 'failed',
+  cancelled: 'cancelled',
+  paused: 'paused',
+  recovery_required: 'recovery_required',
+} as const;
+
+export type DownloadJobVerification = typeof DownloadJobVerification[keyof typeof DownloadJobVerification];
+
+
+export const DownloadJobVerification = {
+  waiting: 'waiting',
+  passed: 'passed',
+  failed: 'failed',
+  not_required: 'not_required',
+} as const;
+
+export interface DownloadJob {
+  id: number;
+  sourceUrl: string;
+  /** @nullable */
+  sourceSite: string | null;
+  /** @nullable */
+  sourceId: string | null;
+  title: string;
+  selectedFormatId: string;
+  /** @nullable */
+  selectedVideoFormatId: string | null;
+  /** @nullable */
+  selectedAudioFormatId: string | null;
+  outputContainer: string;
+  temporaryDirectory: string;
+  destinationDirectory: string;
+  finalFilename: string;
+  /** @nullable */
+  finalPath: string | null;
+  status: DownloadJobStatus;
+  progress: number;
+  downloadedBytes: number;
+  /** @nullable */
+  totalBytes: number | null;
+  /** @nullable */
+  downloadSpeed: number | null;
+  /** @nullable */
+  etaSeconds: number | null;
+  createdAt: string;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  errorMessage: string | null;
+  retryCount: number;
+  /** @nullable */
+  processId: number | null;
+  currentPhase: string;
+  verification: DownloadJobVerification;
+}
+
+export interface ErrorResponse {
+  error: string;
 }
 

@@ -1,0 +1,1030 @@
+PHASE 5: ARCHIVE INTELLIGENCE + DUPLICATE DETECTION + QUALITY COMPARISON
+
+Continue building ARCHIVE ASSISTANT from the existing Phase 1, Phase 2, Phase 3 and Phase 4 implementation.
+
+IMPORTANT:
+
+Do NOT rebuild the application.
+
+Do NOT remove working functionality.
+
+Do NOT break:
+
+- the existing UI
+- SQLite database
+- yt-dlp integration
+- FFmpeg integration
+- download engine
+- persistent queue
+- Plex integration
+- Plex synchronization
+- filesystem handling
+
+This phase adds the intelligence layer that connects:
+
+SOURCE
++
+PLEX
++
+ARCHIVE
++
+DOWNLOAD HISTORY
++
+MEDIA QUALITY
+
+The AI provider is NOT implemented in this phase.
+
+Build deterministic services and APIs that a future AI assistant can call.
+
+==================================================
+CORE OBJECTIVE
+==================================================
+
+The application should now be able to answer questions such as:
+
+"Do I already have this?"
+
+"Is this already in Plex?"
+
+"Is this probably a duplicate?"
+
+"Is the available source better than my existing copy?"
+
+"What quality do I currently have?"
+
+"Which version should I keep?"
+
+"Which items in my archive might be worth upgrading?"
+
+"Did I already download this?"
+
+"Is this file already waiting in the queue?"
+
+The answers must come from actual application data.
+
+Never invent archive information.
+
+==================================================
+1. ARCHIVE INTELLIGENCE SERVICE
+==================================================
+
+Create:
+
+ArchiveIntelligenceService
+
+This service becomes the central layer for archive comparisons.
+
+It should be able to combine information from:
+
+Plex inventory
+Archive database
+File records
+Download history
+Source inspection results
+Media technical metadata
+
+Create methods for:
+
+findMatches()
+checkDuplicate()
+compareQuality()
+findPotentialUpgrade()
+getArchiveStatus()
+searchArchive()
+getDownloadHistory()
+getPendingArchiveJobs()
+
+==================================================
+2. NORMALIZED MEDIA IDENTITY
+==================================================
+
+Create a normalized media identity system.
+
+A media identity should consider:
+
+- title
+- year
+- show title
+- season
+- episode
+- duration
+- source ID
+- Plex GUID
+- normalized filename
+- uploader where useful
+
+Do not rely on filename alone.
+
+Do not rely on title alone.
+
+Use multiple signals.
+
+==================================================
+3. TITLE NORMALIZATION
+==================================================
+
+Create a robust title normalization function.
+
+Normalize:
+
+- capitalization
+- punctuation
+- whitespace
+- underscores
+- hyphens
+- common filename separators
+
+Preserve meaningful numbers.
+
+Examples:
+
+"4 Your Eyez Only"
+
+"4_Your_Eyez_Only"
+
+"4-Your-Eyez-Only"
+
+should be recognized as likely the same title.
+
+Do NOT aggressively strip meaningful words.
+
+Do not turn unrelated titles into false matches.
+
+==================================================
+4. MATCH SCORING
+==================================================
+
+Create a deterministic match score.
+
+Consider:
+
+Title similarity
+Year similarity
+Duration similarity
+Plex GUID match
+External source ID match
+Show identity
+Season
+Episode
+Filename similarity
+
+Return:
+
+matchScore
+matchType
+reasons
+
+Types:
+
+EXACT_MATCH
+LIKELY_MATCH
+POSSIBLE_MATCH
+NO_MATCH
+
+Example:
+
+EXACT_MATCH
+
+Reasons:
+- identical source ID
+- identical Plex GUID
+
+or:
+
+LIKELY_MATCH
+
+Reasons:
+- title similarity 96%
+- year identical
+- duration within 8 seconds
+
+The matching algorithm must be deterministic and testable.
+
+==================================================
+5. DUPLICATE CHECK
+==================================================
+
+Implement:
+
+checkDuplicate(media)
+
+Search:
+
+Plex inventory
+Archive database
+active download jobs
+completed download history
+configured filesystem records
+
+Return all relevant candidates.
+
+Example:
+
+{
+  matchType: "LIKELY_MATCH",
+  confidence: 0.94,
+  existingItem: ...,
+  reasons: [...]
+}
+
+Do not automatically delete anything.
+
+Do not automatically overwrite anything.
+
+==================================================
+6. PRE-DOWNLOAD CHECK
+==================================================
+
+Before a download can start:
+
+run archive duplicate checking.
+
+The system should detect:
+
+ALREADY IN PLEX
+ALREADY IN ARCHIVE
+ALREADY DOWNLOADING
+ALREADY PROCESSING
+LIKELY DUPLICATE
+NO MATCH
+
+The UI should display this before the user starts a download.
+
+Example:
+
+--------------------------------
+ARCHIVE CHECK
+
+✓ Existing item found
+
+4 Your Eyez Only
+2016
+
+Plex:
+YES
+
+Current quality:
+1080p
+H.264
+AAC
+
+Status:
+ARCHIVED
+
+--------------------------------
+
+Do not automatically start the download if an existing exact match exists.
+
+==================================================
+7. DOWNLOAD HISTORY MATCHING
+==================================================
+
+Search completed and failed DownloadJob records.
+
+If the user tries to download something previously completed:
+
+show:
+
+"An earlier download exists."
+
+Provide:
+
+View previous job
+Open file
+Check Plex
+Download again
+
+Do not automatically download again.
+
+==================================================
+8. ACTIVE JOB MATCHING
+==================================================
+
+If the same media is currently:
+
+QUEUED
+DOWNLOADING
+PROCESSING
+VERIFYING
+MOVING
+
+show:
+
+"Already being processed."
+
+Provide a link to the existing job.
+
+Do not create duplicate jobs automatically.
+
+==================================================
+9. QUALITY PROFILE
+==================================================
+
+Create a normalized media quality profile.
+
+Fields:
+
+resolution
+width
+height
+fps
+video codec
+video bitrate
+audio codec
+audio bitrate
+container
+HDR
+dynamic range
+audio channels
+file size
+duration
+
+Create:
+
+MediaQualityProfile
+
+==================================================
+10. QUALITY SCORE
+==================================================
+
+Create a deterministic quality scoring system.
+
+Do not reduce quality to one simple resolution number.
+
+Consider:
+
+Resolution
+Bitrate
+Codec efficiency
+FPS
+HDR
+Audio quality
+Container suitability
+Source characteristics
+
+Return:
+
+qualityScore
+qualityTier
+reasons
+
+Example tiers:
+
+EXCEPTIONAL
+VERY_GOOD
+GOOD
+ACCEPTABLE
+LOW
+UNKNOWN
+
+Do not claim that one codec is universally "better."
+
+Context matters.
+
+==================================================
+11. QUALITY COMPARISON
+==================================================
+
+Implement:
+
+compareQuality(existing, candidate)
+
+Return:
+
+existingProfile
+candidateProfile
+comparison
+recommendation
+reasons
+
+Example:
+
+EXISTING
+
+1080p
+H.264
+8 Mbps
+AAC
+4.2 GB
+
+CANDIDATE
+
+2160p
+H.265
+18 Mbps
+AAC
+9.8 GB
+
+Result:
+
+SIGNIFICANT_UPGRADE
+
+Reasons:
+
+- 4K resolution
+- higher bitrate
+- improved source quality
+
+Recommendation:
+
+KEEP_EXISTING_UNTIL_CANDIDATE_VERIFIED
+
+Never delete the existing copy automatically.
+
+==================================================
+12. UPGRADE CATEGORIES
+==================================================
+
+Classify candidate sources as:
+
+NO_UPGRADE
+MINOR_UPGRADE
+MEANINGFUL_UPGRADE
+MAJOR_UPGRADE
+UNKNOWN
+
+Examples:
+
+720p → 1080p
+MEANINGFUL_UPGRADE
+
+1080p → 2160p
+MAJOR_UPGRADE
+
+1080p H.264 → 1080p H.265
+possibly NO_UPGRADE
+
+The system should consider bitrate and other factors rather than declaring every codec change an upgrade.
+
+==================================================
+13. SOURCE VS ARCHIVE COMPARISON
+==================================================
+
+Create:
+
+compareSourceToArchive(source, archiveItem)
+
+The result should tell the UI:
+
+Existing copy:
+1080p H.264
+
+Available source:
+2160p HLS
+
+Recommendation:
+UPGRADE AVAILABLE
+
+This is one of the central features of the application.
+
+==================================================
+14. QUALITY OVERRIDE
+==================================================
+
+Allow the user to override the automatic recommendation.
+
+Example:
+
+Automatic:
+2160p HLS
+
+User selects:
+1440p HLS
+
+Store:
+
+selectionMethod:
+AUTOMATIC
+or
+USER_OVERRIDE
+
+Never force the automatic recommendation.
+
+==================================================
+15. ARCHIVE SEARCH
+==================================================
+
+Make ARCHIVE search much more powerful.
+
+Support:
+
+title
+year
+filename
+show
+season
+episode
+codec
+resolution
+library
+status
+source
+quality tier
+
+Examples:
+
+"1080p"
+
+"2160p"
+
+"H.264"
+
+"Vimeo"
+
+"missing"
+
+"upgrade"
+
+"recent"
+
+Use server-side search.
+
+Do not load the entire archive into the browser.
+
+==================================================
+16. FILTERS
+==================================================
+
+Add archive filters:
+
+Type
+Library
+Resolution
+Video codec
+Audio codec
+HDR
+Quality tier
+Source
+Archive status
+Plex status
+File status
+Potential upgrade
+Missing file
+Duplicate
+
+Allow combinations.
+
+Example:
+
+TV
++
+1080p
++
+H.264
++
+Potential Upgrade
+
+==================================================
+17. POTENTIAL UPGRADE INDEX
+==================================================
+
+Create:
+
+PotentialUpgrade
+
+database entity.
+
+It should store:
+
+archive item
+current quality
+candidate quality
+upgrade category
+confidence
+reason
+created timestamp
+last checked
+
+Do not populate it with imaginary candidates.
+
+Only create candidates when actual source information exists.
+
+==================================================
+18. SOURCE HISTORY
+==================================================
+
+Store information about inspected sources.
+
+SourceRecord should support:
+
+URL
+site
+source ID
+title
+inspection timestamp
+available formats
+recommended format
+selection reason
+
+Do not store sensitive authenticated URLs permanently unless necessary.
+
+Avoid storing expiring signed URLs as permanent source references.
+
+==================================================
+19. ARCHIVE STATUS ENGINE
+==================================================
+
+Create unified statuses:
+
+NOT_IN_ARCHIVE
+IN_ARCHIVE
+IN_PLEX
+PENDING_DOWNLOAD
+DOWNLOADING
+PROCESSING
+VERIFYING
+FAILED
+CANCELLED
+MISSING_FILE
+POTENTIAL_UPGRADE
+DUPLICATE
+
+An item can have multiple relevant states.
+
+Do not force mutually exclusive statuses where that would lose information.
+
+==================================================
+20. COLLECTION TRACKING
+==================================================
+
+Prepare the database for collections.
+
+A Collection can represent:
+
+series
+documentary collection
+playlist
+creator collection
+user-defined archive project
+
+CollectionItem links media to collections.
+
+Do not implement automatic collection discovery yet.
+
+Allow manual collection creation.
+
+==================================================
+21. COLLECTION COMPLETENESS
+==================================================
+
+Add basic completeness tracking.
+
+For a manually defined collection:
+
+Total expected:
+42
+
+Currently archived:
+37
+
+Missing:
+5
+
+Show:
+
+37 / 42
+88%
+
+Do not claim an item is missing unless the collection has an actual expected-item list.
+
+==================================================
+22. ARCHIVE DASHBOARD
+==================================================
+
+Upgrade HOME.
+
+Show:
+
+TOTAL ARCHIVE
+Movies
+Shows
+Episodes
+
+QUALITY
+
+2160p
+1440p
+1080p
+720p
+SD
+
+STATUS
+
+Archived
+Downloading
+Processing
+Failed
+Missing
+
+INTELLIGENCE
+
+Potential upgrades
+Duplicates
+Pending downloads
+Recently added
+
+Use actual database data.
+
+No hardcoded statistics.
+
+==================================================
+23. ITEM DETAIL INTELLIGENCE
+==================================================
+
+Upgrade the archive item detail screen.
+
+Add:
+
+ARCHIVE STATUS
+QUALITY PROFILE
+MATCH INFORMATION
+DOWNLOAD HISTORY
+SOURCE HISTORY
+PLEX INFORMATION
+FILE INFORMATION
+
+Add:
+
+[Check for Upgrade]
+
+This should inspect currently known source information.
+
+Do not perform internet searching automatically unless an explicit source inspection is requested.
+
+==================================================
+24. UPGRADE WORKFLOW
+==================================================
+
+When the user clicks:
+
+[Check for Upgrade]
+
+the system should:
+
+1. Identify the archive item.
+2. Retrieve known source records.
+3. Compare candidate qualities.
+4. Display any known improvements.
+5. Explain the recommendation.
+
+Do not download automatically.
+
+Do not delete the existing copy.
+
+==================================================
+25. ARCHIVE REPORT
+==================================================
+
+Create a report view.
+
+Example:
+
+ARCHIVE HEALTH
+
+1,347 total items
+
+Quality:
+2160p: 42
+1440p: 18
+1080p: 913
+720p: 291
+SD: 83
+
+Potential upgrades:
+27
+
+Duplicates:
+8
+
+Missing files:
+3
+
+Pending downloads:
+4
+
+This must use real database information.
+
+==================================================
+26. HISTORY INTELLIGENCE
+==================================================
+
+Allow the system to answer through API endpoints:
+
+What was downloaded recently?
+
+What failed?
+
+What is currently downloading?
+
+What was added to Plex recently?
+
+Which items were processed?
+
+Which downloads were retried?
+
+Do not implement natural-language AI yet.
+
+Create structured backend functions that return this information.
+
+==================================================
+27. ARCHIVE API
+==================================================
+
+Create backend endpoints such as:
+
+GET /api/archive/search
+GET /api/archive/:id
+GET /api/archive/:id/quality
+GET /api/archive/:id/history
+GET /api/archive/:id/sources
+GET /api/archive/:id/upgrades
+POST /api/archive/check-duplicate
+POST /api/archive/compare-quality
+POST /api/archive/check-upgrade
+GET /api/archive/stats
+GET /api/archive/recent
+GET /api/archive/missing
+GET /api/archive/duplicates
+GET /api/archive/upgrades
+
+Validate all inputs.
+
+==================================================
+28. PERFORMANCE
+==================================================
+
+The archive may contain thousands or tens of thousands of items.
+
+Use:
+
+database indexes
+pagination
+server-side filtering
+server-side searching
+
+Do not repeatedly scan the entire Plex inventory.
+
+Do not repeatedly scan the entire filesystem.
+
+Use cached normalized identity fields.
+
+==================================================
+29. SAFETY
+==================================================
+
+This phase must remain analysis-only.
+
+Do not automatically:
+
+delete files
+replace files
+overwrite files
+move existing Plex media
+remove Plex items
+
+The intelligence layer can recommend actions.
+
+The user must remain in control.
+
+==================================================
+30. MOCK MODE
+==================================================
+
+Preserve demo mode.
+
+Create realistic examples:
+
+Exact duplicate
+Likely duplicate
+720p archive with 1080p candidate
+1080p archive with 2160p candidate
+Existing active download
+Failed download
+Missing file
+Unknown source
+
+Allow the UI to demonstrate all intelligence states.
+
+==================================================
+31. TESTING
+==================================================
+
+Create comprehensive tests for:
+
+title normalization
+media identity
+match scoring
+exact match
+likely match
+possible match
+false-positive prevention
+duplicate detection
+active job detection
+download history matching
+quality profile creation
+quality scoring
+quality comparison
+upgrade classification
+source/archive comparison
+collection completeness
+archive status
+search
+filters
+pagination
+
+Create test fixtures representing realistic media records.
+
+==================================================
+32. FALSE POSITIVE TESTING
+==================================================
+
+This is particularly important.
+
+Test that unrelated titles are NOT incorrectly matched.
+
+Examples:
+
+"Alien"
+"Aliens"
+
+should not automatically be treated as the same movie.
+
+"Heat"
+"Heat 2"
+
+should not automatically be treated as the same movie.
+
+"Planet Earth"
+"Planet Earth II"
+
+should not automatically be treated as the same series.
+
+Meaningful numbers must be preserved.
+
+==================================================
+33. DATABASE MIGRATION
+==================================================
+
+Use proper database migrations.
+
+Do not destroy existing user data.
+
+Existing Plex inventory and download history must survive the schema update.
+
+==================================================
+34. DO NOT IMPLEMENT YET
+==================================================
+
+Do NOT implement:
+
+- AI provider
+- OpenAI
+- local AI
+- AI tool calling
+- autonomous source searching
+- autonomous downloads based on recommendations
+- automatic file deletion
+- automatic archive replacement
+- automatic upgrade downloads
+
+Those belong to later phases.
+
+==================================================
+35. FINAL VERIFICATION
+==================================================
+
+After implementation:
+
+1. Run all tests.
+2. Verify Phase 1 works.
+3. Verify Phase 2 works.
+4. Verify Phase 3 works.
+5. Verify Phase 4 works.
+6. Verify archive search.
+7. Verify duplicate detection.
+8. Verify quality comparison.
+9. Verify upgrade classification.
+10. Verify active download detection.
+11. Verify download history matching.
+12. Verify archive statistics.
+13. Verify collection completeness.
+14. Verify missing-file states.
+15. Verify false-positive tests.
+16. Verify database migration preserves existing data.
+17. Verify no destructive actions occur automatically.
+18. Verify mock mode.
+
+Do not claim functionality is complete unless it has actually been tested.
+
+At the end report:
+
+IMPLEMENTED
+TESTED
+TEST RESULTS
+NOT YET IMPLEMENTED
+KNOWN LIMITATIONS
+HOW TO RUN
+
+Do not automatically proceed to Phase 6.
+
+Stop after Phase 5 is working.

@@ -14,4 +14,5 @@ export interface DependencyStatus {
   detail: string;
   /** @nullable */
   version: string | null;
+  capabilities: string[];
 }

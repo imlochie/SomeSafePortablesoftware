@@ -475,8 +475,12 @@
 .status-dot.ready, .status-dot.connected, .status-dot.available { background: #4e9690; box-shadow: 0 0 0 3px rgba(78,150,144,.14); }
 .status-dot.warning, .status-dot.not_configured { background: #d9952e; box-shadow: 0 0 0 3px rgba(217,149,46,.15); }
 .status-dot.unavailable, .status-dot.error, .status-dot.missing { background: #c85b51; box-shadow: 0 0 0 3px rgba(200,91,81,.13); }
-.status-dot.processing { background: #f4b942; box-shadow: 0 0 0 3px rgba(244,185,66,.18); }
+.status-dot.processing, .status-dot.downloading, .status-dot.verifying, .status-dot.moving, .status-dot.inspecting { background: #f4b942; box-shadow: 0 0 0 3px rgba(244,185,66,.18); }
+.status-dot.queued, .status-dot.paused, .status-dot.cancelled, .status-dot.recovery_required, .status-dot.critical { background: #d9952e; box-shadow: 0 0 0 3px rgba(217,149,46,.15); }
+.status-dot.complete, .status-dot.downloaded { background: #4e9690; box-shadow: 0 0 0 3px rgba(78,150,144,.14); }
+.status-dot.failed { background: #c85b51; box-shadow: 0 0 0 3px rgba(200,91,81,.13); }
 .status-dot.idle, .status-dot.placeholder { background: #8b999d; box-shadow: 0 0 0 3px rgba(139,153,157,.13); }
+.archive-panel button:focus-visible, .archive-panel input:focus-visible, .archive-panel select:focus-visible, a:focus-visible { outline: 2px solid #4e9690; outline-offset: 2px; }
 .archive-fade { animation: archive-fade .5s ease both; }
 .archive-fade-delay-1 { animation-delay: .06s; }
 .archive-fade-delay-2 { animation-delay: .12s; }

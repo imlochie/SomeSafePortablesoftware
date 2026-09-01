@@ -16,6 +16,10 @@ tags:
     description: Local application settings
   - name: plex
     description: Plex connection configuration
+  - name: media
+    description: Local media inspection and source selection
+  - name: downloads
+    description: Persistent local download jobs
 paths:
   /healthz:
     get:
@@ -128,7 +132,210 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PlexConfig"
+  /media/inspect:
+    post:
+      operationId: inspectMediaSource
+      tags: [media]
+      summary: Inspect a media URL without downloading it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaInspectInput"
+      responses:
+        "200":
+          description: Normalized media metadata and formats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaInspection"
+        "400":
+          description: Source could not be inspected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /media/local-inspect:
+    post:
+      operationId: inspectLocalMedia
+      tags: [media]
+      summary: Inspect a local media file with FFprobe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocalMediaInspectInput"
+      responses:
+        "200":
+          description: Local media inspection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalMediaInspection"
+  /media/prepare-download:
+    post:
+      operationId: prepareDownload
+      tags: [media]
+      summary: Create a validated download specification without starting a job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DownloadPreparationInput"
+      responses:
+        "200":
+          description: Prepared download specification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadSpecification"
+  /downloads:
+    get:
+      operationId: getDownloads
+      tags: [downloads]
+      summary: List persistent download jobs
+      responses:
+        "200":
+          description: Download jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DownloadJob"
+    post:
+      operationId: createDownload
+      tags: [downloads]
+      summary: Create a persistent download job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DownloadJobInput"
+      responses:
+        "201":
+          description: Created download job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadJob"
+  /downloads/events:
+    get:
+      operationId: streamDownloadEvents
+      tags: [downloads]
+      summary: Stream download and processing updates
+      responses:
+        "200":
+          description: Server-sent download events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /downloads/{id}:
+    get:
+      operationId: getDownload
+      tags: [downloads]
+      summary: Get one download job
+      parameters:
+        - $ref: "#/components/parameters/DownloadId"
+      responses:
+        "200":
+          description: Download job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadJob"
+    delete:
+      operationId: deleteDownload
+      tags: [downloads]
+      summary: Delete a non-running download job
+      parameters:
+        - $ref: "#/components/parameters/DownloadId"
+      responses:
+        "204":
+          description: Deleted
+  /downloads/{id}/start:
+    post:
+      operationId: startDownload
+      tags: [downloads]
+      summary: Start a queued or recoverable download job
+      parameters:
+        - $ref: "#/components/parameters/DownloadId"
+      responses:
+        "200":
+          description: Started download job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadJob"
+  /downloads/{id}/pause:
+    post:
+      operationId: pauseDownload
+      tags: [downloads]
+      summary: Pause a running download where supported
+      parameters:
+        - $ref: "#/components/parameters/DownloadId"
+      responses:
+        "200":
+          description: Paused or safely stopped for resume
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadJob"
+  /downloads/{id}/resume:
+    post:
+      operationId: resumeDownload
+      tags: [downloads]
+      summary: Resume a paused or recoverable download
+      parameters:
+        - $ref: "#/components/parameters/DownloadId"
+      responses:
+        "200":
+          description: Resumed download job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadJob"
+  /downloads/{id}/cancel:
+    post:
+      operationId: cancelDownload
+      tags: [downloads]
+      summary: Cancel a running download
+      parameters:
+        - $ref: "#/components/parameters/DownloadId"
+      responses:
+        "200":
+          description: Cancelled download job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadJob"
+  /downloads/{id}/retry:
+    post:
+      operationId: retryDownload
+      tags: [downloads]
+      summary: Retry a failed download
+      parameters:
+        - $ref: "#/components/parameters/DownloadId"
+      responses:
+        "200":
+          description: Retried download job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadJob"
 components:
+  parameters:
+    DownloadId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: number
   schemas:
     HealthStatus:
       type: object
@@ -142,7 +349,7 @@ components:
       enum: [ready, connected, idle, placeholder, warning, unavailable, processing]
     SystemOverview:
       type: object
-      required: [archiveStatus, plexStatus, queueStatus, processingStatus, storageStatus, aiStatus, lastSync, activity]
+      required: [archiveStatus, plexStatus, queueStatus, processingStatus, storageStatus, aiStatus, lastSync, activity, activeDownloads, queuedJobs, processingJobs, completedToday, failedToday, storage]
       properties:
         archiveStatus:
           $ref: "#/components/schemas/StatusValue"
@@ -163,9 +370,38 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SystemEvent"
+        activeDownloads:
+          type: number
+        queuedJobs:
+          type: number
+        processingJobs:
+          type: number
+        completedToday:
+          type: number
+        failedToday:
+          type: number
+        storage:
+          $ref: "#/components/schemas/StorageSummary"
+    StorageSummary:
+      type: object
+      required: [path, freeBytes, totalBytes, usedBytes, freePercent, status]
+      properties:
+        path:
+          type: string
+        freeBytes:
+          type: number
+        totalBytes:
+          type: number
+        usedBytes:
+          type: number
+        freePercent:
+          type: number
+        status:
+          type: string
+          enum: [ready, warning, critical, unavailable]
     DependencyStatus:
       type: object
-      required: [name, command, status, detail, version]
+      required: [name, command, status, detail, version, capabilities]
       properties:
         name:
           type: string
@@ -178,6 +414,10 @@ components:
           type: string
         version:
           type: ["string", "null"]
+        capabilities:
+          type: array
+          items:
+            type: string
     SystemEvent:
       type: object
       required: [id, level, message, timestamp, source]
@@ -196,7 +436,7 @@ components:
           type: string
     AppSettings:
       type: object
-      required: [mockMode, dataDirectory, downloadDirectory, archiveDirectory, logLevel, hardwareAcceleration, networkMode]
+      required: [mockMode, dataDirectory, downloadDirectory, archiveDirectory, temporaryDirectory, logLevel, hardwareAcceleration, hardwareAccelerationMode, networkMode, concurrentDownloads, maxRetries, bandwidthLimit, outputContainer, inspectionCacheMinutes, warningFreePercent, criticalFreePercent]
       properties:
         mockMode:
           type: boolean
@@ -206,14 +446,45 @@ components:
           type: string
         archiveDirectory:
           type: string
+        temporaryDirectory:
+          type: string
         logLevel:
           type: string
           enum: [info, debug, warn, error]
         hardwareAcceleration:
           type: boolean
+        hardwareAccelerationMode:
+          type: string
+          enum: [auto, disabled]
         networkMode:
           type: string
           enum: [offline, local_only, allow_network]
+        concurrentDownloads:
+          type: number
+          minimum: 1
+          maximum: 5
+        maxRetries:
+          type: number
+          minimum: 0
+          maximum: 10
+        bandwidthLimit:
+          type: number
+          minimum: 0
+        outputContainer:
+          type: string
+          enum: [mp4, mkv, webm]
+        inspectionCacheMinutes:
+          type: number
+          minimum: 1
+          maximum: 120
+        warningFreePercent:
+          type: number
+          minimum: 1
+          maximum: 50
+        criticalFreePercent:
+          type: number
+          minimum: 1
+          maximum: 25
     AppSettingsUpdate:
       type: object
       properties:
@@ -225,14 +496,45 @@ components:
           type: string
         archiveDirectory:
           type: string
+        temporaryDirectory:
+          type: string
         logLevel:
           type: string
           enum: [info, debug, warn, error]
         hardwareAcceleration:
           type: boolean
+        hardwareAccelerationMode:
+          type: string
+          enum: [auto, disabled]
         networkMode:
           type: string
           enum: [offline, local_only, allow_network]
+        concurrentDownloads:
+          type: number
+          minimum: 1
+          maximum: 5
+        maxRetries:
+          type: number
+          minimum: 0
+          maximum: 10
+        bandwidthLimit:
+          type: number
+          minimum: 0
+        outputContainer:
+          type: string
+          enum: [mp4, mkv, webm]
+        inspectionCacheMinutes:
+          type: number
+          minimum: 1
+          maximum: 120
+        warningFreePercent:
+          type: number
+          minimum: 1
+          maximum: 50
+        criticalFreePercent:
+          type: number
+          minimum: 1
+          maximum: 25
     PlexConfig:
       type: object
       required: [serverUrl, configured, hasToken, status]
@@ -254,4 +556,285 @@ components:
         token:
           type: string
           writeOnly: true
+    MediaInspectInput:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          minLength: 8
+        forceRefresh:
+          type: boolean
+    LocalMediaInspectInput:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          minLength: 1
+    MediaMetadata:
+      type: object
+      required: [title, uploader, channel, description, durationSeconds, uploadDate, thumbnailUrl, webpageUrl, extractor, sourceId, playlistTitle, playlistIndex]
+      properties:
+        title:
+          type: string
+        uploader:
+          type: ["string", "null"]
+        channel:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        durationSeconds:
+          type: ["number", "null"]
+        uploadDate:
+          type: ["string", "null"]
+        thumbnailUrl:
+          type: ["string", "null"]
+        webpageUrl:
+          type: string
+        extractor:
+          type: ["string", "null"]
+        sourceId:
+          type: ["string", "null"]
+        playlistTitle:
+          type: ["string", "null"]
+        playlistIndex:
+          type: ["number", "null"]
+    MediaFormat:
+      type: object
+      required: [formatId, extension, protocol, width, height, resolution, fps, videoCodec, audioCodec, bitrate, filesize, estimatedFilesize, dynamicRange, audioLanguage, videoLanguage, container, videoOnly, audioOnly, muxed, manifestProtocol, hls, dash, usable, score]
+      properties:
+        formatId:
+          type: string
+        extension:
+          type: ["string", "null"]
+        protocol:
+          type: ["string", "null"]
+        width:
+          type: ["number", "null"]
+        height:
+          type: ["number", "null"]
+        resolution:
+          type: string
+        fps:
+          type: ["number", "null"]
+        videoCodec:
+          type: ["string", "null"]
+        audioCodec:
+          type: ["string", "null"]
+        bitrate:
+          type: ["number", "null"]
+        filesize:
+          type: ["number", "null"]
+        estimatedFilesize:
+          type: ["number", "null"]
+        dynamicRange:
+          type: ["string", "null"]
+        audioLanguage:
+          type: ["string", "null"]
+        videoLanguage:
+          type: ["string", "null"]
+        container:
+          type: ["string", "null"]
+        videoOnly:
+          type: boolean
+        audioOnly:
+          type: boolean
+        muxed:
+          type: boolean
+        manifestProtocol:
+          type: ["string", "null"]
+        hls:
+          type: boolean
+        dash:
+          type: boolean
+        usable:
+          type: boolean
+        score:
+          type: number
+    MediaInspection:
+      type: object
+      required: [metadata, formats, rawFormatCount, recommendedFormatId, recommendedVideoFormatId, recommendedAudioFormatId, recommendationExplanation, demoMode, cachedAt]
+      properties:
+        metadata:
+          $ref: "#/components/schemas/MediaMetadata"
+        formats:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaFormat"
+        rawFormatCount:
+          type: number
+        recommendedFormatId:
+          type: ["string", "null"]
+        recommendedVideoFormatId:
+          type: ["string", "null"]
+        recommendedAudioFormatId:
+          type: ["string", "null"]
+        recommendationExplanation:
+          type: string
+        demoMode:
+          type: boolean
+        cachedAt:
+          type: string
+          format: date-time
+    LocalMediaInspection:
+      type: object
+      required: [filename, path, extension, filesize, durationSeconds, videoStreams, audioStreams, width, height, fps, videoCodec, audioCodec, bitrate, container, dynamicRange, verification]
+      properties:
+        filename:
+          type: string
+        path:
+          type: string
+        extension:
+          type: string
+        filesize:
+          type: number
+        durationSeconds:
+          type: ["number", "null"]
+        videoStreams:
+          type: number
+        audioStreams:
+          type: number
+        width:
+          type: ["number", "null"]
+        height:
+          type: ["number", "null"]
+        fps:
+          type: ["number", "null"]
+        videoCodec:
+          type: ["string", "null"]
+        audioCodec:
+          type: ["string", "null"]
+        bitrate:
+          type: ["number", "null"]
+        container:
+          type: ["string", "null"]
+        dynamicRange:
+          type: ["string", "null"]
+        verification:
+          type: string
+          enum: [passed, failed]
+    DownloadPreparationInput:
+      type: object
+      required: [sourceUrl, title, selectedFormatId]
+      properties:
+        sourceUrl:
+          type: string
+        title:
+          type: string
+        sourceSite:
+          type: ["string", "null"]
+        selectedFormatId:
+          type: string
+        selectedVideoFormatId:
+          type: ["string", "null"]
+        selectedAudioFormatId:
+          type: ["string", "null"]
+        outputContainer:
+          type: string
+          enum: [mp4, mkv, webm]
+        temporaryDirectory:
+          type: string
+        destinationDirectory:
+          type: string
+        finalFilename:
+          type: string
+    DownloadSpecification:
+      type: object
+      required: [sourceUrl, title, sourceSite, selectedFormatId, selectedVideoFormatId, selectedAudioFormatId, outputContainer, temporaryDirectory, destinationDirectory, finalFilename, validated]
+      properties:
+        sourceUrl:
+          type: string
+        title:
+          type: string
+        sourceSite:
+          type: ["string", "null"]
+        selectedFormatId:
+          type: string
+        selectedVideoFormatId:
+          type: ["string", "null"]
+        selectedAudioFormatId:
+          type: ["string", "null"]
+        outputContainer:
+          type: string
+        temporaryDirectory:
+          type: string
+        destinationDirectory:
+          type: string
+        finalFilename:
+          type: string
+        validated:
+          type: boolean
+    DownloadJobInput:
+      allOf:
+        - $ref: "#/components/schemas/DownloadPreparationInput"
+    DownloadJob:
+      type: object
+      required: [id, sourceUrl, sourceSite, sourceId, title, selectedFormatId, selectedVideoFormatId, selectedAudioFormatId, outputContainer, temporaryDirectory, destinationDirectory, finalFilename, finalPath, status, progress, downloadedBytes, totalBytes, downloadSpeed, etaSeconds, createdAt, startedAt, completedAt, errorMessage, retryCount, processId, currentPhase, verification]
+      properties:
+        id:
+          type: number
+        sourceUrl:
+          type: string
+        sourceSite:
+          type: ["string", "null"]
+        sourceId:
+          type: ["string", "null"]
+        title:
+          type: string
+        selectedFormatId:
+          type: string
+        selectedVideoFormatId:
+          type: ["string", "null"]
+        selectedAudioFormatId:
+          type: ["string", "null"]
+        outputContainer:
+          type: string
+        temporaryDirectory:
+          type: string
+        destinationDirectory:
+          type: string
+        finalFilename:
+          type: string
+        finalPath:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [queued, inspecting, downloading, downloaded, processing, verifying, moving, complete, failed, cancelled, paused, recovery_required]
+        progress:
+          type: number
+        downloadedBytes:
+          type: number
+        totalBytes:
+          type: ["number", "null"]
+        downloadSpeed:
+          type: ["number", "null"]
+        etaSeconds:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        errorMessage:
+          type: ["string", "null"]
+        retryCount:
+          type: number
+        processId:
+          type: ["number", "null"]
+        currentPhase:
+          type: string
+        verification:
+          type: string
+          enum: [waiting, passed, failed, not_required]
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
 

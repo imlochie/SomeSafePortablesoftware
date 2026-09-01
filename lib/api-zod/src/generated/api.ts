@@ -34,7 +34,20 @@ export const GetSystemOverviewResponse = zod.object({
   "message": zod.string(),
   "timestamp": zod.coerce.date(),
   "source": zod.string()
-}))
+})),
+  "activeDownloads": zod.number(),
+  "queuedJobs": zod.number(),
+  "processingJobs": zod.number(),
+  "completedToday": zod.number(),
+  "failedToday": zod.number(),
+  "storage": zod.object({
+  "path": zod.string(),
+  "freeBytes": zod.number(),
+  "totalBytes": zod.number(),
+  "usedBytes": zod.number(),
+  "freePercent": zod.number(),
+  "status": zod.enum(['ready', 'warning', 'critical', 'unavailable'])
+})
 })
 
 
@@ -46,7 +59,8 @@ export const GetSystemDependenciesResponseItem = zod.object({
   "command": zod.string(),
   "status": zod.enum(['available', 'missing', 'not_configured']),
   "detail": zod.string(),
-  "version": zod.string().nullable()
+  "version": zod.string().nullable(),
+  "capabilities": zod.array(zod.string())
 })
 export const GetSystemDependenciesResponse = zod.array(GetSystemDependenciesResponseItem)
 
@@ -67,38 +81,110 @@ export const GetSystemEventsResponse = zod.array(GetSystemEventsResponseItem)
 /**
  * @summary Get application settings
  */
+export const getSettingsResponseConcurrentDownloadsMax = 5;
+
+export const getSettingsResponseMaxRetriesMin = 0;
+export const getSettingsResponseMaxRetriesMax = 10;
+
+export const getSettingsResponseBandwidthLimitMin = 0;
+
+export const getSettingsResponseInspectionCacheMinutesMax = 120;
+
+export const getSettingsResponseWarningFreePercentMax = 50;
+
+export const getSettingsResponseCriticalFreePercentMax = 25;
+
+
+
 export const GetSettingsResponse = zod.object({
   "mockMode": zod.boolean(),
   "dataDirectory": zod.string(),
   "downloadDirectory": zod.string(),
   "archiveDirectory": zod.string(),
+  "temporaryDirectory": zod.string(),
   "logLevel": zod.enum(['info', 'debug', 'warn', 'error']),
   "hardwareAcceleration": zod.boolean(),
-  "networkMode": zod.enum(['offline', 'local_only', 'allow_network'])
+  "hardwareAccelerationMode": zod.enum(['auto', 'disabled']),
+  "networkMode": zod.enum(['offline', 'local_only', 'allow_network']),
+  "concurrentDownloads": zod.number().min(1).max(getSettingsResponseConcurrentDownloadsMax),
+  "maxRetries": zod.number().min(getSettingsResponseMaxRetriesMin).max(getSettingsResponseMaxRetriesMax),
+  "bandwidthLimit": zod.number().min(getSettingsResponseBandwidthLimitMin),
+  "outputContainer": zod.enum(['mp4', 'mkv', 'webm']),
+  "inspectionCacheMinutes": zod.number().min(1).max(getSettingsResponseInspectionCacheMinutesMax),
+  "warningFreePercent": zod.number().min(1).max(getSettingsResponseWarningFreePercentMax),
+  "criticalFreePercent": zod.number().min(1).max(getSettingsResponseCriticalFreePercentMax)
 })
 
 
 /**
  * @summary Update application settings
  */
+export const updateSettingsBodyConcurrentDownloadsMax = 5;
+
+export const updateSettingsBodyMaxRetriesMin = 0;
+export const updateSettingsBodyMaxRetriesMax = 10;
+
+export const updateSettingsBodyBandwidthLimitMin = 0;
+
+export const updateSettingsBodyInspectionCacheMinutesMax = 120;
+
+export const updateSettingsBodyWarningFreePercentMax = 50;
+
+export const updateSettingsBodyCriticalFreePercentMax = 25;
+
+
+
 export const UpdateSettingsBody = zod.object({
   "mockMode": zod.boolean().optional(),
   "dataDirectory": zod.string().optional(),
   "downloadDirectory": zod.string().optional(),
   "archiveDirectory": zod.string().optional(),
+  "temporaryDirectory": zod.string().optional(),
   "logLevel": zod.enum(['info', 'debug', 'warn', 'error']).optional(),
   "hardwareAcceleration": zod.boolean().optional(),
-  "networkMode": zod.enum(['offline', 'local_only', 'allow_network']).optional()
+  "hardwareAccelerationMode": zod.enum(['auto', 'disabled']).optional(),
+  "networkMode": zod.enum(['offline', 'local_only', 'allow_network']).optional(),
+  "concurrentDownloads": zod.number().min(1).max(updateSettingsBodyConcurrentDownloadsMax).optional(),
+  "maxRetries": zod.number().min(updateSettingsBodyMaxRetriesMin).max(updateSettingsBodyMaxRetriesMax).optional(),
+  "bandwidthLimit": zod.number().min(updateSettingsBodyBandwidthLimitMin).optional(),
+  "outputContainer": zod.enum(['mp4', 'mkv', 'webm']).optional(),
+  "inspectionCacheMinutes": zod.number().min(1).max(updateSettingsBodyInspectionCacheMinutesMax).optional(),
+  "warningFreePercent": zod.number().min(1).max(updateSettingsBodyWarningFreePercentMax).optional(),
+  "criticalFreePercent": zod.number().min(1).max(updateSettingsBodyCriticalFreePercentMax).optional()
 })
+
+export const updateSettingsResponseConcurrentDownloadsMax = 5;
+
+export const updateSettingsResponseMaxRetriesMin = 0;
+export const updateSettingsResponseMaxRetriesMax = 10;
+
+export const updateSettingsResponseBandwidthLimitMin = 0;
+
+export const updateSettingsResponseInspectionCacheMinutesMax = 120;
+
+export const updateSettingsResponseWarningFreePercentMax = 50;
+
+export const updateSettingsResponseCriticalFreePercentMax = 25;
+
+
 
 export const UpdateSettingsResponse = zod.object({
   "mockMode": zod.boolean(),
   "dataDirectory": zod.string(),
   "downloadDirectory": zod.string(),
   "archiveDirectory": zod.string(),
+  "temporaryDirectory": zod.string(),
   "logLevel": zod.enum(['info', 'debug', 'warn', 'error']),
   "hardwareAcceleration": zod.boolean(),
-  "networkMode": zod.enum(['offline', 'local_only', 'allow_network'])
+  "hardwareAccelerationMode": zod.enum(['auto', 'disabled']),
+  "networkMode": zod.enum(['offline', 'local_only', 'allow_network']),
+  "concurrentDownloads": zod.number().min(1).max(updateSettingsResponseConcurrentDownloadsMax),
+  "maxRetries": zod.number().min(updateSettingsResponseMaxRetriesMin).max(updateSettingsResponseMaxRetriesMax),
+  "bandwidthLimit": zod.number().min(updateSettingsResponseBandwidthLimitMin),
+  "outputContainer": zod.enum(['mp4', 'mkv', 'webm']),
+  "inspectionCacheMinutes": zod.number().min(1).max(updateSettingsResponseInspectionCacheMinutesMax),
+  "warningFreePercent": zod.number().min(1).max(updateSettingsResponseWarningFreePercentMax),
+  "criticalFreePercent": zod.number().min(1).max(updateSettingsResponseCriticalFreePercentMax)
 })
 
 
@@ -126,6 +212,456 @@ export const UpdatePlexConfigResponse = zod.object({
   "configured": zod.boolean(),
   "hasToken": zod.boolean(),
   "status": zod.enum(['not_configured', 'ready', 'connected', 'error'])
+})
+
+
+/**
+ * @summary Inspect a media URL without downloading it
+ */
+export const inspectMediaSourceBodyUrlMin = 8;
+
+
+
+export const InspectMediaSourceBody = zod.object({
+  "url": zod.string().min(inspectMediaSourceBodyUrlMin),
+  "forceRefresh": zod.boolean().optional()
+})
+
+export const InspectMediaSourceResponse = zod.object({
+  "metadata": zod.object({
+  "title": zod.string(),
+  "uploader": zod.string().nullable(),
+  "channel": zod.string().nullable(),
+  "description": zod.string().nullable(),
+  "durationSeconds": zod.number().nullable(),
+  "uploadDate": zod.string().nullable(),
+  "thumbnailUrl": zod.string().nullable(),
+  "webpageUrl": zod.string(),
+  "extractor": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "playlistTitle": zod.string().nullable(),
+  "playlistIndex": zod.number().nullable()
+}),
+  "formats": zod.array(zod.object({
+  "formatId": zod.string(),
+  "extension": zod.string().nullable(),
+  "protocol": zod.string().nullable(),
+  "width": zod.number().nullable(),
+  "height": zod.number().nullable(),
+  "resolution": zod.string(),
+  "fps": zod.number().nullable(),
+  "videoCodec": zod.string().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "filesize": zod.number().nullable(),
+  "estimatedFilesize": zod.number().nullable(),
+  "dynamicRange": zod.string().nullable(),
+  "audioLanguage": zod.string().nullable(),
+  "videoLanguage": zod.string().nullable(),
+  "container": zod.string().nullable(),
+  "videoOnly": zod.boolean(),
+  "audioOnly": zod.boolean(),
+  "muxed": zod.boolean(),
+  "manifestProtocol": zod.string().nullable(),
+  "hls": zod.boolean(),
+  "dash": zod.boolean(),
+  "usable": zod.boolean(),
+  "score": zod.number()
+})),
+  "rawFormatCount": zod.number(),
+  "recommendedFormatId": zod.string().nullable(),
+  "recommendedVideoFormatId": zod.string().nullable(),
+  "recommendedAudioFormatId": zod.string().nullable(),
+  "recommendationExplanation": zod.string(),
+  "demoMode": zod.boolean(),
+  "cachedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Inspect a local media file with FFprobe
+ */
+
+
+
+export const InspectLocalMediaBody = zod.object({
+  "path": zod.string().min(1)
+})
+
+export const InspectLocalMediaResponse = zod.object({
+  "filename": zod.string(),
+  "path": zod.string(),
+  "extension": zod.string(),
+  "filesize": zod.number(),
+  "durationSeconds": zod.number().nullable(),
+  "videoStreams": zod.number(),
+  "audioStreams": zod.number(),
+  "width": zod.number().nullable(),
+  "height": zod.number().nullable(),
+  "fps": zod.number().nullable(),
+  "videoCodec": zod.string().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "container": zod.string().nullable(),
+  "dynamicRange": zod.string().nullable(),
+  "verification": zod.enum(['passed', 'failed'])
+})
+
+
+/**
+ * @summary Create a validated download specification without starting a job
+ */
+export const PrepareDownloadBody = zod.object({
+  "sourceUrl": zod.string(),
+  "title": zod.string(),
+  "sourceSite": zod.string().nullish(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullish(),
+  "selectedAudioFormatId": zod.string().nullish(),
+  "outputContainer": zod.enum(['mp4', 'mkv', 'webm']).optional(),
+  "temporaryDirectory": zod.string().optional(),
+  "destinationDirectory": zod.string().optional(),
+  "finalFilename": zod.string().optional()
+})
+
+export const PrepareDownloadResponse = zod.object({
+  "sourceUrl": zod.string(),
+  "title": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullable(),
+  "selectedAudioFormatId": zod.string().nullable(),
+  "outputContainer": zod.string(),
+  "temporaryDirectory": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "validated": zod.boolean()
+})
+
+
+/**
+ * @summary List persistent download jobs
+ */
+export const GetDownloadsResponseItem = zod.object({
+  "id": zod.number(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "title": zod.string(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullable(),
+  "selectedAudioFormatId": zod.string().nullable(),
+  "outputContainer": zod.string(),
+  "temporaryDirectory": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "finalPath": zod.string().nullable(),
+  "status": zod.enum(['queued', 'inspecting', 'downloading', 'downloaded', 'processing', 'verifying', 'moving', 'complete', 'failed', 'cancelled', 'paused', 'recovery_required']),
+  "progress": zod.number(),
+  "downloadedBytes": zod.number(),
+  "totalBytes": zod.number().nullable(),
+  "downloadSpeed": zod.number().nullable(),
+  "etaSeconds": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "retryCount": zod.number(),
+  "processId": zod.number().nullable(),
+  "currentPhase": zod.string(),
+  "verification": zod.enum(['waiting', 'passed', 'failed', 'not_required'])
+})
+export const GetDownloadsResponse = zod.array(GetDownloadsResponseItem)
+
+
+/**
+ * @summary Create a persistent download job
+ */
+export const CreateDownloadBody = zod.object({
+  "sourceUrl": zod.string(),
+  "title": zod.string(),
+  "sourceSite": zod.string().nullish(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullish(),
+  "selectedAudioFormatId": zod.string().nullish(),
+  "outputContainer": zod.enum(['mp4', 'mkv', 'webm']).optional(),
+  "temporaryDirectory": zod.string().optional(),
+  "destinationDirectory": zod.string().optional(),
+  "finalFilename": zod.string().optional()
+})
+
+export const CreateDownloadResponse = zod.object({
+  "id": zod.number(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "title": zod.string(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullable(),
+  "selectedAudioFormatId": zod.string().nullable(),
+  "outputContainer": zod.string(),
+  "temporaryDirectory": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "finalPath": zod.string().nullable(),
+  "status": zod.enum(['queued', 'inspecting', 'downloading', 'downloaded', 'processing', 'verifying', 'moving', 'complete', 'failed', 'cancelled', 'paused', 'recovery_required']),
+  "progress": zod.number(),
+  "downloadedBytes": zod.number(),
+  "totalBytes": zod.number().nullable(),
+  "downloadSpeed": zod.number().nullable(),
+  "etaSeconds": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "retryCount": zod.number(),
+  "processId": zod.number().nullable(),
+  "currentPhase": zod.string(),
+  "verification": zod.enum(['waiting', 'passed', 'failed', 'not_required'])
+})
+
+
+/**
+ * @summary Stream download and processing updates
+ */
+export const StreamDownloadEventsResponse = zod.unknown()
+
+
+/**
+ * @summary Get one download job
+ */
+export const GetDownloadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetDownloadResponse = zod.object({
+  "id": zod.number(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "title": zod.string(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullable(),
+  "selectedAudioFormatId": zod.string().nullable(),
+  "outputContainer": zod.string(),
+  "temporaryDirectory": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "finalPath": zod.string().nullable(),
+  "status": zod.enum(['queued', 'inspecting', 'downloading', 'downloaded', 'processing', 'verifying', 'moving', 'complete', 'failed', 'cancelled', 'paused', 'recovery_required']),
+  "progress": zod.number(),
+  "downloadedBytes": zod.number(),
+  "totalBytes": zod.number().nullable(),
+  "downloadSpeed": zod.number().nullable(),
+  "etaSeconds": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "retryCount": zod.number(),
+  "processId": zod.number().nullable(),
+  "currentPhase": zod.string(),
+  "verification": zod.enum(['waiting', 'passed', 'failed', 'not_required'])
+})
+
+
+/**
+ * @summary Delete a non-running download job
+ */
+export const DeleteDownloadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteDownloadResponse = zod.void()
+
+
+/**
+ * @summary Start a queued or recoverable download job
+ */
+export const StartDownloadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const StartDownloadResponse = zod.object({
+  "id": zod.number(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "title": zod.string(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullable(),
+  "selectedAudioFormatId": zod.string().nullable(),
+  "outputContainer": zod.string(),
+  "temporaryDirectory": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "finalPath": zod.string().nullable(),
+  "status": zod.enum(['queued', 'inspecting', 'downloading', 'downloaded', 'processing', 'verifying', 'moving', 'complete', 'failed', 'cancelled', 'paused', 'recovery_required']),
+  "progress": zod.number(),
+  "downloadedBytes": zod.number(),
+  "totalBytes": zod.number().nullable(),
+  "downloadSpeed": zod.number().nullable(),
+  "etaSeconds": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "retryCount": zod.number(),
+  "processId": zod.number().nullable(),
+  "currentPhase": zod.string(),
+  "verification": zod.enum(['waiting', 'passed', 'failed', 'not_required'])
+})
+
+
+/**
+ * @summary Pause a running download where supported
+ */
+export const PauseDownloadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PauseDownloadResponse = zod.object({
+  "id": zod.number(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "title": zod.string(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullable(),
+  "selectedAudioFormatId": zod.string().nullable(),
+  "outputContainer": zod.string(),
+  "temporaryDirectory": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "finalPath": zod.string().nullable(),
+  "status": zod.enum(['queued', 'inspecting', 'downloading', 'downloaded', 'processing', 'verifying', 'moving', 'complete', 'failed', 'cancelled', 'paused', 'recovery_required']),
+  "progress": zod.number(),
+  "downloadedBytes": zod.number(),
+  "totalBytes": zod.number().nullable(),
+  "downloadSpeed": zod.number().nullable(),
+  "etaSeconds": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "retryCount": zod.number(),
+  "processId": zod.number().nullable(),
+  "currentPhase": zod.string(),
+  "verification": zod.enum(['waiting', 'passed', 'failed', 'not_required'])
+})
+
+
+/**
+ * @summary Resume a paused or recoverable download
+ */
+export const ResumeDownloadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ResumeDownloadResponse = zod.object({
+  "id": zod.number(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "title": zod.string(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullable(),
+  "selectedAudioFormatId": zod.string().nullable(),
+  "outputContainer": zod.string(),
+  "temporaryDirectory": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "finalPath": zod.string().nullable(),
+  "status": zod.enum(['queued', 'inspecting', 'downloading', 'downloaded', 'processing', 'verifying', 'moving', 'complete', 'failed', 'cancelled', 'paused', 'recovery_required']),
+  "progress": zod.number(),
+  "downloadedBytes": zod.number(),
+  "totalBytes": zod.number().nullable(),
+  "downloadSpeed": zod.number().nullable(),
+  "etaSeconds": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "retryCount": zod.number(),
+  "processId": zod.number().nullable(),
+  "currentPhase": zod.string(),
+  "verification": zod.enum(['waiting', 'passed', 'failed', 'not_required'])
+})
+
+
+/**
+ * @summary Cancel a running download
+ */
+export const CancelDownloadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CancelDownloadResponse = zod.object({
+  "id": zod.number(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "title": zod.string(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullable(),
+  "selectedAudioFormatId": zod.string().nullable(),
+  "outputContainer": zod.string(),
+  "temporaryDirectory": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "finalPath": zod.string().nullable(),
+  "status": zod.enum(['queued', 'inspecting', 'downloading', 'downloaded', 'processing', 'verifying', 'moving', 'complete', 'failed', 'cancelled', 'paused', 'recovery_required']),
+  "progress": zod.number(),
+  "downloadedBytes": zod.number(),
+  "totalBytes": zod.number().nullable(),
+  "downloadSpeed": zod.number().nullable(),
+  "etaSeconds": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "retryCount": zod.number(),
+  "processId": zod.number().nullable(),
+  "currentPhase": zod.string(),
+  "verification": zod.enum(['waiting', 'passed', 'failed', 'not_required'])
+})
+
+
+/**
+ * @summary Retry a failed download
+ */
+export const RetryDownloadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RetryDownloadResponse = zod.object({
+  "id": zod.number(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "title": zod.string(),
+  "selectedFormatId": zod.string(),
+  "selectedVideoFormatId": zod.string().nullable(),
+  "selectedAudioFormatId": zod.string().nullable(),
+  "outputContainer": zod.string(),
+  "temporaryDirectory": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "finalPath": zod.string().nullable(),
+  "status": zod.enum(['queued', 'inspecting', 'downloading', 'downloaded', 'processing', 'verifying', 'moving', 'complete', 'failed', 'cancelled', 'paused', 'recovery_required']),
+  "progress": zod.number(),
+  "downloadedBytes": zod.number(),
+  "totalBytes": zod.number().nullable(),
+  "downloadSpeed": zod.number().nullable(),
+  "etaSeconds": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "retryCount": zod.number(),
+  "processId": zod.number().nullable(),
+  "currentPhase": zod.string(),
+  "verification": zod.enum(['waiting', 'passed', 'failed', 'not_required'])
 })
 
 

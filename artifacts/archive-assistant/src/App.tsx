@@ -1,50 +1,21 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity,
-  Archive,
-  ArrowUpRight,
-  Bot,
-  Check,
-  ChevronRight,
-  CircleHelp,
-  CloudOff,
-  Cpu,
-  Download,
-  FolderOpen,
-  HardDrive,
-  History,
-  Library,
-  Link2,
-  Menu,
-  Network,
-  PlaySquare,
-  Plus,
-  RefreshCw,
-  Save,
-  Search,
-  Server,
-  Settings as SettingsIcon,
-  ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
-  Terminal,
-  X,
-  Zap,
+  Activity, Archive, ArrowDownToLine, ArrowUpRight, Bot, Check, ChevronRight, CircleHelp,
+  CloudOff, Cpu, Download, FileCheck2, FolderOpen, HardDrive, History,
+  Library, Link2, Menu, Network, Pause, Play, PlaySquare, Plus, RefreshCw, RotateCcw,
+  Save, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal,
+  Sparkles, Square, Terminal, Trash2, X, Zap,
 } from 'lucide-react';
 import {
-  getGetPlexConfigQueryKey,
-  getGetSettingsQueryKey,
-  useGetPlexConfig,
-  useGetSettings,
-  useGetSystemDependencies,
-  useGetSystemEvents,
-  useGetSystemOverview,
-  useHealthCheck,
-  useUpdatePlexConfig,
-  useUpdateSettings,
+  getGetDownloadsQueryKey, getGetPlexConfigQueryKey, getGetSettingsQueryKey,
+  getGetSystemOverviewQueryKey, useCancelDownload, useCreateDownload, useDeleteDownload,
+  useGetDownloads, useGetPlexConfig, useGetSettings, useGetSystemDependencies,
+  useGetSystemEvents, useGetSystemOverview, useHealthCheck, useInspectMediaSource,
+  usePauseDownload, usePrepareDownload, useRetryDownload, useResumeDownload,
+  useStartDownload, useUpdatePlexConfig, useUpdateSettings,
 } from '@workspace/api-client-react';
-import type { AppSettings, AppSettingsUpdate, SystemEvent } from '@workspace/api-client-react';
+import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -52,28 +23,19 @@ import NotFound from '@/pages/not-found';
 import { Link, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 
 const queryClient = new QueryClient();
-
 const navItems = [
-  { label: 'HOME', href: '/', icon: Activity },
-  { label: 'ASSISTANT', href: '/assistant', icon: Bot },
-  { label: 'QUEUE', href: '/queue', icon: Download },
-  { label: 'ARCHIVE', href: '/archive', icon: Archive },
-  { label: 'PLEX', href: '/plex', icon: PlaySquare },
-  { label: 'SOURCES', href: '/sources', icon: FolderOpen },
-  { label: 'HISTORY', href: '/history', icon: History },
-  { label: 'SETTINGS', href: '/settings', icon: SettingsIcon },
+  { label: 'HOME', href: '/', icon: Activity }, { label: 'ASSISTANT', href: '/assistant', icon: Bot },
+  { label: 'QUEUE', href: '/queue', icon: Download }, { label: 'ARCHIVE', href: '/archive', icon: Archive },
+  { label: 'PLEX', href: '/plex', icon: PlaySquare }, { label: 'SOURCES', href: '/sources', icon: FolderOpen },
+  { label: 'HISTORY', href: '/history', icon: History }, { label: 'SETTINGS', href: '/settings', icon: SettingsIcon },
 ];
-
 const statusLabels: Record<string, string> = {
-  ready: 'READY',
-  connected: 'CONNECTED',
-  idle: 'IDLE',
-  placeholder: 'PLACEHOLDER',
-  warning: 'WARNING',
-  unavailable: 'UNAVAILABLE',
-  processing: 'PROCESSING',
-  not_configured: 'NOT CONFIGURED',
-  error: 'ERROR',
+  ready: 'READY', connected: 'CONNECTED', idle: 'IDLE', placeholder: 'PLACEHOLDER',
+  warning: 'WARNING', unavailable: 'UNAVAILABLE', processing: 'PROCESSING',
+  not_configured: 'NOT CONFIGURED', error: 'ERROR', queued: 'QUEUED', inspecting: 'INSPECTING',
+  downloading: 'DOWNLOADING', downloaded: 'DOWNLOADED', verifying: 'VERIFYING', moving: 'MOVING',
+  complete: 'COMPLETE', failed: 'FAILED', cancelled: 'CANCELLED', paused: 'PAUSED',
+  recovery_required: 'RECOVERY REQUIRED',
 };
 
 function formatTime(value: string | null | undefined) {
@@ -82,313 +44,153 @@ function formatTime(value: string | null | undefined) {
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
 }
-
-function statusText(value: string | undefined) {
-  return value ? statusLabels[value] ?? value.toUpperCase() : 'CHECKING';
+function formatBytes(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
+  if (value < 1024) return `${value} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = value / 1024; let index = 0;
+  while (size >= 1024 && index < units.length - 1) { size /= 1024; index += 1; }
+  return `${size.toFixed(size >= 100 ? 0 : size >= 10 ? 1 : 2)} ${units[index]}`;
 }
-
+function formatDuration(seconds: number | null | undefined) {
+  if (seconds === null || seconds === undefined) return 'Unknown duration';
+  const mins = Math.floor(seconds / 60); const secs = Math.round(seconds % 60);
+  return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m ${String(secs).padStart(2, '0')}s`;
+}
+function statusText(value: string | undefined) { return value ? statusLabels[value] ?? value.toUpperCase() : 'CHECKING'; }
+function errorText(error: unknown) {
+  if (!error) return 'The local node did not accept the request.';
+  if (typeof error === 'object' && error && 'message' in error) return String((error as { message?: string }).message);
+  return 'The local node did not accept the request.';
+}
 function StatusPill({ status, label }: { status?: string; label?: string }) {
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-white/70 px-2.5 py-1 text-[10px] font-bold tracking-[.1em] text-[#53636a]" data-testid={`status-${label?.toLowerCase().replace(/\s/g, '-') ?? status}`}>
-      <span className={`status-dot ${status ?? 'idle'}`} />
-      {label ?? statusText(status)}
-    </span>
-  );
+  return <span className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-white/70 px-2.5 py-1 text-[10px] font-bold tracking-[.1em] text-[#53636a]" data-testid={`status-${label?.toLowerCase().replace(/\s/g, '-') ?? status}`}><span className={`status-dot ${status ?? 'idle'}`} />{label ?? statusText(status)}</span>;
 }
+function Skeleton({ className = '' }: { className?: string }) { return <div className={`animate-pulse rounded bg-[#dfe6e5] ${className}`} />; }
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const [location] = useLocation();
-  return (
-    <aside className="flex w-full shrink-0 flex-col bg-[#1d2b38] text-[#d7e0df] md:min-h-[100dvh] md:w-[230px]" data-testid="navigation-sidebar">
-      <div className="flex items-center justify-between border-b border-white/10 px-5 py-5 md:block">
-        <Link href="/" className="flex items-center gap-3" data-testid="link-home-logo" onClick={onNavigate}>
-          <div className="grid h-9 w-9 place-items-center border border-[#f4b942] text-[#f4b942]"><Archive size={18} strokeWidth={1.7} /></div>
-          <div>
-            <div className="archive-display text-[15px] font-extrabold tracking-[.12em] text-[#f5f6f3]">ARCHIVE</div>
-            <div className="archive-mono text-[8px] tracking-[.28em] text-[#93a6a9]">ASSISTANT / LOCAL</div>
-          </div>
-        </Link>
-        <button className="grid h-9 w-9 place-items-center border border-white/10 text-[#9bb0b1] md:hidden" onClick={onNavigate} aria-label="Close navigation" data-testid="button-close-navigation"><X size={18} /></button>
-      </div>
-      <div className="hidden px-5 py-5 md:block">
-        <div className="archive-mono flex items-center gap-2 text-[9px] font-medium uppercase tracking-[.14em] text-[#7f979b]"><span className="status-dot ready" /> LOCAL NODE ONLINE</div>
-        <div className="mt-2 text-[11px] text-[#71898e]">Windows workstation / primary</div>
-      </div>
-      <nav className="grid grid-cols-4 gap-1 px-3 py-3 md:block md:px-3 md:py-1">
-        {navItems.map(({ label, href, icon: Icon }) => {
-          const active = location === href;
-          return (
-            <Link key={label} href={href} onClick={onNavigate} className={`archive-nav-item flex min-h-[52px] flex-col items-center justify-center gap-1.5 rounded-sm px-3 py-2 md:mb-1 md:min-h-0 md:flex-row md:justify-start md:gap-3 ${active ? 'bg-[#f4b942] text-[#1d2b38]' : 'text-[#9db0b1] hover:bg-white/8 hover:text-[#f5f6f3]'}`} data-testid={`link-nav-${label.toLowerCase()}`}>
-              <Icon size={16} strokeWidth={active ? 2.2 : 1.7} />
-              <span className="text-[10px] font-bold tracking-[.13em] md:text-[11px]">{label}</span>
-              {active && <ChevronRight className="ml-auto hidden md:block" size={14} />}
-            </Link>
-          );
-        })}
-      </nav>
-      <div className="mt-auto hidden border-t border-white/10 px-5 py-5 md:block">
-        <div className="archive-mono mb-2 text-[9px] tracking-[.13em] text-[#6f888d]">OPERATOR MODE</div>
-        <div className="flex items-center gap-2 text-[11px] text-[#bac8c7]"><ShieldCheck size={14} className="text-[#4e9690]" /> Trusted local session</div>
-      </div>
-    </aside>
-  );
+  return <aside className="flex w-full shrink-0 flex-col bg-[#1d2b38] text-[#d7e0df] md:min-h-[100dvh] md:w-[230px]" data-testid="navigation-sidebar">
+    <div className="flex items-center justify-between border-b border-white/10 px-5 py-5 md:block">
+      <Link href="/" className="flex items-center gap-3" data-testid="link-home-logo" onClick={onNavigate}><div className="grid h-9 w-9 place-items-center border border-[#f4b942] text-[#f4b942]"><Archive size={18} strokeWidth={1.7} /></div><div><div className="archive-display text-[15px] font-extrabold tracking-[.12em] text-[#f5f6f3]">ARCHIVE</div><div className="archive-mono text-[8px] tracking-[.28em] text-[#93a6a9]">ASSISTANT / LOCAL</div></div></Link>
+      <button className="grid h-9 w-9 place-items-center border border-white/10 text-[#9bb0b1] md:hidden" onClick={onNavigate} aria-label="Close navigation" data-testid="button-close-navigation"><X size={18} /></button>
+    </div>
+    <div className="hidden px-5 py-5 md:block"><div className="archive-mono flex items-center gap-2 text-[9px] font-medium uppercase tracking-[.14em] text-[#7f979b]"><span className="status-dot ready" /> LOCAL NODE ONLINE</div><div className="mt-2 text-[11px] text-[#71898e]">Windows workstation / primary</div></div>
+    <nav className="grid grid-cols-4 gap-1 px-3 py-3 md:block md:px-3 md:py-1">{navItems.map(({ label, href, icon: Icon }) => { const active = location === href; return <Link key={label} href={href} onClick={onNavigate} className={`archive-nav-item flex min-h-[52px] flex-col items-center justify-center gap-1.5 rounded-sm px-3 py-2 md:mb-1 md:min-h-0 md:flex-row md:justify-start md:gap-3 ${active ? 'bg-[#f4b942] text-[#1d2b38]' : 'text-[#9db0b1] hover:bg-white/8 hover:text-[#f5f6f3]'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={16} strokeWidth={active ? 2.2 : 1.7} /><span className="text-[10px] font-bold tracking-[.13em] md:text-[11px]">{label}</span>{active && <ChevronRight className="ml-auto hidden md:block" size={14} />}</Link>; })}</nav>
+    <div className="mt-auto hidden border-t border-white/10 px-5 py-5 md:block"><div className="archive-mono mb-2 text-[9px] tracking-[.13em] text-[#6f888d]">OPERATOR MODE</div><div className="flex items-center gap-2 text-[11px] text-[#bac8c7]"><ShieldCheck size={14} className="text-[#4e9690]" /> Trusted local session</div></div>
+  </aside>;
 }
-
 function Topbar({ onMenu }: { onMenu: () => void }) {
-  const [location] = useLocation();
-  const current = navItems.find((item) => item.href === location)?.label ?? 'HOME';
-  const { data: health, isLoading } = useHealthCheck();
-  return (
-    <header className="flex min-h-[73px] items-center justify-between border-b border-[var(--line)] bg-[#f3f5f4]/90 px-5 backdrop-blur md:px-8">
-      <div className="flex items-center gap-3">
-        <button className="grid h-9 w-9 place-items-center border border-[var(--line)] bg-white/55 md:hidden" onClick={onMenu} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={18} /></button>
-        <div>
-          <div className="archive-mono text-[9px] font-medium tracking-[.2em] text-[#829298]">ARCHIVE ASSISTANT / {current}</div>
-          <div className="mt-1 text-[12px] font-semibold text-[#51626a]">{current === 'HOME' ? 'System overview' : `${current.charAt(0)}${current.slice(1).toLowerCase()} workspace`}</div>
-        </div>
-      </div>
-      <div className="hidden items-center gap-4 sm:flex">
-        <div className="archive-mono flex items-center gap-2 text-[9px] tracking-[.1em] text-[#71858a]" data-testid="status-health">
-          <span className={`status-dot ${health?.status === 'ok' ? 'ready' : 'warning'}`} />
-          {isLoading ? 'CHECKING NODE' : health?.status === 'ok' ? 'API HEALTHY' : 'API UNCONFIRMED'}
-        </div>
-        <div className="h-5 w-px bg-[var(--line)]" />
-        <button className="text-[#71858a] transition-colors hover:text-[#21303d]" aria-label="Search archive" data-testid="button-search"><Search size={17} /></button>
-        <div className="grid h-8 w-8 place-items-center bg-[#dfe8e5] text-[11px] font-extrabold text-[#315e5b]" data-testid="text-operator-avatar">OP</div>
-      </div>
-    </header>
-  );
+  const [location] = useLocation(); const current = navItems.find((item) => item.href === location)?.label ?? 'HOME'; const { data: health, isLoading } = useHealthCheck();
+  return <header className="flex min-h-[73px] items-center justify-between border-b border-[var(--line)] bg-[#f3f5f4]/90 px-5 backdrop-blur md:px-8"><div className="flex items-center gap-3"><button className="grid h-9 w-9 place-items-center border border-[var(--line)] bg-white/55 md:hidden" onClick={onMenu} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={18} /></button><div><div className="archive-mono text-[9px] font-medium tracking-[.2em] text-[#829298]">ARCHIVE ASSISTANT / {current}</div><div className="mt-1 text-[12px] font-semibold text-[#51626a]">{current === 'HOME' ? 'System overview' : `${current.charAt(0)}${current.slice(1).toLowerCase()} workspace`}</div></div></div><div className="hidden items-center gap-4 sm:flex"><div className="archive-mono flex items-center gap-2 text-[9px] tracking-[.1em] text-[#71858a]" data-testid="status-health"><span className={`status-dot ${health?.status === 'ok' ? 'ready' : 'warning'}`} />{isLoading ? 'CHECKING NODE' : health?.status === 'ok' ? 'API HEALTHY' : 'API UNCONFIRMED'}</div><div className="h-5 w-px bg-[var(--line)]" /><button className="text-[#71858a] transition-colors hover:text-[#21303d]" aria-label="Search archive" data-testid="button-search"><Search size={17} /></button><div className="grid h-8 w-8 place-items-center bg-[#dfe8e5] text-[11px] font-extrabold text-[#315e5b]" data-testid="text-operator-avatar">OP</div></div></header>;
 }
-
 function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  return (
-    <div className="archive-shell flex flex-col md:flex-row">
-      <div className={`fixed inset-0 z-30 bg-[#17232d]/45 transition-opacity md:static md:z-auto md:block md:bg-transparent ${menuOpen ? 'block opacity-100' : 'pointer-events-none hidden opacity-0'}`} onClick={() => setMenuOpen(false)} />
-      <div className={`fixed inset-y-0 left-0 z-40 w-[230px] transition-transform md:static md:z-auto md:block md:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}><Sidebar onNavigate={() => setMenuOpen(false)} /></div>
-      <main className="min-w-0 flex-1">
-        <Topbar onMenu={() => setMenuOpen(true)} />
-        <div className="archive-grid min-h-[calc(100dvh-73px)] p-5 md:p-8">{children}</div>
-      </main>
-    </div>
-  );
+  return <div className="archive-shell flex flex-col md:flex-row"><div className={`fixed inset-0 z-30 bg-[#17232d]/45 transition-opacity md:static md:z-auto md:block md:bg-transparent ${menuOpen ? 'block opacity-100' : 'pointer-events-none hidden opacity-0'}`} onClick={() => setMenuOpen(false)} /><div className={`fixed inset-y-0 left-0 z-40 w-[230px] transition-transform md:static md:z-auto md:block md:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}><Sidebar onNavigate={() => setMenuOpen(false)} /></div><main className="min-w-0 flex-1"><Topbar onMenu={() => setMenuOpen(true)} /><div className="archive-grid min-h-[calc(100dvh-73px)] p-5 md:p-8">{children}</div></main></div>;
 }
-
 function PageIntro({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
-  return (
-    <div className="mb-7 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-      <div className="archive-fade">
-        <div className="archive-mono mb-2 text-[10px] font-medium tracking-[.2em] text-[#7a9093]">{eyebrow}</div>
-        <h1 className="archive-display text-3xl font-extrabold text-[#21303d] md:text-[38px]">{title}</h1>
-        <p className="mt-2 max-w-xl text-[13px] leading-6 text-[#718087]">{description}</p>
-      </div>
-      {action}
-    </div>
-  );
+  return <div className="mb-7 flex flex-col justify-between gap-5 md:flex-row md:items-end"><div className="archive-fade"><div className="archive-mono mb-2 text-[10px] font-medium tracking-[.2em] text-[#7a9093]">{eyebrow}</div><h1 className="archive-display text-3xl font-extrabold text-[#21303d] md:text-[38px]">{title}</h1><p className="mt-2 max-w-xl text-[13px] leading-6 text-[#718087]">{description}</p></div>{action}</div>;
 }
-
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-[#dfe6e5] ${className}`} />;
+function Readout({ label, value, tone = 'neutral' }: { label: string; value: string; tone?: 'good' | 'warn' | 'neutral' }) {
+  return <div className="flex items-center justify-between border-b border-[#e7ecea] pb-3 last:border-0"><span className="text-[#728287]">{label}</span><span className={`archive-mono text-[10px] font-medium ${tone === 'good' ? 'text-[#39736e]' : tone === 'warn' ? 'text-[#a77517]' : 'text-[#8a9899]'}`}>{value}</span></div>;
 }
-
-function MetricCard({ icon: Icon, label, value, status, note, accent = 'teal' }: { icon: typeof Activity; label: string; value: string; status?: string; note: string; accent?: 'teal' | 'amber' | 'red' }) {
-  return (
-    <div className="archive-panel archive-fade archive-fade-delay-1 min-h-[146px] p-5 transition-all duration-300 hover:-translate-y-0.5" data-testid={`card-metric-${label.toLowerCase().replace(/\s/g, '-')}`}>
-      <div className="mb-5 flex items-start justify-between"><div className={`grid h-8 w-8 place-items-center ${accent === 'amber' ? 'bg-[#fff0c9] text-[#a77517]' : accent === 'red' ? 'bg-[#f7e2de] text-[#a9483e]' : 'bg-[#dcebe7] text-[#39736e]'}`}><Icon size={16} /></div>{status && <StatusPill status={status} />}</div>
-      <div className="archive-mono text-[10px] tracking-[.12em] text-[#829197]">{label}</div>
-      <div className="archive-display mt-1 text-[25px] font-extrabold tracking-[-.04em] text-[#263844]" data-testid={`text-metric-${label.toLowerCase().replace(/\s/g, '-')}`}>{value}</div>
-      <div className="mt-1 text-[11px] text-[#879599]">{note}</div>
-    </div>
-  );
-}
-
-function ActivityRows({ events, emptyLabel = 'No events have been recorded yet.' }: { events: SystemEvent[] | undefined; emptyLabel?: string }) {
-  if (!events?.length) return <div className="flex min-h-[160px] flex-col items-center justify-center text-center"><Activity size={20} className="mb-3 text-[#9aa9aa]" /><p className="text-[12px] text-[#829095]">{emptyLabel}</p><p className="mt-1 text-[10px] text-[#a3aeae]">Implemented events will appear here.</p></div>;
+function ActivityRows({ events, emptyLabel = 'No events have been recorded yet.' }: { events?: SystemEvent[]; emptyLabel?: string }) {
+  if (!events?.length) return <div className="flex min-h-[160px] flex-col items-center justify-center text-center"><Activity size={20} className="mb-3 text-[#9aa9aa]" /><p className="text-[12px] text-[#829095]">{emptyLabel}</p><p className="mt-1 text-[10px] text-[#a3aeae]">Proven system events will appear here.</p></div>;
   return <div className="divide-y divide-[#e3e8e7]">{events.map((event) => <div key={event.id} className="flex gap-3 py-3 first:pt-0 last:pb-0" data-testid={`row-event-${event.id}`}><span className={`status-dot mt-1.5 ${event.level === 'success' ? 'ready' : event.level === 'warning' ? 'warning' : event.level === 'error' ? 'error' : 'idle'}`} /><div className="min-w-0 flex-1"><div className="text-[12px] leading-5 text-[#43545b]" data-testid={`text-event-message-${event.id}`}>{event.message}</div><div className="archive-mono mt-1 text-[9px] tracking-[.04em] text-[#97a3a4]">{event.source} / {formatTime(event.timestamp)}</div></div></div>)}</div>;
+}
+function MetricCard({ icon: Icon, label, value, status, note, accent = 'teal' }: { icon: typeof Activity; label: string; value: string; status?: string; note: string; accent?: 'teal' | 'amber' | 'red' }) {
+  return <div className="archive-panel archive-fade min-h-[146px] p-5 transition-all duration-300 hover:-translate-y-0.5" data-testid={`card-metric-${label.toLowerCase().replace(/\s/g, '-')}`}><div className="mb-5 flex items-start justify-between"><div className={`grid h-8 w-8 place-items-center ${accent === 'amber' ? 'bg-[#fff0c9] text-[#a77517]' : accent === 'red' ? 'bg-[#f7e2de] text-[#a9483e]' : 'bg-[#dcebe7] text-[#39736e]'}`}><Icon size={16} /></div>{status && <StatusPill status={status} />}</div><div className="archive-mono text-[10px] tracking-[.12em] text-[#829197]">{label}</div><div className="archive-display mt-1 text-[25px] font-extrabold tracking-[-.04em] text-[#263844]" data-testid={`text-metric-${label.toLowerCase().replace(/\s/g, '-')}`}>{value}</div><div className="mt-1 text-[11px] text-[#879599]">{note}</div></div>;
 }
 
 function Home() {
-  const { data: overview, isLoading, isError, refetch } = useGetSystemOverview();
-  const { data: events, isLoading: eventsLoading } = useGetSystemEvents();
-  const { data: deps } = useGetSystemDependencies();
-  const plex = useGetPlexConfig();
-  const activity = overview?.activity?.length ? overview.activity : events;
-  const availableDeps = deps?.filter((dep) => dep.status === 'available').length ?? 0;
-  const dependencyCount = deps?.length ?? 0;
+  const { data: overview, isLoading, isError, refetch } = useGetSystemOverview(); const { data: events, isLoading: eventsLoading } = useGetSystemEvents(); const { data: deps } = useGetSystemDependencies(); const plex = useGetPlexConfig();
   if (isLoading) return <><PageIntro eyebrow="CONTROL ROOM / STARTUP" title="Archive at a glance" description="Reading the local node and preparing a trustworthy snapshot." /><div className="grid gap-4 md:grid-cols-3">{[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-[146px]" />)}</div></>;
-  if (isError) return <div className="archive-panel flex min-h-[360px] flex-col items-center justify-center p-8 text-center"><CloudOff size={28} className="mb-4 text-[#c85b51]" /><h1 className="archive-display text-2xl font-extrabold">The local node did not answer</h1><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#77878b]">Overview data is unavailable. Nothing has been assumed or filled in.</p><button onClick={() => refetch()} className="mt-5 inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] transition-transform hover:-translate-y-0.5" data-testid="button-retry-overview"><RefreshCw size={14} /> RETRY READ</button></div>;
-  return (
-    <>
-      <PageIntro eyebrow="CONTROL ROOM / HOME" title="Archive at a glance" description="A restrained readout of what exists now, what is moving, and what still needs an operator." action={<button onClick={() => refetch()} className="inline-flex items-center gap-2 border border-[var(--line)] bg-white/60 px-3.5 py-2.5 text-[10px] font-bold tracking-[.11em] text-[#5a6d73] transition-colors hover:border-[#81999a] hover:bg-white" data-testid="button-refresh-overview"><RefreshCw size={14} /> REFRESH READOUT</button>} />
-      <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <MetricCard icon={Library} label="ARCHIVE" value={statusText(overview?.archiveStatus)} status={overview?.archiveStatus} note="Collection index" />
-        <MetricCard icon={PlaySquare} label="PLEX" value={plex.data?.configured ? statusText(plex.data.status) : 'NOT SET'} status={plex.data?.configured ? plex.data.status : 'not_configured'} note={plex.data?.configured ? 'Configuration present' : 'Connection never assumed'} accent="amber" />
-        <MetricCard icon={Download} label="QUEUE" value={statusText(overview?.queueStatus)} status={overview?.queueStatus} note="Ingest pipeline" accent="amber" />
-        <MetricCard icon={Cpu} label="PROCESSING" value={statusText(overview?.processingStatus)} status={overview?.processingStatus} note="Local workers" />
-        <MetricCard icon={HardDrive} label="STORAGE" value={statusText(overview?.storageStatus)} status={overview?.storageStatus} note="Path and capacity read" />
-        <MetricCard icon={Sparkles} label="AI STATUS" value={statusText(overview?.aiStatus)} status={overview?.aiStatus} note={dependencyCount ? `${availableDeps}/${dependencyCount} local dependencies available` : 'No dependency readout'} accent="amber" />
-      </div>
-      <div className="grid gap-5 xl:grid-cols-[1.3fr_.7fr]">
-        <section className="archive-panel archive-fade archive-fade-delay-2 p-5 md:p-6" data-testid="panel-recent-activity">
-          <div className="mb-5 flex items-center justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LATEST SIGNALS</div><h2 className="archive-display mt-1 text-lg font-extrabold">Recent activity</h2></div><Link href="/history" className="inline-flex items-center gap-1 text-[10px] font-bold tracking-[.1em] text-[#4e9690] hover:text-[#2d6964]" data-testid="link-view-history">VIEW HISTORY <ArrowUpRight size={13} /></Link></div>
-          {eventsLoading ? <div className="space-y-3"><Skeleton className="h-10" /><Skeleton className="h-10" /><Skeleton className="h-10" /></div> : <ActivityRows events={activity} />}
-        </section>
-        <section className="archive-panel archive-fade archive-fade-delay-3 p-5 md:p-6" data-testid="panel-sync">
-          <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">SYSTEM PULSE</div><h2 className="archive-display mt-1 text-lg font-extrabold">Last sync</h2>
-          <div className="mt-7 border-l-2 border-[#f4b942] pl-4"><div className="archive-mono text-[27px] font-medium tracking-[-.05em] text-[#263844]" data-testid="text-last-sync">{formatTime(overview?.lastSync)}</div><div className="mt-2 text-[11px] leading-5 text-[#7d8b8e]">{overview?.lastSync ? 'The local snapshot has a recorded sync point.' : 'No sync has been recorded. This is not an error.'}</div></div>
-          <Link href="/settings" className="mt-8 flex items-center justify-between border-t border-[#e3e8e7] pt-4 text-[10px] font-bold tracking-[.1em] text-[#65787c] hover:text-[#21303d]" data-testid="link-open-settings">SYSTEM SETTINGS <ChevronRight size={14} /></Link>
-        </section>
-      </div>
-    </>
-  );
+  if (isError || !overview) return <ErrorState title="The local node did not answer" message="Overview data is unavailable. Nothing has been assumed or filled in." onRetry={() => refetch()} testId="button-retry-overview" />;
+  const storage = overview.storage ?? { path: 'Storage readout not returned', freeBytes: 0, totalBytes: 0, usedBytes: 0, freePercent: 0, status: 'unavailable' as const }; const activity = overview.activity?.length ? overview.activity : events; const availableDeps = deps?.filter((dep) => dep.status === 'available').length ?? 0;
+  const activeDownloads = overview.activeDownloads ?? 0; const queuedJobs = overview.queuedJobs ?? 0; const processingJobs = overview.processingJobs ?? 0; const completedToday = overview.completedToday ?? 0; const failedToday = overview.failedToday ?? 0;
+  return <><PageIntro eyebrow="CONTROL ROOM / HOME" title="Archive at a glance" description="A restrained readout of what exists now, what is moving, and what still needs an operator." action={<button onClick={() => refetch()} className="inline-flex items-center gap-2 border border-[var(--line)] bg-white/60 px-3.5 py-2.5 text-[10px] font-bold tracking-[.11em] text-[#5a6d73] hover:border-[#81999a] hover:bg-white" data-testid="button-refresh-overview"><RefreshCw size={14} /> REFRESH READOUT</button>} /><div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"><MetricCard icon={Download} label="ACTIVE DOWNLOADS" value={String(activeDownloads)} note={`${queuedJobs} queued / ${processingJobs} processing`} status={activeDownloads ? 'processing' : 'idle'} accent="amber" /><MetricCard icon={Check} label="COMPLETED TODAY" value={String(completedToday)} note="Jobs with verified destinations" status="ready" /><MetricCard icon={Archive} label="FAILED TODAY" value={String(failedToday)} note="Requires operator review" status={failedToday ? 'error' : 'idle'} accent={failedToday ? 'red' : 'teal'} /><MetricCard icon={HardDrive} label="STORAGE" value={`${storage.freePercent.toFixed(1)}% free`} note={`${formatBytes(storage.freeBytes)} available`} status={storage.status} accent="amber" /><MetricCard icon={Library} label="ARCHIVE" value={statusText(overview.archiveStatus)} status={overview.archiveStatus} note="Collection index" /><MetricCard icon={PlaySquare} label="PLEX" value={plex.data?.configured ? statusText(plex.data.status) : 'NOT SET'} status={plex.data?.configured ? plex.data.status : 'not_configured'} note={plex.data?.configured ? 'Configuration present' : 'Connection never assumed'} accent="amber" /></div><div className="mb-5 grid gap-5 xl:grid-cols-[1.2fr_.8fr]"><section className="archive-panel p-5 md:p-6" data-testid="panel-storage-readout"><div className="flex items-start justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">CAPACITY / {storage.status.toUpperCase()}</div><h2 className="archive-display mt-1 text-lg font-extrabold">Storage readout</h2></div><HardDrive size={18} className="text-[#4e9690]" /></div><div className="mt-5 flex items-end justify-between"><div><div className="archive-display text-3xl font-extrabold text-[#263844]">{formatBytes(storage.freeBytes)}</div><div className="mt-1 text-[11px] text-[#879599]">free on the archive volume</div></div><div className="archive-mono text-right text-[10px] text-[#829197]">{formatBytes(storage.usedBytes)} used<br />{formatBytes(storage.totalBytes)} total</div></div><div className="mt-5 h-2 overflow-hidden bg-[#e6ecea]"><div className="h-full origin-left bg-[#4e9690] transition-transform duration-500" style={{ transform: `scaleX(${Math.min(1, Math.max(0, (100 - storage.freePercent) / 100))})` }} /></div><div className="mt-3 truncate text-[10px] text-[#8b999d]" title={storage.path}>{storage.path}</div></section><section className="archive-panel p-5 md:p-6" data-testid="panel-system-pulse"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">SYSTEM PULSE</div><h2 className="archive-display mt-1 text-lg font-extrabold">Last sync</h2><div className="mt-7 border-l-2 border-[#f4b942] pl-4"><div className="archive-mono text-[24px] font-medium tracking-[-.05em] text-[#263844]" data-testid="text-last-sync">{formatTime(overview.lastSync)}</div><div className="mt-2 text-[11px] leading-5 text-[#7d8b8e]">{overview.lastSync ? 'The local snapshot has a recorded sync point.' : 'No sync has been recorded. This is not an error.'}</div></div><Link href="/settings" className="mt-8 flex items-center justify-between border-t border-[#e3e8e7] pt-4 text-[10px] font-bold tracking-[.1em] text-[#65787c] hover:text-[#21303d]" data-testid="link-open-settings">SYSTEM SETTINGS <ChevronRight size={14} /></Link></section></div><section className="archive-panel p-5 md:p-6" data-testid="panel-recent-activity"><div className="mb-5 flex items-center justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LATEST SIGNALS / {availableDeps} DEPENDENCIES READY</div><h2 className="archive-display mt-1 text-lg font-extrabold">Recent activity</h2></div><Link href="/history" className="inline-flex items-center gap-1 text-[10px] font-bold tracking-[.1em] text-[#4e9690]" data-testid="link-view-history">VIEW HISTORY <ArrowUpRight size={13} /></Link></div>{eventsLoading ? <div className="space-y-3"><Skeleton className="h-10" /><Skeleton className="h-10" /></div> : <ActivityRows events={activity} />}</section></>;
+}
+function ErrorState({ title, message, onRetry, testId }: { title: string; message: string; onRetry: () => void; testId: string }) {
+  return <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center p-8 text-center"><CloudOff size={28} className="mb-4 text-[#c85b51]" /><h1 className="archive-display text-2xl font-extrabold">{title}</h1><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#77878b]">{message}</p><button onClick={onRetry} className="mt-5 inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3]" data-testid={testId}><RefreshCw size={14} /> RETRY READ</button></div>;
 }
 
-const placeholderCopy: Record<string, { title: string; description: string; icon: typeof Activity; eyebrow: string }> = {
-  ASSISTANT: { eyebrow: 'WORKSPACE / PLACEHOLDER', title: 'Assistant console', description: 'The local assistant surface is reserved for collection-aware questions and guided actions.', icon: Bot },
-  QUEUE: { eyebrow: 'WORKSPACE / PLACEHOLDER', title: 'Ingest queue', description: 'Queue controls will live here when the local ingest pipeline is implemented.', icon: Download },
-  ARCHIVE: { eyebrow: 'WORKSPACE / PLACEHOLDER', title: 'Archive browser', description: 'A searchable browser for verified media is planned. No records are fabricated in this preview.', icon: Archive },
-  SOURCES: { eyebrow: 'WORKSPACE / PLACEHOLDER', title: 'Source registry', description: 'Source folders and watch paths will be managed here in a future slice.', icon: FolderOpen },
-  HISTORY: { eyebrow: 'WORKSPACE / PLACEHOLDER', title: 'Event history', description: 'A complete operator log will appear here. The home readout currently shows the available event stream.', icon: History },
-};
-
-function PlaceholderPage({ section }: { section: keyof typeof placeholderCopy }) {
-  const copy = placeholderCopy[section];
-  const Icon = copy.icon;
-  const { data: events, isLoading } = useGetSystemEvents();
-  return (
-    <>
-      <PageIntro eyebrow={copy.eyebrow} title={copy.title} description={copy.description} />
-      <div className="archive-panel relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden p-8 text-center">
-        <div className="absolute left-0 top-0 h-1 w-24 bg-[#f4b942]" /><div className="absolute right-8 top-8 archive-mono text-[9px] tracking-[.16em] text-[#a2adae]">NOT YET IMPLEMENTED</div>
-        <div className="grid h-16 w-16 place-items-center border border-[#d6dfdc] bg-[#eaf0ed] text-[#4e9690]"><Icon size={27} strokeWidth={1.4} /></div>
-        <h2 className="archive-display mt-6 text-[25px] font-extrabold text-[#2b3d46]">Surface is reserved</h2>
-        <p className="mt-2 max-w-md text-[13px] leading-6 text-[#7c8a8d]">This workspace is intentionally honest about its current state. The shell is implemented; the operational feature is future work.</p>
-        <div className="mt-7 flex items-center gap-2 border border-[#e1e7e5] bg-[#f8faf8] px-3 py-2 archive-mono text-[9px] tracking-[.1em] text-[#799094]"><CircleHelp size={13} /> PLACEHOLDER / SAFE TO EXPLORE</div>
-        {section === 'HISTORY' && <div className="mt-9 w-full max-w-lg text-left"><div className="mb-3 flex items-center justify-between archive-mono text-[9px] tracking-[.12em] text-[#88999c]"><span>AVAILABLE SIGNAL PREVIEW</span><span>{events?.length ?? 0} EVENTS</span></div>{isLoading ? <Skeleton className="h-12" /> : <ActivityRows events={events} emptyLabel="The event stream is currently empty." />}</div>}
-      </div>
-    </>
-  );
+const formatLabel = (format: MediaFormat) => `${format.resolution || 'adaptive'} / ${format.extension ?? format.container ?? 'stream'}${format.fps ? ` / ${format.fps} fps` : ''}`;
+function SourcePage() {
+  const [url, setUrl] = useState(''); const [inspection, setInspection] = useState<MediaInspection | null>(null); const [selected, setSelected] = useState(''); const [notice, setNotice] = useState(''); const [created, setCreated] = useState<DownloadJob | null>(null);
+  const inspect = useInspectMediaSource(); const prepare = usePrepareDownload(); const create = useCreateDownload(); const start = useStartDownload(); const queryClient = useQueryClient();
+  const recommended = inspection?.formats.find((format) => format.formatId === inspection.recommendedFormatId) ?? inspection?.formats.find((format) => format.usable);
+  const runInspect = (event: FormEvent) => { event.preventDefault(); setNotice(''); setInspection(null); setCreated(null); if (!url.trim()) { setNotice('Paste a media URL before inspecting.'); return; } inspect.mutate({ data: { url: url.trim(), forceRefresh: false } }, { onSuccess: (result) => { setInspection(result); setSelected(result.recommendedFormatId ?? result.formats.find((format) => format.usable)?.formatId ?? ''); setNotice(result.demoMode ? 'Backend returned demo inspection data.' : 'Inspection verified by the local node.'); }, onError: (error) => setNotice(errorText(error)) }); };
+  const prepareDownload = () => { if (!inspection || !selected) return; setNotice('Validating destination and format…'); const format = inspection.formats.find((item) => item.formatId === selected); prepare.mutate({ data: { sourceUrl: inspection.metadata.webpageUrl || url, title: inspection.metadata.title, sourceSite: inspection.metadata.extractor, selectedFormatId: selected, selectedVideoFormatId: inspection.recommendedVideoFormatId, selectedAudioFormatId: inspection.recommendedAudioFormatId, outputContainer: (format?.extension === 'webm' ? 'webm' : 'mkv'), finalFilename: inspection.metadata.title } }, { onSuccess: (spec) => { create.mutate({ data: { ...spec, outputContainer: spec.outputContainer as 'mp4' | 'mkv' | 'webm' } }, { onSuccess: (job) => { setCreated(job); setNotice('Download prepared and persisted. It has not started.'); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); }, onError: (error) => setNotice(`Preparation passed, but job creation failed: ${errorText(error)}`) }); }, onError: (error) => setNotice(`The backend rejected this download: ${errorText(error)}`) }); };
+  return <><PageIntro eyebrow="INGEST / SOURCE INSPECTION" title="Inspect a source" description="Turn one URL into a verified, observable local job. No download is implied until the node confirms each step." /><div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_330px]"><section className="archive-panel p-5 md:p-7"><form onSubmit={runInspect} data-testid="form-source-inspection"><label className="archive-mono mb-2 block text-[10px] tracking-[.14em] text-[#6e8185]" htmlFor="source-url">MEDIA URL</label><div className="flex items-center border border-[#cbd8d5] bg-[#fbfcfa] focus-within:border-[#4e9690]"><Link2 size={16} className="ml-3 shrink-0 text-[#8a9b9e]" /><input id="source-url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://…" className="w-full bg-transparent px-3 py-3.5 text-[13px] outline-none placeholder:text-[#aab5b5]" data-testid="input-source-url" /><button type="submit" disabled={inspect.isPending} className="mr-1 inline-flex shrink-0 items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-inspect-source">{inspect.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}{inspect.isPending ? 'READING' : 'INSPECT'}</button></div></form>{notice && <div className={`mt-4 flex gap-2 border-l-2 p-3 text-[11px] leading-5 ${notice.includes('failed') || notice.includes('rejected') || notice.includes('Paste') || notice.includes('accept') || notice.includes('could not') ? 'border-[#c85b51] bg-[#fcedea] text-[#994b43]' : 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]'}`} data-testid="status-source-operation"><Activity size={14} className="mt-0.5 shrink-0" />{notice}</div>}{inspect.isPending && <div className="mt-7 space-y-3"><Skeleton className="h-6 w-2/3" /><Skeleton className="h-4 w-1/3" /><Skeleton className="h-24" /></div>}{inspection && <InspectionResult inspection={inspection} selected={selected} setSelected={setSelected} onPrepare={prepareDownload} pending={prepare.isPending || create.isPending} created={created} onStart={() => created && start.mutate({ id: created.id }, { onSuccess: (job) => { setCreated(job); setNotice('Job started. Progress will be proven by the queue.'); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(errorText(error)) })} />}</section><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">OPERATOR CONTRACT</div><h2 className="archive-display mt-1 text-lg font-extrabold">What will happen</h2><div className="mt-5 space-y-4 text-[12px]"><Readout label="1 / inspect" value="BACKEND VERIFIED" tone="good" /><Readout label="2 / prepare" value="DESTINATION CHECK" tone="neutral" /><Readout label="3 / create" value="PERSISTED JOB" tone="neutral" /><Readout label="4 / start" value="OPERATOR ACTION" tone="warn" /></div><div className="mt-6 border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]">A successful inspection is metadata only. The archive path is not touched until a job is started.</div></aside></div></>;
 }
+function InspectionResult({ inspection, selected, setSelected, onPrepare, pending, created, onStart }: { inspection: MediaInspection; selected: string; setSelected: (value: string) => void; onPrepare: () => void; pending: boolean; created: DownloadJob | null; onStart: () => void }) {
+  const meta = inspection.metadata; const formats = inspection.formats.filter((format) => format.usable); const recommended = formats.find((format) => format.formatId === inspection.recommendedFormatId);
+  return <div className="mt-7 border-t border-[#e3e8e7] pt-6" data-testid="panel-inspection-result"><div className="flex flex-col gap-5 sm:flex-row">{meta.thumbnailUrl ? <img src={meta.thumbnailUrl} alt="" className="h-28 w-48 shrink-0 object-cover" data-testid="img-source-thumbnail" /> : <div className="grid h-28 w-48 shrink-0 place-items-center bg-[#e8efed] text-[#4e9690]"><FileCheck2 size={28} /></div>}<div className="min-w-0"><div className="archive-mono text-[9px] tracking-[.13em] text-[#7f9194]">{meta.extractor ?? 'SOURCE'} {inspection.demoMode ? '/ DEMO' : '/ VERIFIED'}</div><h2 className="archive-display mt-1 text-2xl font-extrabold leading-tight text-[#263844]" data-testid="text-inspection-title">{meta.title}</h2><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#77888c]"><span>{meta.uploader ?? meta.channel ?? 'Uploader not returned'}</span><span>{formatDuration(meta.durationSeconds)}</span><span>{meta.uploadDate ?? 'Date unknown'}</span></div></div></div><div className="mt-6 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-4"><div className="archive-mono text-[9px] tracking-[.12em] text-[#39736e]">RECOMMENDATION / {recommended?.formatId ?? 'NONE'}</div><p className="mt-1 text-[12px] leading-5 text-[#45665f]" data-testid="text-recommendation">{inspection.recommendationExplanation}</p></div><div className="mt-6"><div className="mb-3 flex items-center justify-between"><div><div className="archive-mono text-[10px] tracking-[.12em] text-[#7f9194]">NORMALIZED FORMATS</div><div className="mt-1 text-[11px] text-[#879599]">{formats.length} usable of {inspection.rawFormatCount} returned</div></div><span className="archive-mono text-[9px] text-[#a0aaaa]">SELECT ONE</span></div><div className="space-y-2">{formats.length ? formats.slice(0, 8).map((format) => <label key={format.formatId} className={`flex cursor-pointer items-center justify-between gap-3 border p-3 transition-colors ${selected === format.formatId ? 'border-[#4e9690] bg-[#eef6f2]' : 'border-[#e1e8e5] bg-white/50 hover:border-[#aabfba]'}`} data-testid={`row-format-${format.formatId}`}><span className="flex min-w-0 items-center gap-3"><input type="radio" name="format" value={format.formatId} checked={selected === format.formatId} onChange={() => setSelected(format.formatId)} className="accent-[#4e9690]" data-testid={`input-format-${format.formatId}`} /><span className="min-w-0"><span className="block text-[12px] font-semibold text-[#43545b]">{formatLabel(format)}</span><span className="archive-mono mt-1 block truncate text-[9px] text-[#97a3a4]">{format.videoCodec ?? 'audio'} + {format.audioCodec ?? 'no audio'} / {format.protocol ?? 'direct'} / score {format.score}</span></span></span><span className="archive-mono shrink-0 text-[10px] text-[#829197]">{formatBytes(format.filesize ?? format.estimatedFilesize)}</span></label>) : <div className="border border-dashed border-[#d7e1de] p-5 text-center text-[11px] text-[#89989a]">The backend returned no usable formats.</div>}</div></div><div className="mt-6 flex flex-wrap items-center gap-3"><button onClick={onPrepare} disabled={!selected || pending || Boolean(created)} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-prepare-download">{pending ? <RefreshCw size={14} className="animate-spin" /> : <ArrowDownToLine size={14} />}{created ? 'JOB PERSISTED' : pending ? 'PREPARING' : 'PREPARE DOWNLOAD'}</button>{created && <button onClick={onStart} disabled={pending || created.status !== 'queued'} className="inline-flex items-center gap-2 border border-[#4e9690] bg-[#eaf3ef] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#39736e] disabled:opacity-50" data-testid="button-start-created-job"><Play size={14} /> START JOB</button>}{created && <span className="text-[11px] text-[#718287]">Job #{created.id} is waiting in the persistent queue.</span>}</div></div>;
+}
+
+function QueuePage() {
+  const queryClient = useQueryClient(); const { data: jobs, isLoading, isError, refetch } = useGetDownloads(); const [notice, setNotice] = useState('');
+  const start = useStartDownload(); const pause = usePauseDownload(); const resume = useResumeDownload(); const cancel = useCancelDownload(); const retry = useRetryDownload(); const remove = useDeleteDownload(); const inspect = useInspectMediaSource(); const create = useCreateDownload();
+  useEffect(() => { const source = new EventSource('/api/downloads/events'); const invalidate = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }; source.addEventListener('message', invalidate); source.addEventListener('download', invalidate); return () => source.close(); }, [queryClient]);
+  const persist = (mutation: { mutate: (data: { id: number }, options: { onSuccess: () => void; onError: (error: unknown) => void }) => void }, id: number, message: string) => mutation.mutate({ id }, { onSuccess: () => { setNotice(message); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(errorText(error)) });
+  const createDemo = () => { setNotice('Inspecting the demo source…'); inspect.mutate({ data: { url: 'https://demo.local/archive-assistant/sample', forceRefresh: true } }, { onSuccess: (source) => { const format = source.formats.find((item) => item.usable); if (!format) { setNotice('Demo source returned no usable format.'); return; } create.mutate({ data: { sourceUrl: source.metadata.webpageUrl, title: source.metadata.title, sourceSite: source.metadata.extractor, selectedFormatId: format.formatId, selectedVideoFormatId: source.recommendedVideoFormatId, selectedAudioFormatId: source.recommendedAudioFormatId, outputContainer: 'mkv', finalFilename: source.metadata.title } }, { onSuccess: (job) => { start.mutate({ id: job.id }, { onSuccess: () => { setNotice('Demo job created and started.'); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(`Demo job created, but start failed: ${errorText(error)}`) }); }, onError: (error) => setNotice(errorText(error)) }); }, onError: (error) => setNotice(`Demo inspection failed: ${errorText(error)}`) }); };
+  const action = (job: DownloadJob, kind: 'start' | 'pause' | 'resume' | 'cancel' | 'retry' | 'delete') => { if (kind === 'delete') { if (window.confirm(`Delete job #${job.id}? This only removes the job record.`)) persist(remove, job.id, `Job #${job.id} deleted.`); return; } if (kind === 'start') persist(start, job.id, `Job #${job.id} started.`); if (kind === 'pause') persist(pause, job.id, `Job #${job.id} paused.`); if (kind === 'resume') persist(resume, job.id, `Job #${job.id} resumed.`); if (kind === 'cancel') persist(cancel, job.id, `Job #${job.id} cancelled.`); if (kind === 'retry') persist(retry, job.id, `Job #${job.id} queued for retry.`); };
+  if (isLoading) return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="Reading durable jobs from the local node." /><div className="space-y-3"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div></>;
+  if (isError) return <ErrorState title="Queue read failed" message="The persistent job list could not be read. No local queue state is being invented." onRetry={() => refetch()} testId="button-retry-queue" />;
+  return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="Jobs are durable records. Every status below is returned by the backend, not simulated in the browser." action={<button onClick={createDemo} disabled={inspect.isPending || create.isPending} className="inline-flex items-center gap-2 bg-[#f4b942] px-3.5 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#1d2b38] disabled:opacity-50" data-testid="button-create-mock-job"><Plus size={14} /> CREATE DEMO JOB</button>} />}{notice && <div className="mb-4 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-3 text-[11px] text-[#39736e]" data-testid="status-queue-operation">{notice}</div>}<div className="mb-4 flex flex-wrap gap-2 archive-mono text-[9px] tracking-[.08em] text-[#7d8d90]"><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => ['downloading', 'processing', 'verifying', 'moving'].includes(job.status)).length ?? 0} ACTIVE</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => job.status === 'queued').length ?? 0} QUEUED</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.length ?? 0} TOTAL</span></div>{jobs?.length ? <div className="space-y-3">{jobs.map((job) => <QueueRow key={job.id} job={job} onAction={action} />)}</div> : <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center p-8 text-center"><Download size={28} className="mb-4 text-[#4e9690]" /><h2 className="archive-display text-2xl font-extrabold">Queue is clear</h2><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#7d8c8f]">No persistent jobs are waiting. Inspect a source or create a demo job to exercise the pipeline.</p></div>}</>;
+}
+function QueueRow({ job, onAction }: { job: DownloadJob; onAction: (job: DownloadJob, kind: 'start' | 'pause' | 'resume' | 'cancel' | 'retry' | 'delete') => void }) {
+  const active = ['downloading', 'processing', 'verifying', 'moving', 'inspecting'].includes(job.status); const canStart = job.status === 'queued'; const canPause = ['downloading', 'processing'].includes(job.status); const canResume = job.status === 'paused'; const canCancel = ['queued', 'inspecting', 'downloading', 'processing', 'verifying', 'moving', 'paused'].includes(job.status); const canRetry = ['failed', 'recovery_required'].includes(job.status);
+  return <article className="archive-panel p-4 md:p-5" data-testid={`row-download-${job.id}`}><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><StatusPill status={job.status} /><span className="archive-mono text-[9px] text-[#9aa6a7]">JOB {job.id}</span>{job.verification === 'passed' && <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-[.08em] text-[#39736e]"><ShieldCheck size={12} /> VERIFIED</span>}</div><h2 className="mt-2 truncate text-[15px] font-bold text-[#344851]" title={job.title} data-testid={`text-download-title-${job.id}`}>{job.title}</h2><div className="mt-1 truncate text-[10px] text-[#8a989a]" title={job.sourceUrl}>{job.sourceSite ?? 'source'} / {job.finalFilename}</div></div><div className="flex flex-wrap gap-2">{canStart && <JobButton icon={Play} label="START" onClick={() => onAction(job, 'start')} testId={`button-start-download-${job.id}`} />}{canPause && <JobButton icon={Pause} label="PAUSE" onClick={() => onAction(job, 'pause')} testId={`button-pause-download-${job.id}`} />}{canResume && <JobButton icon={Play} label="RESUME" onClick={() => onAction(job, 'resume')} testId={`button-resume-download-${job.id}`} />}{canCancel && <JobButton icon={Square} label="CANCEL" onClick={() => onAction(job, 'cancel')} testId={`button-cancel-download-${job.id}`} />}{canRetry && <JobButton icon={RotateCcw} label="RETRY" onClick={() => onAction(job, 'retry')} testId={`button-retry-download-${job.id}`} />}{!active && <JobButton icon={Trash2} label="DELETE" onClick={() => onAction(job, 'delete')} testId={`button-delete-download-${job.id}`} danger />}</div></div><div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end"><div><div className="mb-2 flex justify-between text-[10px] text-[#7f8e91]"><span>{job.currentPhase || statusText(job.status)}</span><span className="archive-mono text-[#4e9690]">{Math.round(job.progress)}%</span></div><div className="h-2 bg-[#e5ece9]"><div className={`h-full origin-left transition-transform duration-500 ${active ? 'bg-[#f4b942]' : job.status === 'complete' ? 'bg-[#4e9690]' : job.status === 'failed' ? 'bg-[#c85b51]' : 'bg-[#9eadae]'}`} style={{ transform: `scaleX(${Math.min(1, Math.max(0, job.progress / 100))})` }} /></div></div><div className="grid grid-cols-2 gap-x-6 gap-y-1 text-right text-[10px] text-[#879598]"><span>{formatBytes(job.downloadedBytes)} / {formatBytes(job.totalBytes)}</span><span>{job.downloadSpeed ? `${formatBytes(job.downloadSpeed)}/s` : 'speed —'}</span><span>{job.etaSeconds ? `${job.etaSeconds}s remaining` : 'ETA —'}</span><span>{formatTime(job.createdAt)}</span></div></div>{job.errorMessage && <div className="mt-4 border-l-2 border-[#c85b51] bg-[#fcedea] p-3 text-[11px] leading-5 text-[#994b43]" data-testid={`text-download-error-${job.id}`}>{job.errorMessage}</div>}</article>;
+}
+function JobButton({ icon: Icon, label, onClick, testId, danger = false }: { icon: typeof Play; label: string; onClick: () => void; testId: string; danger?: boolean }) {
+  return <button onClick={onClick} className={`inline-flex items-center gap-1.5 border px-2.5 py-2 text-[9px] font-bold tracking-[.08em] ${danger ? 'border-[#efd3cf] text-[#a34d45] hover:bg-[#fcedea]' : 'border-[#d7e1de] bg-white/70 text-[#607379] hover:border-[#8fb3ac] hover:text-[#39736e]'}`} data-testid={testId}><Icon size={12} />{label}</button>;
+}
+
+function HistoryPage() {
+  const { data: jobs, isLoading: jobsLoading, isError: jobsError, refetch } = useGetDownloads(); const { data: events, isLoading: eventsLoading } = useGetSystemEvents(); const [tab, setTab] = useState<'jobs' | 'events'>('jobs');
+  const history = jobs?.filter((job) => ['complete', 'failed', 'cancelled', 'recovery_required'].includes(job.status)) ?? [];
+  if (jobsLoading) return <><PageIntro eyebrow="AUDIT / HISTORY" title="History" description="Loading completed work and operator signals." /><Skeleton className="h-[420px]" /></>;
+  if (jobsError) return <ErrorState title="History read failed" message="Completed work could not be read from the local node." onRetry={() => refetch()} testId="button-retry-history" />;
+  return <><PageIntro eyebrow="AUDIT / HISTORY" title="History" description="A factual record of completed, failed, cancelled jobs and system events." action={<div className="flex border border-[#d7e1de] bg-white/50 p-1"><button onClick={() => setTab('jobs')} className={`px-3 py-2 text-[10px] font-bold tracking-[.1em] ${tab === 'jobs' ? 'bg-[#1d2b38] text-[#f5f6f3]' : 'text-[#6c7d81]'}`} data-testid="button-history-jobs">JOBS</button><button onClick={() => setTab('events')} className={`px-3 py-2 text-[10px] font-bold tracking-[.1em] ${tab === 'events' ? 'bg-[#1d2b38] text-[#f5f6f3]' : 'text-[#6c7d81]'}`} data-testid="button-history-events">EVENTS</button></div>} />{tab === 'jobs' ? <section className="archive-panel overflow-hidden" data-testid="panel-download-history">{history.length ? <div className="divide-y divide-[#e3e8e7]">{history.map((job) => <div key={job.id} className="grid gap-3 p-4 md:grid-cols-[1fr_140px_150px] md:items-center md:px-5"><div className="min-w-0"><div className="truncate text-[12px] font-semibold text-[#43545b]">{job.title}</div><div className="mt-1 truncate text-[10px] text-[#8b999c]">{job.finalPath ?? job.finalFilename}</div></div><StatusPill status={job.status} /><div className="archive-mono text-[10px] text-[#8b999c]">{formatTime(job.completedAt ?? job.createdAt)}</div></div>)}</div> : <div className="flex min-h-[280px] flex-col items-center justify-center p-8 text-center"><FileCheck2 size={25} className="mb-3 text-[#9aa9aa]" /><h2 className="archive-display text-xl font-extrabold">No terminal jobs yet</h2><p className="mt-2 text-[12px] text-[#829095]">Verified and failed outcomes will remain visible here.</p></div>}</section> : <section className="archive-panel p-5 md:p-6" data-testid="panel-event-history">{eventsLoading ? <div className="space-y-3"><Skeleton className="h-10" /><Skeleton className="h-10" /></div> : <ActivityRows events={events} emptyLabel="The event stream is currently empty." />}</section>}</>;
+}
+
+const placeholderCopy: Record<string, { title: string; description: string; icon: typeof Activity; eyebrow: string }> = { ASSISTANT: { eyebrow: 'WORKSPACE / RESERVED', title: 'Assistant console', description: 'Reserved for collection-aware questions and guided actions.', icon: Bot }, ARCHIVE: { eyebrow: 'WORKSPACE / RESERVED', title: 'Archive browser', description: 'Reserved for a searchable browser of verified media.', icon: Archive } };
+function PlaceholderPage({ section }: { section: keyof typeof placeholderCopy }) { const copy = placeholderCopy[section]; const Icon = copy.icon; return <><PageIntro eyebrow={copy.eyebrow} title={copy.title} description={copy.description} /><div className="archive-panel relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden p-8 text-center"><div className="absolute left-0 top-0 h-1 w-24 bg-[#f4b942]" /><div className="absolute right-8 top-8 archive-mono text-[9px] tracking-[.16em] text-[#a2adae]">RESERVED / NO CLAIMS</div><div className="grid h-16 w-16 place-items-center border border-[#d6dfdc] bg-[#eaf0ed] text-[#4e9690]"><Icon size={27} strokeWidth={1.4} /></div><h2 className="archive-display mt-6 text-[25px] font-extrabold text-[#2b3d46]">Surface is reserved</h2><p className="mt-2 max-w-md text-[13px] leading-6 text-[#7c8a8d]">This workspace is intentionally honest about its current state. No records or capabilities are fabricated in this preview.</p><div className="mt-7 flex items-center gap-2 border border-[#e1e7e5] bg-[#f8faf8] px-3 py-2 archive-mono text-[9px] tracking-[.1em] text-[#799094]"><CircleHelp size={13} /> SAFE TO EXPLORE</div></div></>; }
 
 function PlexPage() {
-  const queryClient = useQueryClient();
-  const { data, isLoading, isError, refetch } = useGetPlexConfig();
-  const mutation = useUpdatePlexConfig();
-  const [serverUrl, setServerUrl] = useState('');
-  const [token, setToken] = useState('');
-  const [notice, setNotice] = useState('');
+  const queryClient = useQueryClient(); const { data, isLoading, isError, refetch } = useGetPlexConfig(); const mutation = useUpdatePlexConfig(); const [serverUrl, setServerUrl] = useState(''); const [token, setToken] = useState(''); const [notice, setNotice] = useState('');
   useEffect(() => { if (data) setServerUrl(data.serverUrl ?? ''); }, [data]);
-  const save = () => {
-    setNotice('');
-    mutation.mutate(
-      { data: { serverUrl, ...(token ? { token } : {}) } },
-      {
-        onSuccess: (result) => {
-          setToken('');
-          setNotice('Configuration saved. Connection remains unverified until the next local check.');
-          queryClient.setQueryData(getGetPlexConfigQueryKey(), result);
-        },
-        onError: () => setNotice('Configuration could not be saved. The local node did not accept the update.'),
-      },
-    );
-  };
+  const save = () => { setNotice(''); mutation.mutate({ data: { serverUrl, ...(token ? { token } : {}) } }, { onSuccess: (result) => { setToken(''); setNotice('Configuration saved. Connection remains unverified until the next local check.'); queryClient.setQueryData(getGetPlexConfigQueryKey(), result); }, onError: () => setNotice('Configuration could not be saved. The local node did not accept the update.') }); };
   if (isLoading) return <><PageIntro eyebrow="INTEGRATION / PLEX" title="Plex configuration" description="Read the local connection settings without implying a live connection." /><Skeleton className="h-[390px]" /></>;
-  if (isError) return <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center text-center"><CloudOff size={26} className="mb-4 text-[#c85b51]" /><h1 className="archive-display text-2xl font-extrabold">Plex status unavailable</h1><button onClick={() => refetch()} className="mt-5 border border-[var(--line)] bg-white px-4 py-2 text-[11px] font-bold" data-testid="button-retry-plex"><RefreshCw size={14} className="mr-2 inline" /> RETRY READ</button></div>;
-  return (
-    <>
-      <PageIntro eyebrow="INTEGRATION / PLEX" title="Plex configuration" description="Store the endpoint and credentials for a future connection. Archive Assistant never presents Plex as connected without evidence." action={<StatusPill status={data?.configured ? data.status : 'not_configured'} label={data?.configured ? statusText(data.status) : 'NOT CONFIGURED'} />} />
-      <div className="grid gap-5 xl:grid-cols-[1fr_330px]">
-         <form className="archive-panel p-5 md:p-7" data-testid="panel-plex-form" onSubmit={(event) => { event.preventDefault(); save(); }}>
-          <div className="mb-7 flex items-start gap-3 border-b border-[#e3e8e7] pb-5"><div className="grid h-9 w-9 place-items-center bg-[#fff0c9] text-[#a77517]"><PlaySquare size={18} /></div><div><h2 className="archive-display text-lg font-extrabold">Server endpoint</h2><p className="mt-1 text-[11px] text-[#859296]">Implemented configuration fields</p></div></div>
-           <label className="mb-5 block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">SERVER URL</span><div className="flex items-center border border-[#d6dfdc] bg-[#fbfcfa] focus-within:border-[#4e9690]"><Link2 size={15} className="ml-3 text-[#8a9b9e]" /><input autoComplete="url" value={serverUrl} onChange={(event) => setServerUrl(event.target.value)} placeholder="http://localhost:32400" className="w-full bg-transparent px-3 py-3 text-[13px] outline-none placeholder:text-[#aab5b5]" data-testid="input-plex-server-url" /></div></label>
-           <label className="block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">PLEX TOKEN <span className="text-[#a7b0b0]">/ OPTIONAL UPDATE</span></span><input autoComplete="current-password" type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder={data?.hasToken ? 'Token is stored — enter to replace' : 'Paste token when ready'} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-3 text-[13px] outline-none placeholder:text-[#aab5b5] focus:border-[#4e9690]" data-testid="input-plex-token" /></label>
-           <div className="mt-7 flex flex-wrap items-center gap-3"><button type="submit" disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] transition-transform hover:-translate-y-0.5 disabled:opacity-50" data-testid="button-save-plex">{mutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} {mutation.isPending ? 'SAVING' : 'SAVE CONFIGURATION'}</button>{notice && <span className={`text-[11px] ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-plex-save">{notice.includes('could not') ? null : <Check size={14} className="mr-1 inline" />}{notice}</span>}</div>
-         </form>
-        <section className="archive-panel h-fit p-5 md:p-6" data-testid="panel-plex-trust">
-          <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">TRUST READOUT</div><h2 className="archive-display mt-1 text-lg font-extrabold">What is known</h2>
-          <div className="mt-5 space-y-4 text-[12px]"><Readout label="Endpoint stored" value={data?.configured ? 'YES' : 'NO'} tone={data?.configured ? 'good' : 'warn'} /><Readout label="Token present" value={data?.hasToken ? 'YES' : 'NO'} tone={data?.hasToken ? 'good' : 'warn'} /><Readout label="Live connection" value="NOT CLAIMED" tone="neutral" /></div>
-          <div className="mt-6 border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]">Saving details does not test or claim a live Plex connection. That check belongs to a future integration slice.</div>
-        </section>
-      </div>
-    </>
-  );
+  if (isError || !data) return <ErrorState title="Plex status unavailable" message="Configuration could not be read from the local node." onRetry={() => refetch()} testId="button-retry-plex" />;
+  return <><PageIntro eyebrow="INTEGRATION / PLEX" title="Plex configuration" description="Store the endpoint and credentials for a future connection. Archive Assistant never presents Plex as connected without evidence." action={<StatusPill status={data.configured ? data.status : 'not_configured'} label={data.configured ? statusText(data.status) : 'NOT CONFIGURED'} />} /><div className="grid gap-5 xl:grid-cols-[1fr_330px]"><form className="archive-panel p-5 md:p-7" data-testid="panel-plex-form" onSubmit={(event) => { event.preventDefault(); save(); }}><div className="mb-7 flex items-start gap-3 border-b border-[#e3e8e7] pb-5"><div className="grid h-9 w-9 place-items-center bg-[#fff0c9] text-[#a77517]"><PlaySquare size={18} /></div><div><h2 className="archive-display text-lg font-extrabold">Server endpoint</h2><p className="mt-1 text-[11px] text-[#859296]">Implemented configuration fields</p></div></div><label className="mb-5 block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">SERVER URL</span><div className="flex items-center border border-[#d6dfdc] bg-[#fbfcfa]"><Link2 size={15} className="ml-3 text-[#8a9b9e]" /><input autoComplete="url" value={serverUrl} onChange={(event) => setServerUrl(event.target.value)} placeholder="http://localhost:32400" className="w-full bg-transparent px-3 py-3 text-[13px] outline-none" data-testid="input-plex-server-url" /></div></label><label className="block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">PLEX TOKEN <span className="text-[#a7b0b0]">/ OPTIONAL UPDATE</span></span><input autoComplete="current-password" type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder={data.hasToken ? 'Token is stored — enter to replace' : 'Paste token when ready'} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-3 text-[13px] outline-none" data-testid="input-plex-token" /></label><div className="mt-7 flex flex-wrap items-center gap-3"><button type="submit" disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-plex">{mutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} {mutation.isPending ? 'SAVING' : 'SAVE CONFIGURATION'}</button>{notice && <span className={`text-[11px] ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-plex-save">{notice}</span>}</div></form><section className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">TRUST READOUT</div><h2 className="archive-display mt-1 text-lg font-extrabold">What is known</h2><div className="mt-5 space-y-4 text-[12px]"><Readout label="Endpoint stored" value={data.configured ? 'YES' : 'NO'} tone={data.configured ? 'good' : 'warn'} /><Readout label="Token present" value={data.hasToken ? 'YES' : 'NO'} tone={data.hasToken ? 'good' : 'warn'} /><Readout label="Live connection" value="NOT CLAIMED" /></div><div className="mt-6 border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]">Saving details does not test or claim a live Plex connection.</div></section></div></>;
 }
 
-function Readout({ label, value, tone }: { label: string; value: string; tone: 'good' | 'warn' | 'neutral' }) {
-  return <div className="flex items-center justify-between border-b border-[#e7ecea] pb-3 last:border-0"><span className="text-[#728287]">{label}</span><span className={`archive-mono text-[10px] font-medium ${tone === 'good' ? 'text-[#39736e]' : tone === 'warn' ? 'text-[#a77517]' : 'text-[#8a9899]'}`}>{value}</span></div>;
-}
-
-const settingsGroups = [
-  { name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel'] },
-  { name: 'Downloads', icon: Download, fields: ['downloadDirectory'] },
-  { name: 'Archive', icon: Archive, fields: ['archiveDirectory'] },
-  { name: 'Plex', icon: PlaySquare, fields: [] },
-  { name: 'AI', icon: Sparkles, fields: [] },
-  { name: 'Local Model', icon: Cpu, fields: [] },
-  { name: 'OpenAI', icon: Zap, fields: [] },
-  { name: 'FFmpeg', icon: Terminal, fields: [] },
-  { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration'] },
-  { name: 'Network', icon: Network, fields: ['networkMode'] },
-  { name: 'Security', icon: ShieldCheck, fields: [] },
-  { name: 'Logging', icon: Terminal, fields: [] },
-];
-
+const settingsGroups = [{ name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel'] }, { name: 'Downloads', icon: Download, fields: ['downloadDirectory', 'temporaryDirectory', 'concurrentDownloads', 'maxRetries', 'bandwidthLimit'] }, { name: 'Archive', icon: Archive, fields: ['archiveDirectory', 'outputContainer', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'] }, { name: 'Plex', icon: PlaySquare, fields: [] }, { name: 'AI', icon: Sparkles, fields: [] }, { name: 'Local Model', icon: Cpu, fields: [] }, { name: 'OpenAI', icon: Zap, fields: [] }, { name: 'FFmpeg', icon: Terminal, fields: [] }, { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration', 'hardwareAccelerationMode'] }, { name: 'Network', icon: Network, fields: ['networkMode'] }, { name: 'Security', icon: ShieldCheck, fields: [] }, { name: 'Logging', icon: Terminal, fields: [] }];
 function SettingsPage() {
-  const queryClient = useQueryClient();
-  const { data, isLoading, isError, refetch } = useGetSettings();
-  const { data: dependencies } = useGetSystemDependencies();
-  const mutation = useUpdateSettings();
-  const [form, setForm] = useState<Partial<AppSettings>>({});
-  const [notice, setNotice] = useState('');
+  const queryClient = useQueryClient(); const { data, isLoading, isError, refetch } = useGetSettings(); const { data: dependencies } = useGetSystemDependencies(); const mutation = useUpdateSettings(); const [form, setForm] = useState<Partial<AppSettings>>({}); const [notice, setNotice] = useState('');
   useEffect(() => { if (data) setForm(data); }, [data]);
-  const update = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const save = () => {
-    setNotice('');
-    const payload: AppSettingsUpdate = { ...form };
-    mutation.mutate(
-      { data: payload },
-      {
-        onSuccess: (result) => {
-          setNotice('Settings saved to the local node.');
-          setForm(result);
-          queryClient.setQueryData(getGetSettingsQueryKey(), result);
-        },
-        onError: () => setNotice('Settings could not be saved. The local node did not accept the update.'),
-      },
-    );
-  };
+  const update = (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => setForm((current) => ({ ...current, [key]: value }));
+  const save = () => { setNotice(''); mutation.mutate({ data: form as AppSettingsUpdate }, { onSuccess: (result) => { setForm(result); setNotice('Settings saved to the local node.'); queryClient.setQueryData(getGetSettingsQueryKey(), result); }, onError: () => setNotice('Settings could not be saved. The local node did not accept the update.') }); };
   if (isLoading) return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Loading editable local preferences." /><Skeleton className="h-[520px]" /></>;
-  if (isError) return <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center text-center"><CloudOff size={26} className="mb-4 text-[#c85b51]" /><h1 className="archive-display text-2xl font-extrabold">Settings unavailable</h1><button onClick={() => refetch()} className="mt-5 border border-[var(--line)] bg-white px-4 py-2 text-[11px] font-bold" data-testid="button-retry-settings"><RefreshCw size={14} className="mr-2 inline" /> RETRY READ</button></div>;
-  return (
-    <>
-      <PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Persistent preferences for this local-first control room. Changes are sent to the real settings API." action={<div className="flex items-center gap-3">{notice && <span className="text-[11px] text-[#39736e]" data-testid="status-settings-save"><Check size={14} className="mr-1 inline" />{notice}</span>}<button onClick={save} disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] transition-transform hover:-translate-y-0.5 disabled:opacity-50" data-testid="button-save-settings"><Save size={14} /> {mutation.isPending ? 'SAVING' : 'SAVE CHANGES'}</button></div>} />
-      <div className="grid gap-5 xl:grid-cols-[1fr_260px]">
-        <div className="space-y-4">{settingsGroups.map(({ name, icon: Icon, fields }) => <SettingsGroup key={name} name={name} icon={Icon} fields={fields} form={form} update={update} />)}</div>
-        <aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL DEPENDENCIES</div><h2 className="archive-display mt-1 text-lg font-extrabold">Capability check</h2><div className="mt-5 space-y-3">{dependencies?.length ? dependencies.map((dep) => <div key={dep.name} className="flex items-center gap-3" data-testid={`row-dependency-${dep.name}`}><span className={`status-dot ${dep.status === 'available' ? 'ready' : dep.status === 'missing' ? 'error' : 'warning'}`} /><div className="min-w-0"><div className="truncate text-[11px] font-semibold text-[#53656b]">{dep.name}</div><div className="archive-mono text-[9px] text-[#96a3a5]">{dep.version ?? dep.status}</div></div></div>) : <p className="text-[11px] leading-5 text-[#879599]">No dependency data returned yet.</p>}</div><div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[10px] leading-5 text-[#879599]">Only values represented by the API are editable. Future sections stay visibly reserved.</div></aside>
-      </div>
-    </>
-  );
+  if (isError || !data) return <ErrorState title="Settings unavailable" message="Preferences could not be read from the local node." onRetry={() => refetch()} testId="button-retry-settings" />;
+  return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Persistent preferences for the local-first control room. Changes are sent to the real settings API." action={<div className="flex items-center gap-3">{notice && <span className={`hidden text-[11px] sm:inline ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save">{notice}</span>}<button onClick={save} disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-settings"><Save size={14} /> {mutation.isPending ? 'SAVING' : 'SAVE CHANGES'}</button></div>} />{notice && <div className={`mb-4 text-[11px] sm:hidden ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save-mobile">{notice}</div>}<div className="grid gap-5 xl:grid-cols-[1fr_280px]"><div className="space-y-4">{settingsGroups.map(({ name, icon: Icon, fields }) => <SettingsGroup key={name} name={name} icon={Icon} fields={fields} form={form} update={update} />)}</div><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL DEPENDENCIES</div><h2 className="archive-display mt-1 text-lg font-extrabold">Capability check</h2><div className="mt-5 space-y-3">{dependencies?.length ? dependencies.map((dep) => <div key={dep.name} className="flex items-center gap-3" data-testid={`row-dependency-${dep.name}`}><span className={`status-dot ${dep.status === 'available' ? 'ready' : dep.status === 'missing' ? 'error' : 'warning'}`} /><div className="min-w-0"><div className="truncate text-[11px] font-semibold text-[#53656b]">{dep.name}</div><div className="archive-mono text-[9px] text-[#96a3a5]">{dep.version ?? dep.status}</div></div></div>) : <p className="text-[11px] leading-5 text-[#879599]">No dependency data returned yet.</p>}</div><div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[10px] leading-5 text-[#879599]">Only values represented by the API are editable. Future sections stay visibly reserved.</div></aside></div></>;
+}
+function SettingsGroup({ name, icon: Icon, fields, form, update }: { name: string; icon: typeof SlidersHorizontal; fields: string[]; form: Partial<AppSettings>; update: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => void }) {
+  const [open, setOpen] = useState(fields.length > 0); const slug = name.toLowerCase().replace(/\s/g, '-');
+  return <section className={`archive-panel overflow-hidden ${fields.length ? '' : 'opacity-75'}`} data-testid={`settings-group-${slug}`}><button onClick={() => setOpen((value) => !value)} className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-white/50" data-testid={`button-toggle-settings-${slug}`}><span className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center bg-[#e8efed] text-[#4e9690]"><Icon size={15} /></span><span className="archive-display text-[14px] font-extrabold text-[#354851]">{name}</span>{fields.length === 0 && <span className="archive-mono text-[8px] tracking-[.1em] text-[#9ba6a7]">RESERVED</span>}</span><ChevronRight size={16} className={`text-[#9aa7a7] transition-transform ${open ? 'rotate-90' : ''}`} /></button>{open && fields.length > 0 && <div className="grid gap-4 border-t border-[#e3e8e7]/60 px-5 py-5 md:grid-cols-2">{fields.map((field) => <SettingField key={field} field={field} form={form} update={update} />)}</div>}</section>;
+}
+function SettingField({ field, form, update }: { field: string; form: Partial<AppSettings>; update: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => void }) {
+  const key = field as keyof AppSettings; const value = form[key];
+  if (field === 'mockMode' || field === 'hardwareAcceleration') return <label className="flex items-center justify-between gap-4 border border-[#e2e8e6] bg-white/50 px-3 py-3"><span><span className="block text-[11px] font-semibold text-[#53656b]">{field === 'mockMode' ? 'Mock mode' : 'Hardware acceleration'}</span><span className="mt-1 block text-[10px] text-[#94a1a3]">{field === 'mockMode' ? 'Use backend-provided demo data' : 'Allow accelerated media work'}</span></span><input type="checkbox" checked={Boolean(value)} onChange={(event) => update(key, event.target.checked)} className="h-4 w-4 accent-[#4e9690]" data-testid={`input-setting-${field}`} /></label>;
+  const selectOptions: Record<string, string[]> = { logLevel: ['info', 'debug', 'warn', 'error'], networkMode: ['offline', 'local_only', 'allow_network'], hardwareAccelerationMode: ['auto', 'disabled'], outputContainer: ['mp4', 'mkv', 'webm'] };
+  const labels: Record<string, string> = { dataDirectory: 'DATA DIRECTORY', downloadDirectory: 'DOWNLOAD DIRECTORY', archiveDirectory: 'ARCHIVE DIRECTORY', temporaryDirectory: 'TEMPORARY DIRECTORY', concurrentDownloads: 'CONCURRENT DOWNLOADS', maxRetries: 'MAX RETRIES', bandwidthLimit: 'BANDWIDTH LIMIT (BYTES / SEC)', inspectionCacheMinutes: 'INSPECTION CACHE (MINUTES)', warningFreePercent: 'WARNING FREE (%)', criticalFreePercent: 'CRITICAL FREE (%)' };
+  if (selectOptions[field]) return <label><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">{labels[field] ?? field.toUpperCase()}</span><select value={String(value ?? '')} onChange={(event) => update(key, event.target.value)} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2.5 text-[12px] outline-none" data-testid={`select-setting-${field}`}>{selectOptions[field].map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
+  const numeric = ['concurrentDownloads', 'maxRetries', 'bandwidthLimit', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'].includes(field);
+  return <label><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">{labels[field] ?? field.toUpperCase()}</span><input type={numeric ? 'number' : 'text'} min={numeric ? 0 : undefined} value={String(value ?? '')} onChange={(event) => update(key, numeric ? Number(event.target.value) : event.target.value)} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2.5 text-[12px] outline-none" data-testid={`input-setting-${field}`} /></label>;
 }
 
-function SettingsGroup({ name, icon: Icon, fields, form, update }: { name: string; icon: typeof SlidersHorizontal; fields: string[]; form: Partial<AppSettings>; update: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void }) {
-  const [open, setOpen] = useState(fields.length > 0);
-  return <section className={`archive-panel overflow-hidden ${fields.length ? '' : 'opacity-75'}`} data-testid={`settings-group-${name.toLowerCase().replace(/\s/g, '-')}`}><button onClick={() => setOpen((value) => !value)} className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-white/50" data-testid={`button-toggle-settings-${name.toLowerCase().replace(/\s/g, '-')}`}><span className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center bg-[#e8efed] text-[#4e9690]"><Icon size={15} /></span><span className="archive-display text-[14px] font-extrabold text-[#354851]">{name}</span>{fields.length === 0 && <span className="archive-mono text-[8px] tracking-[.1em] text-[#9ba6a7]">RESERVED</span>}</span><ChevronRight size={16} className={`text-[#9aa7a7] transition-transform ${open ? 'rotate-90' : ''}`} /></button>{open && fields.length > 0 && <div className="grid gap-4 border-t border-[#e4eae8] bg-[#fbfcfa]/60 px-5 py-5 md:grid-cols-2">{fields.map((field) => <SettingField key={field} field={field} form={form} update={update} />)}</div>}</section>;
-}
-
-function SettingField({ field, form, update }: { field: string; form: Partial<AppSettings>; update: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void }) {
-  if (field === 'mockMode' || field === 'hardwareAcceleration') return <label className="flex items-center justify-between gap-4 border border-[#e2e8e6] bg-white/50 px-3 py-3"><span><span className="block text-[11px] font-semibold text-[#53656b]">{field === 'mockMode' ? 'Mock mode' : 'Hardware acceleration'}</span><span className="mt-1 block text-[10px] text-[#94a1a3]">{field === 'mockMode' ? 'Use simulated local data' : 'Allow accelerated media work'}</span></span><input type="checkbox" checked={Boolean(form[field as keyof AppSettings])} onChange={(event) => update(field as keyof AppSettings, event.target.checked as never)} className="h-4 w-4 accent-[#4e9690]" data-testid={`input-setting-${field}`} /></label>;
-  if (field === 'logLevel' || field === 'networkMode') return <label><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">{field === 'logLevel' ? 'LOG LEVEL' : 'NETWORK MODE'}</span><select value={String(form[field as keyof AppSettings] ?? '')} onChange={(event) => update(field as keyof AppSettings, event.target.value as never)} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2.5 text-[12px] outline-none focus:border-[#4e9690]" data-testid={`select-setting-${field}`}>{field === 'logLevel' ? <><option value="info">info</option><option value="debug">debug</option><option value="warn">warn</option><option value="error">error</option></> : <><option value="offline">offline</option><option value="local_only">local_only</option><option value="allow_network">allow_network</option></>}</select></label>;
-  const labels: Record<string, string> = { dataDirectory: 'DATA DIRECTORY', downloadDirectory: 'DOWNLOAD DIRECTORY', archiveDirectory: 'ARCHIVE DIRECTORY' };
-  return <label><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">{labels[field] ?? field.toUpperCase()}</span><input value={String(form[field as keyof AppSettings] ?? '')} onChange={(event) => update(field as keyof AppSettings, event.target.value as never)} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2.5 text-[12px] outline-none focus:border-[#4e9690]" data-testid={`input-setting-${field}`} /></label>;
-}
-
-function Router() {
-  const [location] = useLocation();
-  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue"><PlaceholderPage section="QUEUE" /></Route><Route path="/archive"><PlaceholderPage section="ARCHIVE" /></Route><Route path="/plex" component={PlexPage} /><Route path="/sources"><PlaceholderPage section="SOURCES" /></Route><Route path="/history"><PlaceholderPage section="HISTORY" /></Route><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
-}
-
-function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
-}
-
+function Router() { const [location] = useLocation(); return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue" component={QueuePage} /><Route path="/archive"><PlaceholderPage section="ARCHIVE" /></Route><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>; }
+function App() { return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>; }
 export default App;

@@ -5,15 +5,47 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AppSettingsHardwareAccelerationMode } from './appSettingsHardwareAccelerationMode';
 import type { AppSettingsLogLevel } from './appSettingsLogLevel';
 import type { AppSettingsNetworkMode } from './appSettingsNetworkMode';
+import type { AppSettingsOutputContainer } from './appSettingsOutputContainer';
 
 export interface AppSettings {
   mockMode: boolean;
   dataDirectory: string;
   downloadDirectory: string;
   archiveDirectory: string;
+  temporaryDirectory: string;
   logLevel: AppSettingsLogLevel;
   hardwareAcceleration: boolean;
+  hardwareAccelerationMode: AppSettingsHardwareAccelerationMode;
   networkMode: AppSettingsNetworkMode;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  concurrentDownloads: number;
+  /**
+     * @minimum 0
+     * @maximum 10
+     */
+  maxRetries: number;
+  /** @minimum 0 */
+  bandwidthLimit: number;
+  outputContainer: AppSettingsOutputContainer;
+  /**
+     * @minimum 1
+     * @maximum 120
+     */
+  inspectionCacheMinutes: number;
+  /**
+     * @minimum 1
+     * @maximum 50
+     */
+  warningFreePercent: number;
+  /**
+     * @minimum 1
+     * @maximum 25
+     */
+  criticalFreePercent: number;
 }

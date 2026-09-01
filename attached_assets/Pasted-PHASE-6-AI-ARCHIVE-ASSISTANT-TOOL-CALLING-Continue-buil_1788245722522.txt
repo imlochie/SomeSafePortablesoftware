@@ -1,0 +1,1190 @@
+PHASE 6: AI ARCHIVE ASSISTANT + TOOL CALLING
+
+Continue building ARCHIVE ASSISTANT from the existing Phase 1–5 implementation.
+
+IMPORTANT:
+
+Do NOT rebuild the application.
+
+Do NOT remove or replace working functionality.
+
+Do NOT break:
+
+- the existing UI
+- SQLite database
+- yt-dlp integration
+- FFmpeg integration
+- download engine
+- persistent queue
+- Plex integration
+- Plex synchronization
+- archive inventory
+- duplicate detection
+- quality comparison
+- upgrade detection
+
+This phase introduces the AI assistant.
+
+The assistant must operate through controlled application tools.
+
+The AI must NOT have arbitrary shell access.
+
+The AI must NOT have unrestricted filesystem access.
+
+The AI must NOT directly manipulate the database.
+
+The application remains the authority.
+
+==================================================
+CORE OBJECTIVE
+==================================================
+
+Create an AI assistant that understands the user's media archive and can interact with the application's existing systems.
+
+The assistant should be able to understand requests such as:
+
+"Do I already have this?"
+
+"Check this URL."
+
+"What's the best quality?"
+
+"Download the best version."
+
+"Is there a better version than what I already have?"
+
+"What's downloading right now?"
+
+"What did I download recently?"
+
+"Why did you choose that source?"
+
+"Show me the missing files."
+
+"Archive this."
+
+The assistant must retrieve real information through tools.
+
+It must never invent information.
+
+==================================================
+1. AI ABSTRACTION LAYER
+==================================================
+
+Create:
+
+AIProvider
+
+The interface must support:
+
+Local AI
+OpenAI
+
+Do NOT hardcode the rest of the application to one provider.
+
+Example conceptual interface:
+
+generateResponse()
+streamResponse()
+executeTool()
+getModelInfo()
+checkConnection()
+
+The assistant UI should not care which provider is being used.
+
+==================================================
+2. LOCAL AI PROVIDER
+==================================================
+
+Implement the first real AI provider using an Ollama-compatible local API.
+
+The user should be able to configure:
+
+Local AI enabled
+Local AI host
+Local model
+
+Default local host:
+
+http://localhost:11434
+
+Do not assume Ollama is installed.
+
+Detect whether the local endpoint is reachable.
+
+Show:
+
+LOCAL AI
+CONNECTED
+
+or:
+
+LOCAL AI
+NOT AVAILABLE
+
+If unavailable, explain how to configure it.
+
+Do not automatically install Ollama.
+
+==================================================
+3. MODEL DISCOVERY
+==================================================
+
+If the local provider is reachable:
+
+retrieve available models where supported.
+
+Display them in Settings.
+
+Allow the user to select the active model.
+
+The application must not assume a specific model name.
+
+Recommended initial target:
+
+3B–8B parameter quantized models
+
+because the primary machine has:
+
+16 GB RAM
+Intel Arc integrated graphics
+Intel Core Ultra 5 125H
+
+Do not require a huge model.
+
+==================================================
+4. ASSISTANT UI
+==================================================
+
+Make the ASSISTANT page fully functional.
+
+Create a modern conversational interface.
+
+Include:
+
+Conversation history
+Message input
+Send button
+Stop generation button
+Clear conversation
+Tool activity
+Current task indicator
+
+Input placeholder:
+
+"Paste a URL or tell me what you want to do..."
+
+Support:
+
+natural language
+URLs
+follow-up questions
+commands
+
+==================================================
+5. TOOL-CALLING ARCHITECTURE
+==================================================
+
+The AI must interact with the application through registered tools.
+
+Implement structured tool calling.
+
+The AI can request a tool.
+
+The backend executes the tool.
+
+The result is returned to the AI.
+
+The AI then continues reasoning.
+
+Conceptually:
+
+USER
+ ↓
+AI
+ ↓
+TOOL REQUEST
+ ↓
+APPLICATION
+ ↓
+REAL DATA
+ ↓
+AI
+ ↓
+USER
+
+Do not allow the AI to execute arbitrary JavaScript.
+
+Do not allow arbitrary shell commands.
+
+Do not allow arbitrary SQL.
+
+==================================================
+6. INITIAL AI TOOLS
+==================================================
+
+Expose the following tools.
+
+SOURCE TOOLS:
+
+inspect_url
+get_available_formats
+select_best_source
+
+ARCHIVE TOOLS:
+
+search_archive
+get_archive_item
+check_duplicate
+compare_quality
+check_upgrade
+get_archive_stats
+get_recent_archive_activity
+
+PLEX TOOLS:
+
+search_plex
+get_plex_item
+get_plex_library_stats
+get_plex_sync_status
+
+DOWNLOAD TOOLS:
+
+get_current_queue
+get_job_status
+create_download_job
+start_download_job
+pause_download_job
+resume_download_job
+cancel_download_job
+retry_download_job
+
+MEDIA TOOLS:
+
+inspect_local_file
+verify_media
+
+SYSTEM TOOLS:
+
+get_storage_status
+get_system_status
+get_settings
+
+==================================================
+7. TOOL PERMISSIONS
+==================================================
+
+Classify tools.
+
+READ-ONLY:
+
+inspect_url
+get_available_formats
+select_best_source
+search_archive
+get_archive_item
+check_duplicate
+compare_quality
+check_upgrade
+get_archive_stats
+get_recent_archive_activity
+search_plex
+get_plex_item
+get_plex_library_stats
+get_plex_sync_status
+get_current_queue
+get_job_status
+inspect_local_file
+verify_media
+get_storage_status
+get_system_status
+get_settings
+
+ACTION TOOLS:
+
+create_download_job
+start_download_job
+pause_download_job
+resume_download_job
+cancel_download_job
+retry_download_job
+
+The assistant must be able to use read-only tools freely.
+
+Action tools require appropriate confirmation rules.
+
+==================================================
+8. TOOL VALIDATION
+==================================================
+
+Every tool must have:
+
+strict input schema
+validation
+permission checks
+safe error handling
+
+Do not trust AI-generated parameters.
+
+Validate:
+
+URLs
+IDs
+job IDs
+file paths
+directories
+format IDs
+
+Never accept arbitrary filesystem paths from the AI.
+
+==================================================
+9. SYSTEM PROMPT
+==================================================
+
+Create an internal system prompt similar to:
+
+"You are Archive Assistant.
+
+You help the user manage a personal media archive.
+
+You have access to controlled tools.
+
+The application is the authority for archive state.
+
+Never invent information about Plex, downloads, files, sources, quality or archive contents.
+
+If information is needed, use the appropriate tool.
+
+Never claim that an action occurred unless the application confirms it.
+
+Prefer the highest-quality legitimate media source available.
+
+Do not treat m3u8 as automatically superior to every other protocol.
+
+Do not unnecessarily transcode media.
+
+Prefer stream copying and remuxing where appropriate.
+
+Respect existing archive files.
+
+Never overwrite an existing file without explicit user confirmation.
+
+Never delete existing archive media automatically.
+
+Never execute arbitrary commands.
+
+Never access files outside configured directories.
+
+Before meaningful destructive or irreversible actions, obtain user confirmation.
+
+Be concise but explain technical decisions when useful.
+
+If Plex is unavailable, say so.
+
+If the archive inventory may be stale, say so.
+
+If source information is unavailable, say so.
+
+Do not pretend to have information that was not retrieved.
+
+You are an archive operator using controlled tools, not an unrestricted shell."
+
+==================================================
+10. CONVERSATION MEMORY
+==================================================
+
+Store conversations in:
+
+AssistantConversation
+AssistantMessage
+
+Store:
+
+conversation ID
+role
+message
+timestamp
+tool call information
+tool results where appropriate
+
+Do not store secrets.
+
+Do not store entire media files.
+
+Do not permanently store expiring signed URLs unless necessary.
+
+==================================================
+11. CONTEXT MANAGEMENT
+==================================================
+
+Do NOT send the entire Plex library to the AI.
+
+Do NOT send the entire archive database to the AI.
+
+Do NOT send all download history to the AI.
+
+Instead:
+
+The AI uses retrieval tools.
+
+Example:
+
+User:
+"Do I have this?"
+
+AI:
+inspect_url()
+↓
+search_archive()
+↓
+compare result
+↓
+answer
+
+This keeps context small.
+
+==================================================
+12. URL-FIRST WORKFLOW
+==================================================
+
+If the user pastes a URL, automatically recognize that it may be a media source.
+
+For:
+
+"Check this"
+
+the assistant should:
+
+1. Inspect URL
+2. Retrieve metadata
+3. Search archive for matches
+4. Report findings
+
+Do NOT automatically download.
+
+==================================================
+13. "DO I HAVE THIS?" WORKFLOW
+==================================================
+
+For:
+
+"Do I already have this?"
+
+The assistant should:
+
+1. inspect source
+2. identify title/source ID where available
+3. search archive
+4. search Plex if needed
+5. compare candidates
+6. report match confidence
+7. report existing quality
+
+Example:
+
+"You already have this.
+
+Plex:
+Yes
+
+Current file:
+1080p H.264
+AAC
+4.2 GB
+
+The source also has a 2160p version."
+
+Do not invent technical details.
+
+==================================================
+14. "WHAT'S THE BEST QUALITY?" WORKFLOW
+==================================================
+
+For:
+
+"What's the best quality?"
+
+The assistant should:
+
+1. inspect source
+2. retrieve formats
+3. call deterministic quality selector
+4. explain recommendation
+
+The AI should NOT perform its own numerical quality calculation.
+
+The media engine remains authoritative.
+
+==================================================
+15. "DOWNLOAD THE BEST" WORKFLOW
+==================================================
+
+For:
+
+"Download the best version."
+
+The assistant should:
+
+1. inspect URL
+2. inspect formats
+3. select best source
+4. check archive
+5. check active jobs
+6. show recommendation
+7. ask for confirmation if appropriate
+8. create download job
+9. start it
+10. report job ID/status
+
+Example:
+
+"I found a 2160p HLS source.
+
+You currently have a 1080p copy.
+
+This appears to be a meaningful quality upgrade.
+
+Ready to queue the 2160p version?"
+
+Buttons:
+
+[Download]
+[Cancel]
+
+Do not silently overwrite the existing file.
+
+==================================================
+16. "ARCHIVE THIS" WORKFLOW
+==================================================
+
+For:
+
+"Archive this."
+
+The assistant should understand the complete workflow.
+
+1. Inspect source
+2. Search archive
+3. Check duplicate
+4. Compare existing quality
+5. Select best source
+6. Determine destination
+7. Present proposed action
+8. Ask for confirmation where appropriate
+9. Create download job
+10. Start download
+11. Monitor job
+12. Verify media
+13. Move into configured archive destination
+14. Update archive records
+15. Trigger Plex scan when configured
+16. Verify Plex appearance when practical
+17. Report completion
+
+Do not perform irreversible actions without appropriate confirmation.
+
+==================================================
+17. LIVE JOB AWARENESS
+==================================================
+
+The assistant must be able to answer:
+
+"What's downloading?"
+
+"What is currently processing?"
+
+"Is that file finished?"
+
+Use:
+
+get_current_queue()
+get_job_status()
+
+Do not guess status.
+
+==================================================
+18. BACKGROUND JOBS
+==================================================
+
+AI responses must not block the download engine.
+
+Example:
+
+Assistant:
+
+"I've queued the download.
+
+Job:
+Example Documentary
+
+2160p
+Status: DOWNLOADING
+Progress: 23%"
+
+The download continues independently.
+
+The user can leave the conversation.
+
+==================================================
+19. FOLLOW-UP QUESTIONS
+==================================================
+
+Maintain conversation context.
+
+Example:
+
+User:
+"Check this URL."
+
+Assistant:
+"Found a 2160p source. You already have a 1080p version."
+
+User:
+"How much bigger is it?"
+
+Assistant:
+Use the stored/current source and archive data to answer.
+
+User:
+"Do it."
+
+Assistant:
+Interpret "do it" as the previously discussed action only if the conversation context clearly identifies it.
+
+If ambiguous, ask.
+
+==================================================
+20. CONFIRMATION SYSTEM
+==================================================
+
+Create a confirmation layer.
+
+READ-ONLY actions:
+
+No confirmation needed.
+
+Examples:
+
+search archive
+inspect source
+compare quality
+
+DOWNLOAD actions:
+
+May require confirmation depending on settings/context.
+
+DESTRUCTIVE actions:
+
+Always require explicit confirmation.
+
+Examples:
+
+delete
+overwrite
+replace
+remove
+
+Do not implement automatic deletion in this phase.
+
+==================================================
+21. TOOL ACTIVITY UI
+==================================================
+
+Show discreet activity while tools run.
+
+Example:
+
+🤖 Inspecting source...
+✓ Found 18 formats
+
+🤖 Checking archive...
+✓ Existing 1080p copy found
+
+🤖 Comparing quality...
+✓ 2160p upgrade available
+
+Then show the assistant's explanation.
+
+Do not expose raw tool payloads to normal users.
+
+Provide:
+
+[Technical details]
+
+for debugging.
+
+==================================================
+22. STREAMING RESPONSES
+==================================================
+
+If the selected AI provider supports streaming:
+
+stream the assistant response into the UI.
+
+Display:
+
+typing/generation state
+
+Allow:
+
+[Stop]
+
+Do not interrupt active download jobs when stopping AI generation.
+
+Stopping AI generation only stops the AI response.
+
+==================================================
+23. PROVIDER SWITCHING
+==================================================
+
+Settings should support:
+
+AI Provider:
+
+Local
+OpenAI
+
+For this phase:
+
+IMPLEMENT LOCAL AI FIRST.
+
+Create the OpenAI provider interface but do not require it to function yet.
+
+The application must continue working without an OpenAI API key.
+
+==================================================
+24. LOCAL AI FAILURE
+==================================================
+
+If local AI is unavailable:
+
+Do not crash.
+
+Show:
+
+"Local AI is unavailable."
+
+Offer:
+
+Check Settings
+Check local AI connection
+
+The rest of the application must remain usable.
+
+The user must still be able to inspect sources and manage downloads manually.
+
+==================================================
+25. AI COST CONTROL
+==================================================
+
+The local provider should not incur cloud API charges.
+
+Do not make any external API calls from the local AI provider except to the configured local endpoint.
+
+==================================================
+26. AI TOOL LOOP SAFETY
+==================================================
+
+Protect against runaway tool loops.
+
+Set:
+
+maximum tool calls per user request
+
+Default:
+
+10
+
+If the assistant reaches the limit:
+
+stop and explain that the operation requires another step.
+
+Prevent recursive tool execution.
+
+Do not allow a tool result to automatically trigger unlimited additional tools.
+
+==================================================
+27. TIMEOUTS
+==================================================
+
+Tool calls must have sensible timeouts.
+
+For example:
+
+source inspection:
+reasonable network timeout
+
+archive search:
+short timeout
+
+Plex request:
+reasonable timeout
+
+Do not let one broken source freeze the assistant indefinitely.
+
+==================================================
+28. TOOL ERROR HANDLING
+==================================================
+
+If a tool fails:
+
+return structured error information to the AI.
+
+Example:
+
+{
+  success: false,
+  errorCode: "PLEX_UNAVAILABLE",
+  message: "Plex is currently unreachable."
+}
+
+The assistant should explain the actual problem.
+
+Do not fabricate a result.
+
+==================================================
+29. SECURITY
+==================================================
+
+The AI must never receive:
+
+Plex token
+OpenAI API key
+filesystem credentials
+
+unless a future provider absolutely requires it internally.
+
+The AI should receive tool results, not secrets.
+
+Never expose credentials through conversation history.
+
+Never expose credentials through frontend APIs.
+
+==================================================
+30. PRIVACY
+==================================================
+
+Local-first behavior.
+
+The local AI receives local archive information.
+
+No cloud upload of:
+
+media files
+entire Plex database
+entire filesystem
+credentials
+
+The OpenAI provider, when implemented later, should receive only relevant retrieved context.
+
+==================================================
+31. ASSISTANT QUICK ACTIONS
+==================================================
+
+Add optional buttons above/below the input:
+
+CHECK URL
+DOWNLOAD BEST
+SEARCH ARCHIVE
+CURRENT QUEUE
+ARCHIVE STATUS
+
+Clicking them should create appropriate structured assistant requests.
+
+==================================================
+32. ASSISTANT HOME EXPERIENCE
+==================================================
+
+When the assistant opens and there is no conversation:
+
+Show:
+
+ARCHIVE ASSISTANT
+
+"Your archive is connected."
+
+Then useful current state:
+
+Plex:
+Connected
+
+Archive:
+X items
+
+Queue:
+X active
+
+Processing:
+X
+
+Potential upgrades:
+X
+
+Recent activity:
+X
+
+Provide example prompts:
+
+"Do I have this?"
+"Check this URL."
+"What's downloading?"
+"Find potential upgrades."
+"Archive this."
+
+All numbers must come from real application data.
+
+==================================================
+33. ARCHIVE-AWARE RESPONSES
+==================================================
+
+The assistant should be concise.
+
+Example:
+
+User:
+"Do I have 4 Your Eyez Only?"
+
+Assistant:
+
+"Yes. Plex has it.
+
+2016
+1080p
+H.264
+AAC
+1 file
+
+I don't see a higher-quality candidate currently recorded."
+
+If source inspection reveals a higher-quality source:
+
+"You already have the 1080p version.
+
+The source currently offers 2160p.
+
+That's a potential upgrade."
+
+==================================================
+34. SOURCE-AWARE RESPONSES
+==================================================
+
+Example:
+
+User:
+"What did you choose?"
+
+Assistant:
+
+"I selected 2160p HLS because it is the highest-quality practical source returned by the media engine and can be processed without unnecessary transcoding."
+
+Only state facts returned by tools.
+
+==================================================
+35. NO-HALLUCINATION RULE
+==================================================
+
+This is critical.
+
+The assistant must never say:
+
+"I found..."
+
+unless a tool actually found it.
+
+It must never say:
+
+"Your Plex library contains..."
+
+unless Plex/archive tools returned that information.
+
+It must never say:
+
+"The download is complete..."
+
+unless the job status says COMPLETE.
+
+It must never say:
+
+"The file is verified..."
+
+unless verification succeeded.
+
+==================================================
+36. DATABASE
+==================================================
+
+Use the existing:
+
+AssistantConversation
+AssistantMessage
+
+Add models if necessary for:
+
+ToolCall
+ToolResult
+
+Keep database records compact.
+
+Do not store giant raw tool outputs unnecessarily.
+
+==================================================
+37. API
+==================================================
+
+Create:
+
+POST /api/assistant/chat
+GET /api/assistant/conversations
+GET /api/assistant/conversations/:id
+DELETE /api/assistant/conversations/:id
+
+Use streaming if supported.
+
+All requests must be validated.
+
+==================================================
+38. TESTING
+==================================================
+
+Create tests for:
+
+AI provider abstraction
+local provider connection
+model discovery
+tool registration
+tool schema validation
+tool permission validation
+tool execution
+tool error handling
+tool-call limits
+conversation persistence
+context retrieval
+confirmation handling
+URL workflow
+archive workflow
+download workflow
+queue workflow
+Plex lookup workflow
+quality comparison workflow
+AI hallucination safeguards
+
+Mock the local AI provider.
+
+Do not require a running AI model for unit tests.
+
+==================================================
+39. MOCK AI MODE
+==================================================
+
+Preserve application demo mode.
+
+Add mock assistant behavior.
+
+Example:
+
+User:
+"Do I have this?"
+
+Mock assistant calls simulated:
+
+inspect_url
+search_archive
+compare_quality
+
+and produces a realistic response.
+
+Clearly display:
+
+DEMO MODE
+
+==================================================
+40. PERFORMANCE
+==================================================
+
+The AI must not cause the entire archive to be loaded into memory.
+
+Use tool-based retrieval.
+
+Do not send thousands of Plex records into the model.
+
+Keep tool results concise and relevant.
+
+==================================================
+41. LOGGING
+==================================================
+
+Log:
+
+assistant request
+tool invoked
+tool success/failure
+assistant response
+confirmation request
+
+Do not log:
+
+API keys
+Plex tokens
+credentials
+
+==================================================
+42. DO NOT IMPLEMENT YET
+==================================================
+
+Do NOT implement the OpenAI provider as a fully working provider yet.
+
+Do NOT implement autonomous background AI.
+
+Do NOT implement autonomous source discovery across the web.
+
+Do NOT implement automatic deletion.
+
+Do NOT implement automatic archive replacement.
+
+Do NOT allow the AI to execute arbitrary commands.
+
+Do NOT allow the AI to make uncontrolled filesystem changes.
+
+==================================================
+43. FINAL VERIFICATION
+==================================================
+
+After implementation:
+
+1. Run all tests.
+2. Start the application.
+3. Verify Phase 1 works.
+4. Verify Phase 2 works.
+5. Verify Phase 3 works.
+6. Verify Phase 4 works.
+7. Verify Phase 5 works.
+8. Verify local AI detection.
+9. Verify model discovery where available.
+10. Verify assistant UI.
+11. Verify tool calling with mocked AI.
+12. Verify archive lookup.
+13. Verify Plex lookup.
+14. Verify source inspection.
+15. Verify quality comparison.
+16. Verify queue awareness.
+17. Verify confirmation handling.
+18. Verify conversation persistence.
+19. Verify tool-call limits.
+20. Verify secrets are never exposed.
+21. Verify the application still works when local AI is unavailable.
+
+Do not claim live local AI functionality unless it has actually been tested.
+
+At the end report:
+
+IMPLEMENTED
+TESTED
+TEST RESULTS
+LIVE AI TEST RESULTS
+NOT YET IMPLEMENTED
+KNOWN LIMITATIONS
+HOW TO RUN
+
+Do not automatically proceed to Phase 7.
+
+Stop after Phase 6 is working.

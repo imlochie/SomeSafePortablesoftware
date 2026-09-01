@@ -23,7 +23,16 @@ import type {
   AppSettings,
   AppSettingsUpdate,
   DependencyStatus,
+  DownloadJob,
+  DownloadJobInput,
+  DownloadPreparationInput,
+  DownloadSpecification,
+  ErrorResponse,
   HealthStatus,
+  LocalMediaInspectInput,
+  LocalMediaInspection,
+  MediaInspectInput,
+  MediaInspection,
   PlexConfig,
   PlexConfigUpdate,
   SystemEvent,
@@ -660,5 +669,946 @@ export const useUpdatePlexConfig = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdatePlexConfigMutationOptions(options));
+    }
+
+export const getInspectMediaSourceUrl = () => {
+
+
+
+
+  return `/api/media/inspect`
+}
+
+/**
+ * @summary Inspect a media URL without downloading it
+ */
+export const inspectMediaSource = async (mediaInspectInput: MediaInspectInput, options?: Parameters<typeof customFetch>[1]): Promise<MediaInspection> => {
+
+  return customFetch<MediaInspection>(getInspectMediaSourceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mediaInspectInput)
+  }
+);}
+
+
+
+
+
+export const getInspectMediaSourceMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inspectMediaSource>>, TError,{data: BodyType<MediaInspectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof inspectMediaSource>>, TError,{data: BodyType<MediaInspectInput>}, TContext> => {
+
+const mutationKey = ['inspectMediaSource'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof inspectMediaSource>>, {data: BodyType<MediaInspectInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  inspectMediaSource(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InspectMediaSourceMutationResult = NonNullable<Awaited<ReturnType<typeof inspectMediaSource>>>
+    export type InspectMediaSourceMutationBody = BodyType<MediaInspectInput>
+    export type InspectMediaSourceMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Inspect a media URL without downloading it
+ */
+export const useInspectMediaSource = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inspectMediaSource>>, TError,{data: BodyType<MediaInspectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof inspectMediaSource>>,
+        TError,
+        {data: BodyType<MediaInspectInput>},
+        TContext
+      > => {
+      return useMutation(getInspectMediaSourceMutationOptions(options));
+    }
+
+export const getInspectLocalMediaUrl = () => {
+
+
+
+
+  return `/api/media/local-inspect`
+}
+
+/**
+ * @summary Inspect a local media file with FFprobe
+ */
+export const inspectLocalMedia = async (localMediaInspectInput: LocalMediaInspectInput, options?: Parameters<typeof customFetch>[1]): Promise<LocalMediaInspection> => {
+
+  return customFetch<LocalMediaInspection>(getInspectLocalMediaUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(localMediaInspectInput)
+  }
+);}
+
+
+
+
+
+export const getInspectLocalMediaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inspectLocalMedia>>, TError,{data: BodyType<LocalMediaInspectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof inspectLocalMedia>>, TError,{data: BodyType<LocalMediaInspectInput>}, TContext> => {
+
+const mutationKey = ['inspectLocalMedia'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof inspectLocalMedia>>, {data: BodyType<LocalMediaInspectInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  inspectLocalMedia(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InspectLocalMediaMutationResult = NonNullable<Awaited<ReturnType<typeof inspectLocalMedia>>>
+    export type InspectLocalMediaMutationBody = BodyType<LocalMediaInspectInput>
+    export type InspectLocalMediaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Inspect a local media file with FFprobe
+ */
+export const useInspectLocalMedia = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inspectLocalMedia>>, TError,{data: BodyType<LocalMediaInspectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof inspectLocalMedia>>,
+        TError,
+        {data: BodyType<LocalMediaInspectInput>},
+        TContext
+      > => {
+      return useMutation(getInspectLocalMediaMutationOptions(options));
+    }
+
+export const getPrepareDownloadUrl = () => {
+
+
+
+
+  return `/api/media/prepare-download`
+}
+
+/**
+ * @summary Create a validated download specification without starting a job
+ */
+export const prepareDownload = async (downloadPreparationInput: DownloadPreparationInput, options?: Parameters<typeof customFetch>[1]): Promise<DownloadSpecification> => {
+
+  return customFetch<DownloadSpecification>(getPrepareDownloadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(downloadPreparationInput)
+  }
+);}
+
+
+
+
+
+export const getPrepareDownloadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prepareDownload>>, TError,{data: BodyType<DownloadPreparationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof prepareDownload>>, TError,{data: BodyType<DownloadPreparationInput>}, TContext> => {
+
+const mutationKey = ['prepareDownload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof prepareDownload>>, {data: BodyType<DownloadPreparationInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  prepareDownload(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PrepareDownloadMutationResult = NonNullable<Awaited<ReturnType<typeof prepareDownload>>>
+    export type PrepareDownloadMutationBody = BodyType<DownloadPreparationInput>
+    export type PrepareDownloadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a validated download specification without starting a job
+ */
+export const usePrepareDownload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prepareDownload>>, TError,{data: BodyType<DownloadPreparationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof prepareDownload>>,
+        TError,
+        {data: BodyType<DownloadPreparationInput>},
+        TContext
+      > => {
+      return useMutation(getPrepareDownloadMutationOptions(options));
+    }
+
+export const getGetDownloadsUrl = () => {
+
+
+
+
+  return `/api/downloads`
+}
+
+/**
+ * @summary List persistent download jobs
+ */
+export const getDownloads = async ( options?: Parameters<typeof customFetch>[1]): Promise<DownloadJob[]> => {
+
+  return customFetch<DownloadJob[]>(getGetDownloadsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDownloadsQueryKey = () => {
+    return [
+    `/api/downloads`
+    ] as const;
+    }
+
+
+export const getGetDownloadsQueryOptions = <TData = Awaited<ReturnType<typeof getDownloads>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDownloads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDownloadsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDownloads>>> = ({ signal }) => getDownloads({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDownloads>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDownloadsQueryResult = NonNullable<Awaited<ReturnType<typeof getDownloads>>>
+export type GetDownloadsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List persistent download jobs
+ */
+
+export function useGetDownloads<TData = Awaited<ReturnType<typeof getDownloads>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDownloads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDownloadsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateDownloadUrl = () => {
+
+
+
+
+  return `/api/downloads`
+}
+
+/**
+ * @summary Create a persistent download job
+ */
+export const createDownload = async (downloadJobInput: DownloadJobInput, options?: Parameters<typeof customFetch>[1]): Promise<DownloadJob> => {
+
+  return customFetch<DownloadJob>(getCreateDownloadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(downloadJobInput)
+  }
+);}
+
+
+
+
+
+export const getCreateDownloadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDownload>>, TError,{data: BodyType<DownloadJobInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDownload>>, TError,{data: BodyType<DownloadJobInput>}, TContext> => {
+
+const mutationKey = ['createDownload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDownload>>, {data: BodyType<DownloadJobInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDownload(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDownloadMutationResult = NonNullable<Awaited<ReturnType<typeof createDownload>>>
+    export type CreateDownloadMutationBody = BodyType<DownloadJobInput>
+    export type CreateDownloadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a persistent download job
+ */
+export const useCreateDownload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDownload>>, TError,{data: BodyType<DownloadJobInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDownload>>,
+        TError,
+        {data: BodyType<DownloadJobInput>},
+        TContext
+      > => {
+      return useMutation(getCreateDownloadMutationOptions(options));
+    }
+
+export const getStreamDownloadEventsUrl = () => {
+
+
+
+
+  return `/api/downloads/events`
+}
+
+/**
+ * @summary Stream download and processing updates
+ */
+export const streamDownloadEvents = async ( options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getStreamDownloadEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getStreamDownloadEventsQueryKey = () => {
+    return [
+    `/api/downloads/events`
+    ] as const;
+    }
+
+
+export const getStreamDownloadEventsQueryOptions = <TData = Awaited<ReturnType<typeof streamDownloadEvents>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamDownloadEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStreamDownloadEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof streamDownloadEvents>>> = ({ signal }) => streamDownloadEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof streamDownloadEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type StreamDownloadEventsQueryResult = NonNullable<Awaited<ReturnType<typeof streamDownloadEvents>>>
+export type StreamDownloadEventsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Stream download and processing updates
+ */
+
+export function useStreamDownloadEvents<TData = Awaited<ReturnType<typeof streamDownloadEvents>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamDownloadEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getStreamDownloadEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetDownloadUrl = (id: number,) => {
+
+
+
+
+  return `/api/downloads/${id}`
+}
+
+/**
+ * @summary Get one download job
+ */
+export const getDownload = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<DownloadJob> => {
+
+  return customFetch<DownloadJob>(getGetDownloadUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDownloadQueryKey = (id: number,) => {
+    return [
+    `/api/downloads/${id}`
+    ] as const;
+    }
+
+
+export const getGetDownloadQueryOptions = <TData = Awaited<ReturnType<typeof getDownload>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDownload>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDownloadQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDownload>>> = ({ signal }) => getDownload(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDownload>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDownloadQueryResult = NonNullable<Awaited<ReturnType<typeof getDownload>>>
+export type GetDownloadQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get one download job
+ */
+
+export function useGetDownload<TData = Awaited<ReturnType<typeof getDownload>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDownload>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDownloadQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDeleteDownloadUrl = (id: number,) => {
+
+
+
+
+  return `/api/downloads/${id}`
+}
+
+/**
+ * @summary Delete a non-running download job
+ */
+export const deleteDownload = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteDownloadUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteDownloadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDownload>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteDownload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDownload>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteDownload(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDownloadMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDownload>>>
+
+    export type DeleteDownloadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a non-running download job
+ */
+export const useDeleteDownload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDownload>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteDownloadMutationOptions(options));
+    }
+
+export const getStartDownloadUrl = (id: number,) => {
+
+
+
+
+  return `/api/downloads/${id}/start`
+}
+
+/**
+ * @summary Start a queued or recoverable download job
+ */
+export const startDownload = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<DownloadJob> => {
+
+  return customFetch<DownloadJob>(getStartDownloadUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartDownloadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startDownload>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['startDownload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startDownload>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  startDownload(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartDownloadMutationResult = NonNullable<Awaited<ReturnType<typeof startDownload>>>
+
+    export type StartDownloadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Start a queued or recoverable download job
+ */
+export const useStartDownload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startDownload>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getStartDownloadMutationOptions(options));
+    }
+
+export const getPauseDownloadUrl = (id: number,) => {
+
+
+
+
+  return `/api/downloads/${id}/pause`
+}
+
+/**
+ * @summary Pause a running download where supported
+ */
+export const pauseDownload = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<DownloadJob> => {
+
+  return customFetch<DownloadJob>(getPauseDownloadUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPauseDownloadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof pauseDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof pauseDownload>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['pauseDownload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof pauseDownload>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  pauseDownload(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PauseDownloadMutationResult = NonNullable<Awaited<ReturnType<typeof pauseDownload>>>
+
+    export type PauseDownloadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Pause a running download where supported
+ */
+export const usePauseDownload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof pauseDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof pauseDownload>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getPauseDownloadMutationOptions(options));
+    }
+
+export const getResumeDownloadUrl = (id: number,) => {
+
+
+
+
+  return `/api/downloads/${id}/resume`
+}
+
+/**
+ * @summary Resume a paused or recoverable download
+ */
+export const resumeDownload = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<DownloadJob> => {
+
+  return customFetch<DownloadJob>(getResumeDownloadUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResumeDownloadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resumeDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resumeDownload>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['resumeDownload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resumeDownload>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  resumeDownload(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResumeDownloadMutationResult = NonNullable<Awaited<ReturnType<typeof resumeDownload>>>
+
+    export type ResumeDownloadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Resume a paused or recoverable download
+ */
+export const useResumeDownload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resumeDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resumeDownload>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getResumeDownloadMutationOptions(options));
+    }
+
+export const getCancelDownloadUrl = (id: number,) => {
+
+
+
+
+  return `/api/downloads/${id}/cancel`
+}
+
+/**
+ * @summary Cancel a running download
+ */
+export const cancelDownload = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<DownloadJob> => {
+
+  return customFetch<DownloadJob>(getCancelDownloadUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelDownloadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelDownload>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['cancelDownload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelDownload>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  cancelDownload(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelDownloadMutationResult = NonNullable<Awaited<ReturnType<typeof cancelDownload>>>
+
+    export type CancelDownloadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Cancel a running download
+ */
+export const useCancelDownload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelDownload>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getCancelDownloadMutationOptions(options));
+    }
+
+export const getRetryDownloadUrl = (id: number,) => {
+
+
+
+
+  return `/api/downloads/${id}/retry`
+}
+
+/**
+ * @summary Retry a failed download
+ */
+export const retryDownload = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<DownloadJob> => {
+
+  return customFetch<DownloadJob>(getRetryDownloadUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryDownloadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryDownload>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['retryDownload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryDownload>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  retryDownload(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryDownloadMutationResult = NonNullable<Awaited<ReturnType<typeof retryDownload>>>
+
+    export type RetryDownloadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Retry a failed download
+ */
+export const useRetryDownload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryDownload>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryDownload>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRetryDownloadMutationOptions(options));
     }
 
