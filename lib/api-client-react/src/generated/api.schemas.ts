@@ -259,9 +259,32 @@ export type PlexConfigStatus = typeof PlexConfigStatus[keyof typeof PlexConfigSt
 
 export const PlexConfigStatus = {
   not_configured: 'not_configured',
-  ready: 'ready',
+  configured: 'configured',
+  connection_failed: 'connection_failed',
   connected: 'connected',
-  error: 'error',
+  syncing: 'syncing',
+  synced: 'synced',
+  sync_error: 'sync_error',
+} as const;
+
+export type PlexConfigConnectionStatus = typeof PlexConfigConnectionStatus[keyof typeof PlexConfigConnectionStatus];
+
+
+export const PlexConfigConnectionStatus = {
+  not_configured: 'not_configured',
+  configured: 'configured',
+  connection_failed: 'connection_failed',
+  connected: 'connected',
+} as const;
+
+export type PlexConfigSyncStatus = typeof PlexConfigSyncStatus[keyof typeof PlexConfigSyncStatus];
+
+
+export const PlexConfigSyncStatus = {
+  idle: 'idle',
+  syncing: 'syncing',
+  synced: 'synced',
+  sync_error: 'sync_error',
 } as const;
 
 export interface PlexConfig {
@@ -269,11 +292,215 @@ export interface PlexConfig {
   configured: boolean;
   hasToken: boolean;
   status: PlexConfigStatus;
+  connectionStatus: PlexConfigConnectionStatus;
+  syncStatus: PlexConfigSyncStatus;
+  /** @nullable */
+  lastAttemptedAt: string | null;
+  /** @nullable */
+  lastSuccessfulSyncAt: string | null;
+  /** @nullable */
+  lastError: string | null;
+  /** @nullable */
+  serverName: string | null;
+  /** @minimum 0 */
+  libraryCount: number;
+  /** @minimum 0 */
+  itemCount: number;
+  /** @minimum 0 */
+  mediaCount: number;
 }
 
 export interface PlexConfigUpdate {
   serverUrl?: string;
   token?: string;
+}
+
+export interface PlexLibrary {
+  id: number;
+  key: string;
+  name: string;
+  type: string;
+  serverUrl: string;
+  /** @minimum 0 */
+  itemCount: number;
+  /** @nullable */
+  lastSyncedAt: string | null;
+  syncStatus: string;
+  /** @nullable */
+  syncError: string | null;
+}
+
+export interface PlexInventoryItem {
+  id: number;
+  libraryId: number;
+  libraryName: string;
+  ratingKey: string;
+  title: string;
+  itemType: string;
+  /** @nullable */
+  year: number | null;
+  thumbPathAvailable: boolean;
+  /** @nullable */
+  addedAt: string | null;
+  /** @nullable */
+  updatedAt: string | null;
+  /** @minimum 0 */
+  mediaCount: number;
+  /** @minimum 0 */
+  partCount: number;
+}
+
+export interface PlexInventory {
+  libraries: PlexLibrary[];
+  items: PlexInventoryItem[];
+}
+
+export type ArchiveScanStatus = typeof ArchiveScanStatus[keyof typeof ArchiveScanStatus];
+
+
+export const ArchiveScanStatus = {
+  not_scanned: 'not_scanned',
+  scanning: 'scanning',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export interface ArchiveScan {
+  status: ArchiveScanStatus;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  lastError: string | null;
+  /** @minimum 0 */
+  scannedFiles: number;
+  /** @minimum 0 */
+  activeFiles: number;
+  /** @minimum 0 */
+  failedFiles: number;
+  /** @minimum 0 */
+  duplicateCount: number;
+  /** @minimum 0 */
+  missingCount: number;
+  /** @minimum 0 */
+  qualityConflictCount: number;
+  /** @minimum 0 */
+  plexOnlyCount: number;
+  /** @minimum 0 */
+  localOnlyCount: number;
+}
+
+export interface ArchiveInventorySummary {
+  /** @minimum 0 */
+  activeFiles: number;
+  /** @minimum 0 */
+  failedFiles: number;
+  /** @minimum 0 */
+  duplicateCount: number;
+  /** @minimum 0 */
+  missingCount: number;
+  /** @minimum 0 */
+  qualityConflictCount: number;
+  /** @minimum 0 */
+  plexOnlyCount: number;
+  /** @minimum 0 */
+  localOnlyCount: number;
+}
+
+export interface ArchivePlexMatch {
+  ratingKey: string;
+  title: string;
+  /** @nullable */
+  year: number | null;
+  qualityDifferences: string[];
+}
+
+export interface ArchivePlexOnlyRecord {
+  ratingKey: string;
+  title: string;
+  itemType: string;
+  /** @nullable */
+  year: number | null;
+  qualitySummary: string;
+}
+
+export type ArchiveInventoryRecordScanStatus = typeof ArchiveInventoryRecordScanStatus[keyof typeof ArchiveInventoryRecordScanStatus];
+
+
+export const ArchiveInventoryRecordScanStatus = {
+  active: 'active',
+  missing: 'missing',
+  error: 'error',
+} as const;
+
+export type ArchiveInventoryRecordQualityStatus = typeof ArchiveInventoryRecordQualityStatus[keyof typeof ArchiveInventoryRecordQualityStatus];
+
+
+export const ArchiveInventoryRecordQualityStatus = {
+  best_local_version: 'best_local_version',
+  lower_quality_version: 'lower_quality_version',
+  higher_quality_available: 'higher_quality_available',
+  duplicate: 'duplicate',
+  plex_version_exists: 'plex_version_exists',
+  local_only: 'local_only',
+  file_missing: 'file_missing',
+  needs_review: 'needs_review',
+} as const;
+
+export interface ArchiveInventoryRecord {
+  id: number;
+  /** @nullable */
+  archiveItemId: number | null;
+  filename: string;
+  path: string;
+  relativePath: string;
+  /** @nullable */
+  sizeBytes: number | null;
+  /** @nullable */
+  checksum: string | null;
+  /** @nullable */
+  mediaType: string | null;
+  scanStatus: ArchiveInventoryRecordScanStatus;
+  /** @nullable */
+  errorMessage: string | null;
+  /** @nullable */
+  durationSeconds: number | null;
+  /** @nullable */
+  videoCodec: string | null;
+  /** @nullable */
+  audioCodec: string | null;
+  /** @nullable */
+  width: number | null;
+  /** @nullable */
+  height: number | null;
+  /** @nullable */
+  fps: number | null;
+  /** @nullable */
+  bitrate: number | null;
+  /** @nullable */
+  container: string | null;
+  /** @nullable */
+  dynamicRange: string | null;
+  /** @nullable */
+  audioChannels: number | null;
+  audioLanguages: string[];
+  subtitleLanguages: string[];
+  /** @nullable */
+  lastSeenAt: string | null;
+  qualityStatus: ArchiveInventoryRecordQualityStatus;
+  qualitySummary: string;
+  qualityDifferences: string[];
+  /** @nullable */
+  duplicateOfId: number | null;
+  plexMatch: ArchivePlexMatch | null;
+}
+
+export interface ArchiveInventory {
+  scan: ArchiveScan;
+  summary: ArchiveInventorySummary;
+  records: ArchiveInventoryRecord[];
+  plexOnly: ArchivePlexOnlyRecord[];
 }
 
 export interface MediaInspectInput {
@@ -386,6 +613,7 @@ export interface LocalMediaInspection {
   durationSeconds: number | null;
   videoStreams: number;
   audioStreams: number;
+  subtitleStreams: number;
   /** @nullable */
   width: number | null;
   /** @nullable */
@@ -396,6 +624,10 @@ export interface LocalMediaInspection {
   videoCodec: string | null;
   /** @nullable */
   audioCodec: string | null;
+  /** @nullable */
+  audioChannels: number | null;
+  audioLanguages: string[];
+  subtitleLanguages: string[];
   /** @nullable */
   bitrate: number | null;
   /** @nullable */

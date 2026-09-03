@@ -5,6 +5,7 @@ import settingsRouter from "./settings";
 import plexRouter from "./plex";
 import mediaRouter from "./media";
 import downloadsRouter from "./downloads";
+import archiveRouter from "./archive";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(settingsRouter);
 router.use(plexRouter);
 router.use(mediaRouter);
 router.use(downloadsRouter);
+router.use(archiveRouter);
 
 export default router;

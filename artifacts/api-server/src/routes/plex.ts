@@ -1,43 +1,59 @@
 import { Router, type IRouter } from "express";
 import {
   GetPlexConfigResponse,
+  GetPlexInventoryResponse,
+  StartPlexSyncResponse,
+  TestPlexConnectionResponse,
   UpdatePlexConfigBody,
   UpdatePlexConfigResponse,
 } from "@workspace/api-zod";
-import { readUserSetting, writeUserSetting } from "../lib/archive-db";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
+import {
+  getPlexConfig,
+  PlexConfigurationError,
+  readPlexInventory,
+  savePlexConfig,
+  startPlexSync,
+  testPlexConnection,
+} from "../services/plex";
 
 const router: IRouter = Router();
 
-function readPlexConfig(ownerId: string) {
-  const serverUrl = typeof readUserSetting(ownerId, "plexServerUrl") === "string"
-    ? readUserSetting(ownerId, "plexServerUrl") as string
-    : "";
-  const token = readUserSetting(ownerId, "plexToken");
-  const hasToken = typeof token === "string" && token.length > 0;
-  const configured = Boolean(serverUrl && hasToken);
-  return {
-    serverUrl,
-    configured,
-    hasToken,
-    status: configured ? ("ready" as const) : ("not_configured" as const),
-  };
-}
-
 router.get("/plex/config", (req, res) => {
-  res.json(GetPlexConfigResponse.parse(readPlexConfig(getAuthenticatedUserId(req))));
+  res.json(GetPlexConfigResponse.parse(getPlexConfig(getAuthenticatedUserId(req))));
 });
 
 router.patch("/plex/config", (req, res) => {
   const ownerId = getAuthenticatedUserId(req);
   const updates = UpdatePlexConfigBody.parse(req.body ?? {});
-  if (updates.serverUrl !== undefined) {
-    writeUserSetting(ownerId, "plexServerUrl", updates.serverUrl);
+  try {
+    return res.json(UpdatePlexConfigResponse.parse(savePlexConfig(ownerId, updates)));
+  } catch (error) {
+    if (error instanceof PlexConfigurationError) {
+      return res.status(400).json({ error: error.message });
+    }
+    throw error;
   }
-  if (updates.token !== undefined && updates.token.length > 0) {
-    writeUserSetting(ownerId, "plexToken", updates.token);
+});
+
+router.post("/plex/test-connection", async (req, res) => {
+  const result = await testPlexConnection(getAuthenticatedUserId(req));
+  res.json(TestPlexConnectionResponse.parse(result));
+});
+
+router.post("/plex/sync", (req, res) => {
+  try {
+    return res.status(202).json(StartPlexSyncResponse.parse(startPlexSync(getAuthenticatedUserId(req))));
+  } catch (error) {
+    if (error instanceof PlexConfigurationError) {
+      return res.status(400).json({ error: error.message });
+    }
+    throw error;
   }
-  res.json(UpdatePlexConfigResponse.parse(readPlexConfig(ownerId)));
+});
+
+router.get("/plex/inventory", (req, res) => {
+  res.json(GetPlexInventoryResponse.parse(readPlexInventory(getAuthenticatedUserId(req))));
 });
 
 export default router;

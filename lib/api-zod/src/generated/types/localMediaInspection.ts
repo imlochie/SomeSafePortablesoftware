@@ -16,6 +16,7 @@ export interface LocalMediaInspection {
   durationSeconds: number | null;
   videoStreams: number;
   audioStreams: number;
+  subtitleStreams: number;
   /** @nullable */
   width: number | null;
   /** @nullable */
@@ -26,6 +27,10 @@ export interface LocalMediaInspection {
   videoCodec: string | null;
   /** @nullable */
   audioCodec: string | null;
+  /** @nullable */
+  audioChannels: number | null;
+  audioLanguages: string[];
+  subtitleLanguages: string[];
   /** @nullable */
   bitrate: number | null;
   /** @nullable */

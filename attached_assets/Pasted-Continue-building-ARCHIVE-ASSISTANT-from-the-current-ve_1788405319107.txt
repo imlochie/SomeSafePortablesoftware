@@ -1,0 +1,174 @@
+Continue building ARCHIVE ASSISTANT from the current verified codebase.
+
+The ownership and data-integrity phase is COMPLETE and verified.
+
+Do not revisit or redesign that work unless a concrete bug is discovered.
+
+NEXT PHASE: REAL PLEX INVENTORY SYNCHRONIZATION
+
+The existing architecture is:
+
+React + Vite UI
+        |
+Express + Node API
+        |
+media / download services
+   |       |       |
+yt-dlp  FFmpeg  FFprobe
+        |
+local filesystem + SQLite
+        |
+jobs / queue / events
+
+Keep this architecture.
+
+Do not introduce a second backend, worker service, Python daemon, ORM, or new authentication system.
+
+OBJECTIVE
+
+Turn the existing Plex configuration/status functionality into a real Plex integration.
+
+ARCHIVE ASSISTANT should be able to:
+
+1. Configure a Plex server.
+2. Test the Plex connection.
+3. Retrieve Plex libraries.
+4. Synchronize Plex inventory into SQLite.
+5. Persist the inventory.
+6. Show the actual synchronization state in the UI.
+7. Associate synchronized Plex records with the authenticated owner.
+
+IMPORTANT HONESTY RULE
+
+The UI must never say Plex is connected or synchronized unless the backend has actually verified that state.
+
+Use explicit states such as:
+
+- NOT CONFIGURED
+- CONNECTION FAILED
+- CONNECTED
+- SYNCING
+- SYNCED
+- SYNC ERROR
+
+Inspect the existing Plex schema and configuration implementation before changing anything.
+
+EXISTING DATABASE FOUNDATION
+
+There are already tables/foundations for:
+
+- Plex libraries
+- Plex items
+- Plex media
+- Plex parts
+
+Use the existing schema where possible.
+
+Do not create duplicate parallel Plex tables without a compelling reason.
+
+SYNC BEHAVIOR
+
+Implement a real synchronization workflow that:
+
+- connects to the configured Plex server
+- retrieves available libraries
+- retrieves library contents
+- maps useful Plex metadata
+- persists the results
+- updates existing records instead of creating duplicates
+- records synchronization timestamps
+- records useful system events
+- handles partial or failed synchronization cleanly
+
+The implementation should be safe to run repeatedly.
+
+Do not delete the entire local Plex inventory before every sync.
+
+Do not silently lose existing records when Plex becomes temporarily unavailable.
+
+OWNERSHIP
+
+The ownership/data-integrity phase has already been completed.
+
+Respect those ownership boundaries.
+
+Do not allow one authenticated user to see another user's Plex configuration or inventory.
+
+PLEX CREDENTIALS
+
+Keep Plex tokens/credentials server-side.
+
+Never expose Plex credentials to the browser.
+
+CONNECTION TEST
+
+Add a real "Test Connection" operation.
+
+It should perform an actual request to the configured Plex server.
+
+Return useful failure information without exposing secrets.
+
+UI
+
+Update the existing Plex screen so it displays:
+
+- configured server
+- connection status
+- last successful sync
+- last attempted sync
+- library count
+- media/item count where available
+- current sync status
+- useful error state
+
+Add a clear "Sync Plex" action.
+
+Do not build duplicate detection yet.
+
+Do not build archive intelligence yet.
+
+Do not connect Ollama yet.
+
+Do not redesign the application navigation.
+
+TESTING
+
+Before implementation, inspect:
+
+- existing Plex routes
+- existing Plex service/configuration
+- Plex database schema
+- current ownership implementation
+- relevant frontend components
+
+Then implement the smallest complete real Plex integration.
+
+Verify:
+
+- connection success
+- connection failure
+- library discovery
+- inventory synchronization
+- repeated sync without duplication
+- ownership isolation
+- persistence after restart
+- useful UI state
+
+Run:
+
+- tests
+- typecheck
+- build
+- git diff --check
+
+At the end report:
+
+PLEX IMPLEMENTED
+DATABASE CHANGES
+API CHANGES
+UI CHANGES
+SYNC BEHAVIOR
+TESTS PASSED
+KNOWN LIMITATIONS
+
+Do not start the next phase automatically.

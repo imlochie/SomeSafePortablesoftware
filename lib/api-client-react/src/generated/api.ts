@@ -22,6 +22,9 @@ import type {
 import type {
   AppSettings,
   AppSettingsUpdate,
+  ArchiveInventory,
+  ArchiveInventoryRecord,
+  ArchiveScan,
   DependencyStatus,
   DownloadJob,
   DownloadJobInput,
@@ -35,6 +38,7 @@ import type {
   MediaInspection,
   PlexConfig,
   PlexConfigUpdate,
+  PlexInventory,
   SystemEvent,
   SystemOverview
 } from './api.schemas';
@@ -670,6 +674,527 @@ export const useUpdatePlexConfig = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getUpdatePlexConfigMutationOptions(options));
     }
+
+export const getTestPlexConnectionUrl = () => {
+
+
+
+
+  return `/api/plex/test-connection`
+}
+
+/**
+ * @summary Verify the configured Plex server
+ */
+export const testPlexConnection = async ( options?: Parameters<typeof customFetch>[1]): Promise<PlexConfig> => {
+
+  return customFetch<PlexConfig>(getTestPlexConnectionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getTestPlexConnectionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testPlexConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testPlexConnection>>, TError,void, TContext> => {
+
+const mutationKey = ['testPlexConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testPlexConnection>>, void> = () => {
+
+
+          return  testPlexConnection(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestPlexConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof testPlexConnection>>>
+
+    export type TestPlexConnectionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Verify the configured Plex server
+ */
+export const useTestPlexConnection = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testPlexConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testPlexConnection>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getTestPlexConnectionMutationOptions(options));
+    }
+
+export const getStartPlexSyncUrl = () => {
+
+
+
+
+  return `/api/plex/sync`
+}
+
+/**
+ * @summary Start synchronizing the configured Plex inventory
+ */
+export const startPlexSync = async ( options?: Parameters<typeof customFetch>[1]): Promise<PlexConfig> => {
+
+  return customFetch<PlexConfig>(getStartPlexSyncUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartPlexSyncMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startPlexSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startPlexSync>>, TError,void, TContext> => {
+
+const mutationKey = ['startPlexSync'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startPlexSync>>, void> = () => {
+
+
+          return  startPlexSync(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartPlexSyncMutationResult = NonNullable<Awaited<ReturnType<typeof startPlexSync>>>
+
+    export type StartPlexSyncMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Start synchronizing the configured Plex inventory
+ */
+export const useStartPlexSync = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startPlexSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startPlexSync>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getStartPlexSyncMutationOptions(options));
+    }
+
+export const getGetPlexInventoryUrl = () => {
+
+
+
+
+  return `/api/plex/inventory`
+}
+
+/**
+ * @summary Get the synchronized Plex inventory
+ */
+export const getPlexInventory = async ( options?: Parameters<typeof customFetch>[1]): Promise<PlexInventory> => {
+
+  return customFetch<PlexInventory>(getGetPlexInventoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPlexInventoryQueryKey = () => {
+    return [
+    `/api/plex/inventory`
+    ] as const;
+    }
+
+
+export const getGetPlexInventoryQueryOptions = <TData = Awaited<ReturnType<typeof getPlexInventory>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlexInventory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPlexInventoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlexInventory>>> = ({ signal }) => getPlexInventory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPlexInventory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPlexInventoryQueryResult = NonNullable<Awaited<ReturnType<typeof getPlexInventory>>>
+export type GetPlexInventoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the synchronized Plex inventory
+ */
+
+export function useGetPlexInventory<TData = Awaited<ReturnType<typeof getPlexInventory>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlexInventory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPlexInventoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetArchiveScanUrl = () => {
+
+
+
+
+  return `/api/archive/scan`
+}
+
+/**
+ * @summary Get the current local archive scan state
+ */
+export const getArchiveScan = async ( options?: Parameters<typeof customFetch>[1]): Promise<ArchiveScan> => {
+
+  return customFetch<ArchiveScan>(getGetArchiveScanUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveScanQueryKey = () => {
+    return [
+    `/api/archive/scan`
+    ] as const;
+    }
+
+
+export const getGetArchiveScanQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveScan>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveScan>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveScanQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveScan>>> = ({ signal }) => getArchiveScan({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveScan>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveScanQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveScan>>>
+export type GetArchiveScanQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the current local archive scan state
+ */
+
+export function useGetArchiveScan<TData = Awaited<ReturnType<typeof getArchiveScan>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveScan>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveScanQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getStartArchiveScanUrl = () => {
+
+
+
+
+  return `/api/archive/scan`
+}
+
+/**
+ * @summary Start a server-side archive filesystem scan
+ */
+export const startArchiveScan = async ( options?: Parameters<typeof customFetch>[1]): Promise<ArchiveScan> => {
+
+  return customFetch<ArchiveScan>(getStartArchiveScanUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartArchiveScanMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startArchiveScan>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startArchiveScan>>, TError,void, TContext> => {
+
+const mutationKey = ['startArchiveScan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startArchiveScan>>, void> = () => {
+
+
+          return  startArchiveScan(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartArchiveScanMutationResult = NonNullable<Awaited<ReturnType<typeof startArchiveScan>>>
+
+    export type StartArchiveScanMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Start a server-side archive filesystem scan
+ */
+export const useStartArchiveScan = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startArchiveScan>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startArchiveScan>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getStartArchiveScanMutationOptions(options));
+    }
+
+export const getGetArchiveInventoryUrl = () => {
+
+
+
+
+  return `/api/archive/inventory`
+}
+
+/**
+ * @summary Get local archive inventory and intelligence
+ */
+export const getArchiveInventory = async ( options?: Parameters<typeof customFetch>[1]): Promise<ArchiveInventory> => {
+
+  return customFetch<ArchiveInventory>(getGetArchiveInventoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveInventoryQueryKey = () => {
+    return [
+    `/api/archive/inventory`
+    ] as const;
+    }
+
+
+export const getGetArchiveInventoryQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveInventory>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveInventory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveInventoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveInventory>>> = ({ signal }) => getArchiveInventory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveInventory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveInventoryQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveInventory>>>
+export type GetArchiveInventoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get local archive inventory and intelligence
+ */
+
+export function useGetArchiveInventory<TData = Awaited<ReturnType<typeof getArchiveInventory>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveInventory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveInventoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetArchiveRecordUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive/records/${id}`
+}
+
+/**
+ * @summary Get one local archive record with comparison details
+ */
+export const getArchiveRecord = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveInventoryRecord> => {
+
+  return customFetch<ArchiveInventoryRecord>(getGetArchiveRecordUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveRecordQueryKey = (id: number,) => {
+    return [
+    `/api/archive/records/${id}`
+    ] as const;
+    }
+
+
+export const getGetArchiveRecordQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveRecord>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveRecord>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveRecordQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveRecord>>> = ({ signal }) => getArchiveRecord(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveRecord>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveRecordQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveRecord>>>
+export type GetArchiveRecordQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get one local archive record with comparison details
+ */
+
+export function useGetArchiveRecord<TData = Awaited<ReturnType<typeof getArchiveRecord>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveRecord>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveRecordQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getInspectMediaSourceUrl = () => {
 

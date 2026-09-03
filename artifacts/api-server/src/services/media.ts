@@ -399,6 +399,18 @@ export async function inspectLocalMedia(filePath: string, settings: SettingsReco
   const streams = probe.streams ?? [];
   const video = streams.find((stream) => stream.codec_type === "video");
   const audio = streams.find((stream) => stream.codec_type === "audio");
+  const audioStreams = streams.filter((stream) => stream.codec_type === "audio");
+  const subtitleStreams = streams.filter((stream) => stream.codec_type === "subtitle");
+  const streamLanguage = (stream: Record<string, unknown>) => {
+    const tags = stream.tags && typeof stream.tags === "object" ? stream.tags as Record<string, unknown> : {};
+    return stringOrNull(tags.language);
+  };
+  const sideData = Array.isArray(video?.side_data_list)
+    ? video.side_data_list
+      .map((entry) => entry && typeof entry === "object" ? stringOrNull((entry as Record<string, unknown>).side_data_type) : null)
+      .filter((value): value is string => Boolean(value))
+      .join(", ")
+    : null;
   const fpsValue = stringOrNull(video?.r_frame_rate);
   const [fpsN, fpsD] = fpsValue?.split("/").map(Number) ?? [];
   return {
@@ -408,15 +420,19 @@ export async function inspectLocalMedia(filePath: string, settings: SettingsReco
     filesize: stat.size,
     durationSeconds: numberOrNull(probe.format?.duration),
     videoStreams: streams.filter((stream) => stream.codec_type === "video").length,
-    audioStreams: streams.filter((stream) => stream.codec_type === "audio").length,
+    audioStreams: audioStreams.length,
+    subtitleStreams: subtitleStreams.length,
     width: numberOrNull(video?.width),
     height: numberOrNull(video?.height),
     fps: Number.isFinite(fpsN) && Number.isFinite(fpsD) && fpsD ? fpsN / fpsD : null,
     videoCodec: stringOrNull(video?.codec_name),
     audioCodec: stringOrNull(audio?.codec_name),
+    audioChannels: numberOrNull(audio?.channels),
+    audioLanguages: Array.from(new Set(audioStreams.map(streamLanguage).filter((value): value is string => Boolean(value)))),
+    subtitleLanguages: Array.from(new Set(subtitleStreams.map(streamLanguage).filter((value): value is string => Boolean(value)))),
     bitrate: numberOrNull(probe.format?.bit_rate),
     container: stringOrNull(probe.format?.format_name),
-    dynamicRange: stringOrNull(video?.color_transfer) ?? stringOrNull(video?.side_data_list),
+    dynamicRange: stringOrNull(video?.color_transfer) ?? sideData,
     verification: "passed" as const,
   };
 }

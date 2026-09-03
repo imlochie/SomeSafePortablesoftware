@@ -11,12 +11,14 @@ import {
   Sparkles, Square, Terminal, Trash2, X, Zap,
 } from 'lucide-react';
 import {
-  getGetDownloadsQueryKey, getGetPlexConfigQueryKey, getGetSettingsQueryKey,
+  getGetDownloadsQueryKey, getGetPlexConfigQueryKey, getGetPlexInventoryQueryKey, getGetSettingsQueryKey, getGetSystemEventsQueryKey,
   getGetSystemOverviewQueryKey, useCancelDownload, useCreateDownload, useDeleteDownload,
-  useGetDownloads, useGetPlexConfig, useGetSettings, useGetSystemDependencies,
+  useGetDownloads, useGetPlexConfig, useGetPlexInventory, useGetSettings, useGetSystemDependencies,
   useGetSystemEvents, useGetSystemOverview, useHealthCheck, useInspectMediaSource,
   usePauseDownload, usePrepareDownload, useRetryDownload, useResumeDownload,
-  useStartDownload, useUpdatePlexConfig, useUpdateSettings,
+  useStartDownload, useStartPlexSync, useTestPlexConnection, useUpdatePlexConfig, useUpdateSettings,
+  useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord,
+  getGetArchiveScanQueryKey, getGetArchiveInventoryQueryKey,
 } from '@workspace/api-client-react';
 import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -94,7 +96,9 @@ const clerkAppearance = {
 const statusLabels: Record<string, string> = {
   ready: 'READY', connected: 'CONNECTED', idle: 'IDLE', placeholder: 'PLACEHOLDER',
   warning: 'WARNING', unavailable: 'UNAVAILABLE', processing: 'PROCESSING',
-  not_configured: 'NOT CONFIGURED', error: 'ERROR', queued: 'QUEUED', inspecting: 'INSPECTING',
+  not_configured: 'NOT CONFIGURED', configured: 'CONFIGURED / UNVERIFIED', connection_failed: 'CONNECTION FAILED',
+  syncing: 'SYNCING', synced: 'SYNCED', sync_error: 'SYNC ERROR',
+  error: 'ERROR', queued: 'QUEUED', inspecting: 'INSPECTING',
   downloading: 'DOWNLOADING', downloaded: 'DOWNLOADED', verifying: 'VERIFYING', moving: 'MOVING',
   complete: 'COMPLETE', failed: 'FAILED', cancelled: 'CANCELLED', paused: 'PAUSED',
   recovery_required: 'RECOVERY REQUIRED',
@@ -226,12 +230,331 @@ const placeholderCopy: Record<string, { title: string; description: string; icon
 function PlaceholderPage({ section }: { section: keyof typeof placeholderCopy }) { const copy = placeholderCopy[section]; const Icon = copy.icon; return <><PageIntro eyebrow={copy.eyebrow} title={copy.title} description={copy.description} /><div className="archive-panel relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden p-8 text-center"><div className="absolute left-0 top-0 h-1 w-24 bg-[#f4b942]" /><div className="absolute right-8 top-8 archive-mono text-[9px] tracking-[.16em] text-[#a2adae]">RESERVED / NO CLAIMS</div><div className="grid h-16 w-16 place-items-center border border-[#d6dfdc] bg-[#eaf0ed] text-[#4e9690]"><Icon size={27} strokeWidth={1.4} /></div><h2 className="archive-display mt-6 text-[25px] font-extrabold text-[#2b3d46]">Surface is reserved</h2><p className="mt-2 max-w-md text-[13px] leading-6 text-[#7c8a8d]">This workspace is intentionally honest about its current state. No records or capabilities are fabricated in this preview.</p><div className="mt-7 flex items-center gap-2 border border-[#e1e7e5] bg-[#f8faf8] px-3 py-2 archive-mono text-[9px] tracking-[.1em] text-[#799094]"><CircleHelp size={13} /> SAFE TO EXPLORE</div></div></>; }
 
 function PlexPage() {
-  const queryClient = useQueryClient(); const { data, isLoading, isError, refetch } = useGetPlexConfig(); const mutation = useUpdatePlexConfig(); const [serverUrl, setServerUrl] = useState(''); const [token, setToken] = useState(''); const [notice, setNotice] = useState('');
+  const queryClient = useQueryClient();
+  const previousSyncStatus = useRef<string | undefined>(undefined);
+  const { data, isLoading, isError, refetch } = useGetPlexConfig();
+  const { data: inventory, isLoading: inventoryLoading } = useGetPlexInventory({
+    query: {
+      enabled: Boolean(data && (data.libraryCount > 0 || data.status === 'synced')),
+      queryKey: getGetPlexInventoryQueryKey()
+    }
+  });
+
+  const mutation = useUpdatePlexConfig();
+  const testConn = useTestPlexConnection();
+  const startSync = useStartPlexSync();
+
+  const [serverUrl, setServerUrl] = useState('');
+  const [token, setToken] = useState('');
+  const [notice, setNotice] = useState('');
+
   useEffect(() => { if (data) setServerUrl(data.serverUrl ?? ''); }, [data]);
-  const save = () => { setNotice(''); mutation.mutate({ data: { serverUrl, ...(token ? { token } : {}) } }, { onSuccess: (result) => { setToken(''); setNotice('Configuration saved. Connection remains unverified until the next local check.'); queryClient.setQueryData(getGetPlexConfigQueryKey(), result); }, onError: () => setNotice('Configuration could not be saved. The local node did not accept the update.') }); };
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval>;
+    if (data?.syncStatus === 'syncing') {
+      timer = setInterval(() => refetch(), 2000);
+    }
+    return () => clearInterval(timer);
+  }, [data?.syncStatus, refetch]);
+
+  useEffect(() => {
+    if (previousSyncStatus.current === 'syncing' && data?.syncStatus !== 'syncing') {
+      queryClient.invalidateQueries({ queryKey: getGetPlexInventoryQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetSystemEventsQueryKey() });
+    }
+    previousSyncStatus.current = data?.syncStatus;
+  }, [data?.syncStatus, queryClient]);
+
+  const save = () => {
+    setNotice('');
+    mutation.mutate({ data: { serverUrl, ...(token ? { token } : {}) } }, {
+      onSuccess: (result) => {
+        setToken('');
+        setNotice('Configuration saved. Connection remains unverified until the next local check.');
+        queryClient.setQueryData(getGetPlexConfigQueryKey(), result);
+      },
+      onError: (err) => setNotice(`Configuration could not be saved: ${errorText(err)}`)
+    });
+  };
+
+  const handleTestConnection = () => {
+    setNotice('');
+    testConn.mutate(undefined, {
+      onSuccess: (result) => {
+        queryClient.setQueryData(getGetPlexConfigQueryKey(), result);
+        setNotice(result.connectionStatus === 'connection_failed'
+          ? result.lastError ?? 'Connection verification failed.'
+          : 'Connection verified successfully.');
+      },
+      onError: (err) => {
+        setNotice(`Connection verification failed: ${errorText(err)}`);
+      }
+    });
+  };
+
+  const handleStartSync = () => {
+    setNotice('');
+    startSync.mutate(undefined, {
+      onSuccess: (result) => {
+        setNotice('Sync triggered. The local node will pull the inventory.');
+        queryClient.setQueryData(getGetPlexConfigQueryKey(), result);
+      },
+      onError: (err) => {
+        setNotice(`Could not start sync: ${errorText(err)}`);
+      }
+    });
+  };
+
   if (isLoading) return <><PageIntro eyebrow="INTEGRATION / PLEX" title="Plex configuration" description="Read the local connection settings without implying a live connection." /><Skeleton className="h-[390px]" /></>;
   if (isError || !data) return <ErrorState title="Plex status unavailable" message="Configuration could not be read from the local node." onRetry={() => refetch()} testId="button-retry-plex" />;
-  return <><PageIntro eyebrow="INTEGRATION / PLEX" title="Plex configuration" description="Store the endpoint and credentials for a future connection. Archive Assistant never presents Plex as connected without evidence." action={<StatusPill status={data.configured ? data.status : 'not_configured'} label={data.configured ? statusText(data.status) : 'NOT CONFIGURED'} />} /><div className="grid gap-5 xl:grid-cols-[1fr_330px]"><form className="archive-panel p-5 md:p-7" data-testid="panel-plex-form" onSubmit={(event) => { event.preventDefault(); save(); }}><div className="mb-7 flex items-start gap-3 border-b border-[#e3e8e7] pb-5"><div className="grid h-9 w-9 place-items-center bg-[#fff0c9] text-[#a77517]"><PlaySquare size={18} /></div><div><h2 className="archive-display text-lg font-extrabold">Server endpoint</h2><p className="mt-1 text-[11px] text-[#859296]">Implemented configuration fields</p></div></div><label className="mb-5 block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">SERVER URL</span><div className="flex items-center border border-[#d6dfdc] bg-[#fbfcfa]"><Link2 size={15} className="ml-3 text-[#8a9b9e]" /><input autoComplete="url" value={serverUrl} onChange={(event) => setServerUrl(event.target.value)} placeholder="http://localhost:32400" className="w-full bg-transparent px-3 py-3 text-[13px] outline-none" data-testid="input-plex-server-url" /></div></label><label className="block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">PLEX TOKEN <span className="text-[#a7b0b0]">/ OPTIONAL UPDATE</span></span><input autoComplete="current-password" type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder={data.hasToken ? 'Token is stored — enter to replace' : 'Paste token when ready'} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-3 text-[13px] outline-none" data-testid="input-plex-token" /></label><div className="mt-7 flex flex-wrap items-center gap-3"><button type="submit" disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-plex">{mutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} {mutation.isPending ? 'SAVING' : 'SAVE CONFIGURATION'}</button>{notice && <span className={`text-[11px] ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-plex-save">{notice}</span>}</div></form><section className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">TRUST READOUT</div><h2 className="archive-display mt-1 text-lg font-extrabold">What is known</h2><div className="mt-5 space-y-4 text-[12px]"><Readout label="Endpoint stored" value={data.configured ? 'YES' : 'NO'} tone={data.configured ? 'good' : 'warn'} /><Readout label="Token present" value={data.hasToken ? 'YES' : 'NO'} tone={data.hasToken ? 'good' : 'warn'} /><Readout label="Live connection" value="NOT CLAIMED" /></div><div className="mt-6 border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]">Saving details does not test or claim a live Plex connection.</div></section></div></>;
+
+  const isConfigured = data.configured;
+  const isConnected = data.connectionStatus === 'connected';
+  const isSyncing = data.syncStatus === 'syncing';
+  const isSynced = data.syncStatus === 'synced';
+  const canSync = isConnected;
+  const showInventory = isSynced || isSyncing || data.libraryCount > 0;
+
+  return <><PageIntro eyebrow="INTEGRATION / PLEX" title="Plex inventory" description="Verify the configured server, synchronize its libraries, and inspect only inventory proven by the local node." action={<StatusPill status={data.configured ? data.status : 'not_configured'} label={data.configured ? statusText(data.status) : 'NOT CONFIGURED'} />} /><div className="grid gap-5 xl:grid-cols-[1fr_330px]"><form className="archive-panel p-5 md:p-7" data-testid="panel-plex-form" onSubmit={(event) => { event.preventDefault(); save(); }}><div className="mb-7 flex items-start gap-3 border-b border-[#e3e8e7] pb-5"><div className="grid h-9 w-9 place-items-center bg-[#fff0c9] text-[#a77517]"><PlaySquare size={18} /></div><div><h2 className="archive-display text-lg font-extrabold">Server endpoint</h2><p className="mt-1 text-[11px] text-[#859296]">Credentials stay on the local API</p></div></div><label className="mb-5 block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">SERVER URL</span><div className="flex items-center border border-[#d6dfdc] bg-[#fbfcfa] focus-within:border-[#4e9690]"><Link2 size={15} className="ml-3 text-[#8a9b9e]" /><input autoComplete="url" value={serverUrl} onChange={(event) => setServerUrl(event.target.value)} placeholder="http://localhost:32400" className="w-full bg-transparent px-3 py-3 text-[13px] outline-none" data-testid="input-plex-server-url" /></div></label><label className="block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">PLEX TOKEN <span className="text-[#a7b0b0]">/ OPTIONAL UPDATE</span></span><input autoComplete="current-password" type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder={data.hasToken ? 'Token is stored — enter to replace' : 'Paste token when ready'} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-3 text-[13px] outline-none focus:border-[#4e9690]" data-testid="input-plex-token" /></label><div className="mt-7 flex flex-wrap items-center gap-3"><button type="submit" disabled={mutation.isPending || isSyncing} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-plex">{mutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} {mutation.isPending ? 'SAVING' : 'SAVE CONFIGURATION'}</button>{notice && <span className={`text-[11px] ${notice.includes('failed') || notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-plex-save">{notice}</span>}</div></form><section className="archive-panel h-fit p-5 md:p-6 flex flex-col gap-4" data-testid="panel-plex-status"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">NODE CONNECTION</div><h2 className="archive-display text-lg font-extrabold -mt-3">State & Actions</h2><div className="space-y-4 text-[12px]"><Readout label="Endpoint stored" value={data.configured ? 'YES' : 'NO'} tone={data.configured ? 'good' : 'warn'} /><Readout label="Token present" value={data.hasToken ? 'YES' : 'NO'} tone={data.hasToken ? 'good' : 'warn'} /><Readout label="Connection" value={statusText(data.connectionStatus)} tone={data.connectionStatus === 'connection_failed' ? 'warn' : isConnected ? 'good' : 'neutral'} /><Readout label="Synchronization" value={statusText(data.syncStatus)} tone={data.syncStatus === 'sync_error' ? 'warn' : isSynced ? 'good' : 'neutral'} /><Readout label="Libraries" value={String(data.libraryCount)} tone={data.libraryCount ? 'good' : 'neutral'} /><Readout label="Items / media" value={`${data.itemCount} / ${data.mediaCount}`} tone={data.itemCount ? 'good' : 'neutral'} /><Readout label="Last attempted" value={formatTime(data.lastAttemptedAt)} /><Readout label="Last successful" value={formatTime(data.lastSuccessfulSyncAt)} tone={data.lastSuccessfulSyncAt ? 'good' : 'neutral'} /></div><div className="mt-2 flex flex-col gap-2"><button type="button" onClick={handleTestConnection} disabled={!data.configured || testConn.isPending || isSyncing} className="inline-flex justify-center items-center gap-2 border border-[#d6dfdc] bg-white/50 px-4 py-2 text-[10px] font-bold tracking-[.1em] text-[#53656b] disabled:opacity-50 hover:bg-[#eaf0ed] transition-colors" data-testid="button-test-connection">{testConn.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Network size={13} />}{testConn.isPending ? 'VERIFYING' : 'TEST CONNECTION'}</button><button type="button" onClick={handleStartSync} disabled={!canSync || startSync.isPending || isSyncing} className="inline-flex justify-center items-center gap-2 border border-[#4e9690] bg-[#eaf3ef] px-4 py-2 text-[10px] font-bold tracking-[.1em] text-[#39736e] disabled:opacity-50 hover:bg-[#dcebe7] transition-colors" data-testid="button-start-sync">{isSyncing || startSync.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}{isSyncing ? 'SYNCING INVENTORY' : startSync.isPending ? 'STARTING SYNC' : 'SYNC INVENTORY'}</button></div>{data.lastError && <div className="mt-2 border-l-2 border-[#c85b51] bg-[#fcedea] p-3 text-[11px] leading-5 text-[#994b43]" data-testid="text-plex-error">{data.lastError}</div>}</section></div>{showInventory && <section className="mt-7 archive-panel p-5 md:p-7" data-testid="panel-plex-inventory"><div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL INVENTORY</div><h2 className="archive-display mt-1 text-2xl font-extrabold text-[#263844]">Synchronized Libraries</h2></div>{data.lastSuccessfulSyncAt && <div className="text-left sm:text-right"><div className="archive-mono text-[10px] tracking-[.12em] text-[#7f9194]">LAST SYNC</div><div className="mt-1 text-[12px] font-semibold text-[#4e9690]">{formatTime(data.lastSuccessfulSyncAt)}</div></div>}</div>{inventoryLoading && !inventory ? <div className="space-y-4"><Skeleton className="h-20" /><Skeleton className="h-20" /></div> : inventory?.libraries?.length ? <div className="space-y-6">{inventory.libraries.map(library => <div key={library.id} className="border border-[#e3e8e7] bg-[#fbfcfa]" data-testid={`library-${library.id}`}><div className="flex items-center justify-between border-b border-[#e3e8e7] bg-[#f3f5f4] px-4 py-3"><div className="flex items-center gap-3"><Library size={16} className="text-[#4e9690]" /><h3 className="text-[13px] font-bold text-[#344851]">{library.name}</h3><span className="archive-mono rounded-sm bg-[#e3e8e7] px-2 py-0.5 text-[9px] tracking-[.1em] text-[#65767a]">{library.type.toUpperCase()}</span></div><div className="archive-mono text-[10px] text-[#7f9194]">{library.itemCount} ITEMS</div></div><div className="grid gap-3 p-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">{inventory.items.filter(item => item.libraryId === library.id).slice(0, 8).map(item => <div key={item.id} className="flex gap-3 border border-[#f0f4f3] bg-white p-3 transition-colors hover:border-[#d6dfdc]" data-testid={`inventory-item-${item.id}`}><div className="grid h-12 w-12 shrink-0 place-items-center bg-[#e8efed] text-[#8ca3a0]">{item.itemType === 'movie' ? <PlaySquare size={16} /> : <FolderOpen size={16} />}</div><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-bold text-[#344851]" title={item.title}>{item.title}</div><div className="mt-1 text-[10px] text-[#7f9194]">{item.year ? `${item.year} • ` : ''}{item.itemType}</div><div className="archive-mono mt-1 text-[9px] text-[#a0afaf]">{item.mediaCount} MEDIA / {item.partCount} PARTS</div></div></div>)}{inventory.items.filter(item => item.libraryId === library.id).length > 8 && <div className="flex items-center justify-center border border-dashed border-[#d6dfdc] bg-[#f8faf8] p-3 text-[11px] font-semibold text-[#8ca3a0]">+ {inventory.items.filter(item => item.libraryId === library.id).length - 8} MORE</div>}{inventory.items.filter(item => item.libraryId === library.id).length === 0 && <div className="col-span-full py-4 text-center text-[11px] text-[#8ca3a0]">No items populated in this library.</div>}</div></div>)}</div> : !isSyncing && <div className="flex flex-col items-center justify-center border border-dashed border-[#d6dfdc] bg-[#f8faf8] p-8 text-center text-[#7f9194]"><Library size={24} className="mb-3 text-[#a0afaf]" /><div className="text-[12px] font-semibold">No libraries found</div><div className="mt-1 text-[11px]">The synchronized inventory is empty.</div></div>}</section>}</>;
+}
+
+
+function EmptyState({ icon: Icon, title, description }: { icon: typeof Activity; title: string; description: string }) {
+  return (
+    <div className="flex min-h-[250px] flex-col items-center justify-center text-center">
+      <Icon size={24} className="mb-3 text-[#a0afaf]" />
+      <div className="text-[13px] font-bold text-[#344851]">{title}</div>
+      <div className="mt-1 text-[11px] text-[#8a9b9e]">{description}</div>
+    </div>
+  );
+}
+
+function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }) {
+  const { data: record, isLoading, isError, refetch } = useGetArchiveRecord(id);
+
+  if (isLoading) return <aside className="archive-panel p-5"><Skeleton className="h-[400px]" /></aside>;
+  if (isError || !record) return <aside className="archive-panel p-5"><ErrorState title="Read failed" message="Record not found." onRetry={() => refetch()} testId="button-retry-record" /></aside>;
+
+  return (
+    <aside className="archive-panel h-fit p-5 md:p-6" data-testid="panel-archive-record">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">RECORD INSPECTION</div>
+          <h2 className="archive-display mt-1 text-lg font-extrabold text-[#263844] break-all">{record.filename}</h2>
+          <div className="mt-1 archive-mono text-[9px] text-[#8a9b9e] break-all">{record.relativePath}</div>
+        </div>
+        <button onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center border border-[#e1e8e5] text-[#8a9b9e] hover:bg-[#f3f5f4] hover:text-[#21303d]" aria-label="Close" data-testid="button-close-record"><X size={14} /></button>
+      </div>
+
+      <div className="space-y-4 text-[12px]">
+        <Readout label="Scan Status" value={record.scanStatus.toUpperCase()} tone={record.scanStatus === 'active' ? 'good' : 'warn'} />
+        <Readout label="Quality" value={record.qualityStatus.replace(/_/g, ' ').toUpperCase()} tone={['duplicate', 'file_missing', 'needs_review'].includes(record.qualityStatus) ? 'warn' : 'neutral'} />
+        <Readout label="Size" value={formatBytes(record.sizeBytes)} />
+        {record.durationSeconds ? <Readout label="Duration" value={formatDuration(record.durationSeconds)} /> : null}
+        <Readout label="Video" value={`${record.videoCodec || 'none'} ${record.width ? `(${record.width}x${record.height})` : ''}`} />
+        <Readout label="Audio" value={`${record.audioCodec || 'none'} ${record.audioChannels ? `(${record.audioChannels}ch)` : ''}`} />
+        {record.fps ? <Readout label="Framerate" value={`${record.fps} fps`} /> : null}
+        {record.bitrate ? <Readout label="Bitrate" value={`${Math.round(record.bitrate / 1000)} kbps`} /> : null}
+      </div>
+
+      {record.qualitySummary && (
+        <div className="mt-6 border-l-2 border-[#f4b942] bg-[#fff8e7] p-4 text-[11px] leading-5 text-[#80652e]">
+          {record.qualitySummary}
+        </div>
+      )}
+
+      {record.plexMatch && (
+        <div className="mt-6 border-t border-[#e3e8e7] pt-5">
+           <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194] mb-3">PLEX MATCH</div>
+           <div className="font-bold text-[#344851] text-[13px]">{record.plexMatch.title} {record.plexMatch.year ? `(${record.plexMatch.year})` : ''}</div>
+           {record.plexMatch.qualityDifferences.length > 0 && (
+             <div className="mt-3 space-y-2">
+               {record.plexMatch.qualityDifferences.map((diff, i) => (
+                 <div key={i} className="text-[11px] text-[#859296] flex items-start gap-2"><div className="mt-1.5 w-1 h-1 rounded-full bg-[#f4b942] shrink-0" /> <span className="min-w-0 flex-1 break-words">{diff}</span></div>
+               ))}
+             </div>
+           )}
+        </div>
+      )}
+
+      {record.duplicateOfId && (
+        <div className="mt-6 border-t border-[#e3e8e7] pt-5">
+           <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194] mb-3">DUPLICATE OF</div>
+           <div className="text-[11px] font-bold text-[#344851]">Record #{record.duplicateOfId}</div>
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function ArchivePage() {
+  const queryClient = useQueryClient();
+  const [notice, setNotice] = useState('');
+  const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
+  const [view, setView] = useState<'local' | 'plex_only'>('local');
+  const [filter, setFilter] = useState<'all' | 'duplicates' | 'conflicts' | 'missing' | 'local_only'>('all');
+
+  const [isScanning, setIsScanning] = useState(false);
+  const { data: scan, isLoading: scanLoading, refetch: refetchScan } = useGetArchiveScan({
+    query: {
+      refetchInterval: isScanning ? 2000 : false,
+      queryKey: getGetArchiveScanQueryKey()
+    }
+  });
+
+  useEffect(() => {
+    const wasScanning = isScanning;
+    const nowScanning = scan?.status === 'scanning';
+    setIsScanning(nowScanning);
+
+    if (wasScanning && !nowScanning) {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+    }
+  }, [scan?.status, isScanning, queryClient]);
+
+  const { data: inventory, isLoading: invLoading, isError: invError, refetch: refetchInv } = useGetArchiveInventory({
+    query: {
+      refetchInterval: isScanning ? 3000 : false,
+      queryKey: getGetArchiveInventoryQueryKey()
+    }
+  });
+
+  const startScan = useStartArchiveScan();
+  const handleStartScan = () => {
+    setNotice('');
+    startScan.mutate(undefined, {
+      onSuccess: () => {
+        setNotice('Archive scan started.');
+        queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+      },
+      onError: (err) => {
+        setNotice(`Scan could not start: ${errorText(err)}`);
+      }
+    });
+  };
+
+  if (scanLoading) return <><PageIntro eyebrow="ARCHIVE / LOCAL" title="Archive inventory" description="Reading local media records." /><Skeleton className="h-[400px]" /></>;
+  if (invError) return <ErrorState title="Inventory read failed" message="Could not read the archive inventory from the local node." onRetry={() => refetchInv()} testId="button-retry-archive" />;
+
+  const records = inventory?.records ?? [];
+  let displayedRecords = records;
+  if (filter === 'duplicates') displayedRecords = records.filter(r => r.qualityStatus.includes('duplicate'));
+  else if (filter === 'conflicts') displayedRecords = records.filter(r => ['higher_quality_available', 'lower_quality_version', 'needs_review'].includes(r.qualityStatus) || (r.qualityDifferences && r.qualityDifferences.length > 0));
+  else if (filter === 'missing') displayedRecords = records.filter(r => r.scanStatus === 'missing' || r.qualityStatus === 'file_missing');
+  else if (filter === 'local_only') displayedRecords = records.filter(r => r.qualityStatus === 'local_only');
+
+  const plexOnly = inventory?.plexOnly ?? [];
+  const showPlex = view === 'plex_only';
+
+  return (
+    <>
+      <PageIntro
+        eyebrow="ARCHIVE / LOCAL"
+        title="Archive inventory"
+        description="Inspect local media, duplicates, and quality conflicts."
+        action={
+          <button
+            onClick={handleStartScan}
+            disabled={isScanning || startScan.isPending}
+            className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50 hover:bg-[#21303d]"
+            data-testid="button-start-archive-scan"
+          >
+            {isScanning || startScan.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+            {isScanning ? 'SCANNING' : 'START INVENTORY SCAN'}
+          </button>
+        }
+      />
+
+      {notice && (
+        <div className={`mb-5 border-l-2 p-3 text-[11px] leading-5 ${notice.includes('failed') || notice.includes('could not') ? 'border-[#c85b51] bg-[#fcedea] text-[#994b43]' : 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]'}`} data-testid="status-archive-scan">
+          {notice}
+        </div>
+      )}
+
+      {scan && (
+        <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard icon={FileCheck2} label="ACTIVE FILES" value={String(scan.activeFiles)} note="Verified local media" status={isScanning ? 'processing' : 'ready'} />
+          <MetricCard icon={Archive} label="MISSING FILES" value={String(scan.missingCount)} note="Known but missing" accent={scan.missingCount ? 'red' : 'teal'} status={scan.missingCount ? 'error' : 'idle'} />
+          <MetricCard icon={Library} label="DUPLICATES" value={String(scan.duplicateCount)} note="Identical files found" accent={scan.duplicateCount ? 'amber' : 'teal'} />
+          <MetricCard icon={Activity} label="QUALITY CONFLICTS" value={String(scan.qualityConflictCount)} note="Multiple versions exist" accent={scan.qualityConflictCount ? 'amber' : 'teal'} />
+        </div>
+      )}
+
+      <div className={`grid items-start gap-5 ${selectedRecordId ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : 'grid-cols-1'}`}>
+        <section className="archive-panel flex min-h-[500px] flex-col" data-testid="panel-archive-list">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e3e8e7] bg-[#fbfcfa] p-4 md:px-6">
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
+              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
+            </div>
+
+            {view === 'local' && (
+              <div className="flex flex-wrap items-center gap-2">
+                {['all', 'duplicates', 'conflicts', 'missing', 'local_only'].map(f => (
+                  <button key={f} onClick={() => setFilter(f as any)} className={`archive-mono text-[9px] tracking-[.08em] px-2 py-1 border ${filter === f ? 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]' : 'border-[#d6dfdc] bg-white text-[#7f9194] hover:border-[#aabfba]'}`}>
+                    {f.replace('_', ' ').toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 md:p-6" style={{ maxHeight: '600px' }}>
+            {showPlex ? (
+              plexOnly.length ? (
+                <div className="space-y-3">
+                  {plexOnly.map(p => (
+                    <div key={p.ratingKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-[#f0f4f3] bg-white p-4">
+                      <div>
+                        <div className="text-[13px] font-bold text-[#344851]">{p.title} {p.year ? `(${p.year})` : ''}</div>
+                        <div className="mt-1 archive-mono text-[9px] text-[#a0afaf]">{p.itemType.toUpperCase()} / {p.ratingKey}</div>
+                      </div>
+                      <div className="text-[11px] text-[#8a9b9e]">{p.qualitySummary}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState icon={PlaySquare} title="No Plex-only media" description="All media in Plex appears to exist in your local archive." />
+              )
+            ) : (
+              displayedRecords.length ? (
+                <div className="space-y-2">
+                  {displayedRecords.map(r => (
+                    <button
+                      key={r.id}
+                      onClick={() => setSelectedRecordId(r.id)}
+                      className={`w-full text-left flex flex-col sm:flex-row sm:items-center justify-between gap-3 border p-3 transition-colors ${selectedRecordId === r.id ? 'border-[#4e9690] bg-[#eef6f2]' : 'border-[#e1e8e5] bg-white/50 hover:border-[#aabfba]'}`}
+                      data-testid={`row-archive-record-${r.id}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12px] font-semibold text-[#43545b]" title={r.filename}>{r.filename}</div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+                          <span className={`archive-mono tracking-[.05em] ${r.qualityStatus.includes('duplicate') || r.qualityStatus.includes('missing') || r.qualityStatus.includes('needs_review') ? 'text-[#a77517]' : 'text-[#4e9690]'}`}>
+                            {r.qualityStatus.replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                          <span className="text-[#8a9b9e]">{formatBytes(r.sizeBytes)}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        {r.scanStatus === 'missing' && <span className="grid h-6 place-items-center bg-[#fcedea] px-2 text-[9px] font-bold text-[#c85b51]">MISSING</span>}
+                        {r.plexMatch && <span className="grid h-6 place-items-center bg-[#fff0c9] px-2 text-[9px] font-bold text-[#a77517]">IN PLEX</span>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState icon={FolderOpen} title="No records found" description="No local inventory matches this filter." />
+              )
+            )}
+          </div>
+        </section>
+
+        {selectedRecordId && <ArchiveRecordPanel id={selectedRecordId} onClose={() => setSelectedRecordId(null)} />}
+      </div>
+    </>
+  );
 }
 
 const settingsGroups = [{ name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel'] }, { name: 'Downloads', icon: Download, fields: ['downloadDirectory', 'temporaryDirectory', 'concurrentDownloads', 'maxRetries', 'bandwidthLimit'] }, { name: 'Archive', icon: Archive, fields: ['archiveDirectory', 'outputContainer', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'] }, { name: 'Plex', icon: PlaySquare, fields: [] }, { name: 'AI', icon: Sparkles, fields: [] }, { name: 'Local Model', icon: Cpu, fields: [] }, { name: 'OpenAI', icon: Zap, fields: [] }, { name: 'Local Engine', icon: Terminal, fields: ['ytDlpPath', 'ffmpegPath', 'ffprobePath'] }, { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration', 'hardwareAccelerationMode'] }, { name: 'Network', icon: Network, fields: ['networkMode'] }, { name: 'Security', icon: ShieldCheck, fields: [] }, { name: 'Logging', icon: Terminal, fields: [] }];
@@ -297,7 +620,7 @@ function Workspace() {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return <AuthLoading />;
   if (!isSignedIn) return <Redirect to="/" />;
-  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue" component={QueuePage} /><Route path="/archive"><PlaceholderPage section="ARCHIVE" /></Route><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
+  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
 }
 
 function Router() {

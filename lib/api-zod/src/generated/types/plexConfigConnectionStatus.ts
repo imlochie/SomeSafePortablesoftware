@@ -6,15 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type PlexConfigStatus = typeof PlexConfigStatus[keyof typeof PlexConfigStatus];
+export type PlexConfigConnectionStatus = typeof PlexConfigConnectionStatus[keyof typeof PlexConfigConnectionStatus];
 
 
-export const PlexConfigStatus = {
+export const PlexConfigConnectionStatus = {
   not_configured: 'not_configured',
   configured: 'configured',
   connection_failed: 'connection_failed',
   connected: 'connected',
-  syncing: 'syncing',
-  synced: 'synced',
-  sync_error: 'sync_error',
 } as const;

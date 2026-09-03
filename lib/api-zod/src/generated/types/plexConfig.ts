@@ -5,11 +5,29 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PlexConfigConnectionStatus } from './plexConfigConnectionStatus';
 import type { PlexConfigStatus } from './plexConfigStatus';
+import type { PlexConfigSyncStatus } from './plexConfigSyncStatus';
 
 export interface PlexConfig {
   serverUrl: string;
   configured: boolean;
   hasToken: boolean;
   status: PlexConfigStatus;
+  connectionStatus: PlexConfigConnectionStatus;
+  syncStatus: PlexConfigSyncStatus;
+  /** @nullable */
+  lastAttemptedAt: string | null;
+  /** @nullable */
+  lastSuccessfulSyncAt: string | null;
+  /** @nullable */
+  lastError: string | null;
+  /** @nullable */
+  serverName: string | null;
+  /** @minimum 0 */
+  libraryCount: number;
+  /** @minimum 0 */
+  itemCount: number;
+  /** @minimum 0 */
+  mediaCount: number;
 }

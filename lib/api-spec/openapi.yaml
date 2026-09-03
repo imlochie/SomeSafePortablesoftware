@@ -20,6 +20,8 @@ tags:
     description: Local media inspection and source selection
   - name: downloads
     description: Persistent local download jobs
+  - name: archive
+    description: Local archive inventory and media intelligence
 paths:
   /healthz:
     get:
@@ -132,6 +134,102 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PlexConfig"
+  /plex/test-connection:
+    post:
+      operationId: testPlexConnection
+      tags: [plex]
+      summary: Verify the configured Plex server
+      responses:
+        "200":
+          description: Actual Plex connection result without credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlexConfig"
+  /plex/sync:
+    post:
+      operationId: startPlexSync
+      tags: [plex]
+      summary: Start synchronizing the configured Plex inventory
+      responses:
+        "202":
+          description: Plex synchronization started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlexConfig"
+  /plex/inventory:
+    get:
+      operationId: getPlexInventory
+      tags: [plex]
+      summary: Get the synchronized Plex inventory
+      responses:
+        "200":
+          description: Owner-scoped Plex libraries and items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlexInventory"
+  /archive/scan:
+    get:
+      operationId: getArchiveScan
+      tags: [archive]
+      summary: Get the current local archive scan state
+      responses:
+        "200":
+          description: Owner-scoped archive scan status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveScan"
+    post:
+      operationId: startArchiveScan
+      tags: [archive]
+      summary: Start a server-side archive filesystem scan
+      responses:
+        "202":
+          description: Archive scan started or already in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveScan"
+  /archive/inventory:
+    get:
+      operationId: getArchiveInventory
+      tags: [archive]
+      summary: Get local archive inventory and intelligence
+      responses:
+        "200":
+          description: Owner-scoped local files and Plex comparison
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveInventory"
+  /archive/records/{id}:
+    get:
+      operationId: getArchiveRecord
+      tags: [archive]
+      summary: Get one local archive record with comparison details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      responses:
+        "200":
+          description: Archive record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveInventoryRecord"
+        "404":
+          description: Archive record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /media/inspect:
     post:
       operationId: inspectMediaSource
@@ -549,7 +647,7 @@ components:
           maximum: 25
     PlexConfig:
       type: object
-      required: [serverUrl, configured, hasToken, status]
+      required: [serverUrl, configured, hasToken, status, connectionStatus, syncStatus, lastAttemptedAt, lastSuccessfulSyncAt, lastError, serverName, libraryCount, itemCount, mediaCount]
       properties:
         serverUrl:
           type: string
@@ -559,7 +657,30 @@ components:
           type: boolean
         status:
           type: string
-          enum: [not_configured, ready, connected, error]
+          enum: [not_configured, configured, connection_failed, connected, syncing, synced, sync_error]
+        connectionStatus:
+          type: string
+          enum: [not_configured, configured, connection_failed, connected]
+        syncStatus:
+          type: string
+          enum: [idle, syncing, synced, sync_error]
+        lastAttemptedAt:
+          type: [string, "null"]
+        lastSuccessfulSyncAt:
+          type: [string, "null"]
+        lastError:
+          type: [string, "null"]
+        serverName:
+          type: [string, "null"]
+        libraryCount:
+          type: number
+          minimum: 0
+        itemCount:
+          type: number
+          minimum: 0
+        mediaCount:
+          type: number
+          minimum: 0
     PlexConfigUpdate:
       type: object
       properties:
@@ -568,6 +689,247 @@ components:
         token:
           type: string
           writeOnly: true
+    PlexInventory:
+      type: object
+      required: [libraries, items]
+      properties:
+        libraries:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlexLibrary"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlexInventoryItem"
+    PlexLibrary:
+      type: object
+      required: [id, key, name, type, serverUrl, itemCount, lastSyncedAt, syncStatus, syncError]
+      properties:
+        id:
+          type: number
+        key:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        serverUrl:
+          type: string
+        itemCount:
+          type: number
+          minimum: 0
+        lastSyncedAt:
+          type: [string, "null"]
+        syncStatus:
+          type: string
+        syncError:
+          type: [string, "null"]
+    PlexInventoryItem:
+      type: object
+      required: [id, libraryId, libraryName, ratingKey, title, itemType, year, thumbPathAvailable, addedAt, updatedAt, mediaCount, partCount]
+      properties:
+        id:
+          type: number
+        libraryId:
+          type: number
+        libraryName:
+          type: string
+        ratingKey:
+          type: string
+        title:
+          type: string
+        itemType:
+          type: string
+        year:
+          type: [number, "null"]
+        thumbPathAvailable:
+          type: boolean
+        addedAt:
+          type: [string, "null"]
+        updatedAt:
+          type: [string, "null"]
+        mediaCount:
+          type: number
+          minimum: 0
+        partCount:
+          type: number
+          minimum: 0
+    ArchiveScan:
+      type: object
+      required: [status, startedAt, completedAt, lastError, scannedFiles, activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount]
+      properties:
+        status:
+          type: string
+          enum: [not_scanned, scanning, completed, failed]
+        startedAt:
+          type: [string, "null"]
+        completedAt:
+          type: [string, "null"]
+        lastError:
+          type: [string, "null"]
+        scannedFiles:
+          type: number
+          minimum: 0
+        activeFiles:
+          type: number
+          minimum: 0
+        failedFiles:
+          type: number
+          minimum: 0
+        duplicateCount:
+          type: number
+          minimum: 0
+        missingCount:
+          type: number
+          minimum: 0
+        qualityConflictCount:
+          type: number
+          minimum: 0
+        plexOnlyCount:
+          type: number
+          minimum: 0
+        localOnlyCount:
+          type: number
+          minimum: 0
+    ArchiveInventorySummary:
+      type: object
+      required: [activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount]
+      properties:
+        activeFiles:
+          type: number
+          minimum: 0
+        failedFiles:
+          type: number
+          minimum: 0
+        duplicateCount:
+          type: number
+          minimum: 0
+        missingCount:
+          type: number
+          minimum: 0
+        qualityConflictCount:
+          type: number
+          minimum: 0
+        plexOnlyCount:
+          type: number
+          minimum: 0
+        localOnlyCount:
+          type: number
+          minimum: 0
+    ArchivePlexMatch:
+      type: object
+      required: [ratingKey, title, year, qualityDifferences]
+      properties:
+        ratingKey:
+          type: string
+        title:
+          type: string
+        year:
+          type: [number, "null"]
+        qualityDifferences:
+          type: array
+          items:
+            type: string
+    ArchivePlexOnlyRecord:
+      type: object
+      required: [ratingKey, title, itemType, year, qualitySummary]
+      properties:
+        ratingKey:
+          type: string
+        title:
+          type: string
+        itemType:
+          type: string
+        year:
+          type: [number, "null"]
+        qualitySummary:
+          type: string
+    ArchiveInventoryRecord:
+      type: object
+      required: [id, archiveItemId, filename, path, relativePath, sizeBytes, checksum, mediaType, scanStatus, errorMessage, durationSeconds, videoCodec, audioCodec, width, height, fps, bitrate, container, dynamicRange, audioChannels, audioLanguages, subtitleLanguages, lastSeenAt, qualityStatus, qualitySummary, qualityDifferences, duplicateOfId, plexMatch]
+      properties:
+        id:
+          type: number
+        archiveItemId:
+          type: [number, "null"]
+        filename:
+          type: string
+        path:
+          type: string
+        relativePath:
+          type: string
+        sizeBytes:
+          type: [number, "null"]
+        checksum:
+          type: [string, "null"]
+        mediaType:
+          type: [string, "null"]
+        scanStatus:
+          type: string
+          enum: [active, missing, error]
+        errorMessage:
+          type: [string, "null"]
+        durationSeconds:
+          type: [number, "null"]
+        videoCodec:
+          type: [string, "null"]
+        audioCodec:
+          type: [string, "null"]
+        width:
+          type: [number, "null"]
+        height:
+          type: [number, "null"]
+        fps:
+          type: [number, "null"]
+        bitrate:
+          type: [number, "null"]
+        container:
+          type: [string, "null"]
+        dynamicRange:
+          type: [string, "null"]
+        audioChannels:
+          type: [number, "null"]
+        audioLanguages:
+          type: array
+          items:
+            type: string
+        subtitleLanguages:
+          type: array
+          items:
+            type: string
+        lastSeenAt:
+          type: [string, "null"]
+        qualityStatus:
+          type: string
+          enum: [best_local_version, lower_quality_version, higher_quality_available, duplicate, plex_version_exists, local_only, file_missing, needs_review]
+        qualitySummary:
+          type: string
+        qualityDifferences:
+          type: array
+          items:
+            type: string
+        duplicateOfId:
+          type: [number, "null"]
+        plexMatch:
+          oneOf:
+            - $ref: "#/components/schemas/ArchivePlexMatch"
+            - type: "null"
+    ArchiveInventory:
+      type: object
+      required: [scan, summary, records, plexOnly]
+      properties:
+        scan:
+          $ref: "#/components/schemas/ArchiveScan"
+        summary:
+          $ref: "#/components/schemas/ArchiveInventorySummary"
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveInventoryRecord"
+        plexOnly:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchivePlexOnlyRecord"
     MediaInspectInput:
       type: object
       required: [url]
@@ -691,7 +1053,7 @@ components:
           format: date-time
     LocalMediaInspection:
       type: object
-      required: [filename, path, extension, filesize, durationSeconds, videoStreams, audioStreams, width, height, fps, videoCodec, audioCodec, bitrate, container, dynamicRange, verification]
+      required: [filename, path, extension, filesize, durationSeconds, videoStreams, audioStreams, subtitleStreams, width, height, fps, videoCodec, audioCodec, audioChannels, audioLanguages, subtitleLanguages, bitrate, container, dynamicRange, verification]
       properties:
         filename:
           type: string
@@ -707,6 +1069,8 @@ components:
           type: number
         audioStreams:
           type: number
+        subtitleStreams:
+          type: number
         width:
           type: ["number", "null"]
         height:
@@ -717,6 +1081,16 @@ components:
           type: ["string", "null"]
         audioCodec:
           type: ["string", "null"]
+        audioChannels:
+          type: ["number", "null"]
+        audioLanguages:
+          type: array
+          items:
+            type: string
+        subtitleLanguages:
+          type: array
+          items:
+            type: string
         bitrate:
           type: ["number", "null"]
         container:

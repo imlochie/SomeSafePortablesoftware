@@ -474,10 +474,10 @@
 .archive-panel:hover { box-shadow: 0 14px 34px rgba(31,49,59,.08); }
 .archive-grid { background-image: linear-gradient(to right, rgba(104,122,128,.045) 1px, transparent 1px), linear-gradient(to bottom, rgba(104,122,128,.045) 1px, transparent 1px); background-size: 28px 28px; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.status-dot.ready, .status-dot.connected, .status-dot.available { background: #4e9690; box-shadow: 0 0 0 3px rgba(78,150,144,.14); }
-.status-dot.warning, .status-dot.not_configured { background: #d9952e; box-shadow: 0 0 0 3px rgba(217,149,46,.15); }
-.status-dot.unavailable, .status-dot.error, .status-dot.missing { background: #c85b51; box-shadow: 0 0 0 3px rgba(200,91,81,.13); }
-.status-dot.processing, .status-dot.downloading, .status-dot.verifying, .status-dot.moving, .status-dot.inspecting { background: #f4b942; box-shadow: 0 0 0 3px rgba(244,185,66,.18); }
+.status-dot.ready, .status-dot.connected, .status-dot.synced, .status-dot.available { background: #4e9690; box-shadow: 0 0 0 3px rgba(78,150,144,.14); }
+.status-dot.warning, .status-dot.not_configured, .status-dot.configured { background: #d9952e; box-shadow: 0 0 0 3px rgba(217,149,46,.15); }
+.status-dot.unavailable, .status-dot.error, .status-dot.connection_failed, .status-dot.sync_error, .status-dot.missing { background: #c85b51; box-shadow: 0 0 0 3px rgba(200,91,81,.13); }
+.status-dot.processing, .status-dot.syncing, .status-dot.downloading, .status-dot.verifying, .status-dot.moving, .status-dot.inspecting { background: #f4b942; box-shadow: 0 0 0 3px rgba(244,185,66,.18); }
 .status-dot.queued, .status-dot.paused, .status-dot.cancelled, .status-dot.recovery_required, .status-dot.critical { background: #d9952e; box-shadow: 0 0 0 3px rgba(217,149,46,.15); }
 .status-dot.complete, .status-dot.downloaded { background: #4e9690; box-shadow: 0 0 0 3px rgba(78,150,144,.14); }
 .status-dot.failed { background: #c85b51; box-shadow: 0 0 0 3px rgba(200,91,81,.13); }

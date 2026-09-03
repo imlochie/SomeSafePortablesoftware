@@ -20,6 +20,13 @@ archiveDb.exec(`
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     server_url TEXT NOT NULL,
+    library_key TEXT NOT NULL DEFAULT '',
+    library_type TEXT NOT NULL DEFAULT 'unknown',
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+    item_count INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
+    sync_status TEXT NOT NULL DEFAULT 'pending',
+    sync_error TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
@@ -30,7 +37,12 @@ archiveDb.exec(`
     title TEXT NOT NULL,
     item_type TEXT NOT NULL,
     year INTEGER,
-    metadata_json TEXT NOT NULL DEFAULT '{}'
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+    thumb_url TEXT,
+    added_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, rating_key)
   );
   CREATE TABLE IF NOT EXISTS plex_media (
     id INTEGER PRIMARY KEY,
@@ -94,11 +106,51 @@ archiveDb.exec(`
   );
   CREATE TABLE IF NOT EXISTS file_record (
     id INTEGER PRIMARY KEY,
-    path TEXT NOT NULL UNIQUE,
+    path TEXT NOT NULL,
     size_bytes INTEGER,
     checksum TEXT,
     media_type TEXT,
-    discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+    archive_item_id INTEGER REFERENCES archive_item(id),
+    filename TEXT NOT NULL DEFAULT '',
+    relative_path TEXT NOT NULL DEFAULT '',
+    scan_status TEXT NOT NULL DEFAULT 'active',
+    last_seen_at TEXT,
+    modified_at_ms INTEGER,
+    extension TEXT NOT NULL DEFAULT '',
+    duration_seconds REAL,
+    video_codec TEXT,
+    audio_codec TEXT,
+    width INTEGER,
+    height INTEGER,
+    fps REAL,
+    bitrate INTEGER,
+    container TEXT,
+    dynamic_range TEXT,
+    audio_channels INTEGER,
+    audio_languages TEXT NOT NULL DEFAULT '[]',
+    subtitle_languages TEXT NOT NULL DEFAULT '[]',
+    fingerprint TEXT,
+    error_message TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, path)
+  );
+  CREATE TABLE IF NOT EXISTS archive_scan (
+    owner_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'not_scanned',
+    started_at TEXT,
+    completed_at TEXT,
+    last_error TEXT,
+    scanned_files INTEGER NOT NULL DEFAULT 0,
+    active_files INTEGER NOT NULL DEFAULT 0,
+    failed_files INTEGER NOT NULL DEFAULT 0,
+    duplicate_count INTEGER NOT NULL DEFAULT 0,
+    missing_count INTEGER NOT NULL DEFAULT 0,
+    quality_conflict_count INTEGER NOT NULL DEFAULT 0,
+    plex_only_count INTEGER NOT NULL DEFAULT 0,
+    local_only_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS assistant_conversation (
     id INTEGER PRIMARY KEY,
@@ -210,7 +262,153 @@ archiveDb.exec(`
     UPDATE processing_job SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
   END;
 `);
-for (const table of ["archive_item", "source_record", "download_job", "assistant_conversation", "system_event"]) {
+for (const [column, definition] of [
+  ["library_key", "TEXT NOT NULL DEFAULT ''"],
+  ["library_type", "TEXT NOT NULL DEFAULT 'unknown'"],
+  ["owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`],
+  ["item_count", "INTEGER NOT NULL DEFAULT 0"],
+  ["last_synced_at", "TEXT"],
+  ["sync_status", "TEXT NOT NULL DEFAULT 'pending'"],
+  ["sync_error", "TEXT"],
+] as Array<[string, string]>) {
+  ensureColumn("plex_library", column, definition);
+}
+for (const [column, definition] of [
+  ["owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`],
+  ["thumb_url", "TEXT"],
+  ["added_at", "TEXT"],
+  ["updated_at", "TEXT NOT NULL DEFAULT ''"],
+] as Array<[string, string]>) {
+  ensureColumn("plex_item", column, definition);
+}
+archiveDb.exec("UPDATE plex_item SET updated_at = CURRENT_TIMESTAMP WHERE updated_at = ''");
+
+function hasSingleColumnUniqueIndex(table: string, column: string) {
+  const indexes = archiveDb
+    .prepare(`PRAGMA index_list(${table})`)
+    .all() as Array<{ name: string; unique: number }>;
+  return indexes.some((index) => {
+    if (!index.unique) return false;
+    const indexName = index.name.replaceAll('"', '""');
+    const columns = archiveDb
+      .prepare(`PRAGMA index_info("${indexName}")`)
+      .all() as Array<{ name: string }>;
+    return columns.length === 1 && columns[0]?.name === column;
+  });
+}
+
+// The original Plex item schema had a global UNIQUE(rating_key). Rebuild only
+// this table in place so the same Plex rating key can safely exist for two
+// authenticated owners while preserving all existing rows and child records.
+if (hasSingleColumnUniqueIndex("plex_item", "rating_key")) {
+  archiveDb.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN IMMEDIATE;
+    CREATE TABLE plex_item_owned (
+      id INTEGER PRIMARY KEY,
+      library_id INTEGER NOT NULL REFERENCES plex_library(id) ON DELETE CASCADE,
+      rating_key TEXT NOT NULL,
+      title TEXT NOT NULL,
+      item_type TEXT NOT NULL,
+      year INTEGER,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+      thumb_url TEXT,
+      added_at TEXT,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (owner_id, rating_key)
+    );
+    INSERT INTO plex_item_owned
+      (id, library_id, rating_key, title, item_type, year, metadata_json, owner_id, thumb_url, added_at, updated_at)
+      SELECT id, library_id, rating_key, title, item_type, year, metadata_json, owner_id, thumb_url, added_at,
+        CASE WHEN updated_at = '' THEN CURRENT_TIMESTAMP ELSE updated_at END
+      FROM plex_item;
+    DROP TABLE plex_item;
+    ALTER TABLE plex_item_owned RENAME TO plex_item;
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `);
+}
+const fileRecordColumns = archiveDb
+  .prepare("PRAGMA table_info(file_record)")
+  .all() as Array<{ name: string }>;
+const fileRecordHasOwner = fileRecordColumns.some((column) => column.name === "owner_id");
+if (!fileRecordHasOwner || hasSingleColumnUniqueIndex("file_record", "path")) {
+  const ownerExpression = fileRecordHasOwner ? "owner_id" : `'${LEGACY_OWNER_ID}'`;
+  archiveDb.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN IMMEDIATE;
+    CREATE TABLE file_record_owned (
+      id INTEGER PRIMARY KEY,
+      path TEXT NOT NULL,
+      size_bytes INTEGER,
+      checksum TEXT,
+      media_type TEXT,
+      discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+      archive_item_id INTEGER REFERENCES archive_item(id),
+      filename TEXT NOT NULL DEFAULT '',
+      relative_path TEXT NOT NULL DEFAULT '',
+      scan_status TEXT NOT NULL DEFAULT 'active',
+      last_seen_at TEXT,
+      modified_at_ms INTEGER,
+      extension TEXT NOT NULL DEFAULT '',
+      duration_seconds REAL,
+      video_codec TEXT,
+      audio_codec TEXT,
+      width INTEGER,
+      height INTEGER,
+      fps REAL,
+      bitrate INTEGER,
+      container TEXT,
+      dynamic_range TEXT,
+      audio_channels INTEGER,
+      audio_languages TEXT NOT NULL DEFAULT '[]',
+      subtitle_languages TEXT NOT NULL DEFAULT '[]',
+      fingerprint TEXT,
+      error_message TEXT,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (owner_id, path)
+    );
+    INSERT INTO file_record_owned
+      (id, path, size_bytes, checksum, media_type, discovered_at, owner_id)
+    SELECT id, path, size_bytes, checksum, media_type, discovered_at, ${ownerExpression}
+    FROM file_record;
+    DROP TABLE file_record;
+    ALTER TABLE file_record_owned RENAME TO file_record;
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `);
+}
+for (const [column, definition] of [
+  ["owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`],
+  ["archive_item_id", "INTEGER"],
+  ["filename", "TEXT NOT NULL DEFAULT ''"],
+  ["relative_path", "TEXT NOT NULL DEFAULT ''"],
+  ["scan_status", "TEXT NOT NULL DEFAULT 'active'"],
+  ["last_seen_at", "TEXT"],
+  ["modified_at_ms", "INTEGER"],
+  ["extension", "TEXT NOT NULL DEFAULT ''"],
+  ["duration_seconds", "REAL"],
+  ["video_codec", "TEXT"],
+  ["audio_codec", "TEXT"],
+  ["width", "INTEGER"],
+  ["height", "INTEGER"],
+  ["fps", "REAL"],
+  ["bitrate", "INTEGER"],
+  ["container", "TEXT"],
+  ["dynamic_range", "TEXT"],
+  ["audio_channels", "INTEGER"],
+  ["audio_languages", "TEXT NOT NULL DEFAULT '[]'"],
+  ["subtitle_languages", "TEXT NOT NULL DEFAULT '[]'"],
+  ["fingerprint", "TEXT"],
+  ["error_message", "TEXT"],
+  ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
+] as Array<[string, string]>) {
+  ensureColumn("file_record", column, definition);
+}
+ensureColumn("archive_scan", "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
+for (const table of ["archive_item", "source_record", "download_job", "assistant_conversation", "system_event", "plex_library", "plex_item"]) {
   ensureColumn(table, "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
 }
 
@@ -274,6 +472,9 @@ const legacyOwnedTables = [
   "download_job",
   "assistant_conversation",
   "system_event",
+  "plex_library",
+  "plex_item",
+  "file_record",
 ] as const;
 
 export function claimLegacyData(ownerId: string) {

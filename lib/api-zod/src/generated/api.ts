@@ -200,11 +200,28 @@ export const UpdateSettingsResponse = zod.object({
 /**
  * @summary Get Plex configuration status
  */
+export const getPlexConfigResponseLibraryCountMin = 0;
+
+export const getPlexConfigResponseItemCountMin = 0;
+
+export const getPlexConfigResponseMediaCountMin = 0;
+
+
+
 export const GetPlexConfigResponse = zod.object({
   "serverUrl": zod.string(),
   "configured": zod.boolean(),
   "hasToken": zod.boolean(),
-  "status": zod.enum(['not_configured', 'ready', 'connected', 'error'])
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(getPlexConfigResponseLibraryCountMin),
+  "itemCount": zod.number().min(getPlexConfigResponseItemCountMin),
+  "mediaCount": zod.number().min(getPlexConfigResponseMediaCountMin)
 })
 
 
@@ -216,11 +233,349 @@ export const UpdatePlexConfigBody = zod.object({
   "token": zod.string().optional()
 })
 
+export const updatePlexConfigResponseLibraryCountMin = 0;
+
+export const updatePlexConfigResponseItemCountMin = 0;
+
+export const updatePlexConfigResponseMediaCountMin = 0;
+
+
+
 export const UpdatePlexConfigResponse = zod.object({
   "serverUrl": zod.string(),
   "configured": zod.boolean(),
   "hasToken": zod.boolean(),
-  "status": zod.enum(['not_configured', 'ready', 'connected', 'error'])
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(updatePlexConfigResponseLibraryCountMin),
+  "itemCount": zod.number().min(updatePlexConfigResponseItemCountMin),
+  "mediaCount": zod.number().min(updatePlexConfigResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Verify the configured Plex server
+ */
+export const testPlexConnectionResponseLibraryCountMin = 0;
+
+export const testPlexConnectionResponseItemCountMin = 0;
+
+export const testPlexConnectionResponseMediaCountMin = 0;
+
+
+
+export const TestPlexConnectionResponse = zod.object({
+  "serverUrl": zod.string(),
+  "configured": zod.boolean(),
+  "hasToken": zod.boolean(),
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(testPlexConnectionResponseLibraryCountMin),
+  "itemCount": zod.number().min(testPlexConnectionResponseItemCountMin),
+  "mediaCount": zod.number().min(testPlexConnectionResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Start synchronizing the configured Plex inventory
+ */
+export const startPlexSyncResponseLibraryCountMin = 0;
+
+export const startPlexSyncResponseItemCountMin = 0;
+
+export const startPlexSyncResponseMediaCountMin = 0;
+
+
+
+export const StartPlexSyncResponse = zod.object({
+  "serverUrl": zod.string(),
+  "configured": zod.boolean(),
+  "hasToken": zod.boolean(),
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(startPlexSyncResponseLibraryCountMin),
+  "itemCount": zod.number().min(startPlexSyncResponseItemCountMin),
+  "mediaCount": zod.number().min(startPlexSyncResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Get the synchronized Plex inventory
+ */
+export const getPlexInventoryResponseLibrariesItemItemCountMin = 0;
+
+export const getPlexInventoryResponseItemsItemMediaCountMin = 0;
+
+export const getPlexInventoryResponseItemsItemPartCountMin = 0;
+
+
+
+export const GetPlexInventoryResponse = zod.object({
+  "libraries": zod.array(zod.object({
+  "id": zod.number(),
+  "key": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "serverUrl": zod.string(),
+  "itemCount": zod.number().min(getPlexInventoryResponseLibrariesItemItemCountMin),
+  "lastSyncedAt": zod.string().nullable(),
+  "syncStatus": zod.string(),
+  "syncError": zod.string().nullable()
+})),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "libraryId": zod.number(),
+  "libraryName": zod.string(),
+  "ratingKey": zod.string(),
+  "title": zod.string(),
+  "itemType": zod.string(),
+  "year": zod.number().nullable(),
+  "thumbPathAvailable": zod.boolean(),
+  "addedAt": zod.string().nullable(),
+  "updatedAt": zod.string().nullable(),
+  "mediaCount": zod.number().min(getPlexInventoryResponseItemsItemMediaCountMin),
+  "partCount": zod.number().min(getPlexInventoryResponseItemsItemPartCountMin)
+}))
+})
+
+
+/**
+ * @summary Get the current local archive scan state
+ */
+export const getArchiveScanResponseScannedFilesMin = 0;
+
+export const getArchiveScanResponseActiveFilesMin = 0;
+
+export const getArchiveScanResponseFailedFilesMin = 0;
+
+export const getArchiveScanResponseDuplicateCountMin = 0;
+
+export const getArchiveScanResponseMissingCountMin = 0;
+
+export const getArchiveScanResponseQualityConflictCountMin = 0;
+
+export const getArchiveScanResponsePlexOnlyCountMin = 0;
+
+export const getArchiveScanResponseLocalOnlyCountMin = 0;
+
+
+
+export const GetArchiveScanResponse = zod.object({
+  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "startedAt": zod.string().nullable(),
+  "completedAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "scannedFiles": zod.number().min(getArchiveScanResponseScannedFilesMin),
+  "activeFiles": zod.number().min(getArchiveScanResponseActiveFilesMin),
+  "failedFiles": zod.number().min(getArchiveScanResponseFailedFilesMin),
+  "duplicateCount": zod.number().min(getArchiveScanResponseDuplicateCountMin),
+  "missingCount": zod.number().min(getArchiveScanResponseMissingCountMin),
+  "qualityConflictCount": zod.number().min(getArchiveScanResponseQualityConflictCountMin),
+  "plexOnlyCount": zod.number().min(getArchiveScanResponsePlexOnlyCountMin),
+  "localOnlyCount": zod.number().min(getArchiveScanResponseLocalOnlyCountMin)
+})
+
+
+/**
+ * @summary Start a server-side archive filesystem scan
+ */
+export const startArchiveScanResponseScannedFilesMin = 0;
+
+export const startArchiveScanResponseActiveFilesMin = 0;
+
+export const startArchiveScanResponseFailedFilesMin = 0;
+
+export const startArchiveScanResponseDuplicateCountMin = 0;
+
+export const startArchiveScanResponseMissingCountMin = 0;
+
+export const startArchiveScanResponseQualityConflictCountMin = 0;
+
+export const startArchiveScanResponsePlexOnlyCountMin = 0;
+
+export const startArchiveScanResponseLocalOnlyCountMin = 0;
+
+
+
+export const StartArchiveScanResponse = zod.object({
+  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "startedAt": zod.string().nullable(),
+  "completedAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "scannedFiles": zod.number().min(startArchiveScanResponseScannedFilesMin),
+  "activeFiles": zod.number().min(startArchiveScanResponseActiveFilesMin),
+  "failedFiles": zod.number().min(startArchiveScanResponseFailedFilesMin),
+  "duplicateCount": zod.number().min(startArchiveScanResponseDuplicateCountMin),
+  "missingCount": zod.number().min(startArchiveScanResponseMissingCountMin),
+  "qualityConflictCount": zod.number().min(startArchiveScanResponseQualityConflictCountMin),
+  "plexOnlyCount": zod.number().min(startArchiveScanResponsePlexOnlyCountMin),
+  "localOnlyCount": zod.number().min(startArchiveScanResponseLocalOnlyCountMin)
+})
+
+
+/**
+ * @summary Get local archive inventory and intelligence
+ */
+export const getArchiveInventoryResponseScanScannedFilesMin = 0;
+
+export const getArchiveInventoryResponseScanActiveFilesMin = 0;
+
+export const getArchiveInventoryResponseScanFailedFilesMin = 0;
+
+export const getArchiveInventoryResponseScanDuplicateCountMin = 0;
+
+export const getArchiveInventoryResponseScanMissingCountMin = 0;
+
+export const getArchiveInventoryResponseScanQualityConflictCountMin = 0;
+
+export const getArchiveInventoryResponseScanPlexOnlyCountMin = 0;
+
+export const getArchiveInventoryResponseScanLocalOnlyCountMin = 0;
+
+export const getArchiveInventoryResponseSummaryActiveFilesMin = 0;
+
+export const getArchiveInventoryResponseSummaryFailedFilesMin = 0;
+
+export const getArchiveInventoryResponseSummaryDuplicateCountMin = 0;
+
+export const getArchiveInventoryResponseSummaryMissingCountMin = 0;
+
+export const getArchiveInventoryResponseSummaryQualityConflictCountMin = 0;
+
+export const getArchiveInventoryResponseSummaryPlexOnlyCountMin = 0;
+
+export const getArchiveInventoryResponseSummaryLocalOnlyCountMin = 0;
+
+
+
+export const GetArchiveInventoryResponse = zod.object({
+  "scan": zod.object({
+  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "startedAt": zod.string().nullable(),
+  "completedAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "scannedFiles": zod.number().min(getArchiveInventoryResponseScanScannedFilesMin),
+  "activeFiles": zod.number().min(getArchiveInventoryResponseScanActiveFilesMin),
+  "failedFiles": zod.number().min(getArchiveInventoryResponseScanFailedFilesMin),
+  "duplicateCount": zod.number().min(getArchiveInventoryResponseScanDuplicateCountMin),
+  "missingCount": zod.number().min(getArchiveInventoryResponseScanMissingCountMin),
+  "qualityConflictCount": zod.number().min(getArchiveInventoryResponseScanQualityConflictCountMin),
+  "plexOnlyCount": zod.number().min(getArchiveInventoryResponseScanPlexOnlyCountMin),
+  "localOnlyCount": zod.number().min(getArchiveInventoryResponseScanLocalOnlyCountMin)
+}),
+  "summary": zod.object({
+  "activeFiles": zod.number().min(getArchiveInventoryResponseSummaryActiveFilesMin),
+  "failedFiles": zod.number().min(getArchiveInventoryResponseSummaryFailedFilesMin),
+  "duplicateCount": zod.number().min(getArchiveInventoryResponseSummaryDuplicateCountMin),
+  "missingCount": zod.number().min(getArchiveInventoryResponseSummaryMissingCountMin),
+  "qualityConflictCount": zod.number().min(getArchiveInventoryResponseSummaryQualityConflictCountMin),
+  "plexOnlyCount": zod.number().min(getArchiveInventoryResponseSummaryPlexOnlyCountMin),
+  "localOnlyCount": zod.number().min(getArchiveInventoryResponseSummaryLocalOnlyCountMin)
+}),
+  "records": zod.array(zod.object({
+  "id": zod.number(),
+  "archiveItemId": zod.number().nullable(),
+  "filename": zod.string(),
+  "path": zod.string(),
+  "relativePath": zod.string(),
+  "sizeBytes": zod.number().nullable(),
+  "checksum": zod.string().nullable(),
+  "mediaType": zod.string().nullable(),
+  "scanStatus": zod.enum(['active', 'missing', 'error']),
+  "errorMessage": zod.string().nullable(),
+  "durationSeconds": zod.number().nullable(),
+  "videoCodec": zod.string().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "width": zod.number().nullable(),
+  "height": zod.number().nullable(),
+  "fps": zod.number().nullable(),
+  "bitrate": zod.number().nullable(),
+  "container": zod.string().nullable(),
+  "dynamicRange": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "audioLanguages": zod.array(zod.string()),
+  "subtitleLanguages": zod.array(zod.string()),
+  "lastSeenAt": zod.string().nullable(),
+  "qualityStatus": zod.enum(['best_local_version', 'lower_quality_version', 'higher_quality_available', 'duplicate', 'plex_version_exists', 'local_only', 'file_missing', 'needs_review']),
+  "qualitySummary": zod.string(),
+  "qualityDifferences": zod.array(zod.string()),
+  "duplicateOfId": zod.number().nullable(),
+  "plexMatch": zod.union([zod.object({
+  "ratingKey": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "qualityDifferences": zod.array(zod.string())
+}),zod.null()])
+})),
+  "plexOnly": zod.array(zod.object({
+  "ratingKey": zod.string(),
+  "title": zod.string(),
+  "itemType": zod.string(),
+  "year": zod.number().nullable(),
+  "qualitySummary": zod.string()
+}))
+})
+
+
+/**
+ * @summary Get one local archive record with comparison details
+ */
+
+
+
+export const GetArchiveRecordParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const GetArchiveRecordResponse = zod.object({
+  "id": zod.number(),
+  "archiveItemId": zod.number().nullable(),
+  "filename": zod.string(),
+  "path": zod.string(),
+  "relativePath": zod.string(),
+  "sizeBytes": zod.number().nullable(),
+  "checksum": zod.string().nullable(),
+  "mediaType": zod.string().nullable(),
+  "scanStatus": zod.enum(['active', 'missing', 'error']),
+  "errorMessage": zod.string().nullable(),
+  "durationSeconds": zod.number().nullable(),
+  "videoCodec": zod.string().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "width": zod.number().nullable(),
+  "height": zod.number().nullable(),
+  "fps": zod.number().nullable(),
+  "bitrate": zod.number().nullable(),
+  "container": zod.string().nullable(),
+  "dynamicRange": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "audioLanguages": zod.array(zod.string()),
+  "subtitleLanguages": zod.array(zod.string()),
+  "lastSeenAt": zod.string().nullable(),
+  "qualityStatus": zod.enum(['best_local_version', 'lower_quality_version', 'higher_quality_available', 'duplicate', 'plex_version_exists', 'local_only', 'file_missing', 'needs_review']),
+  "qualitySummary": zod.string(),
+  "qualityDifferences": zod.array(zod.string()),
+  "duplicateOfId": zod.number().nullable(),
+  "plexMatch": zod.union([zod.object({
+  "ratingKey": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "qualityDifferences": zod.array(zod.string())
+}),zod.null()])
 })
 
 
@@ -305,11 +660,15 @@ export const InspectLocalMediaResponse = zod.object({
   "durationSeconds": zod.number().nullable(),
   "videoStreams": zod.number(),
   "audioStreams": zod.number(),
+  "subtitleStreams": zod.number(),
   "width": zod.number().nullable(),
   "height": zod.number().nullable(),
   "fps": zod.number().nullable(),
   "videoCodec": zod.string().nullable(),
   "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "audioLanguages": zod.array(zod.string()),
+  "subtitleLanguages": zod.array(zod.string()),
   "bitrate": zod.number().nullable(),
   "container": zod.string().nullable(),
   "dynamicRange": zod.string().nullable(),
