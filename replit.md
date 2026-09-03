@@ -4,7 +4,7 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -48,7 +48,8 @@ The app gives a personal media archivist a calm control room for local archive s
 ## Gotchas
 
 - Node.js 22+ is required for the embedded `node:sqlite` runtime.
-- The local launcher starts the API on port 5000 and the Vite UI on port 3000.
+- The local launcher starts the API on port 8080 and the Vite UI on port 3000.
+- `YT_DLP_PATH`, `FFMPEG_PATH`, and `FFPROBE_PATH` can provide Windows executable defaults; the same paths are editable in System Settings.
 
 ## Pointers
 

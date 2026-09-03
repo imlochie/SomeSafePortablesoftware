@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import { basename, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { SettingsRecord } from "../lib/archive-db";
+import { getLocalToolPaths } from "./local-tools";
 
 const execFileAsync = promisify(execFile);
 
@@ -354,7 +355,8 @@ export async function inspectMediaSource(url: string, settings: SettingsRecord, 
     return value;
   }
 
-  const { stdout } = await execFileAsync("yt-dlp", [
+  const { ytDlp } = getLocalToolPaths(settings);
+  const { stdout } = await execFileAsync(ytDlp, [
     "--dump-single-json",
     "--skip-download",
     "--no-playlist",
@@ -389,7 +391,8 @@ export async function inspectLocalMedia(filePath: string, settings: SettingsReco
   }
   const stat = await fs.stat(candidate);
   if (!stat.isFile()) throw new Error("The selected local path is not a file.");
-  const { stdout } = await execFileAsync("ffprobe", [
+  const { ffprobe } = getLocalToolPaths(settings);
+  const { stdout } = await execFileAsync(ffprobe, [
     "-v", "error", "-print_format", "json", "-show_format", "-show_streams", candidate,
   ], { timeout: 20_000, maxBuffer: 10 * 1024 * 1024 });
   const probe = JSON.parse(stdout) as { format?: Record<string, unknown>; streams?: Array<Record<string, unknown>> };

@@ -436,7 +436,7 @@ components:
           type: string
     AppSettings:
       type: object
-      required: [mockMode, dataDirectory, downloadDirectory, archiveDirectory, temporaryDirectory, logLevel, hardwareAcceleration, hardwareAccelerationMode, networkMode, concurrentDownloads, maxRetries, bandwidthLimit, outputContainer, inspectionCacheMinutes, warningFreePercent, criticalFreePercent]
+      required: [mockMode, dataDirectory, downloadDirectory, archiveDirectory, temporaryDirectory, ytDlpPath, ffmpegPath, ffprobePath, logLevel, hardwareAcceleration, hardwareAccelerationMode, networkMode, concurrentDownloads, maxRetries, bandwidthLimit, outputContainer, inspectionCacheMinutes, warningFreePercent, criticalFreePercent]
       properties:
         mockMode:
           type: boolean
@@ -447,6 +447,12 @@ components:
         archiveDirectory:
           type: string
         temporaryDirectory:
+          type: string
+        ytDlpPath:
+          type: string
+        ffmpegPath:
+          type: string
+        ffprobePath:
           type: string
         logLevel:
           type: string
@@ -497,6 +503,12 @@ components:
         archiveDirectory:
           type: string
         temporaryDirectory:
+          type: string
+        ytDlpPath:
+          type: string
+        ffmpegPath:
+          type: string
+        ffprobePath:
           type: string
         logLevel:
           type: string

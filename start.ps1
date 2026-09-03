@@ -10,7 +10,7 @@ Write-Host "Open http://localhost:3000 when the browser is ready." -ForegroundCo
 $api = Start-Process powershell -ArgumentList @(
   "-NoExit",
   "-Command",
-  "`$env:PORT='5000'; `$env:ARCHIVE_DB_PATH='$env:ARCHIVE_DB_PATH'; Set-Location '$root'; pnpm --filter @workspace/api-server run dev"
+  "`$env:PORT='8080'; `$env:ARCHIVE_DB_PATH='$env:ARCHIVE_DB_PATH'; Set-Location '$root'; pnpm --filter @workspace/api-server run dev"
 ) -PassThru
 
 try {

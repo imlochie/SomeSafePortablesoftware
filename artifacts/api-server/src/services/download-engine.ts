@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia, prepareDownload, validateFormatId } from "./media";
+import { getLocalToolPaths } from "./local-tools";
 
 const execFileAsync = promisify(execFile);
 type JobStatus =
@@ -139,7 +140,8 @@ async function processWithFfmpeg(id: number, inputPath: string, job: ReturnType<
   if (!job) throw new Error("Download job disappeared before processing.");
   setStatus(id, "processing", { progress: 76 });
   const processedPath = join(job.temporaryDirectory, `.processed-${job.id}.${job.outputContainer}`);
-  await execFileAsync("ffmpeg", [
+  const { ffmpeg } = getLocalToolPaths(readSettings());
+  await execFileAsync(ffmpeg, [
     "-y", "-hide_banner", "-loglevel", "error",
     "-i", inputPath,
     "-map", "0",
@@ -178,7 +180,8 @@ async function runRealJob(id: number, settings: SettingsRecord) {
     ];
     if (settings.bandwidthLimit > 0) args.push("--limit-rate", `${settings.bandwidthLimit}B`);
     args.push(job.sourceUrl);
-    const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const { ytDlp } = getLocalToolPaths(settings);
+    const child = spawn(ytDlp, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     managed.child = child;
     updateJob(id, { process_id: child.pid ?? null });
     const onOutput = (chunk: Buffer) => handleProgress(id, chunk.toString());

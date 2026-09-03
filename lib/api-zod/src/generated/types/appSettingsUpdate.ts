@@ -16,6 +16,9 @@ export interface AppSettingsUpdate {
   downloadDirectory?: string;
   archiveDirectory?: string;
   temporaryDirectory?: string;
+  ytDlpPath?: string;
+  ffmpegPath?: string;
+  ffprobePath?: string;
   logLevel?: AppSettingsUpdateLogLevel;
   hardwareAcceleration?: boolean;
   hardwareAccelerationMode?: AppSettingsUpdateHardwareAccelerationMode;

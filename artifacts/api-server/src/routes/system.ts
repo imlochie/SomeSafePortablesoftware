@@ -9,29 +9,32 @@ import {
   GetSystemOverviewResponse,
 } from "@workspace/api-zod";
 import { archiveDb, readEvents, readSettings } from "../lib/archive-db";
+import { getLocalToolPaths } from "../services/local-tools";
 
 const router: IRouter = Router();
 
-const dependencies = [
-  { name: "Node.js", command: "node", args: ["--version"] },
-  { name: "SQLite", command: "sqlite3", args: ["--version"] },
-  { name: "FFmpeg", command: "ffmpeg", args: ["-version"] },
-  { name: "ffprobe", command: "ffprobe", args: ["-version"] },
-  { name: "yt-dlp", command: "yt-dlp", args: ["--version"] },
+const dependencyDefinitions = [
+  { name: "Node.js", key: null, fallback: "node", args: ["--version"] },
+  { name: "SQLite", key: null, fallback: "sqlite3", args: ["--version"] },
+  { name: "FFmpeg", key: "ffmpeg", fallback: "ffmpeg", args: ["-version"] },
+  { name: "ffprobe", key: "ffprobe", fallback: "ffprobe", args: ["-version"] },
+  { name: "yt-dlp", key: "ytDlp", fallback: "yt-dlp", args: ["--version"] },
 ] as const;
 
-function detectDependency(dependency: (typeof dependencies)[number]) {
+function detectDependency(dependency: (typeof dependencyDefinitions)[number], settings: ReturnType<typeof readSettings>) {
+  const tools = getLocalToolPaths(settings);
+  const command = dependency.key ? tools[dependency.key] : dependency.fallback;
   try {
-    const versionOutput = execFileSync(dependency.command, dependency.args, {
+    const versionOutput = execFileSync(command, dependency.args, {
       encoding: "utf8",
       timeout: 1200,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const version = versionOutput.trim().split(/\r?\n/)[0] ?? null;
-    const capabilities = dependency.command === "ffmpeg" ? detectFfmpegCapabilities() : [];
+    const capabilities = dependency.name === "FFmpeg" ? detectFfmpegCapabilities(tools.ffmpeg) : [];
     return {
       name: dependency.name,
-      command: dependency.command,
+      command,
       status: "available" as const,
       detail: "Detected on this machine",
       version,
@@ -39,11 +42,11 @@ function detectDependency(dependency: (typeof dependencies)[number]) {
     };
   } catch {
     return {
-      name: dependency.name,
-      command: dependency.command,
-      status: dependency.command === "sqlite3" ? ("not_configured" as const) : ("missing" as const),
+        name: dependency.name,
+        command,
+        status: dependency.name === "SQLite" ? ("not_configured" as const) : ("missing" as const),
       detail:
-        dependency.command === "sqlite3"
+          dependency.name === "SQLite"
           ? "Using the embedded SQLite runtime"
           : "Optional dependency not detected",
       version: null,
@@ -51,9 +54,9 @@ function detectDependency(dependency: (typeof dependencies)[number]) {
   }
 }
 
-function detectFfmpegCapabilities() {
+function detectFfmpegCapabilities(command: string) {
   try {
-    const output = execFileSync("ffmpeg", ["-hide_banner", "-hwaccels"], {
+    const output = execFileSync(command, ["-hide_banner", "-hwaccels"], {
       encoding: "utf8",
       timeout: 1800,
       stdio: ["ignore", "pipe", "pipe"],
@@ -118,7 +121,8 @@ router.get("/system/overview", (_req, res) => {
 });
 
 router.get("/system/dependencies", (_req, res) => {
-  res.json(GetSystemDependenciesResponse.parse(dependencies.map(detectDependency)));
+  const settings = readSettings();
+  res.json(GetSystemDependenciesResponse.parse(dependencyDefinitions.map((dependency) => detectDependency(dependency, settings))));
 });
 
 router.get("/system/events", (_req, res) => {
