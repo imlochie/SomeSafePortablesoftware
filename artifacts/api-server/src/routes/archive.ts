@@ -8,6 +8,8 @@ import {
   UpdateArchiveRecordReviewBody,
   UpdateArchiveRecordReviewParams,
   UpdateArchiveRecordReviewResponse,
+  UpdateArchiveRecordReviewsBody,
+  UpdateArchiveRecordReviewsResponse,
 } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import {
@@ -16,6 +18,7 @@ import {
   readArchiveScan,
   startArchiveScan,
   updateArchiveRecordReview,
+  updateArchiveRecordReviews,
 } from "../services/archive";
 
 const router: IRouter = Router();
@@ -69,6 +72,21 @@ router.put("/archive/records/:id", (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Review decision could not be saved." });
   }
+});
+
+router.post("/archive/reviews", (req, res) => {
+  const body = UpdateArchiveRecordReviewsBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "One or more unique archive record ids and a valid review status are required." });
+    return;
+  }
+  const result = updateArchiveRecordReviews(
+    getAuthenticatedUserId(req),
+    body.data.ids,
+    body.data.status,
+    body.data.note ?? null,
+  );
+  res.json(UpdateArchiveRecordReviewsResponse.parse(result));
 });
 
 export default router;

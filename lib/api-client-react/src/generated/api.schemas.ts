@@ -448,6 +448,48 @@ export interface ArchiveReview {
   updatedAt: string;
 }
 
+export type ArchiveBulkReviewUpdateStatus = typeof ArchiveBulkReviewUpdateStatus[keyof typeof ArchiveBulkReviewUpdateStatus];
+
+
+export const ArchiveBulkReviewUpdateStatus = {
+  reviewed: 'reviewed',
+  deferred: 'deferred',
+  unresolved: 'unresolved',
+} as const;
+
+export interface ArchiveBulkReviewUpdate {
+  /**
+     * @minItems 1
+     * @maxItems 500
+     * @items.minimum 1
+     */
+  ids: number[];
+  status: ArchiveBulkReviewUpdateStatus;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  note?: string | null;
+}
+
+export interface ArchiveBulkReviewResult {
+  id: number;
+  success: boolean;
+  review: ArchiveReview | null;
+  /** @nullable */
+  error: string | null;
+}
+
+export interface ArchiveBulkReviewResponse {
+  /** @minimum 1 */
+  attempted: number;
+  /** @minimum 0 */
+  succeeded: number;
+  /** @minimum 0 */
+  failed: number;
+  results: ArchiveBulkReviewResult[];
+}
+
 export interface ArchivePlexMatch {
   ratingKey: string;
   title: string;

@@ -18,7 +18,7 @@ import {
   usePauseDownload, usePrepareDownload, useRetryDownload, useResumeDownload,
   useStartDownload, useStartPlexSync, useTestPlexConnection, useUpdatePlexConfig, useUpdateSettings,
   useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord,
-  useUpdateArchiveRecordReview, getGetArchiveScanQueryKey, getGetArchiveInventoryQueryKey,
+  useUpdateArchiveRecordReview, useUpdateArchiveRecordReviews, getGetArchiveScanQueryKey, getGetArchiveInventoryQueryKey,
   getGetArchiveRecordQueryKey,
 } from '@workspace/api-client-react';
 import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent } from '@workspace/api-client-react';
@@ -441,6 +441,8 @@ function ArchivePage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState('');
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
+  const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
+  const [bulkNotice, setBulkNotice] = useState('');
   const [view, setView] = useState<'local' | 'plex_only'>('local');
   const [filter, setFilter] = useState<'all' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
 
@@ -470,6 +472,7 @@ function ArchivePage() {
   });
 
   const startScan = useStartArchiveScan();
+  const bulkReview = useUpdateArchiveRecordReviews();
   const handleStartScan = () => {
     setNotice('');
     startScan.mutate(undefined, {
@@ -498,6 +501,35 @@ function ArchivePage() {
 
   const plexOnly = inventory?.plexOnly ?? [];
   const showPlex = view === 'plex_only';
+  const selectableRecords = displayedRecords.filter(record => record.reviewStatus !== 'not_applicable');
+  const selectedSet = new Set(selectedRecordIds);
+  const allVisibleSelected = selectableRecords.length > 0 && selectableRecords.every(record => selectedSet.has(record.id));
+  const toggleRecordSelection = (id: number) => {
+    setSelectedRecordIds(current => current.includes(id) ? current.filter(recordId => recordId !== id) : [...current, id]);
+    setBulkNotice('');
+  };
+  const toggleAllVisible = () => {
+    setSelectedRecordIds(allVisibleSelected ? [] : selectableRecords.map(record => record.id));
+    setBulkNotice('');
+  };
+  const runBulkReview = (status: 'reviewed' | 'deferred' | 'unresolved') => {
+    if (!selectedRecordIds.length) return;
+    setBulkNotice('');
+    bulkReview.mutate({ data: { ids: selectedRecordIds, status, note: null } }, {
+      onSuccess: result => {
+        const failedResults = result.results.filter(item => !item.success);
+        setSelectedRecordIds(failedResults.map(item => item.id));
+        setBulkNotice(result.failed
+          ? `${result.succeeded} updated; ${result.failed} failed. ${failedResults.map(item => `#${item.id}: ${item.error}`).join(' ')}`
+          : `${result.succeeded} findings marked ${status}.`);
+        queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+        result.results.filter(item => item.success).forEach(item => {
+          queryClient.invalidateQueries({ queryKey: getGetArchiveRecordQueryKey(item.id) });
+        });
+      },
+      onError: error => setBulkNotice(`Bulk review could not be saved: ${errorText(error)}`)
+    });
+  };
 
   return (
     <>
@@ -537,20 +569,38 @@ function ArchivePage() {
         <section className="archive-panel flex min-h-[500px] flex-col" data-testid="panel-archive-list">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e3e8e7] bg-[#fbfcfa] p-4 md:px-6">
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
-              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
+              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
+              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
             </div>
 
             {view === 'local' && (
               <div className="flex flex-wrap items-center gap-2">
                 {(['all', 'duplicates', 'conflicts', 'missing', 'local_only', 'reviewed', 'unresolved'] as const).map(f => (
-                  <button key={f} onClick={() => setFilter(f)} className={`archive-mono text-[9px] tracking-[.08em] px-2 py-1 border ${filter === f ? 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]' : 'border-[#d6dfdc] bg-white text-[#7f9194] hover:border-[#aabfba]'}`}>
+                  <button key={f} onClick={() => { setFilter(f); setSelectedRecordIds([]); setBulkNotice(''); }} className={`archive-mono text-[9px] tracking-[.08em] px-2 py-1 border ${filter === f ? 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]' : 'border-[#d6dfdc] bg-white text-[#7f9194] hover:border-[#aabfba]'}`}>
                     {f.replace('_', ' ').toUpperCase()}
                   </button>
                 ))}
               </div>
             )}
           </div>
+
+          {!showPlex && selectableRecords.length > 0 && (
+            <div className="border-b border-[#e3e8e7] bg-[#f7faf8] px-4 py-3 md:px-6" data-testid="panel-bulk-review">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="inline-flex cursor-pointer items-center gap-2 text-[10px] font-bold tracking-[.08em] text-[#53656b]">
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} className="h-4 w-4 accent-[#39736e]" data-testid="checkbox-select-visible" />
+                  {allVisibleSelected ? 'CLEAR VISIBLE' : 'SELECT VISIBLE'} ({selectableRecords.length})
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="archive-mono mr-1 text-[9px] text-[#7f9194]">{selectedRecordIds.length} SELECTED</span>
+                  <button type="button" onClick={() => runBulkReview('reviewed')} disabled={!selectedRecordIds.length || bulkReview.isPending} className="inline-flex items-center gap-1.5 bg-[#39736e] px-3 py-2 text-[9px] font-bold tracking-[.06em] text-white disabled:opacity-40" data-testid="button-bulk-reviewed"><Check size={11} /> REVIEWED</button>
+                  <button type="button" onClick={() => runBulkReview('deferred')} disabled={!selectedRecordIds.length || bulkReview.isPending} className="inline-flex items-center gap-1.5 border border-[#d9bd77] bg-[#fff8e7] px-3 py-2 text-[9px] font-bold tracking-[.06em] text-[#8d681d] disabled:opacity-40" data-testid="button-bulk-deferred"><Pause size={11} /> DEFER</button>
+                  <button type="button" onClick={() => runBulkReview('unresolved')} disabled={!selectedRecordIds.length || bulkReview.isPending} className="inline-flex items-center gap-1.5 border border-[#e2b9b4] bg-[#fcedea] px-3 py-2 text-[9px] font-bold tracking-[.06em] text-[#994b43] disabled:opacity-40" data-testid="button-bulk-unresolved"><RotateCcw size={11} /> UNRESOLVED</button>
+                </div>
+              </div>
+              {bulkNotice && <div className={`mt-3 text-[10px] ${bulkNotice.includes('failed') || bulkNotice.includes('could not') ? 'text-[#994b43]' : 'text-[#39736e]'}`} data-testid="status-bulk-review">{bulkNotice}</div>}
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto p-4 md:p-6" style={{ maxHeight: '600px' }}>
             {showPlex ? (
@@ -573,12 +623,17 @@ function ArchivePage() {
               displayedRecords.length ? (
                 <div className="space-y-2">
                   {displayedRecords.map(r => (
-                    <button
-                      key={r.id}
-                      onClick={() => setSelectedRecordId(r.id)}
-                      className={`w-full text-left flex flex-col sm:flex-row sm:items-center justify-between gap-3 border p-3 transition-colors ${selectedRecordId === r.id ? 'border-[#4e9690] bg-[#eef6f2]' : 'border-[#e1e8e5] bg-white/50 hover:border-[#aabfba]'}`}
-                      data-testid={`row-archive-record-${r.id}`}
-                    >
+                    <div key={r.id} className={`flex items-stretch border transition-colors ${selectedRecordId === r.id ? 'border-[#4e9690] bg-[#eef6f2]' : selectedSet.has(r.id) ? 'border-[#aabfba] bg-[#f3f8f5]' : 'border-[#e1e8e5] bg-white/50 hover:border-[#aabfba]'}`}>
+                      {r.reviewStatus !== 'not_applicable' && (
+                        <label className="grid cursor-pointer place-items-center border-r border-[#e1e8e5] px-3" aria-label={`Select ${r.filename}`}>
+                          <input type="checkbox" checked={selectedSet.has(r.id)} onChange={() => toggleRecordSelection(r.id)} className="h-4 w-4 accent-[#39736e]" data-testid={`checkbox-archive-record-${r.id}`} />
+                        </label>
+                      )}
+                      <button
+                        onClick={() => setSelectedRecordId(r.id)}
+                        className="flex min-w-0 flex-1 flex-col justify-between gap-3 p-3 text-left sm:flex-row sm:items-center"
+                        data-testid={`row-archive-record-${r.id}`}
+                      >
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[12px] font-semibold text-[#43545b]" title={r.filename}>{r.filename}</div>
                         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
@@ -593,7 +648,8 @@ function ArchivePage() {
                         {r.plexMatch && <span className="grid h-6 place-items-center bg-[#fff0c9] px-2 text-[9px] font-bold text-[#a77517]">IN PLEX</span>}
                         {r.reviewStatus !== 'not_applicable' && <span className={`grid h-6 place-items-center px-2 text-[9px] font-bold ${r.reviewStatus === 'reviewed' ? 'bg-[#eaf3ef] text-[#39736e]' : r.reviewStatus === 'deferred' ? 'bg-[#fff0c9] text-[#8d681d]' : 'bg-[#fcedea] text-[#994b43]'}`}>{r.reviewStatus.replace(/_/g, ' ').toUpperCase()}</span>}
                       </div>
-                    </button>
+                      </button>
+                    </div>
                   ))}
                 </div>
               ) : (

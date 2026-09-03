@@ -620,6 +620,48 @@ export const UpdateArchiveRecordReviewResponse = zod.object({
 
 
 /**
+ * @summary Save one review decision for several archive findings
+ */
+
+export const updateArchiveRecordReviewsBodyIdsMax = 500;
+
+export const updateArchiveRecordReviewsBodyNoteMax = 500;
+
+
+
+export const UpdateArchiveRecordReviewsBody = zod.object({
+  "ids": zod.array(zod.number().min(1)).min(1).max(updateArchiveRecordReviewsBodyIdsMax),
+  "status": zod.enum(['reviewed', 'deferred', 'unresolved']),
+  "note": zod.string().max(updateArchiveRecordReviewsBodyNoteMax).nullish()
+})
+
+
+export const updateArchiveRecordReviewsResponseSucceededMin = 0;
+
+export const updateArchiveRecordReviewsResponseFailedMin = 0;
+
+
+
+export const UpdateArchiveRecordReviewsResponse = zod.object({
+  "attempted": zod.number().min(1),
+  "succeeded": zod.number().min(updateArchiveRecordReviewsResponseSucceededMin),
+  "failed": zod.number().min(updateArchiveRecordReviewsResponseFailedMin),
+  "results": zod.array(zod.object({
+  "id": zod.number(),
+  "success": zod.boolean(),
+  "review": zod.union([zod.object({
+  "status": zod.enum(['reviewed', 'deferred', 'unresolved']),
+  "findingType": zod.string(),
+  "note": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),zod.null()]),
+  "error": zod.string().nullable()
+}))
+})
+
+
+/**
  * @summary Inspect a media URL without downloading it
  */
 export const inspectMediaSourceBodyUrlMin = 8;

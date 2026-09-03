@@ -22,6 +22,8 @@ import type {
 import type {
   AppSettings,
   AppSettingsUpdate,
+  ArchiveBulkReviewResponse,
+  ArchiveBulkReviewUpdate,
   ArchiveInventory,
   ArchiveInventoryRecord,
   ArchiveReview,
@@ -1268,6 +1270,77 @@ export const useUpdateArchiveRecordReview = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateArchiveRecordReviewMutationOptions(options));
+    }
+
+export const getUpdateArchiveRecordReviewsUrl = () => {
+
+
+
+
+  return `/api/archive/reviews`
+}
+
+/**
+ * @summary Save one review decision for several archive findings
+ */
+export const updateArchiveRecordReviews = async (archiveBulkReviewUpdate: ArchiveBulkReviewUpdate, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveBulkReviewResponse> => {
+
+  return customFetch<ArchiveBulkReviewResponse>(getUpdateArchiveRecordReviewsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(archiveBulkReviewUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateArchiveRecordReviewsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArchiveRecordReviews>>, TError,{data: BodyType<ArchiveBulkReviewUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateArchiveRecordReviews>>, TError,{data: BodyType<ArchiveBulkReviewUpdate>}, TContext> => {
+
+const mutationKey = ['updateArchiveRecordReviews'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateArchiveRecordReviews>>, {data: BodyType<ArchiveBulkReviewUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateArchiveRecordReviews(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateArchiveRecordReviewsMutationResult = NonNullable<Awaited<ReturnType<typeof updateArchiveRecordReviews>>>
+    export type UpdateArchiveRecordReviewsMutationBody = BodyType<ArchiveBulkReviewUpdate>
+    export type UpdateArchiveRecordReviewsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Save one review decision for several archive findings
+ */
+export const useUpdateArchiveRecordReviews = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArchiveRecordReviews>>, TError,{data: BodyType<ArchiveBulkReviewUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateArchiveRecordReviews>>,
+        TError,
+        {data: BodyType<ArchiveBulkReviewUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateArchiveRecordReviewsMutationOptions(options));
     }
 
 export const getInspectMediaSourceUrl = () => {

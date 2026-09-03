@@ -266,6 +266,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /archive/reviews:
+    post:
+      operationId: updateArchiveRecordReviews
+      tags: [archive]
+      summary: Save one review decision for several archive findings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveBulkReviewUpdate"
+      responses:
+        "200":
+          description: Per-record bulk review outcomes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveBulkReviewResponse"
+        "400":
+          description: Bulk review input is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /media/inspect:
     post:
       operationId: inspectMediaSource
@@ -885,6 +909,55 @@ components:
         updatedAt:
           type: string
           format: date-time
+    ArchiveBulkReviewUpdate:
+      type: object
+      required: [ids, status]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          uniqueItems: true
+          items:
+            type: number
+            minimum: 1
+        status:
+          type: string
+          enum: [reviewed, deferred, unresolved]
+        note:
+          type: [string, "null"]
+          maxLength: 500
+    ArchiveBulkReviewResult:
+      type: object
+      required: [id, success, review, error]
+      properties:
+        id:
+          type: number
+        success:
+          type: boolean
+        review:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveReview"
+            - type: "null"
+        error:
+          type: [string, "null"]
+    ArchiveBulkReviewResponse:
+      type: object
+      required: [attempted, succeeded, failed, results]
+      properties:
+        attempted:
+          type: number
+          minimum: 1
+        succeeded:
+          type: number
+          minimum: 0
+        failed:
+          type: number
+          minimum: 0
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveBulkReviewResult"
     ArchivePlexMatch:
       type: object
       required: [ratingKey, title, year, qualityDifferences]

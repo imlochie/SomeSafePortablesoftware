@@ -653,9 +653,12 @@ export function readArchiveRecord(ownerId: string, id: number) {
   return inventory.records.find((record) => record.id === id) ?? null;
 }
 
-export function updateArchiveRecordReview(ownerId: string, id: number, status: SavedReviewStatus, note: string | null) {
-  const record = readArchiveRecord(ownerId, id);
-  if (!record) return null;
+function persistArchiveRecordReview(
+  ownerId: string,
+  record: ReturnType<typeof mapFile>,
+  status: SavedReviewStatus,
+  note: string | null,
+) {
   if (!reviewableQualityStatuses.has(record.qualityStatus)) {
     throw new Error("This archive record has no active duplicate or quality finding to review.");
   }
@@ -666,12 +669,12 @@ export function updateArchiveRecordReview(ownerId: string, id: number, status: S
      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
      ON CONFLICT(owner_id, file_record_id, finding_type, evidence_key) DO UPDATE SET
        status = excluded.status, note = excluded.note, updated_at = CURRENT_TIMESTAMP`,
-  ).run(ownerId, id, record.qualityStatus, evidenceKey, status, note);
+  ).run(ownerId, record.id, record.qualityStatus, evidenceKey, status, note);
   const saved = archiveDb.prepare(
     `SELECT status, finding_type, note, updated_at
      FROM archive_review
      WHERE owner_id = ? AND file_record_id = ? AND finding_type = ? AND evidence_key = ?`,
-  ).get(ownerId, id, record.qualityStatus, evidenceKey) as {
+  ).get(ownerId, record.id, record.qualityStatus, evidenceKey) as {
     status: SavedReviewStatus;
     finding_type: string;
     note: string | null;
@@ -683,5 +686,48 @@ export function updateArchiveRecordReview(ownerId: string, id: number, status: S
     note: saved.note,
     reviewedAt: saved.updated_at,
     updatedAt: saved.updated_at,
+  };
+}
+
+export function updateArchiveRecordReview(ownerId: string, id: number, status: SavedReviewStatus, note: string | null) {
+  const record = readArchiveRecord(ownerId, id);
+  if (!record) return null;
+  return persistArchiveRecordReview(ownerId, record, status, note);
+}
+
+export function updateArchiveRecordReviews(
+  ownerId: string,
+  ids: number[],
+  status: SavedReviewStatus,
+  note: string | null,
+) {
+  const records = new Map(readArchiveInventory(ownerId).records.map((record) => [record.id, record]));
+  const results = ids.map((id) => {
+    const record = records.get(id);
+    if (!record) {
+      return { id, success: false, review: null, error: "Archive record not found." };
+    }
+    try {
+      return {
+        id,
+        success: true,
+        review: persistArchiveRecordReview(ownerId, record, status, note),
+        error: null,
+      };
+    } catch (error) {
+      return {
+        id,
+        success: false,
+        review: null,
+        error: error instanceof Error ? error.message : "Review decision could not be saved.",
+      };
+    }
+  });
+  const succeeded = results.filter((result) => result.success).length;
+  return {
+    attempted: results.length,
+    succeeded,
+    failed: results.length - succeeded,
+    results,
   };
 }

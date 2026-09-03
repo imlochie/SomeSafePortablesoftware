@@ -33,6 +33,7 @@ import {
   readArchiveScan,
   startArchiveScan,
   updateArchiveRecordReview,
+  updateArchiveRecordReviews,
 } from "../src/services/archive";
 
 const ownerA = "user-a";
@@ -456,6 +457,17 @@ process.stdout.write(JSON.stringify({
     assert.equal(reopenedFinding?.reviewStatus, "unreviewed");
     assert.equal(updateArchiveRecordReview(ownerA, low.id, "deferred", "Review after storage cleanup.")?.status, "deferred");
     assert.equal(updateArchiveRecordReview(ownerA, low.id, "unresolved", null)?.status, "unresolved");
+    const nonReviewable = readArchiveInventory(ownerA).records.find((record) => record.reviewStatus === "not_applicable");
+    if (!nonReviewable) throw new Error("Expected a non-reviewable archive record.");
+    const bulkReview = updateArchiveRecordReviews(ownerA, [low.id, nonReviewable.id, 999_999], "reviewed", null);
+    assert.equal(bulkReview.attempted, 3);
+    assert.equal(bulkReview.succeeded, 1);
+    assert.equal(bulkReview.failed, 2);
+    assert.deepEqual(bulkReview.results.map((result) => result.success), [true, false, false]);
+    assert.match(bulkReview.results[1].error ?? "", /no active duplicate or quality finding/i);
+    assert.match(bulkReview.results[2].error ?? "", /not found/i);
+    assert.equal(readArchiveInventory(ownerA).records.find((record) => record.id === low.id)?.reviewStatus, "reviewed");
+    assert.equal(readArchiveInventory(ownerB).records.find((record) => record.id === low.id), undefined);
 
     await unlink(files.copyTwo);
     const missingScan = await waitForScan(ownerA);
