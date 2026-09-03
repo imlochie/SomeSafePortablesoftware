@@ -1,0 +1,75 @@
+Continue building ARCHIVE ASSISTANT from the CURRENT CODEBASE.
+
+Do not redesign the architecture.
+
+The current architecture is:
+
+React + Vite UI
+→ Express + Node API
+→ media/download services
+→ yt-dlp / FFmpeg / FFprobe
+→ SQLite
+→ jobs / queue / events
+
+The existing local media engine is already implemented and working.
+
+Your next task is to harden the application's data model and multi-user isolation.
+
+PHASE: USER OWNERSHIP + DATA INTEGRITY
+
+Authentication is already handled by Clerk.
+
+Add proper ownership boundaries to persisted application data so authenticated users cannot see or modify another user's records.
+
+First inspect the existing schema and service layer.
+
+Identify how these entities are currently stored and related:
+
+- download jobs
+- queue items
+- source records
+- archive records
+- events
+- assistant conversations/messages
+- Plex configuration
+- settings
+
+Use the existing Clerk user identity.
+
+Do NOT introduce another authentication system.
+
+Do NOT create another backend or worker.
+
+Do NOT rewrite the database layer.
+
+Use the existing SQLite architecture and migration approach.
+
+Requirements:
+
+1. Add stable ownership where appropriate.
+2. Preserve existing records.
+3. Do not destroy or recreate the database.
+4. Existing single-user installations must continue working.
+5. Child records should inherit ownership through existing relationships where practical.
+6. Every API read/write must enforce ownership server-side.
+7. Frontend filtering alone is NOT sufficient.
+8. Machine-level configuration such as executable paths must remain machine-level unless there is a strong existing reason otherwise.
+9. Plex credentials remain server-side and protected.
+10. Do not make assumptions about functionality that does not exist yet.
+
+Before changing code, inspect and report:
+- tables affected
+- migrations required
+- services affected
+- routes affected
+- how existing rows will be handled
+
+Then implement the smallest safe solution.
+
+After implementation:
+- run typecheck
+- run tests
+- run build
+- run git diff --check
+
+Do not move on to Plex synchronization, Ollama, duplicate detection, or archive intelligence in this task.
