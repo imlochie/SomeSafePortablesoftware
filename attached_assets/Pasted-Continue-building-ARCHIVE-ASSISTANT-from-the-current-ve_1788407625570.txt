@@ -1,0 +1,245 @@
+Continue building ARCHIVE ASSISTANT from the current verified codebase.
+
+The previous phases are complete:
+
+- Core Windows-local architecture
+- Real yt-dlp inspection
+- Real yt-dlp downloading
+- FFmpeg processing
+- FFprobe verification
+- Persistent jobs and queue
+- Retry / pause / resume / cancellation / recovery
+- SQLite persistence
+- Clerk authentication
+- Per-user ownership and data isolation
+- Real Plex inventory synchronization
+
+Do not redesign those systems.
+
+NEXT PHASE: ARCHIVE INVENTORY + DUPLICATE + QUALITY INTELLIGENCE
+
+The goal of this phase is to make the ARCHIVE section an actual intelligence layer over the local filesystem and Plex inventory.
+
+The application should understand:
+
+LOCAL FILES
++
+ARCHIVE DATABASE
++
+PLEX INVENTORY
+=
+WHAT I ALREADY HAVE
+
+OBJECTIVE
+
+Build a real archive inventory workflow that scans the configured archive/download locations, inspects media files, persists their metadata, and compares them against existing archive records and Plex inventory.
+
+Use the existing SQLite architecture and existing media/FFprobe services.
+
+Do not introduce a second database.
+
+Do not introduce a separate archive service unless the existing service structure genuinely requires one.
+
+PHASE 1: FILESYSTEM INVENTORY
+
+Implement a controlled scan of the configured archive directories.
+
+For each supported media file:
+
+- locate the file
+- validate that it is accessible
+- inspect it with FFprobe
+- capture useful media metadata
+- persist/update the file record
+- persist/update the associated archive record where appropriate
+
+Capture available information such as:
+
+- filename
+- full/relative path
+- file size
+- container
+- duration
+- video codec
+- width
+- height
+- frame rate
+- bitrate where available
+- HDR information where available
+- audio codec
+- audio channels
+- audio languages where available
+- subtitle information where available
+
+Do not invent metadata when FFprobe does not provide it.
+
+PHASE 2: DUPLICATE DETECTION
+
+Build duplicate detection using reliable evidence.
+
+At minimum consider:
+
+- exact file identity where possible
+- normalized media identity
+- source metadata
+- title/year or other existing identifiers
+- Plex identity when available
+
+Do not rely solely on filenames.
+
+Do not automatically delete, replace, or move duplicate files.
+
+Duplicates should be surfaced for review.
+
+PHASE 3: PLEX COMPARISON
+
+Use the synchronized Plex inventory already implemented.
+
+The archive intelligence should be able to distinguish useful cases such as:
+
+- file exists locally and in Plex
+- Plex item exists but local file is missing
+- local file exists but Plex does not contain it
+- multiple local versions exist
+- Plex contains a version with different quality characteristics
+
+Do not imply that Plex ownership and local filesystem ownership are identical.
+
+PHASE 4: QUALITY INTELLIGENCE
+
+Create a transparent quality comparison based only on available metadata.
+
+Consider factors including:
+
+- resolution
+- HDR vs SDR
+- video codec
+- bitrate
+- audio codec
+- audio channel count
+- container
+- frame rate
+- file integrity
+
+Do not invent an opaque "quality score" without explaining the factors.
+
+The UI should be able to show useful conclusions such as:
+
+- BEST LOCAL VERSION
+- LOWER QUALITY VERSION
+- HIGHER QUALITY VERSION AVAILABLE
+- DUPLICATE
+- PLEX VERSION EXISTS
+- LOCAL ONLY
+- PLEX ONLY
+- FILE MISSING
+- NEEDS REVIEW
+
+These are informational states.
+
+DO NOT automatically replace or delete anything.
+
+PHASE 5: ARCHIVE UI
+
+Make the existing ARCHIVE screen operational.
+
+It should allow the user to:
+
+- see archive inventory
+- see scan status
+- start a scan
+- see last scan time
+- see file counts
+- see duplicate counts
+- see missing-file counts
+- see quality conflicts
+- inspect individual archive records
+
+Keep the existing visual language and navigation.
+
+Do not rebuild the entire frontend.
+
+Make the UI reflect real backend state.
+
+HONESTY
+
+Never display a completed scan unless the scan actually completed.
+
+Never display Plex-backed information unless it comes from the synchronized Plex data.
+
+Never claim a file is a duplicate without supporting evidence.
+
+Never claim one version is better unless the comparison is based on actual metadata.
+
+PERFORMANCE
+
+The archive may contain a large number of files.
+
+Do not make the UI perform filesystem scanning directly.
+
+Scanning must happen server-side.
+
+Avoid unnecessary repeated FFprobe work where existing metadata is still valid.
+
+Use the existing database to persist scan state and metadata.
+
+Handle inaccessible, corrupted, or unsupported files gracefully.
+
+OWNERSHIP
+
+Respect the completed ownership model.
+
+A user must only see their own archive records and related data.
+
+Do not weaken the existing authentication or ownership checks.
+
+TESTING
+
+Before implementation, inspect the existing:
+
+- archive schema
+- file records
+- media metadata structures
+- FFprobe functionality
+- Plex inventory records
+- ownership implementation
+- ARCHIVE UI
+
+Then implement the smallest complete version of this phase.
+
+Test:
+
+- archive scan
+- metadata extraction
+- persistence
+- repeated scans without duplication
+- duplicate detection
+- Plex comparison
+- quality comparison
+- missing files
+- inaccessible files
+- ownership isolation
+- restart persistence
+
+Run:
+
+- tests
+- typecheck
+- build
+- git diff --check
+
+At the end report:
+
+ARCHIVE INVENTORY STATUS
+FILESYSTEM SCAN
+DUPLICATE DETECTION
+QUALITY INTELLIGENCE
+PLEX COMPARISON
+UI CHANGES
+DATABASE CHANGES
+TESTS PASSED
+KNOWN LIMITATIONS
+
+Do not start Ollama or autonomous assistant actions yet.
+
+Stop after this phase.

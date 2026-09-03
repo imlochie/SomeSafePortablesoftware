@@ -1,0 +1,286 @@
+Continue building ARCHIVE ASSISTANT from the current checkpoint.
+
+The project has already completed and verified:
+
+- Windows-first local architecture
+- React + Vite frontend
+- Express + Node local API
+- SQLite persistence
+- Clerk authentication
+- Per-user ownership and isolation
+- Real yt-dlp inspection
+- Real yt-dlp downloads
+- FFmpeg processing/remuxing
+- FFprobe verification
+- Persistent jobs and queue
+- Retry / pause / resume / cancellation / recovery
+- Real Plex inventory synchronization
+- Local project handoff/checkpoint documentation
+
+Do not redesign any of those systems.
+
+NEXT PHASE: ARCHIVE INTELLIGENCE
+
+The purpose of this phase is to make ARCHIVE ASSISTANT understand what media already exists across:
+
+LOCAL ARCHIVE
++
+PLEX
++
+DOWNLOAD HISTORY
+
+The ARCHIVE section should become the place where the application answers:
+
+"What do I actually have?"
+
+"Where do I have it?"
+
+"Which version is best?"
+
+"Is this already archived?"
+
+"Is this a duplicate?"
+
+"Is Plex showing something that is missing locally?"
+
+"Is there a better version available?"
+
+IMPORTANT:
+
+This phase is INTELLIGENCE and INVENTORY only.
+
+Do not automatically delete, overwrite, replace, or reorganize media.
+
+Do not introduce Ollama yet.
+
+Do not build autonomous assistant actions yet.
+
+Do not redesign the database unnecessarily.
+
+FIRST inspect the current implementation.
+
+Review:
+
+- archive schema
+- file records
+- source records
+- Plex inventory
+- download history
+- FFprobe/media metadata
+- existing archive UI
+- ownership enforcement
+- existing scan or filesystem utilities
+
+Then explain the smallest implementation plan.
+
+IMPLEMENTATION
+
+1. LOCAL ARCHIVE SCANNING
+
+Create a server-side archive scanner using the configured archive directories.
+
+The scanner should:
+
+- recursively find supported media files
+- safely ignore inaccessible files
+- inspect media using FFprobe
+- capture real metadata
+- create/update file records
+- create/update archive records
+- avoid unnecessary repeated inspection when metadata is still valid
+
+Never fabricate metadata.
+
+2. ARCHIVE IDENTITY
+
+Create a reliable normalized identity for media where possible.
+
+Use actual metadata available from:
+
+- filename
+- title
+- year
+- source information
+- Plex identifiers
+- existing database records
+
+Do not depend on filename equality alone.
+
+Do not pretend identity is certain when evidence is weak.
+
+Where identity is uncertain, mark it as needing review.
+
+3. DUPLICATE DETECTION
+
+Detect:
+
+- exact duplicate files
+- duplicate media with different filenames
+- multiple local versions of the same media
+- Plex/local overlaps
+
+Do not delete anything.
+
+Expose evidence for why something was considered a duplicate.
+
+4. QUALITY COMPARISON
+
+Compare versions using real metadata such as:
+
+- resolution
+- HDR
+- codec
+- bitrate
+- frame rate
+- audio codec
+- audio channels
+- file integrity
+- container
+
+Build a transparent comparison model.
+
+Do not create a mysterious numerical quality score unless the factors are visible and explainable.
+
+Useful states may include:
+
+- BEST VERSION
+- LOWER QUALITY
+- HIGHER QUALITY AVAILABLE
+- DUPLICATE
+- LOCAL ONLY
+- PLEX ONLY
+- MISSING LOCAL FILE
+- NEEDS REVIEW
+
+5. PLEX RELATIONSHIP
+
+Use the already synchronized Plex inventory.
+
+Show useful relationships between local archive records and Plex records.
+
+Do not assume every Plex item corresponds perfectly to a local file.
+
+Handle missing or stale Plex information safely.
+
+6. ARCHIVE UI
+
+Make the existing ARCHIVE page operational.
+
+Show:
+
+- total archive items
+- total media files
+- last scan
+- scan status
+- duplicate count
+- quality conflict count
+- missing file count
+- local-only count
+- Plex-only count
+- items requiring review
+
+Provide:
+
+- Scan Archive
+- View details
+- Inspect media/version information
+
+Keep the current application design language.
+
+Do not rebuild navigation.
+
+7. EVENTS / HISTORY
+
+Use the existing event system.
+
+Record:
+
+- scan started
+- scan completed
+- scan failed
+- files discovered
+- files changed
+- duplicates detected
+- important errors
+
+Do not flood the event log with pointless per-file noise.
+
+8. OWNERSHIP
+
+Preserve the completed ownership model.
+
+Every user must only see their own archive data and associated records.
+
+Do not weaken existing ownership checks.
+
+9. PERFORMANCE
+
+The archive may become large.
+
+Do not scan the filesystem from the browser.
+
+Do not repeatedly FFprobe unchanged files unnecessarily.
+
+Use persisted metadata and timestamps intelligently.
+
+Handle long-running scans without freezing the API.
+
+Use the existing queue/job infrastructure where appropriate instead of inventing another execution system.
+
+10. HONEST STATE
+
+The UI must distinguish:
+
+- never scanned
+- scanning
+- scan complete
+- scan failed
+- partial/incomplete scan
+
+Never show fake counts or fake synchronization results.
+
+TESTING
+
+Before implementation, inspect the actual code and explain the plan.
+
+Then implement the smallest complete archive intelligence layer.
+
+Test:
+
+- fresh archive scan
+- repeat scan
+- new file detection
+- removed file detection
+- inaccessible file handling
+- FFprobe failure handling
+- duplicate detection
+- quality comparison
+- Plex comparison
+- ownership isolation
+- persistence after restart
+- large/incremental scan behavior
+
+Run:
+
+- tests
+- typecheck
+- production build
+- git diff --check
+
+FINAL REPORT
+
+Return:
+
+ARCHIVE STATUS
+SCAN ENGINE
+DATABASE CHANGES
+DUPLICATE INTELLIGENCE
+QUALITY INTELLIGENCE
+PLEX RELATIONSHIP
+UI CHANGES
+TEST RESULTS
+KNOWN LIMITATIONS
+
+STOP AFTER THIS PHASE.
+
+Do not begin Ollama or autonomous assistant functionality automatically.
