@@ -1,0 +1,1 @@
+- [Authentication boundary](authentication-boundary.md) — Clerk owns browser sessions; protected archive APIs must enforce identity server-side.

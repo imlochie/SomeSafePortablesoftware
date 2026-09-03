@@ -1,5 +1,8 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
+import { publishableKeyFromHost } from '@clerk/react/internal';
+import { shadcn } from '@clerk/themes';
 import {
   Activity, Archive, ArrowDownToLine, ArrowUpRight, Bot, Check, ChevronRight, CircleHelp,
   CloudOff, Cpu, Download, FileCheck2, FolderOpen, HardDrive, History,
@@ -20,15 +23,74 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import { Link, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
+import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 
 const queryClient = new QueryClient();
 const navItems = [
-  { label: 'HOME', href: '/', icon: Activity }, { label: 'ASSISTANT', href: '/assistant', icon: Bot },
+  { label: 'HOME', href: '/user-portal', icon: Activity }, { label: 'ASSISTANT', href: '/assistant', icon: Bot },
   { label: 'QUEUE', href: '/queue', icon: Download }, { label: 'ARCHIVE', href: '/archive', icon: Archive },
   { label: 'PLEX', href: '/plex', icon: PlaySquare }, { label: 'SOURCES', href: '/sources', icon: FolderOpen },
   { label: 'HISTORY', href: '/history', icon: History }, { label: 'SETTINGS', href: '/settings', icon: SettingsIcon },
 ];
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+if (!clerkPubKey) {
+  throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
+}
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: 'clerk',
+  options: {
+    logoPlacement: 'inside' as const,
+    logoLinkUrl: basePath || '/',
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: '#39736e',
+    colorForeground: '#263844',
+    colorMutedForeground: '#718087',
+    colorDanger: '#a9483e',
+    colorBackground: '#fbfcfa',
+    colorInput: '#f8faf8',
+    colorInputForeground: '#263844',
+    colorNeutral: '#d6dfdc',
+    fontFamily: 'Manrope, sans-serif',
+    borderRadius: '0px',
+  },
+  elements: {
+    rootBox: 'w-full flex justify-center',
+    cardBox: 'bg-[#fbfcfa] rounded-none w-[440px] max-w-full overflow-hidden',
+    card: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    headerTitle: 'text-[#263844] font-extrabold',
+    headerSubtitle: 'text-[#718087]',
+    socialButtonsBlockButtonText: 'text-[#43545b] font-semibold',
+    formFieldLabel: 'text-[#53656b] font-semibold',
+    footerActionLink: 'text-[#39736e] font-semibold',
+    footerActionText: 'text-[#718087]',
+    dividerText: 'text-[#879599]',
+    identityPreviewEditButton: 'text-[#39736e]',
+    formFieldSuccessText: 'text-[#39736e]',
+    alertText: 'text-[#a9483e]',
+    logoBox: 'h-10',
+    logoImage: 'max-h-10',
+    socialButtonsBlockButton: 'border-[#d6dfdc] bg-white hover:bg-[#eaf3ef]',
+    formButtonPrimary: 'bg-[#1d2b38] text-[#f5f6f3] hover:bg-[#263b4a]',
+    formFieldInput: 'border-[#d6dfdc] bg-[#f8faf8] text-[#263844]',
+    footerAction: 'border-[#e3e8e7]',
+    dividerLine: 'bg-[#e3e8e7]',
+    alert: 'border-[#efd3cf] bg-[#fcedea]',
+    otpCodeFieldInput: 'border-[#d6dfdc] bg-[#f8faf8] text-[#263844]',
+    formFieldRow: 'gap-2',
+    main: 'bg-transparent',
+  },
+};
 const statusLabels: Record<string, string> = {
   ready: 'READY', connected: 'CONNECTED', idle: 'IDLE', placeholder: 'PLACEHOLDER',
   warning: 'WARNING', unavailable: 'UNAVAILABLE', processing: 'PROCESSING',
@@ -81,8 +143,13 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   </aside>;
 }
 function Topbar({ onMenu }: { onMenu: () => void }) {
-  const [location] = useLocation(); const current = navItems.find((item) => item.href === location)?.label ?? 'HOME'; const { data: health, isLoading } = useHealthCheck();
-  return <header className="flex min-h-[73px] items-center justify-between border-b border-[var(--line)] bg-[#f3f5f4]/90 px-5 backdrop-blur md:px-8"><div className="flex items-center gap-3"><button className="grid h-9 w-9 place-items-center border border-[var(--line)] bg-white/55 md:hidden" onClick={onMenu} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={18} /></button><div><div className="archive-mono text-[9px] font-medium tracking-[.2em] text-[#829298]">ARCHIVE ASSISTANT / {current}</div><div className="mt-1 text-[12px] font-semibold text-[#51626a]">{current === 'HOME' ? 'System overview' : `${current.charAt(0)}${current.slice(1).toLowerCase()} workspace`}</div></div></div><div className="hidden items-center gap-4 sm:flex"><div className="archive-mono flex items-center gap-2 text-[9px] tracking-[.1em] text-[#71858a]" data-testid="status-health"><span className={`status-dot ${health?.status === 'ok' ? 'ready' : 'warning'}`} />{isLoading ? 'CHECKING NODE' : health?.status === 'ok' ? 'API HEALTHY' : 'API UNCONFIRMED'}</div><div className="h-5 w-px bg-[var(--line)]" /><button className="text-[#71858a] transition-colors hover:text-[#21303d]" aria-label="Search archive" data-testid="button-search"><Search size={17} /></button><div className="grid h-8 w-8 place-items-center bg-[#dfe8e5] text-[11px] font-extrabold text-[#315e5b]" data-testid="text-operator-avatar">OP</div></div></header>;
+  const [location] = useLocation();
+  const current = navItems.find((item) => item.href === location)?.label ?? 'HOME';
+  const { data: health, isLoading } = useHealthCheck();
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const initials = [user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join('').toUpperCase() || 'OP';
+  return <header className="flex min-h-[73px] items-center justify-between border-b border-[var(--line)] bg-[#f3f5f4]/90 px-5 backdrop-blur md:px-8"><div className="flex items-center gap-3"><button className="grid h-9 w-9 place-items-center border border-[var(--line)] bg-white/55 md:hidden" onClick={onMenu} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={18} /></button><div><div className="archive-mono text-[9px] font-medium tracking-[.2em] text-[#829298]">ARCHIVE ASSISTANT / {current}</div><div className="mt-1 text-[12px] font-semibold text-[#51626a]">{current === 'HOME' ? 'System overview' : `${current.charAt(0)}${current.slice(1).toLowerCase()} workspace`}</div></div></div><div className="hidden items-center gap-4 sm:flex"><div className="archive-mono flex items-center gap-2 text-[9px] tracking-[.1em] text-[#71858a]" data-testid="status-health"><span className={`status-dot ${health?.status === 'ok' ? 'ready' : 'warning'}`} />{isLoading ? 'CHECKING NODE' : health?.status === 'ok' ? 'API HEALTHY' : 'API UNCONFIRMED'}</div><div className="h-5 w-px bg-[var(--line)]" /><button className="text-[#71858a] transition-colors hover:text-[#21303d]" aria-label="Search archive" data-testid="button-search"><Search size={17} /></button><div className="text-right"><div className="max-w-[150px] truncate text-[10px] font-semibold text-[#51626a]">{user?.primaryEmailAddress?.emailAddress ?? 'Signed-in operator'}</div><button type="button" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="archive-mono text-[9px] tracking-[.08em] text-[#71858a] hover:text-[#21303d]" data-testid="button-sign-out">SIGN OUT</button></div><div className="grid h-8 w-8 place-items-center bg-[#dfe8e5] text-[11px] font-extrabold text-[#315e5b]" data-testid="text-operator-avatar">{initials}</div></div></header>;
 }
 function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -131,13 +198,13 @@ function InspectionResult({ inspection, selected, setSelected, onPrepare, pendin
 function QueuePage() {
   const queryClient = useQueryClient(); const { data: jobs, isLoading, isError, refetch } = useGetDownloads(); const [notice, setNotice] = useState('');
   const start = useStartDownload(); const pause = usePauseDownload(); const resume = useResumeDownload(); const cancel = useCancelDownload(); const retry = useRetryDownload(); const remove = useDeleteDownload(); const inspect = useInspectMediaSource(); const create = useCreateDownload();
-  useEffect(() => { const source = new EventSource('/api/downloads/events'); const invalidate = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }; source.addEventListener('message', invalidate); source.addEventListener('download', invalidate); return () => source.close(); }, [queryClient]);
+  useEffect(() => { const source = new EventSource('/api/downloads/events'); const invalidate = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }; ['message', 'download', 'job.created', 'job.updated', 'job.completed', 'job.finished'].forEach((eventName) => source.addEventListener(eventName, invalidate)); source.onerror = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); }; return () => source.close(); }, [queryClient]);
   const persist = (mutation: { mutate: (data: { id: number }, options: { onSuccess: () => void; onError: (error: unknown) => void }) => void }, id: number, message: string) => mutation.mutate({ id }, { onSuccess: () => { setNotice(message); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(errorText(error)) });
   const createDemo = () => { setNotice('Inspecting the demo source…'); inspect.mutate({ data: { url: 'https://demo.local/archive-assistant/sample', forceRefresh: true } }, { onSuccess: (source) => { const format = source.formats.find((item) => item.usable); if (!format) { setNotice('Demo source returned no usable format.'); return; } create.mutate({ data: { sourceUrl: source.metadata.webpageUrl, title: source.metadata.title, sourceSite: source.metadata.extractor, selectedFormatId: format.formatId, selectedVideoFormatId: source.recommendedVideoFormatId, selectedAudioFormatId: source.recommendedAudioFormatId, outputContainer: 'mkv', finalFilename: source.metadata.title } }, { onSuccess: (job) => { start.mutate({ id: job.id }, { onSuccess: () => { setNotice('Demo job created and started.'); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(`Demo job created, but start failed: ${errorText(error)}`) }); }, onError: (error) => setNotice(errorText(error)) }); }, onError: (error) => setNotice(`Demo inspection failed: ${errorText(error)}`) }); };
   const action = (job: DownloadJob, kind: 'start' | 'pause' | 'resume' | 'cancel' | 'retry' | 'delete') => { if (kind === 'delete') { if (window.confirm(`Delete job #${job.id}? This only removes the job record.`)) persist(remove, job.id, `Job #${job.id} deleted.`); return; } if (kind === 'start') persist(start, job.id, `Job #${job.id} started.`); if (kind === 'pause') persist(pause, job.id, `Job #${job.id} paused.`); if (kind === 'resume') persist(resume, job.id, `Job #${job.id} resumed.`); if (kind === 'cancel') persist(cancel, job.id, `Job #${job.id} cancelled.`); if (kind === 'retry') persist(retry, job.id, `Job #${job.id} queued for retry.`); };
   if (isLoading) return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="Reading durable jobs from the local node." /><div className="space-y-3"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div></>;
   if (isError) return <ErrorState title="Queue read failed" message="The persistent job list could not be read. No local queue state is being invented." onRetry={() => refetch()} testId="button-retry-queue" />;
-  return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="Jobs are durable records. Every status below is returned by the backend, not simulated in the browser." action={<button onClick={createDemo} disabled={inspect.isPending || create.isPending} className="inline-flex items-center gap-2 bg-[#f4b942] px-3.5 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#1d2b38] disabled:opacity-50" data-testid="button-create-mock-job"><Plus size={14} /> CREATE DEMO JOB</button>} />}{notice && <div className="mb-4 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-3 text-[11px] text-[#39736e]" data-testid="status-queue-operation">{notice}</div>}<div className="mb-4 flex flex-wrap gap-2 archive-mono text-[9px] tracking-[.08em] text-[#7d8d90]"><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => ['downloading', 'processing', 'verifying', 'moving'].includes(job.status)).length ?? 0} ACTIVE</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => job.status === 'queued').length ?? 0} QUEUED</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.length ?? 0} TOTAL</span></div>{jobs?.length ? <div className="space-y-3">{jobs.map((job) => <QueueRow key={job.id} job={job} onAction={action} />)}</div> : <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center p-8 text-center"><Download size={28} className="mb-4 text-[#4e9690]" /><h2 className="archive-display text-2xl font-extrabold">Queue is clear</h2><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#7d8c8f]">No persistent jobs are waiting. Inspect a source or create a demo job to exercise the pipeline.</p></div>}</>;
+  return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="Jobs are durable records. Every status below is returned by the backend, not simulated in the browser." action={<button onClick={createDemo} disabled={inspect.isPending || create.isPending} className="inline-flex items-center gap-2 bg-[#f4b942] px-3.5 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#1d2b38] disabled:opacity-50" data-testid="button-create-mock-job"><Plus size={14} /> CREATE DEMO JOB</button>} />{notice && <div className="mb-4 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-3 text-[11px] text-[#39736e]" data-testid="status-queue-operation">{notice}</div>}<div className="mb-4 flex flex-wrap gap-2 archive-mono text-[9px] tracking-[.08em] text-[#7d8d90]"><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => ['downloading', 'processing', 'verifying', 'moving'].includes(job.status)).length ?? 0} ACTIVE</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => job.status === 'queued').length ?? 0} QUEUED</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.length ?? 0} TOTAL</span></div>{jobs?.length ? <div className="space-y-3">{jobs.map((job) => <QueueRow key={job.id} job={job} onAction={action} />)}</div> : <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center p-8 text-center"><Download size={28} className="mb-4 text-[#4e9690]" /><h2 className="archive-display text-2xl font-extrabold">Queue is clear</h2><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#7d8c8f]">No persistent jobs are waiting. Inspect a source or create a demo job to exercise the pipeline.</p></div>}</>;
 }
 function QueueRow({ job, onAction }: { job: DownloadJob; onAction: (job: DownloadJob, kind: 'start' | 'pause' | 'resume' | 'cancel' | 'retry' | 'delete') => void }) {
   const active = ['downloading', 'processing', 'verifying', 'moving', 'inspecting'].includes(job.status); const canStart = job.status === 'queued'; const canPause = ['downloading', 'processing'].includes(job.status); const canResume = job.status === 'paused'; const canCancel = ['queued', 'inspecting', 'downloading', 'processing', 'verifying', 'moving', 'paused'].includes(job.status); const canRetry = ['failed', 'recovery_required'].includes(job.status);
@@ -191,6 +258,60 @@ function SettingField({ field, form, update }: { field: string; form: Partial<Ap
   return <label><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">{labels[field] ?? field.toUpperCase()}</span><input type={numeric ? 'number' : 'text'} min={numeric ? 0 : undefined} value={String(value ?? '')} onChange={(event) => update(key, numeric ? Number(event.target.value) : event.target.value)} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2.5 text-[12px] outline-none" data-testid={`input-setting-${field}`} /></label>;
 }
 
-function Router() { const [location] = useLocation(); return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue" component={QueuePage} /><Route path="/archive"><PlaceholderPage section="ARCHIVE" /></Route><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>; }
-function App() { return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>; }
+function AuthLoading() {
+  return <div className="flex min-h-[100dvh] items-center justify-center bg-[#f3f5f4]"><div className="archive-panel flex items-center gap-3 px-5 py-4"><span className="status-dot ready" /><span className="archive-mono text-[10px] tracking-[.14em] text-[#53656b]">LOADING SECURE SESSION</span></div></div>;
+}
+
+function LandingPage() {
+  return <main className="archive-grid min-h-[100dvh] overflow-hidden px-5 py-8 md:px-12 md:py-12"><div className="mx-auto flex min-h-[calc(100dvh-6rem)] max-w-6xl flex-col"><header className="flex items-center justify-between"><Link href="/" className="flex items-center gap-3" data-testid="link-landing-logo"><div className="grid h-10 w-10 place-items-center border border-[#f4b942] bg-[#1d2b38] text-[#f4b942]"><Archive size={20} strokeWidth={1.7} /></div><div><div className="archive-display text-[16px] font-extrabold tracking-[.12em] text-[#1d2b38]">ARCHIVE</div><div className="archive-mono text-[8px] tracking-[.28em] text-[#71858a]">ASSISTANT / LOCAL</div></div></Link><div className="archive-mono flex items-center gap-2 text-[9px] tracking-[.12em] text-[#71858a]"><span className="status-dot ready" /> PRIVATE BY DEFAULT</div></header><section className="grid flex-1 items-center gap-12 py-16 lg:grid-cols-[1.05fr_.95fr] lg:gap-20"><div className="archive-fade"><div className="archive-mono mb-5 text-[10px] font-medium tracking-[.22em] text-[#4e9690]">PERSONAL MEDIA / CONTROL SYSTEM</div><h1 className="archive-display max-w-2xl text-5xl font-extrabold leading-[.98] tracking-[-.05em] text-[#1d2b38] md:text-7xl">Keep the signal.<br /><span className="text-[#4e9690]">Lose the noise.</span></h1><p className="mt-7 max-w-xl text-[15px] leading-7 text-[#65777d]">A local-first command center for inspecting, downloading, processing, and preserving the media that matters to you.</p><div className="mt-9 flex flex-wrap items-center gap-3"><Link href="/sign-in" className="bg-[#1d2b38] px-5 py-3.5 text-[11px] font-bold tracking-[.13em] text-[#f5f6f3] transition-colors hover:bg-[#263b4a]" data-testid="link-landing-sign-in">SIGN IN <ArrowUpRight size={14} className="ml-2 inline" /></Link><Link href="/sign-up" className="border border-[#b9cbc7] bg-white/55 px-5 py-3.5 text-[11px] font-bold tracking-[.13em] text-[#39736e] transition-colors hover:border-[#4e9690] hover:bg-[#eaf3ef]" data-testid="link-landing-sign-up">CREATE ACCOUNT</Link></div></div><div className="relative"><div className="absolute -inset-8 bg-[#dcebe7]/50 blur-3xl" /><div className="archive-panel relative overflow-hidden p-6 md:p-8"><div className="absolute right-0 top-0 h-1 w-28 bg-[#f4b942]" /><div className="mb-7 flex items-center justify-between"><div><div className="archive-mono text-[10px] tracking-[.16em] text-[#7f9194]">LOCAL NODE / READY</div><h2 className="archive-display mt-1 text-2xl font-extrabold text-[#263844]">Your archive, observed.</h2></div><ShieldCheck size={23} className="text-[#4e9690]" /></div><div className="space-y-3">{[['01', 'Inspect sources', 'Metadata and quality, before action'], ['02', 'Queue downloads', 'Durable jobs with honest progress'], ['03', 'Verify files', 'Safe movement into your library']].map(([number, title, copy]) => <div key={number} className="flex gap-4 border-t border-[#e3e8e7] py-4"><span className="archive-mono text-[10px] text-[#f0aa2a]">{number}</span><div><div className="text-[13px] font-bold text-[#43545b]">{title}</div><div className="mt-1 text-[11px] text-[#879599]">{copy}</div></div><Check size={15} className="ml-auto mt-1 text-[#4e9690]" /></div>)}</div><div className="mt-5 border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]">Sign in to access your private local control room.</div></div></div></section><footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[#d8e1de] pt-5 archive-mono text-[9px] tracking-[.1em] text-[#9aa7a7]"><span>ARCHIVE ASSISTANT / WINDOWS-FIRST</span><span>AUTHENTICATED WORKSPACE</span></footer></div></main>;
+}
+
+function SignInPage() {
+  return <div className="flex min-h-[100dvh] items-center justify-center bg-[#f3f5f4] px-4 py-8"><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></div>;
+}
+
+function SignUpPage() {
+  return <div className="flex min-h-[100dvh] items-center justify-center bg-[#f3f5f4] px-4 py-8"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>;
+}
+
+function ClerkQueryCacheInvalidator() {
+  const { userId } = useAuth();
+  const previousUserId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (previousUserId.current !== undefined && previousUserId.current !== userId) {
+      queryClient.clear();
+    }
+    previousUserId.current = userId;
+  }, [userId]);
+  return null;
+}
+
+function HomeRedirect() {
+  const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded) return <AuthLoading />;
+  return isSignedIn ? <Redirect to="/user-portal" /> : <LandingPage />;
+}
+
+function Workspace() {
+  const [location] = useLocation();
+  const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded) return <AuthLoading />;
+  if (!isSignedIn) return <Redirect to="/" />;
+  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue" component={QueuePage} /><Route path="/archive"><PlaceholderPage section="ARCHIVE" /></Route><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
+}
+
+function Router() {
+  return <Switch><Route path="/" component={HomeRedirect} /><Route path="/sign-in/*?" component={SignInPage} /><Route path="/sign-up/*?" component={SignUpPage} /><Route component={Workspace} /></Switch>;
+}
+
+function ClerkApp() {
+  const [, setLocation] = useLocation();
+  const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
+  return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={clerkAppearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={{ signIn: { start: { title: 'Welcome back', subtitle: 'Sign in to your private archive workspace' } }, signUp: { start: { title: 'Create your archive account', subtitle: 'Start building a trusted local media archive' } } }} routerPush={(to) => setLocation(stripBase(to))} routerReplace={(to) => setLocation(stripBase(to), { replace: true })}><QueryClientProvider client={queryClient}><ClerkQueryCacheInvalidator /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider></ClerkProvider>;
+}
+
+function App() {
+  return <WouterRouter base={basePath}><ClerkApp /></WouterRouter>;
+}
+
 export default App;
