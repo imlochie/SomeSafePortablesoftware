@@ -481,6 +481,19 @@ process.stdout.write(JSON.stringify({
     assert.equal(reopenedFinding?.reviewStatus, "unreviewed");
     assert.equal(updateArchiveRecordReview(ownerA, low.id, "deferred", "Review after storage cleanup.")?.status, "deferred");
     assert.equal(updateArchiveRecordReview(ownerA, low.id, "unresolved", null)?.status, "unresolved");
+    const bulkNoteCases = [
+      { id: low.id, status: "reviewed" as const, note: "Bulk reviewed after evidence refresh." },
+      { id: duplicateRows[0].id, status: "deferred" as const, note: "Bulk defer until storage cleanup." },
+      { id: duplicateRows[1].id, status: "unresolved" as const, note: "Bulk unresolved pending an operator decision." },
+    ];
+    for (const { id, status, note } of bulkNoteCases) {
+      const result = updateArchiveRecordReviews(ownerA, [id], status, note);
+      assert.equal(result.succeeded, 1);
+      assert.equal(result.failed, 0);
+      assert.equal(result.results[0].review?.status, status);
+      assert.equal(result.results[0].review?.note, note);
+      assert.equal(readArchiveInventory(ownerA).records.find((record) => record.id === id)?.reviewNote, note);
+    }
     const nonReviewable = readArchiveInventory(ownerA).records.find((record) => record.reviewStatus === "not_applicable");
     if (!nonReviewable) throw new Error("Expected a non-reviewable archive record.");
     const bulkReview = updateArchiveRecordReviews(ownerA, [low.id, nonReviewable.id, 999_999], "reviewed", null);
@@ -488,9 +501,11 @@ process.stdout.write(JSON.stringify({
     assert.equal(bulkReview.succeeded, 1);
     assert.equal(bulkReview.failed, 2);
     assert.deepEqual(bulkReview.results.map((result) => result.success), [true, false, false]);
+    assert.equal(bulkReview.results[0].review?.note, null);
     assert.match(bulkReview.results[1].error ?? "", /no active duplicate or quality finding/i);
     assert.match(bulkReview.results[2].error ?? "", /not found/i);
     assert.equal(readArchiveInventory(ownerA).records.find((record) => record.id === low.id)?.reviewStatus, "reviewed");
+    assert.equal(readArchiveInventory(ownerA).records.find((record) => record.id === low.id)?.reviewNote, null);
     assert.equal(readArchiveInventory(ownerB).records.find((record) => record.id === low.id), undefined);
 
     await unlink(files.copyTwo);

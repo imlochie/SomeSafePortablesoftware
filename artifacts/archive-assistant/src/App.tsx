@@ -550,6 +550,9 @@ function ArchivePage() {
     if (!selectedRecordIds.length) return;
     setBulkNotice('');
     setBulkFailures([]);
+    // Bulk review accepts one shared note, but the UI intentionally does not
+    // expose bulk note entry yet. Send null explicitly so the API contract is
+    // unambiguous; use the detail panel when review context must be recorded.
     bulkReview.mutate({ data: { ids: selectedRecordIds, status, note: null } }, {
       onSuccess: result => {
         const failedResults = result.results.filter(item => !item.success);
@@ -640,6 +643,9 @@ function ArchivePage() {
                   <button type="button" onClick={() => runBulkReview('unresolved')} disabled={!selectedRecordIds.length || bulkReview.isPending} className="inline-flex items-center gap-1.5 border border-[#e2b9b4] bg-[#fcedea] px-3 py-2 text-[9px] font-bold tracking-[.06em] text-[#994b43] disabled:opacity-40" data-testid="button-bulk-unresolved"><RotateCcw size={11} /> UNRESOLVED</button>
                 </div>
               </div>
+              <p className="mt-2 text-[10px] leading-4 text-[#829197]" data-testid="text-bulk-review-note-policy">
+                Bulk decisions currently save without a note. Open a finding to record review context.
+              </p>
               {bulkNotice && (
                 <div
                   className={`bulk-review-status mt-3 text-[10px] ${bulkNotice.includes('failed') || bulkNotice.includes('could not') ? 'text-[#994b43]' : 'text-[#39736e]'}`}

@@ -271,6 +271,12 @@ paths:
       operationId: updateArchiveRecordReviews
       tags: [archive]
       summary: Save one review decision for several archive findings
+      description: |
+        Applies the selected status and one optional shared note to each archive
+        finding in `ids`. The note is persisted independently for every
+        successful result. Sending `null` clears an existing note; omitting the
+        property has the same effect at the API boundary. The Archive UI
+        currently sends `null` because bulk note entry is not exposed there.
       requestBody:
         required: true
         content:
@@ -927,6 +933,10 @@ components:
         note:
           type: [string, "null"]
           maxLength: 500
+          description: |
+            Optional context shared by every successfully updated finding.
+            Sending null clears an existing note. The current Archive UI sends
+            null because it does not expose bulk note entry yet.
     ArchiveBulkReviewResult:
       type: object
       required: [id, success, review, error]

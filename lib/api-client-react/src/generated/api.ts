@@ -1281,6 +1281,11 @@ export const getUpdateArchiveRecordReviewsUrl = () => {
 }
 
 /**
+ * Applies the selected status and one optional shared note to each archive
+ * finding in `ids`. The note is persisted independently for every
+ * successful result. Sending `null` clears an existing note; omitting the
+ * property has the same effect at the API boundary. The Archive UI
+ * currently sends `null` because bulk note entry is not exposed there.
  * @summary Save one review decision for several archive findings
  */
 export const updateArchiveRecordReviews = async (archiveBulkReviewUpdate: ArchiveBulkReviewUpdate, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveBulkReviewResponse> => {

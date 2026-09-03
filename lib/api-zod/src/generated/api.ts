@@ -620,6 +620,11 @@ export const UpdateArchiveRecordReviewResponse = zod.object({
 
 
 /**
+ * Applies the selected status and one optional shared note to each archive
+ * finding in `ids`. The note is persisted independently for every
+ * successful result. Sending `null` clears an existing note; omitting the
+ * property has the same effect at the API boundary. The Archive UI
+ * currently sends `null` because bulk note entry is not exposed there.
  * @summary Save one review decision for several archive findings
  */
 
@@ -632,7 +637,7 @@ export const updateArchiveRecordReviewsBodyNoteMax = 500;
 export const UpdateArchiveRecordReviewsBody = zod.object({
   "ids": zod.array(zod.number().min(1)).min(1).max(updateArchiveRecordReviewsBodyIdsMax),
   "status": zod.enum(['reviewed', 'deferred', 'unresolved']),
-  "note": zod.string().max(updateArchiveRecordReviewsBodyNoteMax).nullish()
+  "note": zod.string().max(updateArchiveRecordReviewsBodyNoteMax).nullish().describe('Optional context shared by every successfully updated finding.\nSending null clears an existing note. The current Archive UI sends\nnull because it does not expose bulk note entry yet.\n')
 })
 
 

@@ -16,6 +16,9 @@ export interface ArchiveBulkReviewUpdate {
   ids: number[];
   status: ArchiveBulkReviewUpdateStatus;
   /**
+     * Optional context shared by every successfully updated finding.
+     * Sending null clears an existing note. The current Archive UI sends
+     * null because it does not expose bulk note entry yet.
      * @maxLength 500
      * @nullable
      */
