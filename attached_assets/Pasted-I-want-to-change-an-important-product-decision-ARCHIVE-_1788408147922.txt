@@ -1,0 +1,162 @@
+I want to change an important product decision. 
+ 
+ARCHIVE ASSISTANT is primarily a personal Windows-local application. 
+ 
+I am not expecting multiple users to access this installation. 
+ 
+A mandatory login page is therefore unnecessary for normal local use. 
+ 
+CURRENT STATE 
+ 
+The application currently uses Clerk authentication and the API is protected by requireAuth. 
+ 
+Per-user ownership has also been implemented. 
+ 
+I do NOT want to throw away the existing architecture or database work. 
+ 
+NEW PRODUCT REQUIREMENT 
+ 
+LOCAL MODE SHOULD NOT REQUIRE LOGIN. 
+ 
+When running ARCHIVE ASSISTANT locally on Windows: 
+ 
+- opening localhost should take the user directly into the application 
+- no sign-in page should be required 
+- no Clerk login should be required for normal local operation 
+- API routes should work without an interactive authentication flow 
+- existing local functionality should continue to work 
+ 
+IMPORTANT: 
+ 
+Do not simply remove security checks from the application. 
+ 
+Instead, introduce a clear distinction between: 
+ 
+LOCAL / SINGLE-USER MODE 
+ 
+and 
+ 
+AUTHENTICATED / MULTI-USER MODE 
+ 
+Local single-user mode should have a stable local identity so existing ownership-aware records continue to function correctly. 
+ 
+The existing ownership model should remain intact. 
+ 
+Do not delete owner_id fields. 
+ 
+Do not remove ownership migrations. 
+ 
+Do not destroy existing data. 
+ 
+Do not remove Clerk from the codebase if it is useful for a future hosted/multi-user deployment. 
+ 
+Instead: 
+ 
+1. Determine the cleanest way for local mode to bypass interactive authentication while maintaining server-side authorization boundaries. 
+2. Preserve the existing Clerk path for future authenticated deployments. 
+3. Make local mode explicit through configuration. 
+4. Ensure local mode cannot accidentally expose secrets to the browser. 
+5. Keep Plex tokens server-side. 
+6. Keep the application architecture unchanged. 
+ 
+DEFAULT BEHAVIOR 
+ 
+For the normal Windows-local installation, default to: 
+ 
+AUTH_MODE=local 
+ 
+or an equivalent clearly named configuration. 
+ 
+Local mode should use a stable local user identity for ownership purposes. 
+ 
+A future hosted deployment should be able to use: 
+ 
+AUTH_MODE=clerk 
+ 
+or equivalent. 
+ 
+UI 
+ 
+Remove the mandatory login/landing flow in local mode. 
+ 
+Opening localhost should go directly to HOME. 
+ 
+Do not remove the sign-in components entirely if they are needed for future authenticated mode. 
+ 
+Make the UI reflect the selected authentication mode accurately. 
+ 
+SETUP 
+ 
+Update `.env.example`, README, and DEVELOPMENT.md so the authentication behavior is clear. 
+ 
+The local installation should not require a Clerk account. 
+ 
+TESTING 
+ 
+Verify: 
+ 
+- fresh local launch goes directly to HOME 
+- API works without login 
+- local ownership still functions 
+- jobs remain isolated to the local identity 
+- Plex settings remain protected server-side 
+- existing database records remain accessible 
+- switching to authenticated mode still works structurally 
+- no secrets are exposed 
+ 
+Run: 
+ 
+- tests 
+- typecheck 
+- build 
+- git diff --check 
+ 
+Before changing code, inspect the current Clerk middleware, requireAuth implementation, ownership model, and frontend routing. 
+ 
+Then implement the smallest clean solution. 
+ 
+Do not change any media engine functionality. 
+ 
+Do not begin another feature phase. ARCHIVE ASSISTANT FUTURE DESKTOP PACKAGING
+
+I want the long-term version of ARCHIVE ASSISTANT to be a proper Windows desktop application rather than permanently being a browser-based website.
+
+Do NOT convert the application yet.
+
+Do NOT rewrite the current architecture.
+
+Instead, inspect the current project and determine whether the existing architecture is suitable for eventually packaging the application as a Windows desktop app using Tauri or another appropriate desktop shell.
+
+The desired eventual experience is:
+
+Double-click ARCHIVE ASSISTANT.exe
+→ application opens directly
+→ React UI is displayed in a native desktop window
+→ local Express/Node media engine runs locally
+→ yt-dlp / FFmpeg / FFprobe / SQLite / filesystem / Plex remain local
+
+The desktop version should not require:
+- a browser
+- localhost URLs
+- Clerk login
+- Replit
+- cloud infrastructure
+
+The existing local-first architecture should remain the core.
+
+Please inspect the current code and report:
+
+1. Whether the current React + Vite frontend is suitable for Tauri.
+2. Whether the current Express + Node API can run cleanly alongside a desktop shell.
+3. How the local media engine should be started/stopped with the desktop app.
+4. How SQLite paths should be handled in an installed Windows application.
+5. How yt-dlp / FFmpeg / FFprobe paths should be handled.
+6. How the archive/download directories should be configured.
+7. What would need to change to package a Windows .exe.
+8. What should remain untouched.
+9. Whether Tauri or Electron is the better fit for this particular architecture.
+10. Any architectural decisions we should make now to keep desktop packaging easy later.
+
+DO NOT MODIFY CODE.
+
+This is a desktop-readiness assessment only.
