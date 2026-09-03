@@ -1,0 +1,106 @@
+We need to get completely aligned on the architecture and current state of this project before making any code changes.
+
+PROJECT: ARCHIVE ASSISTANT
+
+The GitHub repo is the canonical project:
+https://github.com/imlochie/archiveassistant
+
+The goal is a LOCAL-FIRST media archive assistant running primarily on my Windows PC.
+
+Intended architecture:
+
+    ARCHIVE ASSISTANT UI
+            |
+      ArchiveBackend
+            |
+       Local Engine
+       /    |     \
+   yt-dlp FFmpeg  Plex
+            |
+      local filesystem
+            |
+        archive
+
+The web UI is the control plane. The actual media acquisition and processing should happen locally.
+
+IMPORTANT CURRENT STATE
+
+The current repo is NOT a real engine yet.
+
+`lib/backend/index.ts` currently points `backend` at `mockBackend`.
+
+`lib/backend/mock-backend.ts` is mock data.
+
+`lib/backend/types.ts` defines the intended `ArchiveBackend` interface and is the architectural seam between the UI and the actual engine.
+
+`lib/assistant.ts` is also currently a scripted/mock assistant, not a real AI assistant.
+
+I have already installed and verified locally:
+
+- Windows
+- Node.js
+- Python
+- Git
+- Ollama
+- yt-dlp
+- FFmpeg
+
+Current executable paths:
+
+YT_DLP_PATH=C:\Users\lochi\Downloads\yt-dlp_win\yt-dlp.exe
+FFMPEG_PATH=C:\Users\lochi\Downloads\yt-dlp_win\ffmpeg.exe
+
+I also have Ollama available and a local Qwen 2.5 Coder 7B model.
+
+I do NOT want the architecture replaced with a random new design.
+
+The following things are NOT acceptable:
+
+- inventing a fake engine
+- continuing to fabricate inspection results
+- adding random worker architectures without first checking the existing code
+- assuming an npm `yt-dlp` package exists or should be used
+- using browser-side code to execute yt-dlp or FFmpeg
+- hard-coding fake paths
+- replacing the existing `ArchiveBackend` abstraction
+- creating unnecessary frameworks or services
+- rewriting the application from scratch
+- making broad speculative changes
+
+TARGET ARCHITECTURE
+
+The existing Next.js UI should remain the UI.
+
+The existing `ArchiveBackend` interface should remain the seam.
+
+A LOCAL ENGINE should sit behind that seam.
+
+The local engine should be responsible for real operations such as:
+
+1. Source inspection through the installed yt-dlp executable.
+2. Enumerating real formats.
+3. Selecting/downloading media.
+4. Running FFmpeg for processing/conversion where required.
+5. Managing archive/storage paths.
+6. Reading Plex inventory.
+7. Reporting real job progress/events.
+8. Eventually supporting the local AI assistant through Ollama.
+
+The exact implementation of the local engine is NOT decided yet.
+
+Before writing code, inspect the repository and explain:
+
+1. What the current architecture actually is.
+2. Which files are currently mock-only.
+3. Which parts are already useful and should be preserved.
+4. Where the cleanest integration point for the local engine is.
+5. What the smallest viable implementation would be to replace mock source inspection with real yt-dlp inspection.
+6. What assumptions are still unresolved.
+
+Do NOT modify any files yet.
+
+This is an architecture-alignment pass only.
+
+After inspecting the repo, stop and give me your findings and proposed next step. Wait for my approval before implementing anything.
+
+Be conservative. Work with the existing project rather than redesigning it.
