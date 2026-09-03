@@ -1,0 +1,254 @@
+Continue building ARCHIVE ASSISTANT from the current verified codebase.
+
+The desktop-readiness assessment is complete.
+
+IMPORTANT ARCHITECTURAL DECISION:
+
+The long-term product will be a Windows desktop application using:
+
+React + Vite
++
+Tauri desktop shell
++
+existing Express/Node local engine as a managed sidecar
+
+Do NOT add Tauri yet.
+
+First complete the architectural preparation required to make that future packaging clean.
+
+NEXT PHASE:
+LOCAL AUTH MODE + RUNTIME CONFIGURATION
+
+The application is primarily a personal Windows-local application.
+
+LOCAL MODE must NOT require Clerk login.
+
+AUTHENTICATED CLERK MODE must remain available for future hosted/multi-user deployments.
+
+Use an explicit configuration boundary:
+
+AUTH_MODE=local|clerk
+
+LOCAL MODE
+
+When AUTH_MODE=local:
+
+- no Clerk UI is required
+- `/` should open directly to HOME
+- API requests do not require an interactive login
+- the server resolves requests to one stable local owner identity
+- existing ownership/authorization queries remain active
+- existing local data remains accessible
+- Plex credentials remain server-side
+- API access remains restricted to the local application boundary
+
+Use a dedicated stable local identity such as:
+
+__local__
+
+Do NOT reuse `__legacy__`.
+
+The browser must never submit an owner ID.
+
+Owner identity must always be resolved server-side.
+
+CLERK MODE
+
+When AUTH_MODE=clerk:
+
+- preserve the current Clerk authentication flow
+- preserve requireAuth semantics
+- continue deriving ownership from the Clerk user ID
+- do not weaken existing ownership checks
+
+IMPORTANT:
+
+Do not delete the current ownership implementation.
+
+Do not remove owner_id fields.
+
+Do not remove ownership migrations.
+
+Do not destroy or reassign existing Clerk-owned records.
+
+Handle legacy records explicitly.
+
+If existing `__legacy__` records need to become local records, use a deterministic migration/adoption strategy and do not silently steal records belonging to a real Clerk user.
+
+FRONTEND
+
+The current frontend conditionally needs Clerk.
+
+Make the frontend authentication behavior depend on AUTH_MODE.
+
+In local mode:
+
+- do not mount Clerk unnecessarily
+- do not require VITE_CLERK_PUBLISHABLE_KEY
+- do not redirect to the landing/sign-in screen
+- open directly to HOME
+
+In Clerk mode:
+
+- preserve existing sign-in/sign-up behavior
+
+Keep authentication concerns separate from the core application UI.
+
+Do not duplicate the application's page structure.
+
+API SECURITY
+
+Do NOT interpret "no login" as "no security".
+
+In local mode:
+
+- keep authorization checks active
+- use the stable local owner identity
+- bind the API to loopback by default
+- avoid network-wide exposure
+- keep Plex secrets server-side
+- keep SQLite server-side
+
+RUNTIME CONFIGURATION
+
+Centralize runtime configuration.
+
+Create or improve a server-side configuration layer that consistently resolves:
+
+- AUTH_MODE
+- PORT
+- database path
+- archive path
+- download path
+- temporary path
+- data path
+- yt-dlp path
+- FFmpeg path
+- FFprobe path
+- mock mode
+- other existing runtime settings
+
+Do not scatter process.env access throughout services.
+
+Do not hard-code Windows paths.
+
+Do not make machine-specific values part of the source code.
+
+PATH HANDLING
+
+Preserve support for:
+
+- explicit configured executable paths
+- environment-variable defaults
+- PATH fallback where appropriate
+
+The eventual packaged desktop build should be able to override these values when Tauri starts the Node sidecar.
+
+API BASE URL
+
+Inspect the generated API client and the existing `setBaseUrl()` capability.
+
+Centralize API base URL configuration so the current web deployment continues using relative `/api` URLs while future desktop packaging can provide a loopback sidecar URL.
+
+Do not add Tauri yet.
+
+The goal is simply to make the application ready for this later.
+
+LOCALHOST / LOOPBACK
+
+Review the current Express listen configuration.
+
+Make it possible for local mode to bind specifically to loopback rather than exposing the API to the LAN.
+
+Do not break the current development workflow.
+
+Make the behavior configurable if necessary.
+
+DATABASE
+
+Do not move the SQLite database to `%LOCALAPPDATA%` yet unless doing so is necessary for the current local-mode implementation.
+
+Do prepare the configuration layer so the future Tauri build can explicitly provide:
+
+ARCHIVE_DB_PATH
+
+and other runtime paths.
+
+Do not change existing data locations unnecessarily in this phase.
+
+TESTING
+
+Before modifying code, inspect:
+
+- ClerkProvider usage
+- requireAuth
+- owner resolution
+- ownership helpers
+- frontend routing
+- environment/configuration handling
+- API client base URL handling
+- Express listen configuration
+
+Then explain the implementation plan.
+
+Implement only this phase.
+
+Verify:
+
+1. AUTH_MODE=local
+   - fresh launch goes directly to HOME
+   - API works without login
+   - local owner identity is stable
+   - existing ownership logic still works
+   - jobs remain accessible
+   - Plex secrets remain server-side
+
+2. AUTH_MODE=clerk
+   - existing login flow remains structurally intact
+   - Clerk user IDs still determine ownership
+
+3. Configuration
+   - runtime settings are centrally resolved
+   - tool paths still work
+   - existing settings behavior is preserved
+
+4. API binding
+   - local mode can use loopback safely
+
+5. Existing data
+   - existing records are not destroyed
+   - legacy records are handled explicitly
+   - Clerk-owned records are not reassigned
+
+Run:
+
+- tests
+- typecheck
+- production build
+- git diff --check
+
+Update only the relevant README / DEVELOPMENT.md sections.
+
+Do NOT:
+
+- add Tauri
+- build the desktop shell
+- change the media engine
+- change Plex functionality
+- add Ollama
+- add duplicate detection
+- redesign the UI
+
+At the end report:
+
+AUTH MODE
+LOCAL IDENTITY
+CLERK MODE
+RUNTIME CONFIGURATION
+API SECURITY
+API BASE URL
+DATABASE IMPACT
+TEST RESULTS
+KNOWN LIMITATIONS
+
+Stop after this phase.
