@@ -5,6 +5,9 @@ import {
   GetArchiveRecordResponse,
   GetArchiveScanResponse,
   StartArchiveScanResponse,
+  UpdateArchiveRecordReviewBody,
+  UpdateArchiveRecordReviewParams,
+  UpdateArchiveRecordReviewResponse,
 } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import {
@@ -12,6 +15,7 @@ import {
   readArchiveRecord,
   readArchiveScan,
   startArchiveScan,
+  updateArchiveRecordReview,
 } from "../services/archive";
 
 const router: IRouter = Router();
@@ -41,6 +45,30 @@ router.get("/archive/records/:id", (req, res) => {
     return;
   }
   res.json(GetArchiveRecordResponse.parse(record));
+});
+
+router.put("/archive/records/:id", (req, res) => {
+  const params = UpdateArchiveRecordReviewParams.safeParse(req.params);
+  const body = UpdateArchiveRecordReviewBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "A valid review status and archive record id are required." });
+    return;
+  }
+  try {
+    const result = updateArchiveRecordReview(
+      getAuthenticatedUserId(req),
+      params.data.id,
+      body.data.status,
+      body.data.note ?? null,
+    );
+    if (!result) {
+      res.status(404).json({ error: "Archive record not found." });
+      return;
+    }
+    res.json(UpdateArchiveRecordReviewResponse.parse(result));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Review decision could not be saved." });
+  }
 });
 
 export default router;

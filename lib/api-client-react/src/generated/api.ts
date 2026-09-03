@@ -24,6 +24,8 @@ import type {
   AppSettingsUpdate,
   ArchiveInventory,
   ArchiveInventoryRecord,
+  ArchiveReview,
+  ArchiveReviewUpdate,
   ArchiveScan,
   DependencyStatus,
   DownloadJob,
@@ -1195,6 +1197,78 @@ export function useGetArchiveRecord<TData = Awaited<ReturnType<typeof getArchive
 
 
 
+
+export const getUpdateArchiveRecordReviewUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive/records/${id}`
+}
+
+/**
+ * @summary Save a non-destructive review decision for an archive finding
+ */
+export const updateArchiveRecordReview = async (id: number,
+    archiveReviewUpdate: ArchiveReviewUpdate, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveReview> => {
+
+  return customFetch<ArchiveReview>(getUpdateArchiveRecordReviewUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(archiveReviewUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateArchiveRecordReviewMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArchiveRecordReview>>, TError,{id: number;data: BodyType<ArchiveReviewUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateArchiveRecordReview>>, TError,{id: number;data: BodyType<ArchiveReviewUpdate>}, TContext> => {
+
+const mutationKey = ['updateArchiveRecordReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateArchiveRecordReview>>, {id: number;data: BodyType<ArchiveReviewUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateArchiveRecordReview(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateArchiveRecordReviewMutationResult = NonNullable<Awaited<ReturnType<typeof updateArchiveRecordReview>>>
+    export type UpdateArchiveRecordReviewMutationBody = BodyType<ArchiveReviewUpdate>
+    export type UpdateArchiveRecordReviewMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Save a non-destructive review decision for an archive finding
+ */
+export const useUpdateArchiveRecordReview = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArchiveRecordReview>>, TError,{id: number;data: BodyType<ArchiveReviewUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateArchiveRecordReview>>,
+        TError,
+        {id: number;data: BodyType<ArchiveReviewUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateArchiveRecordReviewMutationOptions(options));
+    }
 
 export const getInspectMediaSourceUrl = () => {
 

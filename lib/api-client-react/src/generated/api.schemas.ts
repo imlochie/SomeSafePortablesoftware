@@ -406,6 +406,46 @@ export interface ArchiveInventorySummary {
   plexOnlyCount: number;
   /** @minimum 0 */
   localOnlyCount: number;
+  /** @minimum 0 */
+  reviewedCount: number;
+  /** @minimum 0 */
+  unresolvedCount: number;
+}
+
+export type ArchiveReviewUpdateStatus = typeof ArchiveReviewUpdateStatus[keyof typeof ArchiveReviewUpdateStatus];
+
+
+export const ArchiveReviewUpdateStatus = {
+  reviewed: 'reviewed',
+  deferred: 'deferred',
+  unresolved: 'unresolved',
+} as const;
+
+export interface ArchiveReviewUpdate {
+  status: ArchiveReviewUpdateStatus;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  note?: string | null;
+}
+
+export type ArchiveReviewStatus = typeof ArchiveReviewStatus[keyof typeof ArchiveReviewStatus];
+
+
+export const ArchiveReviewStatus = {
+  reviewed: 'reviewed',
+  deferred: 'deferred',
+  unresolved: 'unresolved',
+} as const;
+
+export interface ArchiveReview {
+  status: ArchiveReviewStatus;
+  findingType: string;
+  /** @nullable */
+  note: string | null;
+  reviewedAt: string;
+  updatedAt: string;
 }
 
 export interface ArchivePlexMatch {
@@ -446,6 +486,17 @@ export const ArchiveInventoryRecordQualityStatus = {
   local_only: 'local_only',
   file_missing: 'file_missing',
   needs_review: 'needs_review',
+} as const;
+
+export type ArchiveInventoryRecordReviewStatus = typeof ArchiveInventoryRecordReviewStatus[keyof typeof ArchiveInventoryRecordReviewStatus];
+
+
+export const ArchiveInventoryRecordReviewStatus = {
+  not_applicable: 'not_applicable',
+  unreviewed: 'unreviewed',
+  reviewed: 'reviewed',
+  deferred: 'deferred',
+  unresolved: 'unresolved',
 } as const;
 
 export interface ArchiveInventoryRecord {
@@ -494,6 +545,11 @@ export interface ArchiveInventoryRecord {
   /** @nullable */
   duplicateOfId: number | null;
   plexMatch: ArchivePlexMatch | null;
+  reviewStatus: ArchiveInventoryRecordReviewStatus;
+  /** @nullable */
+  reviewNote: string | null;
+  /** @nullable */
+  reviewUpdatedAt: string | null;
 }
 
 export interface ArchiveInventory {

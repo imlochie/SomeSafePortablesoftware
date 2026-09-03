@@ -230,6 +230,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateArchiveRecordReview
+      tags: [archive]
+      summary: Save a non-destructive review decision for an archive finding
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveReviewUpdate"
+      responses:
+        "200":
+          description: Persisted review decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveReview"
+        "400":
+          description: Review is not valid for the current finding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Archive record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /media/inspect:
     post:
       operationId: inspectMediaSource
@@ -793,7 +829,7 @@ components:
           minimum: 0
     ArchiveInventorySummary:
       type: object
-      required: [activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount]
+      required: [activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount, reviewedCount, unresolvedCount]
       properties:
         activeFiles:
           type: number
@@ -816,6 +852,39 @@ components:
         localOnlyCount:
           type: number
           minimum: 0
+        reviewedCount:
+          type: number
+          minimum: 0
+        unresolvedCount:
+          type: number
+          minimum: 0
+    ArchiveReviewUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [reviewed, deferred, unresolved]
+        note:
+          type: [string, "null"]
+          maxLength: 500
+    ArchiveReview:
+      type: object
+      required: [status, findingType, note, reviewedAt, updatedAt]
+      properties:
+        status:
+          type: string
+          enum: [reviewed, deferred, unresolved]
+        findingType:
+          type: string
+        note:
+          type: [string, "null"]
+        reviewedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     ArchivePlexMatch:
       type: object
       required: [ratingKey, title, year, qualityDifferences]
@@ -846,7 +915,7 @@ components:
           type: string
     ArchiveInventoryRecord:
       type: object
-      required: [id, archiveItemId, filename, path, relativePath, sizeBytes, checksum, mediaType, scanStatus, errorMessage, durationSeconds, videoCodec, audioCodec, width, height, fps, bitrate, container, dynamicRange, audioChannels, audioLanguages, subtitleLanguages, lastSeenAt, qualityStatus, qualitySummary, qualityDifferences, duplicateOfId, plexMatch]
+      required: [id, archiveItemId, filename, path, relativePath, sizeBytes, checksum, mediaType, scanStatus, errorMessage, durationSeconds, videoCodec, audioCodec, width, height, fps, bitrate, container, dynamicRange, audioChannels, audioLanguages, subtitleLanguages, lastSeenAt, qualityStatus, qualitySummary, qualityDifferences, duplicateOfId, plexMatch, reviewStatus, reviewNote, reviewUpdatedAt]
       properties:
         id:
           type: number
@@ -914,6 +983,13 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ArchivePlexMatch"
             - type: "null"
+        reviewStatus:
+          type: string
+          enum: [not_applicable, unreviewed, reviewed, deferred, unresolved]
+        reviewNote:
+          type: [string, "null"]
+        reviewUpdatedAt:
+          type: [string, "null"]
     ArchiveInventory:
       type: object
       required: [scan, summary, records, plexOnly]

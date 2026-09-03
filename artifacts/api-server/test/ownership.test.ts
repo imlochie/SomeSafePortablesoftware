@@ -32,6 +32,7 @@ import {
   readArchiveInventory,
   readArchiveScan,
   startArchiveScan,
+  updateArchiveRecordReview,
 } from "../src/services/archive";
 
 const ownerA = "user-a";
@@ -425,6 +426,13 @@ process.stdout.write(JSON.stringify({
     assert.equal(low?.qualityStatus, "lower_quality_version");
     assert.equal(high?.qualityStatus, "best_local_version");
     assert.ok(low?.qualityDifferences.some((difference) => difference.includes("resolution")));
+    if (!low) throw new Error("Expected the lower-quality archive record.");
+    const reviewed = updateArchiveRecordReview(ownerA, low.id, "reviewed", "Keep the higher-resolution local copy.");
+    assert.equal(reviewed?.status, "reviewed");
+    assert.equal(reviewed?.note, "Keep the higher-resolution local copy.");
+    assert.equal(updateArchiveRecordReview(ownerB, low.id, "reviewed", null), null);
+    assert.equal(readArchiveInventory(ownerA).records.find((record) => record.id === low.id)?.reviewStatus, "reviewed");
+    assert.equal(readArchiveInventory(ownerB).records.find((record) => record.id === low.id), undefined);
 
     const duplicateRows = inventory.records.filter((record) => record.qualityStatus === "duplicate");
     assert.equal(duplicateRows.length, 2);
@@ -435,10 +443,19 @@ process.stdout.write(JSON.stringify({
 
     await waitForScan(ownerA);
     assert.equal(readArchiveInventory(ownerA).records.length, 7);
+    assert.equal(readArchiveInventory(ownerA).records.find((record) => record.id === low.id)?.reviewStatus, "reviewed");
     assert.equal(
       (archiveDb.prepare("SELECT COUNT(*) AS count FROM file_record WHERE owner_id = ?").get(ownerA) as { count: number }).count,
       7,
     );
+
+    await writeFile(files.low, "movie-low-with-changed-evidence");
+    await waitForScan(ownerA);
+    const reopenedFinding = readArchiveInventory(ownerA).records.find((record) => record.id === low.id);
+    assert.equal(reopenedFinding?.qualityStatus, "lower_quality_version");
+    assert.equal(reopenedFinding?.reviewStatus, "unreviewed");
+    assert.equal(updateArchiveRecordReview(ownerA, low.id, "deferred", "Review after storage cleanup.")?.status, "deferred");
+    assert.equal(updateArchiveRecordReview(ownerA, low.id, "unresolved", null)?.status, "unresolved");
 
     await unlink(files.copyTwo);
     const missingScan = await waitForScan(ownerA);
@@ -457,6 +474,10 @@ process.stdout.write(JSON.stringify({
       assert.equal(
         (reopened.prepare("SELECT status FROM archive_scan WHERE owner_id = ?").get(ownerA) as { status: string }).status,
         "completed",
+      );
+      assert.equal(
+        (reopened.prepare("SELECT COUNT(*) AS count FROM archive_review WHERE owner_id = ? AND file_record_id = ?").get(ownerA, low.id) as { count: number }).count,
+        2,
       );
     } finally {
       reopened.close();

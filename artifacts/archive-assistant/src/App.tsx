@@ -18,7 +18,8 @@ import {
   usePauseDownload, usePrepareDownload, useRetryDownload, useResumeDownload,
   useStartDownload, useStartPlexSync, useTestPlexConnection, useUpdatePlexConfig, useUpdateSettings,
   useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord,
-  getGetArchiveScanQueryKey, getGetArchiveInventoryQueryKey,
+  useUpdateArchiveRecordReview, getGetArchiveScanQueryKey, getGetArchiveInventoryQueryKey,
+  getGetArchiveRecordQueryKey,
 } from '@workspace/api-client-react';
 import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -331,7 +332,28 @@ function EmptyState({ icon: Icon, title, description }: { icon: typeof Activity;
 }
 
 function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }) {
+  const queryClient = useQueryClient();
   const { data: record, isLoading, isError, refetch } = useGetArchiveRecord(id);
+  const updateReview = useUpdateArchiveRecordReview();
+  const [reviewNote, setReviewNote] = useState('');
+  const [reviewNotice, setReviewNotice] = useState('');
+
+  useEffect(() => {
+    setReviewNote(record?.reviewNote ?? '');
+    setReviewNotice('');
+  }, [record?.reviewNote, record?.reviewStatus, id]);
+
+  const saveReview = (status: 'reviewed' | 'deferred' | 'unresolved') => {
+    setReviewNotice('');
+    updateReview.mutate({ id, data: { status, note: reviewNote.trim() || null } }, {
+      onSuccess: () => {
+        setReviewNotice(`Finding marked ${status}.`);
+        queryClient.invalidateQueries({ queryKey: getGetArchiveRecordQueryKey(id) });
+        queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+      },
+      onError: (error) => setReviewNotice(`Review could not be saved: ${errorText(error)}`)
+    });
+  };
 
   if (isLoading) return <aside className="archive-panel p-5"><Skeleton className="h-[400px]" /></aside>;
   if (isError || !record) return <aside className="archive-panel p-5"><ErrorState title="Read failed" message="Record not found." onRetry={() => refetch()} testId="button-retry-record" /></aside>;
@@ -364,6 +386,33 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
         </div>
       )}
 
+      {record.reviewStatus !== 'not_applicable' && (
+        <div className="mt-6 border-t border-[#e3e8e7] pt-5" data-testid="panel-archive-review">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">OPERATOR REVIEW</div>
+            <span className={`archive-mono px-2 py-1 text-[9px] tracking-[.08em] ${record.reviewStatus === 'reviewed' ? 'bg-[#eaf3ef] text-[#39736e]' : record.reviewStatus === 'deferred' ? 'bg-[#fff0c9] text-[#8d681d]' : 'bg-[#fcedea] text-[#994b43]'}`}>
+              {record.reviewStatus.replace(/_/g, ' ').toUpperCase()}
+            </span>
+          </div>
+          <textarea
+            value={reviewNote}
+            onChange={(event) => setReviewNote(event.target.value)}
+            maxLength={500}
+            rows={3}
+            placeholder="Optional note about this finding"
+            className="w-full resize-y border border-[#d6dfdc] bg-[#fbfcfa] p-3 text-[11px] leading-5 text-[#43545b] outline-none placeholder:text-[#a0aaaa] focus:border-[#4e9690]"
+            data-testid="input-archive-review-note"
+          />
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <button type="button" onClick={() => saveReview('reviewed')} disabled={updateReview.isPending} className="inline-flex items-center justify-center gap-1.5 bg-[#39736e] px-2 py-2 text-[9px] font-bold tracking-[.06em] text-white disabled:opacity-50" data-testid="button-review-reviewed"><Check size={12} /> REVIEWED</button>
+            <button type="button" onClick={() => saveReview('deferred')} disabled={updateReview.isPending} className="inline-flex items-center justify-center gap-1.5 border border-[#d9bd77] bg-[#fff8e7] px-2 py-2 text-[9px] font-bold tracking-[.06em] text-[#8d681d] disabled:opacity-50" data-testid="button-review-deferred"><Pause size={12} /> DEFER</button>
+            <button type="button" onClick={() => saveReview('unresolved')} disabled={updateReview.isPending} className="inline-flex items-center justify-center gap-1.5 border border-[#e2b9b4] bg-[#fcedea] px-2 py-2 text-[9px] font-bold tracking-[.06em] text-[#994b43] disabled:opacity-50" data-testid="button-review-unresolved"><RotateCcw size={12} /> UNRESOLVED</button>
+          </div>
+          {record.reviewUpdatedAt && <div className="archive-mono mt-3 text-[9px] text-[#97a3a4]">UPDATED / {formatTime(record.reviewUpdatedAt)}</div>}
+          {reviewNotice && <div className={`mt-3 text-[10px] ${reviewNotice.includes('could not') ? 'text-[#994b43]' : 'text-[#39736e]'}`} data-testid="status-archive-review">{reviewNotice}</div>}
+        </div>
+      )}
+
       {record.plexMatch && (
         <div className="mt-6 border-t border-[#e3e8e7] pt-5">
            <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194] mb-3">PLEX MATCH</div>
@@ -393,7 +442,7 @@ function ArchivePage() {
   const [notice, setNotice] = useState('');
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
   const [view, setView] = useState<'local' | 'plex_only'>('local');
-  const [filter, setFilter] = useState<'all' | 'duplicates' | 'conflicts' | 'missing' | 'local_only'>('all');
+  const [filter, setFilter] = useState<'all' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
 
   const [isScanning, setIsScanning] = useState(false);
   const { data: scan, isLoading: scanLoading, refetch: refetchScan } = useGetArchiveScan({
@@ -444,6 +493,8 @@ function ArchivePage() {
   else if (filter === 'conflicts') displayedRecords = records.filter(r => ['higher_quality_available', 'lower_quality_version', 'needs_review'].includes(r.qualityStatus) || (r.qualityDifferences && r.qualityDifferences.length > 0));
   else if (filter === 'missing') displayedRecords = records.filter(r => r.scanStatus === 'missing' || r.qualityStatus === 'file_missing');
   else if (filter === 'local_only') displayedRecords = records.filter(r => r.qualityStatus === 'local_only');
+  else if (filter === 'reviewed') displayedRecords = records.filter(r => r.reviewStatus === 'reviewed');
+  else if (filter === 'unresolved') displayedRecords = records.filter(r => ['unreviewed', 'unresolved'].includes(r.reviewStatus));
 
   const plexOnly = inventory?.plexOnly ?? [];
   const showPlex = view === 'plex_only';
@@ -492,8 +543,8 @@ function ArchivePage() {
 
             {view === 'local' && (
               <div className="flex flex-wrap items-center gap-2">
-                {['all', 'duplicates', 'conflicts', 'missing', 'local_only'].map(f => (
-                  <button key={f} onClick={() => setFilter(f as any)} className={`archive-mono text-[9px] tracking-[.08em] px-2 py-1 border ${filter === f ? 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]' : 'border-[#d6dfdc] bg-white text-[#7f9194] hover:border-[#aabfba]'}`}>
+                {(['all', 'duplicates', 'conflicts', 'missing', 'local_only', 'reviewed', 'unresolved'] as const).map(f => (
+                  <button key={f} onClick={() => setFilter(f)} className={`archive-mono text-[9px] tracking-[.08em] px-2 py-1 border ${filter === f ? 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]' : 'border-[#d6dfdc] bg-white text-[#7f9194] hover:border-[#aabfba]'}`}>
                     {f.replace('_', ' ').toUpperCase()}
                   </button>
                 ))}
@@ -540,6 +591,7 @@ function ArchivePage() {
                       <div className="flex gap-2 shrink-0">
                         {r.scanStatus === 'missing' && <span className="grid h-6 place-items-center bg-[#fcedea] px-2 text-[9px] font-bold text-[#c85b51]">MISSING</span>}
                         {r.plexMatch && <span className="grid h-6 place-items-center bg-[#fff0c9] px-2 text-[9px] font-bold text-[#a77517]">IN PLEX</span>}
+                        {r.reviewStatus !== 'not_applicable' && <span className={`grid h-6 place-items-center px-2 text-[9px] font-bold ${r.reviewStatus === 'reviewed' ? 'bg-[#eaf3ef] text-[#39736e]' : r.reviewStatus === 'deferred' ? 'bg-[#fff0c9] text-[#8d681d]' : 'bg-[#fcedea] text-[#994b43]'}`}>{r.reviewStatus.replace(/_/g, ' ').toUpperCase()}</span>}
                       </div>
                     </button>
                   ))}

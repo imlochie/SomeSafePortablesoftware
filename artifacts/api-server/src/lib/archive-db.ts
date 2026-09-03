@@ -152,6 +152,18 @@ archiveDb.exec(`
     local_only_count INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS archive_review (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    file_record_id INTEGER NOT NULL REFERENCES file_record(id) ON DELETE CASCADE,
+    finding_type TEXT NOT NULL,
+    evidence_key TEXT NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, file_record_id, finding_type, evidence_key)
+  );
   CREATE TABLE IF NOT EXISTS assistant_conversation (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New conversation',

@@ -461,6 +461,10 @@ export const getArchiveInventoryResponseSummaryPlexOnlyCountMin = 0;
 
 export const getArchiveInventoryResponseSummaryLocalOnlyCountMin = 0;
 
+export const getArchiveInventoryResponseSummaryReviewedCountMin = 0;
+
+export const getArchiveInventoryResponseSummaryUnresolvedCountMin = 0;
+
 
 
 export const GetArchiveInventoryResponse = zod.object({
@@ -485,7 +489,9 @@ export const GetArchiveInventoryResponse = zod.object({
   "missingCount": zod.number().min(getArchiveInventoryResponseSummaryMissingCountMin),
   "qualityConflictCount": zod.number().min(getArchiveInventoryResponseSummaryQualityConflictCountMin),
   "plexOnlyCount": zod.number().min(getArchiveInventoryResponseSummaryPlexOnlyCountMin),
-  "localOnlyCount": zod.number().min(getArchiveInventoryResponseSummaryLocalOnlyCountMin)
+  "localOnlyCount": zod.number().min(getArchiveInventoryResponseSummaryLocalOnlyCountMin),
+  "reviewedCount": zod.number().min(getArchiveInventoryResponseSummaryReviewedCountMin),
+  "unresolvedCount": zod.number().min(getArchiveInventoryResponseSummaryUnresolvedCountMin)
 }),
   "records": zod.array(zod.object({
   "id": zod.number(),
@@ -520,7 +526,10 @@ export const GetArchiveInventoryResponse = zod.object({
   "title": zod.string(),
   "year": zod.number().nullable(),
   "qualityDifferences": zod.array(zod.string())
-}),zod.null()])
+}),zod.null()]),
+  "reviewStatus": zod.enum(['not_applicable', 'unreviewed', 'reviewed', 'deferred', 'unresolved']),
+  "reviewNote": zod.string().nullable(),
+  "reviewUpdatedAt": zod.string().nullable()
 })),
   "plexOnly": zod.array(zod.object({
   "ratingKey": zod.string(),
@@ -575,7 +584,38 @@ export const GetArchiveRecordResponse = zod.object({
   "title": zod.string(),
   "year": zod.number().nullable(),
   "qualityDifferences": zod.array(zod.string())
-}),zod.null()])
+}),zod.null()]),
+  "reviewStatus": zod.enum(['not_applicable', 'unreviewed', 'reviewed', 'deferred', 'unresolved']),
+  "reviewNote": zod.string().nullable(),
+  "reviewUpdatedAt": zod.string().nullable()
+})
+
+
+/**
+ * @summary Save a non-destructive review decision for an archive finding
+ */
+
+
+
+export const UpdateArchiveRecordReviewParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const updateArchiveRecordReviewBodyNoteMax = 500;
+
+
+
+export const UpdateArchiveRecordReviewBody = zod.object({
+  "status": zod.enum(['reviewed', 'deferred', 'unresolved']),
+  "note": zod.string().max(updateArchiveRecordReviewBodyNoteMax).nullish()
+})
+
+export const UpdateArchiveRecordReviewResponse = zod.object({
+  "status": zod.enum(['reviewed', 'deferred', 'unresolved']),
+  "findingType": zod.string(),
+  "note": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 

@@ -21,4 +21,8 @@ export interface ArchiveInventorySummary {
   plexOnlyCount: number;
   /** @minimum 0 */
   localOnlyCount: number;
+  /** @minimum 0 */
+  reviewedCount: number;
+  /** @minimum 0 */
+  unresolvedCount: number;
 }

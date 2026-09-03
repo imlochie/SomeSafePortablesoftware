@@ -22,6 +22,15 @@ type QualityStatus =
   | "local_only"
   | "file_missing"
   | "needs_review";
+type ReviewStatus = "not_applicable" | "unreviewed" | "reviewed" | "deferred" | "unresolved";
+type SavedReviewStatus = Exclude<ReviewStatus, "not_applicable" | "unreviewed">;
+const reviewableQualityStatuses = new Set<QualityStatus>([
+  "duplicate",
+  "lower_quality_version",
+  "higher_quality_available",
+  "file_missing",
+  "needs_review",
+]);
 
 type FileRow = {
   id: number;
@@ -150,6 +159,42 @@ function qualityDifferences(left: QualityShape, right: QualityShape) {
   if (left.audioChannels !== right.audioChannels && (left.audioChannels !== null || right.audioChannels !== null)) differences.push(`audio channels ${left.audioChannels ?? "unknown"} vs ${right.audioChannels ?? "unknown"}`);
   if (left.container !== right.container) differences.push(`container ${left.container ?? "unknown"} vs ${right.container ?? "unknown"}`);
   return differences;
+}
+
+function reviewEvidenceKey(record: {
+  qualityStatus: QualityStatus;
+  checksum: string | null;
+  fingerprint?: string | null;
+  duplicateOfId: number | null;
+  qualityDifferences: string[];
+  plexMatch: { ratingKey: string } | null;
+}) {
+  return createHash("sha256").update(JSON.stringify({
+    qualityStatus: record.qualityStatus,
+    checksum: record.checksum,
+    fingerprint: record.fingerprint ?? null,
+    duplicateOfId: record.duplicateOfId,
+    qualityDifferences: record.qualityDifferences,
+    plexRatingKey: record.plexMatch?.ratingKey ?? null,
+  })).digest("hex");
+}
+
+function readReview(ownerId: string, fileRecordId: number, findingType: QualityStatus, evidenceKey: string) {
+  if (!reviewableQualityStatuses.has(findingType)) {
+    return { status: "not_applicable" as const, note: null, updatedAt: null };
+  }
+  const row = archiveDb.prepare(
+    `SELECT status, note, updated_at
+     FROM archive_review
+     WHERE owner_id = ? AND file_record_id = ? AND finding_type = ? AND evidence_key = ?`,
+  ).get(ownerId, fileRecordId, findingType, evidenceKey) as {
+    status: SavedReviewStatus;
+    note: string | null;
+    updated_at: string;
+  } | undefined;
+  return row
+    ? { status: row.status, note: row.note, updatedAt: row.updated_at }
+    : { status: "unreviewed" as const, note: null, updatedAt: null };
 }
 
 function parseMetadata(value: string) {
@@ -457,7 +502,7 @@ function plexMatch(row: FileRow, plexRows: PlexRow[]) {
     && (localYear === null || plex.year === null || localYear === plex.year));
 }
 
-function mapFile(row: FileRow, rows: FileRow[], plexRows: PlexRow[]) {
+function mapFile(ownerId: string, row: FileRow, rows: FileRow[], plexRows: PlexRow[]) {
   const sameIdentity = rows.filter((candidate) => candidate.id !== row.id
     && candidate.scan_status === "active"
     && normalizeTitle(candidate.filename) === normalizeTitle(row.filename)
@@ -509,6 +554,22 @@ function mapFile(row: FileRow, rows: FileRow[], plexRows: PlexRow[]) {
       qualitySummary = "The matched Plex version ranks higher on available metadata.";
     }
   }
+  const duplicateOfId = exactDuplicate?.id ?? fingerprintDuplicate?.id ?? null;
+  const plexMatchResult = match ? {
+    ratingKey: match.rating_key,
+    title: match.title,
+    year: match.year,
+    qualityDifferences,
+  } : null;
+  const evidenceKey = reviewEvidenceKey({
+    qualityStatus,
+    checksum: row.checksum,
+    fingerprint: row.fingerprint,
+    duplicateOfId,
+    qualityDifferences,
+    plexMatch: plexMatchResult,
+  });
+  const review = readReview(ownerId, row.id, qualityStatus, evidenceKey);
   return {
     id: row.id,
     archiveItemId: row.archive_item_id,
@@ -536,13 +597,12 @@ function mapFile(row: FileRow, rows: FileRow[], plexRows: PlexRow[]) {
     qualityStatus,
     qualitySummary,
     qualityDifferences,
-    duplicateOfId: exactDuplicate?.id ?? fingerprintDuplicate?.id ?? null,
-    plexMatch: match ? {
-      ratingKey: match.rating_key,
-      title: match.title,
-      year: match.year,
-      qualityDifferences,
-    } : null,
+    duplicateOfId,
+    plexMatch: plexMatchResult,
+    reviewStatus: review.status,
+    reviewNote: review.note,
+    reviewUpdatedAt: review.updatedAt,
+    reviewEvidenceKey: evidenceKey,
   };
 }
 
@@ -558,7 +618,7 @@ export function readArchiveInventory(ownerId: string) {
     "SELECT id, archive_item_id, filename, path, relative_path, size_bytes, checksum, media_type, scan_status, error_message, duration_seconds, video_codec, audio_codec, width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages, subtitle_languages, fingerprint, modified_at_ms, last_seen_at FROM file_record WHERE owner_id = ? ORDER BY filename COLLATE NOCASE, path",
   ).all(ownerId) as FileRow[];
   const plexRows = readPlexRows(ownerId);
-  const records = rows.map((row) => mapFile(row, rows, plexRows));
+  const records = rows.map((row) => mapFile(ownerId, row, rows, plexRows));
   const matchedPlexKeys = new Set(records.map((record) => record.plexMatch?.ratingKey).filter((key): key is string => Boolean(key)));
   const plexOnly = plexRows
     .filter((plex) => !matchedPlexKeys.has(plex.rating_key))
@@ -580,6 +640,8 @@ export function readArchiveInventory(ownerId: string) {
       qualityConflictCount: records.filter((record) => ["lower_quality_version", "higher_quality_available"].includes(record.qualityStatus)).length,
       plexOnlyCount: plexOnly.length,
       localOnlyCount: records.filter((record) => record.qualityStatus === "local_only").length,
+      reviewedCount: records.filter((record) => record.reviewStatus === "reviewed").length,
+      unresolvedCount: records.filter((record) => ["unreviewed", "unresolved"].includes(record.reviewStatus)).length,
     },
     records,
     plexOnly,
@@ -589,4 +651,37 @@ export function readArchiveInventory(ownerId: string) {
 export function readArchiveRecord(ownerId: string, id: number) {
   const inventory = readArchiveInventory(ownerId);
   return inventory.records.find((record) => record.id === id) ?? null;
+}
+
+export function updateArchiveRecordReview(ownerId: string, id: number, status: SavedReviewStatus, note: string | null) {
+  const record = readArchiveRecord(ownerId, id);
+  if (!record) return null;
+  if (!reviewableQualityStatuses.has(record.qualityStatus)) {
+    throw new Error("This archive record has no active duplicate or quality finding to review.");
+  }
+  const evidenceKey = record.reviewEvidenceKey;
+  archiveDb.prepare(
+    `INSERT INTO archive_review
+      (owner_id, file_record_id, finding_type, evidence_key, status, note, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(owner_id, file_record_id, finding_type, evidence_key) DO UPDATE SET
+       status = excluded.status, note = excluded.note, updated_at = CURRENT_TIMESTAMP`,
+  ).run(ownerId, id, record.qualityStatus, evidenceKey, status, note);
+  const saved = archiveDb.prepare(
+    `SELECT status, finding_type, note, updated_at
+     FROM archive_review
+     WHERE owner_id = ? AND file_record_id = ? AND finding_type = ? AND evidence_key = ?`,
+  ).get(ownerId, id, record.qualityStatus, evidenceKey) as {
+    status: SavedReviewStatus;
+    finding_type: string;
+    note: string | null;
+    updated_at: string;
+  };
+  return {
+    status: saved.status,
+    findingType: saved.finding_type,
+    note: saved.note,
+    reviewedAt: saved.updated_at,
+    updatedAt: saved.updated_at,
+  };
 }

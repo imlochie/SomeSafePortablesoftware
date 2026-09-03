@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ArchiveInventoryRecordQualityStatus } from './archiveInventoryRecordQualityStatus';
+import type { ArchiveInventoryRecordReviewStatus } from './archiveInventoryRecordReviewStatus';
 import type { ArchiveInventoryRecordScanStatus } from './archiveInventoryRecordScanStatus';
 import type { ArchivePlexMatch } from './archivePlexMatch';
 
@@ -55,4 +56,9 @@ export interface ArchiveInventoryRecord {
   /** @nullable */
   duplicateOfId: number | null;
   plexMatch: ArchivePlexMatch | null;
+  reviewStatus: ArchiveInventoryRecordReviewStatus;
+  /** @nullable */
+  reviewNote: string | null;
+  /** @nullable */
+  reviewUpdatedAt: string | null;
 }
