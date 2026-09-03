@@ -1,0 +1,167 @@
+STOP AND ALIGN WITH THE ACTUAL CURRENT PROJECT.
+
+We are continuing development of ARCHIVE ASSISTANT.
+
+IMPORTANT:
+The current workspace is the more advanced React + Vite + Express implementation.
+
+Do NOT assume this is the old Next.js/v0 architecture.
+
+The current architecture is:
+
+    React + Vite UI
+            |
+      Express + Node API
+            |
+      Media / Download services
+        |       |       |
+      yt-dlp  FFmpeg  FFprobe
+            |
+       local filesystem
+            |
+          SQLite
+            |
+     jobs / queue / events
+
+ARCHITECTURAL DECISION ALREADY MADE:
+
+The existing Express API is the Windows-local engine.
+
+We are NOT introducing:
+- another worker service
+- worker_threads
+- a separate Python engine
+- a random microservice
+- an npm yt-dlp wrapper
+- a second backend abstraction unless there is a concrete need
+
+The existing service boundaries should be preserved.
+
+CURRENT STATE:
+
+The project already has real implementations for:
+
+- source inspection through yt-dlp when mock mode is disabled
+- real yt-dlp downloads
+- FFmpeg processing/remuxing
+- FFprobe verification
+- persistent jobs
+- progress tracking
+- retries
+- pause/resume
+- cancellation
+- recovery
+- event logging
+- SQLite persistence
+- configurable yt-dlp path
+- configurable FFmpeg path
+- configurable FFprobe path
+- Windows-local launch configuration
+
+The project also already has:
+
+- dependency detection
+- Local Engine settings
+- Windows launcher scripts
+- API/UI integration
+- mock mode for development/testing
+
+The following are intentionally NOT finished yet:
+
+- Plex inventory synchronization
+- real Ollama assistant integration
+- duplicate detection / quality intelligence
+- archive intelligence/workflows
+- per-user ownership filtering
+
+EXECUTABLE CONFIGURATION:
+
+The application should use configurable paths, not hard-coded machine-specific paths.
+
+Environment variables:
+
+YT_DLP_PATH
+FFMPEG_PATH
+FFPROBE_PATH
+
+The user's actual Windows machine currently has:
+
+YT_DLP_PATH=C:\Users\lochi\Downloads\yt-dlp_win\yt-dlp.exe
+FFMPEG_PATH=C:\Users\lochi\Downloads\yt-dlp_win\ffmpeg.exe
+
+Those paths are user-machine configuration, not architectural assumptions.
+
+WHAT I NEED FROM YOU:
+
+Before changing anything, inspect the CURRENT workspace.
+
+Do not infer architecture from old prompts, old conversations, or hypothetical code.
+
+Identify:
+
+1. The current frontend structure.
+2. The Express API structure.
+3. The media service.
+4. The download engine.
+5. The settings/configuration path.
+6. The SQLite/job/queue/event implementation.
+7. The current mock-mode boundaries.
+8. Which parts are genuinely real already.
+9. Which parts are still placeholders.
+10. The best next implementation step based on the ACTUAL CODE.
+
+Then compare the current code against this product direction:
+
+ARCHIVE ASSISTANT is a Windows-first local media archiving application.
+
+Its eventual capabilities are:
+
+SOURCE
+→ inspect source
+→ enumerate formats
+→ choose quality
+→ download
+
+PROCESS
+→ FFmpeg processing/remuxing
+→ verification
+→ metadata/file handling
+
+ARCHIVE
+→ organize local media
+→ detect duplicates
+→ understand quality
+→ maintain archive records
+
+PLEX
+→ inspect Plex
+→ synchronize inventory
+→ understand what is already owned
+→ prevent unnecessary downloads
+
+ASSISTANT
+→ local Ollama model
+→ understands the archive
+→ can inspect sources
+→ can reason about quality/duplicates
+→ eventually orchestrates archive actions
+
+For this pass:
+
+DO NOT WRITE CODE.
+
+DO NOT REFACTOR.
+
+DO NOT CREATE NEW ARCHITECTURE.
+
+DO NOT "IMPROVE" THINGS YET.
+
+Just inspect the actual repository, reconcile the current implementation with the architecture above, and report:
+
+CURRENT REALITY
+WHAT IS WORKING
+WHAT IS MOCKED
+WHAT IS MISSING
+NEXT BEST STEP
+
+Then STOP and wait for approval.
