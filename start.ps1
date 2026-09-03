@@ -2,6 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $env:ARCHIVE_DB_PATH = Join-Path $root "data\archive-assistant.sqlite"
+$env:AUTH_MODE = "local"
+$env:VITE_AUTH_MODE = "local"
 
 Write-Host "Starting ARCHIVE ASSISTANT..." -ForegroundColor Cyan
 Write-Host "SQLite data: $env:ARCHIVE_DB_PATH" -ForegroundColor DarkGray
@@ -10,7 +12,7 @@ Write-Host "Open http://localhost:3000 when the browser is ready." -ForegroundCo
 $api = Start-Process powershell -ArgumentList @(
   "-NoExit",
   "-Command",
-  "`$env:PORT='8080'; `$env:ARCHIVE_DB_PATH='$env:ARCHIVE_DB_PATH'; Set-Location '$root'; pnpm --filter @workspace/api-server run dev"
+  "`$env:PORT='8080'; `$env:AUTH_MODE='local'; `$env:ARCHIVE_DB_PATH='$env:ARCHIVE_DB_PATH'; Set-Location '$root'; pnpm --filter @workspace/api-server run dev"
 ) -PassThru
 
 try {

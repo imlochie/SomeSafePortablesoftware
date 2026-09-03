@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
@@ -20,6 +20,7 @@ import {
   useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord,
   useUpdateArchiveRecordReview, useUpdateArchiveRecordReviews, getGetArchiveScanQueryKey, getGetArchiveInventoryQueryKey,
   getGetArchiveRecordQueryKey,
+  setBaseUrl,
 } from '@workspace/api-client-react';
 import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -35,15 +36,47 @@ const navItems = [
   { label: 'PLEX', href: '/plex', icon: PlaySquare }, { label: 'SOURCES', href: '/sources', icon: FolderOpen },
   { label: 'HISTORY', href: '/history', icon: History }, { label: 'SETTINGS', href: '/settings', icon: SettingsIcon },
 ];
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
+const authMode = import.meta.env.VITE_AUTH_MODE === 'clerk' ? 'clerk' : 'local';
+const clerkPubKey = authMode === 'clerk'
+  ? publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY)
+  : null;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+setBaseUrl(import.meta.env.VITE_API_BASE_URL?.trim() || null);
 
-if (!clerkPubKey) {
+if (authMode === 'clerk' && !clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
+}
+
+type AppAuth = {
+  mode: 'local' | 'clerk';
+  userId: string | null;
+  isLoaded: boolean;
+  isSignedIn: boolean;
+  email: string;
+  initials: string;
+  signOut: () => void | Promise<void>;
+};
+const AppAuthContext = createContext<AppAuth | null>(null);
+function useAppAuth() {
+  const value = useContext(AppAuthContext);
+  if (!value) throw new Error('Application authentication context is unavailable.');
+  return value;
+}
+function ClerkAuthBridge({ children }: { children: ReactNode }) {
+  const { userId, isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const initials = [user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join('').toUpperCase() || 'OP';
+  return <AppAuthContext.Provider value={{
+    mode: 'clerk',
+    userId: userId ?? null,
+    isLoaded,
+    isSignedIn: Boolean(isSignedIn),
+    email: user?.primaryEmailAddress?.emailAddress ?? 'Signed-in operator',
+    initials,
+    signOut: () => signOut({ redirectUrl: basePath || '/' }),
+  }}>{children}</AppAuthContext.Provider>;
 }
 
 const clerkAppearance = {
@@ -151,10 +184,8 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
   const [location] = useLocation();
   const current = navItems.find((item) => item.href === location)?.label ?? 'HOME';
   const { data: health, isLoading } = useHealthCheck();
-  const { user } = useUser();
-  const { signOut } = useClerk();
-  const initials = [user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join('').toUpperCase() || 'OP';
-  return <header className="flex min-h-[73px] items-center justify-between border-b border-[var(--line)] bg-[#f3f5f4]/90 px-5 backdrop-blur md:px-8"><div className="flex items-center gap-3"><button className="grid h-9 w-9 place-items-center border border-[var(--line)] bg-white/55 md:hidden" onClick={onMenu} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={18} /></button><div><div className="archive-mono text-[9px] font-medium tracking-[.2em] text-[#829298]">ARCHIVE ASSISTANT / {current}</div><div className="mt-1 text-[12px] font-semibold text-[#51626a]">{current === 'HOME' ? 'System overview' : `${current.charAt(0)}${current.slice(1).toLowerCase()} workspace`}</div></div></div><div className="hidden items-center gap-4 sm:flex"><div className="archive-mono flex items-center gap-2 text-[9px] tracking-[.1em] text-[#71858a]" data-testid="status-health"><span className={`status-dot ${health?.status === 'ok' ? 'ready' : 'warning'}`} />{isLoading ? 'CHECKING NODE' : health?.status === 'ok' ? 'API HEALTHY' : 'API UNCONFIRMED'}</div><div className="h-5 w-px bg-[var(--line)]" /><button className="text-[#71858a] transition-colors hover:text-[#21303d]" aria-label="Search archive" data-testid="button-search"><Search size={17} /></button><div className="text-right"><div className="max-w-[150px] truncate text-[10px] font-semibold text-[#51626a]">{user?.primaryEmailAddress?.emailAddress ?? 'Signed-in operator'}</div><button type="button" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="archive-mono text-[9px] tracking-[.08em] text-[#71858a] hover:text-[#21303d]" data-testid="button-sign-out">SIGN OUT</button></div><div className="grid h-8 w-8 place-items-center bg-[#dfe8e5] text-[11px] font-extrabold text-[#315e5b]" data-testid="text-operator-avatar">{initials}</div></div></header>;
+  const auth = useAppAuth();
+  return <header className="flex min-h-[73px] items-center justify-between border-b border-[var(--line)] bg-[#f3f5f4]/90 px-5 backdrop-blur md:px-8"><div className="flex items-center gap-3"><button className="grid h-9 w-9 place-items-center border border-[var(--line)] bg-white/55 md:hidden" onClick={onMenu} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={18} /></button><div><div className="archive-mono text-[9px] font-medium tracking-[.2em] text-[#829298]">ARCHIVE ASSISTANT / {current}</div><div className="mt-1 text-[12px] font-semibold text-[#51626a]">{current === 'HOME' ? 'System overview' : `${current.charAt(0)}${current.slice(1).toLowerCase()} workspace`}</div></div></div><div className="hidden items-center gap-4 sm:flex"><div className="archive-mono flex items-center gap-2 text-[9px] tracking-[.1em] text-[#71858a]" data-testid="status-health"><span className={`status-dot ${health?.status === 'ok' ? 'ready' : 'warning'}`} />{isLoading ? 'CHECKING NODE' : health?.status === 'ok' ? 'API HEALTHY' : 'API UNCONFIRMED'}</div><div className="h-5 w-px bg-[var(--line)]" /><button className="text-[#71858a] transition-colors hover:text-[#21303d]" aria-label="Search archive" data-testid="button-search"><Search size={17} /></button><div className="text-right"><div className="max-w-[150px] truncate text-[10px] font-semibold text-[#51626a]">{auth.email}</div>{auth.mode === 'clerk' ? <button type="button" onClick={() => auth.signOut()} className="archive-mono text-[9px] tracking-[.08em] text-[#71858a] hover:text-[#21303d]" data-testid="button-sign-out">SIGN OUT</button> : <div className="archive-mono text-[9px] tracking-[.08em] text-[#71858a]">LOCAL MODE</div>}</div><div className="grid h-8 w-8 place-items-center bg-[#dfe8e5] text-[11px] font-extrabold text-[#315e5b]" data-testid="text-operator-avatar">{auth.initials}</div></div></header>;
 }
 function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -736,8 +767,8 @@ function SignUpPage() {
   return <div className="flex min-h-[100dvh] items-center justify-center bg-[#f3f5f4] px-4 py-8"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>;
 }
 
-function ClerkQueryCacheInvalidator() {
-  const { userId } = useAuth();
+function QueryCacheInvalidator() {
+  const { userId } = useAppAuth();
   const previousUserId = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (previousUserId.current !== undefined && previousUserId.current !== userId) {
@@ -749,31 +780,43 @@ function ClerkQueryCacheInvalidator() {
 }
 
 function HomeRedirect() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAppAuth();
   if (!isLoaded) return <AuthLoading />;
   return isSignedIn ? <Redirect to="/user-portal" /> : <LandingPage />;
 }
 
 function Workspace() {
   const [location] = useLocation();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAppAuth();
   if (!isLoaded) return <AuthLoading />;
   if (!isSignedIn) return <Redirect to="/" />;
   return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
 }
 
 function Router() {
+  if (authMode === 'local') {
+    return <Switch><Route path="/" component={HomeRedirect} /><Route component={Workspace} /></Switch>;
+  }
   return <Switch><Route path="/" component={HomeRedirect} /><Route path="/sign-in/*?" component={SignInPage} /><Route path="/sign-up/*?" component={SignUpPage} /><Route component={Workspace} /></Switch>;
 }
 
 function ClerkApp() {
   const [, setLocation] = useLocation();
   const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
-  return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={clerkAppearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={{ signIn: { start: { title: 'Welcome back', subtitle: 'Sign in to your private archive workspace' } }, signUp: { start: { title: 'Create your archive account', subtitle: 'Start building a trusted local media archive' } } }} routerPush={(to) => setLocation(stripBase(to))} routerReplace={(to) => setLocation(stripBase(to), { replace: true })}><QueryClientProvider client={queryClient}><ClerkQueryCacheInvalidator /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider></ClerkProvider>;
+  if (!clerkPubKey) throw new Error('Clerk mode requires a publishable key.');
+  return <ClerkProvider publishableKey={clerkPubKey} proxyUrl={clerkProxyUrl} appearance={clerkAppearance} signInUrl={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} localization={{ signIn: { start: { title: 'Welcome back', subtitle: 'Sign in to your private archive workspace' } }, signUp: { start: { title: 'Create your archive account', subtitle: 'Start building a trusted local media archive' } } }} routerPush={(to) => setLocation(stripBase(to))} routerReplace={(to) => setLocation(stripBase(to), { replace: true })}><ClerkAuthBridge><ApplicationProviders /></ClerkAuthBridge></ClerkProvider>;
+}
+
+function ApplicationProviders() {
+  return <QueryClientProvider client={queryClient}><QueryCacheInvalidator /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>;
+}
+
+function LocalApp() {
+  return <AppAuthContext.Provider value={{ mode: 'local', userId: '__local__', isLoaded: true, isSignedIn: true, email: 'Local operator', initials: 'LO', signOut: () => undefined }}><ApplicationProviders /></AppAuthContext.Provider>;
 }
 
 function App() {
-  return <WouterRouter base={basePath}><ClerkApp /></WouterRouter>;
+  return <WouterRouter base={basePath}>{authMode === 'clerk' ? <ClerkApp /> : <LocalApp />}</WouterRouter>;
 }
 
 export default App;

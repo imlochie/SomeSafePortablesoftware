@@ -3,3 +3,4 @@
 - [SQLite additive timestamps](sqlite-additive-timestamps.md) — Existing populated tables cannot add columns with non-constant timestamp defaults directly.
 - [Plex sync safety](plex-sync-safety.md) — Reconcile only after a complete fetch; pin approved DNS targets and preserve prior inventory on remote failure.
 - [Archive review identity](archive-review-identity.md) — Review decisions follow owner-scoped evidence, not mutable file flags; changed evidence reopens the finding.
+- [Local and hosted auth modes](local-hosted-auth-modes.md) — Desktop-local use resolves a server-owned __local__ identity; Clerk remains an explicit hosted mode.

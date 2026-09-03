@@ -11,6 +11,7 @@ import {
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
 import { requireAuth } from "./middlewares/requireAuth";
+import { isAllowedLocalOrigin, runtimeConfig } from "./lib/runtime-config";
 
 const app: Express = express();
 
@@ -34,24 +35,36 @@ app.use(
   }),
 );
 
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+if (runtimeConfig.authMode === "clerk") {
+  app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+}
 app.use(
   cors({
     credentials: true,
-    origin: true,
+    origin: runtimeConfig.allowAnyCorsOrigin
+      ? true
+      : (origin, callback) => {
+          if (!origin || isAllowedLocalOrigin(origin)) {
+            callback(null, true);
+            return;
+          }
+          callback(new Error("Origin is not allowed by the local API boundary."));
+        },
   }),
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(
-  clerkMiddleware((req) => ({
-    publishableKey: publishableKeyFromHost(
-      getClerkProxyHost(req) ?? "",
-      process.env.CLERK_PUBLISHABLE_KEY,
-    ),
-  })),
-);
+if (runtimeConfig.authMode === "clerk") {
+  app.use(
+    clerkMiddleware((req) => ({
+      publishableKey: publishableKeyFromHost(
+        getClerkProxyHost(req) ?? "",
+        process.env.CLERK_PUBLISHABLE_KEY,
+      ),
+    })),
+  );
+}
 
 app.use("/api", requireAuth, router);
 

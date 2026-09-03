@@ -35,8 +35,10 @@ import {
   updateArchiveRecordReview,
   updateArchiveRecordReviews,
 } from "../src/services/archive";
+import { getAuthenticatedUserId } from "../src/middlewares/requireAuth";
+import { resolveRuntimeConfig, runtimeConfig } from "../src/lib/runtime-config";
 
-const ownerA = "user-a";
+const ownerA = runtimeConfig.localOwnerId;
 const ownerB = "user-b";
 const testRoot = process.env.ARCHIVE_TEST_ROOT;
 
@@ -45,7 +47,29 @@ if (!testRoot) throw new Error("ARCHIVE_TEST_ROOT is required.");
 after(() => archiveDb.close());
 
 describe("user ownership", { concurrency: false }, () => {
-  test("additive migration preserves existing rows and first user claims them exactly once", () => {
+  test("local runtime defaults are stable and production-local binding is loopback-only", () => {
+    assert.equal(getAuthenticatedUserId({} as never), "__local__");
+
+    const local = resolveRuntimeConfig({
+      AUTH_MODE: "local",
+      NODE_ENV: "production",
+      PORT: "9123",
+    });
+    assert.equal(local.authMode, "local");
+    assert.equal(local.localOwnerId, "__local__");
+    assert.equal(local.host, "127.0.0.1");
+    assert.equal(local.port, 9123);
+
+    const clerk = resolveRuntimeConfig({
+      AUTH_MODE: "clerk",
+      NODE_ENV: "production",
+      PORT: "8080",
+    });
+    assert.equal(clerk.authMode, "clerk");
+    assert.equal(clerk.host, "0.0.0.0");
+  });
+
+  test("additive migration preserves existing rows and the local owner claims them exactly once", () => {
     assert.equal(claimLegacyData(ownerA), ownerA);
     assert.equal(claimLegacyData(ownerB), ownerA);
 

@@ -1,6 +1,6 @@
 # ARCHIVE ASSISTANT
 
-ARCHIVE ASSISTANT is a Windows-first, local-first personal media archive control system. Phase 1 provides the foundation and control surface for future AI, Plex, yt-dlp, FFmpeg, filesystem monitoring, duplicate detection, and persistent media jobs.
+ARCHIVE ASSISTANT is a Windows-first, local-first personal media archive control system. It uses a React/Vite interface and an Express/Node local engine with SQLite persistence.
 
 ## Phase 1 status
 
@@ -31,12 +31,26 @@ The UI intentionally shows these as placeholders instead of claiming they are co
 2. Enable pnpm if needed: `corepack enable`.
 3. Run `.\install.ps1` from PowerShell.
 4. Run `.\start.ps1`, or double-click `start.bat`.
-5. Open `http://localhost:3000`.
+5. Open `http://localhost:3000`. Local mode opens HOME directly without Clerk.
 
-The API runs on port 5000 and the SQLite database path can be overridden with `ARCHIVE_DB_PATH`. The local start script sets it to the project `data` folder.
+The API runs on port 8080 and the SQLite database path can be overridden with `ARCHIVE_DB_PATH`. The local start script sets it to the project `data` folder.
+
+## Authentication modes
+
+- `AUTH_MODE=local` is the default for the local engine. Requests resolve server-side to the stable `__local__` owner, while existing ownership filters remain active.
+- `AUTH_MODE=clerk` preserves the hosted sign-in flow and derives ownership from Clerk user IDs.
+- Set frontend `VITE_AUTH_MODE` to the same value. Clerk mode also requires the existing Clerk publishable key.
+
+Legacy `__legacy__` rows may be claimed once by the first active owner. Rows already owned by a real Clerk user are never reassigned automatically.
+
+## Runtime configuration
+
+The local engine centrally accepts `PORT`, `API_HOST`, `API_ALLOWED_ORIGINS`, `ARCHIVE_DB_PATH`, `ARCHIVE_DATA_PATH`, `ARCHIVE_DOWNLOAD_PATH`, `ARCHIVE_LIBRARY_PATH`, `ARCHIVE_TEMP_PATH`, `YT_DLP_PATH`, `FFMPEG_PATH`, `FFPROBE_PATH`, and `ARCHIVE_MOCK_MODE`.
+
+Production local mode binds to `127.0.0.1` by default. Development and Replit workflows continue binding to `0.0.0.0`. A future desktop shell can provide `VITE_API_BASE_URL` to direct the generated client to its managed sidecar; web builds continue using relative `/api` URLs.
 
 ## Architecture
 
-The application is split into a React/Vite interface and a small Express API. The API owns SQLite access, dependency checks, settings, and secret-bearing configuration. Future integrations should implement the service boundaries for AI providers, Plex, media extraction, downloading, FFmpeg processing, and archive management rather than giving the assistant arbitrary shell access.
+The application is split into a React/Vite interface and an Express API. The API owns SQLite access, dependency checks, settings, Plex secrets, media extraction, downloads, FFmpeg processing, and archive management. The planned desktop architecture is Tauri with this existing Node engine as a managed sidecar; Tauri is not part of the project yet.
 
 All user-configured filesystem paths should be validated against configured directories before future file operations are enabled. Tokens and API keys must stay server-side.

@@ -1,12 +1,11 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { runtimeConfig } from "./runtime-config";
 
 export const LEGACY_OWNER_ID = "__legacy__";
 
-const dbPath =
-  process.env.ARCHIVE_DB_PATH ??
-  join(process.cwd(), "data", "archive-assistant.sqlite");
+const dbPath = runtimeConfig.databasePath;
 
 mkdirSync(dirname(dbPath), { recursive: true });
 
@@ -425,14 +424,14 @@ for (const table of ["archive_item", "source_record", "download_job", "assistant
 }
 
 const defaultSettings = {
-  mockMode: true,
-  dataDirectory: "~/ARCHIVE/data",
-  downloadDirectory: "~/ARCHIVE/downloads",
-  archiveDirectory: "~/ARCHIVE/library",
-  temporaryDirectory: "~/ARCHIVE/tmp",
-  ytDlpPath: process.env.YT_DLP_PATH?.trim() || "yt-dlp",
-  ffmpegPath: process.env.FFMPEG_PATH?.trim() || "ffmpeg",
-  ffprobePath: process.env.FFPROBE_PATH?.trim() || "ffprobe",
+  mockMode: runtimeConfig.mockMode,
+  dataDirectory: runtimeConfig.paths.data,
+  downloadDirectory: runtimeConfig.paths.downloads,
+  archiveDirectory: runtimeConfig.paths.archive,
+  temporaryDirectory: runtimeConfig.paths.temporary,
+  ytDlpPath: runtimeConfig.tools.ytDlp,
+  ffmpegPath: runtimeConfig.tools.ffmpeg,
+  ffprobePath: runtimeConfig.tools.ffprobe,
   logLevel: "info",
   hardwareAcceleration: true,
   hardwareAccelerationMode: "auto",
