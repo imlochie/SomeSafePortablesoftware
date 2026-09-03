@@ -1,2 +1,3 @@
 - [Authentication boundary](authentication-boundary.md) — Clerk owns browser sessions; protected archive APIs must enforce identity server-side.
 - [Local runtime boundary](local-runtime-boundary.md) — The existing Express API is the Windows-local engine; tool paths are configurable, not hard-coded.
+- [SQLite additive timestamps](sqlite-additive-timestamps.md) — Existing populated tables cannot add columns with non-constant timestamp defaults directly.

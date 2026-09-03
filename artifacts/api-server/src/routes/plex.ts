@@ -4,25 +4,17 @@ import {
   UpdatePlexConfigBody,
   UpdatePlexConfigResponse,
 } from "@workspace/api-zod";
-import { archiveDb } from "../lib/archive-db";
+import { readUserSetting, writeUserSetting } from "../lib/archive-db";
+import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
-function readPlexConfig() {
-  const rows = archiveDb
-    .prepare("SELECT key, value FROM setting WHERE key IN ('plexServerUrl', 'plexToken')")
-    .all() as Array<{ key: string; value: string }>;
-  const values = Object.fromEntries(
-    rows.map((row) => {
-      try {
-        return [row.key, JSON.parse(row.value)];
-      } catch {
-        return [row.key, row.value];
-      }
-    }),
-  ) as { plexServerUrl?: string; plexToken?: string };
-  const serverUrl = values.plexServerUrl ?? "";
-  const hasToken = Boolean(values.plexToken);
+function readPlexConfig(ownerId: string) {
+  const serverUrl = typeof readUserSetting(ownerId, "plexServerUrl") === "string"
+    ? readUserSetting(ownerId, "plexServerUrl") as string
+    : "";
+  const token = readUserSetting(ownerId, "plexToken");
+  const hasToken = typeof token === "string" && token.length > 0;
   const configured = Boolean(serverUrl && hasToken);
   return {
     serverUrl,
@@ -32,22 +24,20 @@ function readPlexConfig() {
   };
 }
 
-router.get("/plex/config", (_req, res) => {
-  res.json(GetPlexConfigResponse.parse(readPlexConfig()));
+router.get("/plex/config", (req, res) => {
+  res.json(GetPlexConfigResponse.parse(readPlexConfig(getAuthenticatedUserId(req))));
 });
 
 router.patch("/plex/config", (req, res) => {
+  const ownerId = getAuthenticatedUserId(req);
   const updates = UpdatePlexConfigBody.parse(req.body ?? {});
-  const statement = archiveDb.prepare(
-    "INSERT INTO setting (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
-  );
   if (updates.serverUrl !== undefined) {
-    statement.run("plexServerUrl", JSON.stringify(updates.serverUrl));
+    writeUserSetting(ownerId, "plexServerUrl", updates.serverUrl);
   }
   if (updates.token !== undefined && updates.token.length > 0) {
-    statement.run("plexToken", JSON.stringify(updates.token));
+    writeUserSetting(ownerId, "plexToken", updates.token);
   }
-  res.json(UpdatePlexConfigResponse.parse(readPlexConfig()));
+  res.json(UpdatePlexConfigResponse.parse(readPlexConfig(ownerId)));
 });
 
 export default router;

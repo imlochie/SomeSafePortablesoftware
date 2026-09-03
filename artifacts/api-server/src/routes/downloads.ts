@@ -17,6 +17,7 @@ import {
   StartDownloadParams,
   StartDownloadResponse,
 } from "@workspace/api-zod";
+import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import {
   cancelJob,
   createJob,
@@ -41,14 +42,15 @@ function numericParam(value: string | undefined) {
   return id;
 }
 
-router.get("/downloads", (_req, res) => {
-  res.json(GetDownloadsResponse.parse(readJobs()));
+router.get("/downloads", (req, res) => {
+  res.json(GetDownloadsResponse.parse(readJobs(getAuthenticatedUserId(req))));
 });
 
 router.post("/downloads", (req, res) => {
   try {
+    const ownerId = getAuthenticatedUserId(req);
     const body = CreateDownloadBody.parse(req.body ?? {});
-    const job = createJob(body);
+    const job = createJob(body, ownerId);
     res.status(201).json(CreateDownloadResponse.parse(job));
   } catch (error) {
     res.status(400).json({ error: errorMessage(error) });
@@ -56,12 +58,13 @@ router.post("/downloads", (req, res) => {
 });
 
 router.get("/downloads/events", (req, res) => {
+  const ownerId = getAuthenticatedUserId(req);
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
-  res.write(`event: snapshot\ndata: ${JSON.stringify(readJobs())}\n\n`);
-  const unsubscribe = subscribeDownloadEvents((event) => {
+  res.write(`event: snapshot\ndata: ${JSON.stringify(readJobs(ownerId))}\n\n`);
+  const unsubscribe = subscribeDownloadEvents(ownerId, (event) => {
     res.write(`event: ${event.type}\ndata: ${JSON.stringify(event.job)}\n\n`);
   });
   const heartbeat = setInterval(() => res.write(": keep-alive\n\n"), 20_000);
@@ -73,7 +76,8 @@ router.get("/downloads/events", (req, res) => {
 
 router.get("/downloads/:id", (req, res) => {
   try {
-    const job = readJobs().find((candidate) => candidate.id === numericParam(req.params.id));
+    const ownerId = getAuthenticatedUserId(req);
+    const job = readJobs(ownerId).find((candidate) => candidate.id === numericParam(req.params.id));
     if (!job) return res.status(404).json({ error: "Download job not found." });
     return res.json(GetDownloadResponse.parse(job));
   } catch (error) {
@@ -83,7 +87,7 @@ router.get("/downloads/:id", (req, res) => {
 
 router.delete("/downloads/:id", (req, res) => {
   try {
-    deleteJob(DeleteDownloadParams.parse({ id: numericParam(req.params.id) }).id);
+    deleteJob(DeleteDownloadParams.parse({ id: numericParam(req.params.id) }).id, getAuthenticatedUserId(req));
     return res.status(204).send();
   } catch (error) {
     return res.status(400).json({ error: errorMessage(error) });
@@ -93,7 +97,7 @@ router.delete("/downloads/:id", (req, res) => {
 router.post("/downloads/:id/start", (req, res) => {
   try {
     const id = StartDownloadParams.parse({ id: numericParam(req.params.id) }).id;
-    return res.json(StartDownloadResponse.parse(startJob(id)));
+    return res.json(StartDownloadResponse.parse(startJob(id, getAuthenticatedUserId(req))));
   } catch (error) {
     return res.status(400).json({ error: errorMessage(error) });
   }
@@ -102,7 +106,7 @@ router.post("/downloads/:id/start", (req, res) => {
 router.post("/downloads/:id/pause", (req, res) => {
   try {
     const id = PauseDownloadParams.parse({ id: numericParam(req.params.id) }).id;
-    return res.json(PauseDownloadResponse.parse(pauseJob(id)));
+    return res.json(PauseDownloadResponse.parse(pauseJob(id, getAuthenticatedUserId(req))));
   } catch (error) {
     return res.status(400).json({ error: errorMessage(error) });
   }
@@ -111,7 +115,7 @@ router.post("/downloads/:id/pause", (req, res) => {
 router.post("/downloads/:id/resume", (req, res) => {
   try {
     const id = ResumeDownloadParams.parse({ id: numericParam(req.params.id) }).id;
-    return res.json(ResumeDownloadResponse.parse(startJob(id)));
+    return res.json(ResumeDownloadResponse.parse(startJob(id, getAuthenticatedUserId(req))));
   } catch (error) {
     return res.status(400).json({ error: errorMessage(error) });
   }
@@ -120,7 +124,7 @@ router.post("/downloads/:id/resume", (req, res) => {
 router.post("/downloads/:id/cancel", (req, res) => {
   try {
     const id = CancelDownloadParams.parse({ id: numericParam(req.params.id) }).id;
-    return res.json(CancelDownloadResponse.parse(cancelJob(id)));
+    return res.json(CancelDownloadResponse.parse(cancelJob(id, getAuthenticatedUserId(req))));
   } catch (error) {
     return res.status(400).json({ error: errorMessage(error) });
   }
@@ -129,7 +133,7 @@ router.post("/downloads/:id/cancel", (req, res) => {
 router.post("/downloads/:id/retry", (req, res) => {
   try {
     const id = RetryDownloadParams.parse({ id: numericParam(req.params.id) }).id;
-    return res.json(RetryDownloadResponse.parse(retryJob(id)));
+    return res.json(RetryDownloadResponse.parse(retryJob(id, getAuthenticatedUserId(req))));
   } catch (error) {
     return res.status(400).json({ error: errorMessage(error) });
   }

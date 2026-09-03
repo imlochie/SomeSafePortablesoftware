@@ -2,6 +2,8 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
+export const LEGACY_OWNER_ID = "__legacy__";
+
 const dbPath =
   process.env.ARCHIVE_DB_PATH ??
   join(process.cwd(), "data", "archive-assistant.sqlite");
@@ -52,6 +54,7 @@ archiveDb.exec(`
     source_id INTEGER,
     status TEXT NOT NULL DEFAULT 'planned',
     archive_path TEXT,
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
@@ -61,6 +64,7 @@ archiveDb.exec(`
     source_type TEXT NOT NULL,
     location TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS download_job (
@@ -69,6 +73,7 @@ archiveDb.exec(`
     url TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'queued',
     progress REAL NOT NULL DEFAULT 0,
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS processing_job (
@@ -98,6 +103,7 @@ archiveDb.exec(`
   CREATE TABLE IF NOT EXISTS assistant_conversation (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New conversation',
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
@@ -119,6 +125,18 @@ archiveDb.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS user_setting (
+    owner_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (owner_id, key)
+  );
+  CREATE TABLE IF NOT EXISTS ownership_migration (
+    key TEXT PRIMARY KEY,
+    claimed_by TEXT NOT NULL,
+    claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
 
@@ -156,7 +174,7 @@ const downloadColumns: Array<[string, string]> = [
   ["process_id", "INTEGER"],
   ["current_phase", "TEXT NOT NULL DEFAULT 'queued'"],
   ["verification", "TEXT NOT NULL DEFAULT 'waiting'"],
-  ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
+  ["updated_at", "TEXT NOT NULL DEFAULT ''"],
 ];
 for (const [column, definition] of downloadColumns) {
   ensureColumn("download_job", column, definition);
@@ -169,10 +187,31 @@ const processingColumns: Array<[string, string]> = [
   ["started_at", "TEXT"],
   ["completed_at", "TEXT"],
   ["error_message", "TEXT"],
-  ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
+  ["updated_at", "TEXT NOT NULL DEFAULT ''"],
 ];
 for (const [column, definition] of processingColumns) {
   ensureColumn("processing_job", column, definition);
+}
+archiveDb.exec(`
+  UPDATE download_job SET updated_at = CURRENT_TIMESTAMP WHERE updated_at = '';
+  UPDATE processing_job SET updated_at = CURRENT_TIMESTAMP WHERE updated_at = '';
+
+  CREATE TRIGGER IF NOT EXISTS download_job_set_updated_at_after_insert
+  AFTER INSERT ON download_job
+  WHEN NEW.updated_at = ''
+  BEGIN
+    UPDATE download_job SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+  END;
+
+  CREATE TRIGGER IF NOT EXISTS processing_job_set_updated_at_after_insert
+  AFTER INSERT ON processing_job
+  WHEN NEW.updated_at = ''
+  BEGIN
+    UPDATE processing_job SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+  END;
+`);
+for (const table of ["archive_item", "source_record", "download_job", "assistant_conversation", "system_event"]) {
+  ensureColumn(table, "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
 }
 
 const defaultSettings = {
@@ -229,6 +268,64 @@ if (eventCount.count === 0) {
 
 export type SettingsRecord = typeof defaultSettings;
 
+const legacyOwnedTables = [
+  "archive_item",
+  "source_record",
+  "download_job",
+  "assistant_conversation",
+  "system_event",
+] as const;
+
+export function claimLegacyData(ownerId: string) {
+  if (!ownerId || ownerId === LEGACY_OWNER_ID) {
+    throw new Error("A valid authenticated owner is required.");
+  }
+
+  const existingClaim = archiveDb
+    .prepare("SELECT claimed_by FROM ownership_migration WHERE key = 'legacy_owner'")
+    .get() as { claimed_by: string } | undefined;
+  if (existingClaim) return existingClaim.claimed_by;
+
+  archiveDb.exec("BEGIN IMMEDIATE");
+  try {
+    const claim = archiveDb
+      .prepare("SELECT claimed_by FROM ownership_migration WHERE key = 'legacy_owner'")
+      .get() as { claimed_by: string } | undefined;
+    if (claim) {
+      archiveDb.exec("COMMIT");
+      return claim.claimed_by;
+    }
+
+    for (const table of legacyOwnedTables) {
+      archiveDb
+        .prepare(`UPDATE ${table} SET owner_id = ? WHERE owner_id = ?`)
+        .run(ownerId, LEGACY_OWNER_ID);
+    }
+
+    const legacyPlexSettings = archiveDb
+      .prepare("SELECT key, value FROM setting WHERE key IN ('plexServerUrl', 'plexToken')")
+      .all() as Array<{ key: string; value: string }>;
+    const userSetting = archiveDb.prepare(
+      "INSERT INTO user_setting (owner_id, key, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(owner_id, key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
+    );
+    for (const row of legacyPlexSettings) {
+      userSetting.run(ownerId, row.key, row.value);
+    }
+    if (legacyPlexSettings.length) {
+      archiveDb.prepare("DELETE FROM setting WHERE key IN ('plexServerUrl', 'plexToken')").run();
+    }
+
+    archiveDb
+      .prepare("INSERT INTO ownership_migration (key, claimed_by) VALUES ('legacy_owner', ?)")
+      .run(ownerId);
+    archiveDb.exec("COMMIT");
+    return ownerId;
+  } catch (error) {
+    archiveDb.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function readSettings(): SettingsRecord {
   const rows = archiveDb
     .prepare("SELECT key, value FROM setting")
@@ -254,12 +351,12 @@ export function writeSettings(updates: Record<string, unknown>): SettingsRecord 
   return readSettings();
 }
 
-export function readEvents(limit = 12) {
+export function readEvents(ownerId: string, limit = 12) {
   return archiveDb
     .prepare(
-      "SELECT id, level, message, timestamp, source FROM system_event ORDER BY timestamp DESC LIMIT ?",
+      "SELECT id, level, message, timestamp, source FROM system_event WHERE owner_id = ? ORDER BY timestamp DESC LIMIT ?",
     )
-    .all(limit) as Array<{
+    .all(ownerId, limit) as Array<{
     id: string;
     level: "info" | "success" | "warning" | "error";
     message: string;
@@ -272,11 +369,32 @@ export function addEvent(
   level: "info" | "success" | "warning" | "error",
   message: string,
   source: string,
+  ownerId = LEGACY_OWNER_ID,
 ) {
   const id = `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   archiveDb
     .prepare(
-      "INSERT INTO system_event (id, level, message, source, timestamp) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO system_event (id, level, message, source, timestamp, owner_id) VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .run(id, level, message, source, new Date().toISOString());
+    .run(id, level, message, source, new Date().toISOString(), ownerId);
+}
+
+export function readUserSetting(ownerId: string, key: string) {
+  const row = archiveDb
+    .prepare("SELECT value FROM user_setting WHERE owner_id = ? AND key = ?")
+    .get(ownerId, key) as { value: string } | undefined;
+  if (!row) return undefined;
+  try {
+    return JSON.parse(row.value) as unknown;
+  } catch {
+    return row.value;
+  }
+}
+
+export function writeUserSetting(ownerId: string, key: string, value: unknown) {
+  archiveDb
+    .prepare(
+      "INSERT INTO user_setting (owner_id, key, value, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(owner_id, key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
+    )
+    .run(ownerId, key, JSON.stringify(value));
 }

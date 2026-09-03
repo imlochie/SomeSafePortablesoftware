@@ -10,6 +10,7 @@ import {
 } from "@workspace/api-zod";
 import { archiveDb, readEvents, readSettings } from "../lib/archive-db";
 import { getLocalToolPaths } from "../services/local-tools";
+import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
@@ -92,14 +93,15 @@ function readStorage(settings: ReturnType<typeof readSettings>) {
   }
 }
 
-router.get("/system/overview", (_req, res) => {
+router.get("/system/overview", (req, res) => {
+  const ownerId = getAuthenticatedUserId(req);
   const settings = readSettings();
-  const events = readEvents(8);
-  const activeDownloads = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE status IN ('inspecting', 'downloading')").get() as { count: number };
-  const queuedJobs = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE status IN ('queued', 'recovery_required', 'paused')").get() as { count: number };
-  const processingJobs = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE status IN ('downloaded', 'processing', 'verifying', 'moving')").get() as { count: number };
-  const completedToday = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE status = 'complete' AND date(completed_at) = date('now')").get() as { count: number };
-  const failedToday = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE status = 'failed' AND date(updated_at) = date('now')").get() as { count: number };
+  const events = readEvents(ownerId, 8);
+  const activeDownloads = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE owner_id = ? AND status IN ('inspecting', 'downloading')").get(ownerId) as { count: number };
+  const queuedJobs = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE owner_id = ? AND status IN ('queued', 'recovery_required', 'paused')").get(ownerId) as { count: number };
+  const processingJobs = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE owner_id = ? AND status IN ('downloaded', 'processing', 'verifying', 'moving')").get(ownerId) as { count: number };
+  const completedToday = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE owner_id = ? AND status = 'complete' AND date(completed_at) = date('now')").get(ownerId) as { count: number };
+  const failedToday = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE owner_id = ? AND status = 'failed' AND date(updated_at) = date('now')").get(ownerId) as { count: number };
   const storage = readStorage(settings);
   const payload = GetSystemOverviewResponse.parse({
     archiveStatus: "ready",
@@ -125,8 +127,8 @@ router.get("/system/dependencies", (_req, res) => {
   res.json(GetSystemDependenciesResponse.parse(dependencyDefinitions.map((dependency) => detectDependency(dependency, settings))));
 });
 
-router.get("/system/events", (_req, res) => {
-  res.json(GetSystemEventsResponse.parse(readEvents()));
+router.get("/system/events", (req, res) => {
+  res.json(GetSystemEventsResponse.parse(readEvents(getAuthenticatedUserId(req))));
 });
 
 export default router;

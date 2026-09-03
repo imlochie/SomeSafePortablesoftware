@@ -1,0 +1,166 @@
+Implement the next approved ARCHIVE ASSISTANT milestone:
+
+PER-USER OWNERSHIP FOR PERSISTED DATA
+
+Do not redesign the architecture.
+
+Do not introduce a new backend, worker, service, ORM, authentication system, or database.
+
+Keep the current architecture exactly as-is:
+
+React + Vite
+→ Express API
+→ existing services
+→ SQLite
+→ local yt-dlp / FFmpeg / FFprobe
+
+AUTHENTICATION
+
+Clerk is already protecting the API through requireAuth.
+
+Use the authenticated Clerk user identity already available in the server request/session.
+
+Do not create a second auth mechanism.
+
+GOAL
+
+Prevent authenticated users from seeing or modifying another user's persisted application records.
+
+At minimum, establish ownership for:
+
+- download jobs
+- queue items through their parent jobs
+- events
+- archive records
+- source records
+- assistant conversations
+- Plex configuration/settings where appropriate
+
+IMPORTANT SAFETY RULE
+
+This is an additive ownership migration.
+
+Preserve all existing functionality.
+
+Do not break existing download, queue, inspection, processing, retry, pause, resume, cancel, recovery, settings, or event behavior.
+
+Do not change the media engine architecture.
+
+Do not modify how yt-dlp, FFmpeg, or FFprobe are invoked unless required to preserve ownership behavior.
+
+FIRST
+
+Inspect the actual current codebase and identify:
+
+1. The authenticated user identity available to routes/services.
+2. The SQLite schema.
+3. Every table that needs ownership.
+4. Every repository/helper/query that reads or writes those tables.
+5. How jobs relate to queue items.
+6. How events are associated with operations.
+7. How settings are currently stored.
+8. Whether existing rows need a migration/default owner strategy.
+
+Do not code until this mapping is understood.
+
+MIGRATION REQUIREMENTS
+
+Add a stable owner identifier to the appropriate persisted records.
+
+Use the Clerk user ID as the ownership identifier unless the existing codebase has a better established user-key mechanism.
+
+Preserve existing SQLite data.
+
+Do not simply drop and recreate tables.
+
+Create a real migration strategy for existing databases.
+
+Existing records must receive a deterministic migration treatment.
+
+Do not invent multi-user behavior that is not supported by the current application.
+
+QUERY REQUIREMENTS
+
+Every authenticated read/write against user-owned records must enforce ownership at the database/service layer.
+
+Do not rely only on the frontend hiding records.
+
+Do not rely only on route-level checks.
+
+A user must not be able to obtain another user's:
+
+- jobs
+- queue records
+- events
+- archive records
+- sources
+- assistant conversations
+- user-scoped settings/configuration
+
+For child records such as queue items, enforce ownership through the parent relationship rather than duplicating ownership unnecessarily when appropriate.
+
+SETTINGS
+
+Carefully distinguish:
+
+- global machine/runtime settings
+- user-specific settings
+- Plex credentials/configuration
+
+Do not accidentally make machine-wide executable paths user-specific unless the current architecture requires that.
+
+Plex secrets must remain server-side.
+
+BACKWARD COMPATIBILITY
+
+The first authenticated user using an existing database must not be locked out of previously created records.
+
+Handle existing records explicitly through the migration rather than silently deleting or hiding them.
+
+TESTING
+
+Add or update focused tests for:
+
+- user A can create/read/update their own job
+- user B cannot read user A's job
+- user B cannot modify/cancel user A's job
+- queue access follows job ownership
+- events cannot leak across users
+- archive/source records are isolated
+- assistant conversations are isolated
+- user-scoped settings are isolated
+- existing database migration succeeds
+- existing functionality still works for a single user
+
+Do not build comprehensive end-to-end Clerk tests yet unless the existing test infrastructure already supports them easily.
+
+Keep the change focused.
+
+DOCUMENTATION
+
+Update only the relevant documentation that currently contradicts the implemented ownership model.
+
+Do not rewrite the entire README.
+
+DELIVERY
+
+Before making changes, report the tables/files/routes you believe need modification.
+
+Then implement the smallest correct ownership layer.
+
+After implementation:
+
+- run typecheck
+- run tests
+- run build
+- run git diff --check
+
+Finally report:
+
+WHAT CHANGED
+MIGRATION STRATEGY
+OWNERSHIP RULES
+TESTS PASSED
+ANY REMAINING LIMITATIONS
+
+Do not proceed to Plex, Ollama, duplicate detection, archive intelligence, or other future phases in this task.
