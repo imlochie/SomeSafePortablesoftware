@@ -1,4 +1,4 @@
-Continue building ARCHIVE ASSISTANT from the CURRENT CODEBASE.
+Continue building ARCHIVE ASSISTANT from the current codebase.
 
 Do not redesign the architecture.
 

@@ -1,4 +1,4 @@
-Implement the next approved ARCHIVE ASSISTANT milestone:
+Implement the next approved ARCHIVE ASSISTANT milestone.
 
 PER-USER OWNERSHIP FOR PERSISTED DATA
 
