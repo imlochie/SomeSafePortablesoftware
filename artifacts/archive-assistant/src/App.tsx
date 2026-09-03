@@ -443,6 +443,7 @@ function ArchivePage() {
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
   const [bulkNotice, setBulkNotice] = useState('');
+  const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
   const [view, setView] = useState<'local' | 'plex_only'>('local');
   const [filter, setFilter] = useState<'all' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
 
@@ -507,27 +508,37 @@ function ArchivePage() {
   const toggleRecordSelection = (id: number) => {
     setSelectedRecordIds(current => current.includes(id) ? current.filter(recordId => recordId !== id) : [...current, id]);
     setBulkNotice('');
+    setBulkFailures([]);
   };
   const toggleAllVisible = () => {
     setSelectedRecordIds(allVisibleSelected ? [] : selectableRecords.map(record => record.id));
     setBulkNotice('');
+    setBulkFailures([]);
   };
   const runBulkReview = (status: 'reviewed' | 'deferred' | 'unresolved') => {
     if (!selectedRecordIds.length) return;
     setBulkNotice('');
+    setBulkFailures([]);
     bulkReview.mutate({ data: { ids: selectedRecordIds, status, note: null } }, {
       onSuccess: result => {
         const failedResults = result.results.filter(item => !item.success);
         setSelectedRecordIds(failedResults.map(item => item.id));
+        setBulkFailures(failedResults.map(item => ({
+          id: item.id,
+          error: item.error ?? 'The record could not be updated.'
+        })));
         setBulkNotice(result.failed
-          ? `${result.succeeded} updated; ${result.failed} failed. ${failedResults.map(item => `#${item.id}: ${item.error}`).join(' ')}`
+          ? `${result.succeeded} updated; ${result.failed} failed.`
           : `${result.succeeded} findings marked ${status}.`);
         queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
         result.results.filter(item => item.success).forEach(item => {
           queryClient.invalidateQueries({ queryKey: getGetArchiveRecordQueryKey(item.id) });
         });
       },
-      onError: error => setBulkNotice(`Bulk review could not be saved: ${errorText(error)}`)
+      onError: error => {
+        setBulkFailures([]);
+        setBulkNotice(`Bulk review could not be saved: ${errorText(error)}`);
+      }
     });
   };
 
@@ -569,14 +580,14 @@ function ArchivePage() {
         <section className="archive-panel flex min-h-[500px] flex-col" data-testid="panel-archive-list">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e3e8e7] bg-[#fbfcfa] p-4 md:px-6">
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
-              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
+              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
+              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
             </div>
 
             {view === 'local' && (
               <div className="flex flex-wrap items-center gap-2">
                 {(['all', 'duplicates', 'conflicts', 'missing', 'local_only', 'reviewed', 'unresolved'] as const).map(f => (
-                  <button key={f} onClick={() => { setFilter(f); setSelectedRecordIds([]); setBulkNotice(''); }} className={`archive-mono text-[9px] tracking-[.08em] px-2 py-1 border ${filter === f ? 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]' : 'border-[#d6dfdc] bg-white text-[#7f9194] hover:border-[#aabfba]'}`}>
+                  <button key={f} onClick={() => { setFilter(f); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`archive-mono text-[9px] tracking-[.08em] px-2 py-1 border ${filter === f ? 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]' : 'border-[#d6dfdc] bg-white text-[#7f9194] hover:border-[#aabfba]'}`}>
                     {f.replace('_', ' ').toUpperCase()}
                   </button>
                 ))}
@@ -598,7 +609,27 @@ function ArchivePage() {
                   <button type="button" onClick={() => runBulkReview('unresolved')} disabled={!selectedRecordIds.length || bulkReview.isPending} className="inline-flex items-center gap-1.5 border border-[#e2b9b4] bg-[#fcedea] px-3 py-2 text-[9px] font-bold tracking-[.06em] text-[#994b43] disabled:opacity-40" data-testid="button-bulk-unresolved"><RotateCcw size={11} /> UNRESOLVED</button>
                 </div>
               </div>
-              {bulkNotice && <div className={`mt-3 text-[10px] ${bulkNotice.includes('failed') || bulkNotice.includes('could not') ? 'text-[#994b43]' : 'text-[#39736e]'}`} data-testid="status-bulk-review">{bulkNotice}</div>}
+              {bulkNotice && (
+                <div
+                  className={`bulk-review-status mt-3 text-[10px] ${bulkNotice.includes('failed') || bulkNotice.includes('could not') ? 'text-[#994b43]' : 'text-[#39736e]'}`}
+                  data-testid="status-bulk-review"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="false"
+                >
+                  <div>{bulkNotice}</div>
+                  {bulkFailures.length > 0 && (
+                    <ul className="bulk-review-failures mt-2" aria-label="Failed bulk review records">
+                      {bulkFailures.map(({ id, error }) => (
+                        <li key={id} className="bulk-review-failure" data-testid={`bulk-review-failure-${id}`}>
+                          <span className="bulk-review-failure-id" data-testid={`bulk-review-failure-id-${id}`}>Record #{id}</span>
+                          <span className="bulk-review-failure-error" data-testid={`bulk-review-failure-error-${id}`}>{error}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
