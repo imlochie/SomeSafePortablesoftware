@@ -4,6 +4,13 @@ import { basename, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { SettingsRecord } from "../lib/archive-db";
 import { getLocalToolPaths } from "./local-tools";
+import {
+  chooseArchiveVolume,
+  ensureArchiveVolume,
+  findArchiveVolumeForPath,
+  getArchiveScanRoots,
+  type ArchiveMediaType,
+} from "./storage";
 
 const execFileAsync = promisify(execFile);
 
@@ -284,15 +291,74 @@ export function isPathWithin(candidate: string, root: string) {
   return left === right || left.startsWith(`${right}${sep}`);
 }
 
-export function validateSafeDirectory(candidate: string | undefined, configuredRoot: string, label: string) {
-  const value = candidate?.trim() || configuredRoot;
-  if (!isAbsolute(expandPath(value)) && !value.startsWith("~/")) {
-    throw new Error(`${label} must be an absolute path or start with ~/`);
+export function validateSafeDirectory(
+  candidate: string | undefined,
+  configuredRoot: string,
+  label: string,
+) {
+  const value = candidate?.trim();
+
+  if (!value) {
+    throw new Error(`${label} is required.`);
   }
-  if (!isPathWithin(value, configuredRoot)) {
-    throw new Error(`${label} must stay inside the configured ${label.toLowerCase()} root.`);
+
+  const roots: string[] = [];
+
+  try {
+    const parsed = JSON.parse(configuredRoot);
+
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) {
+        if (typeof item === "string" && item.trim()) {
+          roots.push(item.trim());
+        }
+      }
+    }
+  } catch {
+    // Fall through to newline/semicolon parsing.
   }
-  return resolve(expandPath(value));
+
+  if (!roots.length) {
+    roots.push(
+      ...configuredRoot
+        .split(/\r?\n|;/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    );
+  }
+
+  if (!roots.length) {
+    throw new Error(`${label} is not configured.`);
+  }
+
+  const target = resolve(value);
+
+  const allowed = roots.some((root) => {
+    const base = resolve(root);
+
+    const normalizedTarget =
+      process.platform === "win32"
+        ? target.toLowerCase()
+        : target;
+
+    const normalizedBase =
+      process.platform === "win32"
+        ? base.toLowerCase()
+        : base;
+
+    return (
+      normalizedTarget === normalizedBase ||
+      normalizedTarget.startsWith(`${normalizedBase}${sep}`)
+    );
+  });
+
+  if (!allowed) {
+    throw new Error(
+      `Local inspection is limited to configured Archive Assistant directories.`,
+    );
+  }
+
+  return target;
 }
 
 export function sanitizeFilename(value: string, extension: string) {
@@ -383,9 +449,9 @@ export async function inspectMediaSource(url: string, settings: SettingsRecord, 
   return value;
 }
 
-export async function inspectLocalMedia(filePath: string, settings: SettingsRecord) {
+export async function inspectLocalMedia(filePath: string, settings: SettingsRecord, archiveScanRoots = getArchiveScanRoots(settings)) {
   const candidate = resolve(expandPath(filePath));
-  const allowed = [settings.dataDirectory, settings.downloadDirectory, settings.archiveDirectory, settings.temporaryDirectory];
+  const allowed = [settings.dataDirectory, settings.downloadDirectory, ...archiveScanRoots, settings.temporaryDirectory];
   if (!allowed.some((root) => isPathWithin(candidate, root))) {
     throw new Error("Local inspection is limited to configured Archive Assistant directories.");
   }
@@ -452,7 +518,40 @@ export function prepareDownload(input: {
   validateSourceUrl(input.sourceUrl);
   const outputContainer = input.outputContainer === "mkv" || input.outputContainer === "webm" ? input.outputContainer : settings.outputContainer;
   const temporaryDirectory = validateSafeDirectory(input.temporaryDirectory, settings.temporaryDirectory, "Temporary directory");
-  const destinationDirectory = validateSafeDirectory(input.destinationDirectory, settings.archiveDirectory, "Destination directory");
+ const mediaType: ArchiveMediaType =
+  /\bS\d{1,2}(?:E\d{1,2})?\b|\bSeason\s+\d+\b|\bEpisode\s+\d+\b|\bEp(?:isode)?\.?\s*\d+\b|\bSeries\s+\d+\b/i.test(input.title)
+    ? "tv"
+    : "movie";
+
+const requestedDestination = input.destinationDirectory?.trim() || "";
+
+const selectedVolume = requestedDestination
+  ? findArchiveVolumeForPath(requestedDestination, settings)
+  : chooseArchiveVolume(settings, mediaType);
+
+if (!selectedVolume) {
+  throw new Error(
+    `No writable ${mediaType === "tv" ? "TV" : "movie"} archive volume is available.`,
+  );
+}
+
+if (selectedVolume.mediaType !== mediaType) {
+  throw new Error(
+    `This media is classified as ${
+      mediaType === "tv" ? "TV" : "a movie"
+    } and cannot be written to ${selectedVolume.label}.`,
+  );
+}
+
+ensureArchiveVolume(selectedVolume);
+
+const destinationDirectory = requestedDestination
+  ? validateSafeDirectory(
+      requestedDestination,
+      selectedVolume.path,
+      "Destination directory",
+    )
+  : selectedVolume.path;
   const selectedFormatId = validateFormatId(input.selectedFormatId);
   const selectedVideoFormatId = input.selectedVideoFormatId ? validateFormatId(input.selectedVideoFormatId) : null;
   const selectedAudioFormatId = input.selectedAudioFormatId ? validateFormatId(input.selectedAudioFormatId) : null;

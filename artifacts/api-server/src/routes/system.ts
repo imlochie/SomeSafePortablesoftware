@@ -11,6 +11,7 @@ import {
 import { archiveDb, readEvents, readSettings } from "../lib/archive-db";
 import { getLocalToolPaths } from "../services/local-tools";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
+import { getArchiveVolumes } from "../services/storage";
 
 const router: IRouter = Router();
 
@@ -51,6 +52,7 @@ function detectDependency(dependency: (typeof dependencyDefinitions)[number], se
           ? "Using the embedded SQLite runtime"
           : "Optional dependency not detected",
       version: null,
+capabilities: [],
     };
   }
 }
@@ -73,24 +75,52 @@ function expandHome(value: string) {
 }
 
 function readStorage(settings: ReturnType<typeof readSettings>) {
-  const path = expandHome(settings.archiveDirectory);
-  try {
-    const stats = statfsSync(path);
-    const totalBytes = Number(stats.blocks) * Number(stats.bsize);
-    const freeBytes = Number(stats.bavail) * Number(stats.bsize);
-    const usedBytes = Math.max(0, totalBytes - freeBytes);
-    const freePercent = totalBytes ? (freeBytes / totalBytes) * 100 : 0;
+  const volumes = getArchiveVolumes(settings);
+
+  const readableVolumes = volumes.filter((volume) => volume.exists);
+
+  if (!readableVolumes.length) {
     return {
-      path,
-      freeBytes,
-      totalBytes,
-      usedBytes,
-      freePercent,
-      status: freePercent <= settings.criticalFreePercent ? "critical" as const : freePercent <= settings.warningFreePercent ? "warning" as const : "ready" as const,
+      path: settings.archiveDirectory,
+      freeBytes: 0,
+      totalBytes: 0,
+      usedBytes: 0,
+      freePercent: 0,
+      status: "unavailable" as const,
     };
-  } catch {
-    return { path, freeBytes: 0, totalBytes: 0, usedBytes: 0, freePercent: 0, status: "unavailable" as const };
   }
+
+  let totalBytes = 0;
+  let freeBytes = 0;
+
+  for (const volume of readableVolumes) {
+    try {
+      const stats = statfsSync(volume.path);
+      totalBytes += Number(stats.blocks) * Number(stats.bsize);
+      freeBytes += Number(stats.bavail) * Number(stats.bsize);
+    } catch {
+      // Ignore an individual volume that cannot be queried.
+    }
+  }
+
+  const usedBytes = Math.max(0, totalBytes - freeBytes);
+  const freePercent = totalBytes
+    ? (freeBytes / totalBytes) * 100
+    : 0;
+
+  return {
+    path: volumes.map((volume) => volume.path).join("\n"),
+    freeBytes,
+    totalBytes,
+    usedBytes,
+    freePercent,
+    status:
+      freePercent <= settings.criticalFreePercent
+        ? ("critical" as const)
+        : freePercent <= settings.warningFreePercent
+          ? ("warning" as const)
+          : ("ready" as const),
+  };
 }
 
 router.get("/system/overview", (req, res) => {

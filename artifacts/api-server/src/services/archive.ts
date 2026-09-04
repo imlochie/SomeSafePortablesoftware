@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { access, readdir, stat } from "node:fs/promises";
 import { basename, extname, relative, resolve, sep } from "node:path";
-import { archiveDb, addEvent, readSettings } from "../lib/archive-db";
+import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia } from "./media";
+import { getArchiveScanRoots } from "./storage";
 
 const supportedExtensions = new Set([
   ".avi", ".flac", ".m4a", ".m4v", ".mkv", ".mov", ".mp3", ".mp4",
@@ -58,6 +59,9 @@ type FileRow = {
   fingerprint: string | null;
   modified_at_ms: number | null;
   last_seen_at: string | null;
+  local_identity_id?: number | null;
+  volume_id?: string | null;
+  archive_root?: string | null;
 };
 
 type PlexRow = {
@@ -99,19 +103,59 @@ function parseJsonArray(value: string | null | undefined) {
   }
 }
 
-function normalizeTitle(value: string) {
-  return value
+export function normalizeTitle(value: string) {
+  const normalized = value
     .replace(/\.[^.]+$/, "")
     .replace(/\b(19|20)\d{2}\b/g, "")
     .replace(/\b(4k|uhd|2160p?|1080p?|720p?|480p?|bluray|web[ ._-]?dl|x26[45]|h26[45]|hevc|av1)\b/gi, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+  if (normalized) return normalized;
+  const year = value.match(/\b((?:19|20)\d{2})\b/);
+  return year?.[1] ?? "";
 }
 
-function titleYear(value: string) {
-  const match = value.match(/\b((?:19|20)\d{2})\b/);
-  return match ? Number(match[1]) : null;
+export function titleYear(value: string) {
+  const matches = [...value.matchAll(/\b((?:19|20)\d{2})\b/g)];
+  return matches.length ? Number(matches.at(-1)?.[1]) : null;
+}
+
+function archiveVolumeId(root: string) {
+  const normalized = root.replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+  if (normalized === "d:\\movies") return "d-movies";
+  if (normalized === "d:\\tv shows") return "d-tv";
+  if (normalized === "e:\\movies") return "e-movies";
+  if (normalized === "e:\\tv shows") return "e-tv";
+  return `configured:${normalized}`;
+}
+
+function localIdentityFor(
+  filename: string,
+  root: string,
+  sizeBytes: number | null,
+  fingerprint: string | null,
+  checksum: string | null,
+) {
+  const mediaType = /(^|[\\/])tv shows?([\\/]|$)/i.test(root) ? "tv" : "movie";
+  const episode = mediaType === "tv" ? localEpisodeIdentity(filename) : null;
+  const year = titleYear(filename);
+  const normalizedTitle = episode?.show ?? normalizeTitle(filename);
+  const identityKey = episode
+    ? `tv:${episode.show}:${episode.season}:${episode.episode}`
+    : `movie:${normalizedTitle}:${year ?? ""}`;
+  return {
+    identityKey,
+    mediaType,
+    normalizedTitle,
+    year,
+    showIdentity: episode?.show ?? null,
+    seasonNumber: episode?.season ?? null,
+    episodeNumber: episode?.episode ?? null,
+    sizeBytes,
+    fingerprint,
+    checksum,
+  };
 }
 
 function qualityShape(row: Pick<FileRow, "height" | "dynamic_range" | "video_codec" | "bitrate" | "audio_codec" | "audio_channels" | "container">): QualityShape {
@@ -179,19 +223,17 @@ function reviewEvidenceKey(record: {
   })).digest("hex");
 }
 
-function readReview(ownerId: string, fileRecordId: number, findingType: QualityStatus, evidenceKey: string) {
+type ReviewRow = {
+  status: SavedReviewStatus;
+  note: string | null;
+  updated_at: string;
+};
+
+function readReview(ownerId: string, fileRecordId: number, findingType: QualityStatus, evidenceKey: string, reviews: Map<string, ReviewRow>) {
   if (!reviewableQualityStatuses.has(findingType)) {
     return { status: "not_applicable" as const, note: null, updatedAt: null };
   }
-  const row = archiveDb.prepare(
-    `SELECT status, note, updated_at
-     FROM archive_review
-     WHERE owner_id = ? AND file_record_id = ? AND finding_type = ? AND evidence_key = ?`,
-  ).get(ownerId, fileRecordId, findingType, evidenceKey) as {
-    status: SavedReviewStatus;
-    note: string | null;
-    updated_at: string;
-  } | undefined;
+  const row = reviews.get(`${ownerId}:${fileRecordId}:${findingType}:${evidenceKey}`);
   return row
     ? { status: row.status, note: row.note, updatedAt: row.updated_at }
     : { status: "unreviewed" as const, note: null, updatedAt: null };
@@ -217,21 +259,26 @@ async function checksum(filePath: string) {
   return hash.digest("hex");
 }
 
-async function* walk(root: string): AsyncGenerator<string> {
-  const entries = await readdir(root, { withFileTypes: true });
+async function* walk(root: string, onWarning: (message: string) => void): AsyncGenerator<string> {
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch (error) {
+    onWarning(`Archive scan skipped directory ${root}: ${error instanceof Error ? error.message : "directory could not be read"}`);
+    return;
+  }
   for (const entry of entries) {
     const path = resolve(root, entry.name);
     if (entry.isDirectory()) {
-      yield* walk(path);
+      yield* walk(path, onWarning);
     } else if (entry.isFile() && supportedExtensions.has(extname(entry.name).toLowerCase())) {
       yield path;
     }
   }
 }
 
-function scanRoots() {
-  const settings = readSettings();
-  return Array.from(new Set([settings.archiveDirectory, settings.downloadDirectory].map(expandPath)));
+function scanRoots(settings: SettingsRecord) {
+  return getArchiveScanRoots(settings);
 }
 
 function updateScan(ownerId: string, values: Record<string, unknown>) {
@@ -260,34 +307,65 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
       inspected.audioCodec ?? "unknown",
     ].join("|")
     : null;
+  const localIdentity = localIdentityFor(filename, root, inspected?.filesize ?? null, fingerprint, fileChecksum);
+  const localIdentityId = Number(archiveDb.prepare(`
+    INSERT INTO local_media_identity
+      (owner_id, identity_key, media_type, normalized_title, year, show_identity,
+       season_number, episode_number, size_bytes, fingerprint, checksum, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(owner_id, identity_key) DO UPDATE SET
+      media_type = excluded.media_type,
+      normalized_title = excluded.normalized_title,
+      year = excluded.year,
+      show_identity = excluded.show_identity,
+      season_number = excluded.season_number,
+      episode_number = excluded.episode_number,
+      size_bytes = excluded.size_bytes,
+      fingerprint = excluded.fingerprint,
+      checksum = excluded.checksum,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(
+    ownerId,
+    localIdentity.identityKey,
+    localIdentity.mediaType,
+    localIdentity.normalizedTitle,
+    localIdentity.year,
+    localIdentity.showIdentity,
+    localIdentity.seasonNumber,
+    localIdentity.episodeNumber,
+    localIdentity.sizeBytes,
+    localIdentity.fingerprint,
+    localIdentity.checksum,
+  ).lastInsertRowid);
 
-  archiveDb.exec("BEGIN IMMEDIATE");
-  try {
-    const existingItem = archiveDb.prepare(
-      "SELECT id FROM archive_item WHERE owner_id = ? AND archive_path = ?",
-    ).get(ownerId, filePath) as { id: number } | undefined;
-    const archiveItemId = existingItem?.id ?? Number(archiveDb.prepare(
-      "INSERT INTO archive_item (title, status, archive_path, owner_id) VALUES (?, 'inventory', ?, ?)",
-    ).run(title, filePath, ownerId).lastInsertRowid);
-    if (existingItem) {
-      archiveDb.prepare(
-        "UPDATE archive_item SET title = ?, status = 'inventory', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
-      ).run(title, existingItem.id, ownerId);
-    }
+  const existingItem = archiveDb.prepare(
+    "SELECT id FROM archive_item WHERE owner_id = ? AND archive_path = ?",
+  ).get(ownerId, filePath) as { id: number } | undefined;
+  const archiveItemId = existingItem?.id ?? Number(archiveDb.prepare(
+    "INSERT INTO archive_item (title, status, archive_path, owner_id) VALUES (?, 'inventory', ?, ?)",
+  ).run(title, filePath, ownerId).lastInsertRowid);
+  if (existingItem) {
     archiveDb.prepare(
-      `INSERT INTO file_record
+      "UPDATE archive_item SET title = ?, status = 'inventory', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+    ).run(title, existingItem.id, ownerId);
+  }
+  archiveDb.prepare(
+    `INSERT INTO file_record
         (path, size_bytes, checksum, media_type, owner_id, archive_item_id, filename, relative_path,
+         local_identity_id, volume_id, archive_root,
          scan_status, last_seen_at, modified_at_ms, extension, duration_seconds, video_codec, audio_codec,
          width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages,
          subtitle_languages, fingerprint, error_message, updated_at)
        VALUES (
          ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?,
          ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?,
          ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
        )
        ON CONFLICT(owner_id, path) DO UPDATE SET
          size_bytes = excluded.size_bytes, checksum = excluded.checksum, media_type = excluded.media_type,
          archive_item_id = excluded.archive_item_id, filename = excluded.filename, relative_path = excluded.relative_path,
+         local_identity_id = excluded.local_identity_id, volume_id = excluded.volume_id, archive_root = excluded.archive_root,
          scan_status = excluded.scan_status, last_seen_at = excluded.last_seen_at, modified_at_ms = excluded.modified_at_ms,
          extension = excluded.extension, duration_seconds = excluded.duration_seconds, video_codec = excluded.video_codec,
          audio_codec = excluded.audio_codec, width = excluded.width, height = excluded.height, fps = excluded.fps,
@@ -295,76 +373,85 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
          audio_channels = excluded.audio_channels, audio_languages = excluded.audio_languages,
          subtitle_languages = excluded.subtitle_languages, fingerprint = excluded.fingerprint,
          error_message = excluded.error_message, updated_at = CURRENT_TIMESTAMP`,
-    ).run(
-      filePath,
-      inspected?.filesize ?? null,
-      fileChecksum,
-      inspected?.container ?? null,
-      ownerId,
-      archiveItemId,
-      filename,
-      relativePath,
-      inspected ? "active" : "error",
-      modifiedAtMs,
-      extname(filename).slice(1).toLowerCase(),
-      inspected?.durationSeconds ?? null,
-      inspected?.videoCodec ?? null,
-      inspected?.audioCodec ?? null,
-      inspected?.width ?? null,
-      inspected?.height ?? null,
-      inspected?.fps ?? null,
-      inspected?.bitrate ?? null,
-      inspected?.container ?? null,
-      inspected?.dynamicRange ?? null,
-      inspected?.audioChannels ?? null,
-      JSON.stringify(inspected?.audioLanguages ?? []),
-      JSON.stringify(inspected?.subtitleLanguages ?? []),
-      fingerprint,
-      errorMessage,
-    );
-    archiveDb.exec("COMMIT");
-  } catch (error) {
-    archiveDb.exec("ROLLBACK");
-    throw error;
-  }
+  ).run(
+   filePath,
+   inspected?.filesize ?? null,
+   fileChecksum,
+   inspected?.container ?? null,
+   ownerId,
+   archiveItemId,
+   filename,
+   relativePath,
+   localIdentityId,
+   archiveVolumeId(root),
+   root,
+   inspected ? "active" : "error",
+   modifiedAtMs,
+   extname(filename).slice(1).toLowerCase(),
+   inspected?.durationSeconds ?? null,
+   inspected?.videoCodec ?? null,
+   inspected?.audioCodec ?? null,
+   inspected?.width ?? null,
+   inspected?.height ?? null,
+   inspected?.fps ?? null,
+   inspected?.bitrate ?? null,
+   inspected?.container ?? null,
+   inspected?.dynamicRange ?? null,
+   inspected?.audioChannels ?? null,
+   JSON.stringify(inspected?.audioLanguages ?? []),
+   JSON.stringify(inspected?.subtitleLanguages ?? []),
+   fingerprint,
+   errorMessage,
+  );
 }
 
-async function inspectFile(ownerId: string, filePath: string, root: string) {
-  const settings = readSettings();
+async function inspectFile(filePath: string, root: string, existing: FileRow | undefined, settings: SettingsRecord, archiveScanRoots: string[]) {
   const fileStats = await stat(filePath);
-  const existing = archiveDb.prepare(
-    "SELECT * FROM file_record WHERE owner_id = ? AND path = ?",
-  ).get(ownerId, filePath) as FileRow | undefined;
   const unchanged = existing
     && existing.scan_status === "active"
     && existing.size_bytes === fileStats.size
     && existing.modified_at_ms === Math.trunc(fileStats.mtimeMs);
   if (unchanged) {
-    archiveDb.prepare(
-      "UPDATE file_record SET last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
-    ).run(existing.id, ownerId);
-    return true;
+    return {
+      filePath,
+      root,
+      modifiedAtMs: Math.trunc(fileStats.mtimeMs),
+      inspected: null,
+      fileChecksum: null,
+      errorMessage: null,
+      unchangedRecordId: existing.id,
+      warningMessage: undefined,
+    };
   }
 
   let inspected: Awaited<ReturnType<typeof inspectLocalMedia>> | null = null;
-  let fileChecksum: string | null = null;
+  const fileChecksum: string | null = null;
   let errorMessage: string | null = null;
   try {
-    inspected = await inspectLocalMedia(filePath, settings);
-    fileChecksum = await checksum(filePath);
+    inspected = await inspectLocalMedia(filePath, settings, archiveScanRoots);
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : "The file could not be inspected.";
   }
-  upsertArchiveRecord(ownerId, filePath, root, Math.trunc(fileStats.mtimeMs), inspected, fileChecksum, errorMessage);
-  return inspected !== null;
+  return {
+    filePath,
+    root,
+    modifiedAtMs: Math.trunc(fileStats.mtimeMs),
+    inspected,
+    fileChecksum,
+    errorMessage,
+    unchangedRecordId: null,
+    warningMessage: undefined,
+  };
 }
 
 async function scanArchive(ownerId: string) {
-  const roots = scanRoots();
+  const settings = readSettings();
+  const roots = scanRoots(settings);
   const found = new Set<string>();
   let scannedFiles = 0;
   let failedFiles = 0;
   let rootError: string | null = null;
+  const traversalWarnings: string[] = [];
   updateScan(ownerId, {
     status: "scanning",
     started_at: new Date().toISOString(),
@@ -374,27 +461,119 @@ async function scanArchive(ownerId: string) {
     failed_files: 0,
   });
 
-  for (const root of roots) {
-    try {
-      await access(root);
-      for await (const filePath of walk(root)) {
-        found.add(filePath);
-        scannedFiles += 1;
-        try {
-          const inspected = await inspectFile(ownerId, filePath, root);
-          if (!inspected) failedFiles += 1;
-        } catch (error) {
-          failedFiles += 1;
-          addEvent("warning", `Archive scan could not inspect ${basename(filePath)}: ${error instanceof Error ? error.message : "unknown error"}`, "archive", ownerId);
-        }
-        updateScan(ownerId, { scanned_files: scannedFiles, failed_files: failedFiles });
-      }
-    } catch (error) {
-      rootError = `${root}: ${error instanceof Error ? error.message : "directory could not be read"}`;
-      failedFiles += 1;
-    }
-  }
+const concurrency = Math.max(
+  1,
+  Math.min(8, Math.trunc(settings.archiveScanConcurrency ?? 4)),
+);
+  const existingRows = archiveDb.prepare(
+    "SELECT * FROM file_record WHERE owner_id = ?",
+  ).all(ownerId) as FileRow[];
+  const existingByPath = new Map(existingRows.map((row) => [row.path, row]));
 
+for (const root of roots) {
+  try {
+    await access(root);
+
+    const batch: string[] = [];
+
+    const processBatch = async () => {
+      if (!batch.length) return;
+
+      const files = batch.splice(0, batch.length);
+
+      const results = await Promise.all(
+        files.map(async (filePath) => {
+          found.add(filePath);
+
+          try {
+            return {
+              filePath,
+              result: await inspectFile(filePath, root, existingByPath.get(filePath), settings, roots),
+            };
+          } catch (error) {
+            return {
+              filePath,
+              result: {
+                filePath,
+                root,
+                modifiedAtMs: 0,
+                inspected: null,
+                fileChecksum: null,
+                errorMessage: null,
+                unchangedRecordId: null,
+                warningMessage: `Archive scan could not inspect ${basename(filePath)}: ${
+                  error instanceof Error ? error.message : "unknown error"
+                }`,
+              },
+            };
+          }
+        }),
+      );
+
+      const warnings: string[] = [];
+      archiveDb.exec("BEGIN IMMEDIATE");
+      try {
+        for (const { result } of results) {
+          if (result.warningMessage) {
+            failedFiles += 1;
+            warnings.push(result.warningMessage);
+          } else {
+            try {
+              if (result.unchangedRecordId !== null) {
+                archiveDb.prepare(
+                  "UPDATE file_record SET last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+                ).run(result.unchangedRecordId, ownerId);
+              } else {
+                upsertArchiveRecord(
+                  ownerId,
+                  result.filePath,
+                  result.root,
+                  result.modifiedAtMs,
+                  result.inspected,
+                  result.fileChecksum,
+                  result.errorMessage,
+                );
+                if (result.inspected === null) failedFiles += 1;
+              }
+            } catch (error) {
+              failedFiles += 1;
+              warnings.push(`Archive scan could not inspect ${basename(result.filePath)}: ${
+                error instanceof Error ? error.message : "unknown error"
+              }`);
+            }
+          }
+          scannedFiles += 1;
+        }
+        updateScan(ownerId, {
+          scanned_files: scannedFiles,
+          failed_files: failedFiles,
+        });
+        archiveDb.exec("COMMIT");
+      } catch (error) {
+        archiveDb.exec("ROLLBACK");
+        throw error;
+      }
+      for (const warning of warnings) {
+        addEvent("warning", warning, "archive", ownerId);
+      }
+    };
+
+    for await (const filePath of walk(root, (message) => traversalWarnings.push(message))) {
+      batch.push(filePath);
+
+      if (batch.length >= concurrency) {
+        await processBatch();
+      }
+    }
+
+    await processBatch();
+  } catch (error) {
+    rootError = `${root}: ${
+      error instanceof Error ? error.message : "directory could not be read"
+    }`;
+    failedFiles += 1;
+  }
+}
   archiveDb.exec("BEGIN IMMEDIATE");
   try {
     const existing = archiveDb.prepare(
@@ -411,6 +590,10 @@ async function scanArchive(ownerId: string) {
   } catch (error) {
     archiveDb.exec("ROLLBACK");
     throw error;
+  }
+
+  for (const warning of traversalWarnings) {
+    addEvent("warning", warning, "archive", ownerId);
   }
 
   const final = readArchiveInventory(ownerId);
@@ -495,25 +678,67 @@ function readPlexRows(ownerId: string) {
   ).all(ownerId) as PlexRow[];
 }
 
-function plexMatch(row: FileRow, plexRows: PlexRow[]) {
+type EpisodeIdentity = {
+  show: string;
+  season: number;
+  episode: number;
+};
+
+export function localEpisodeIdentity(filename: string): EpisodeIdentity | null {
+  const name = filename.replace(/\.[^.]+$/, "");
+  const match = name.match(/^(.+?)[\s._-]+(?:S(\d{1,2})[\s._-]*E(\d{1,2})|(\d{1,2})x(\d{1,2}))(?:[\s._-]|$)/i);
+  if (!match) return null;
+  const show = normalizeTitle(match[1]);
+  const season = Number(match[2] ?? match[4]);
+  const episode = Number(match[3] ?? match[5]);
+  return show && Number.isInteger(season) && Number.isInteger(episode)
+    ? { show, season, episode }
+    : null;
+}
+
+function episodeIdentityKey(identity: EpisodeIdentity) {
+  return `${identity.show}:${identity.season}:${identity.episode}`;
+}
+
+function plexEpisodeIndex(plexRows: PlexRow[]) {
+  const index = new Map<string, PlexRow>();
+  for (const row of plexRows) {
+    if (row.item_type !== "episode") continue;
+    const metadata = asRecord(parseMetadata(row.metadata_json));
+    const show = typeof metadata.grandparentTitle === "string"
+      ? normalizeTitle(metadata.grandparentTitle)
+      : "";
+    const season = Number(metadata.parentIndex);
+    const episode = Number(metadata.index);
+    if (!show || !Number.isInteger(season) || season < 1 || !Number.isInteger(episode) || episode < 1) continue;
+    const key = episodeIdentityKey({ show, season, episode });
+    if (!index.has(key)) index.set(key, row);
+  }
+  return index;
+}
+
+function plexMatch(row: FileRow, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>) {
+  const episode = localEpisodeIdentity(row.filename);
+  if (episode) {
+    const episodeMatch = episodeIndex.get(episodeIdentityKey(episode));
+    if (episodeMatch) return episodeMatch;
+  }
   const localTitle = normalizeTitle(row.filename);
   const localYear = titleYear(row.filename);
   return plexRows.find((plex) => normalizeTitle(plex.title) === localTitle
     && (localYear === null || plex.year === null || localYear === plex.year));
 }
 
-function mapFile(ownerId: string, row: FileRow, rows: FileRow[], plexRows: PlexRow[]) {
-  const sameIdentity = rows.filter((candidate) => candidate.id !== row.id
-    && candidate.scan_status === "active"
-    && normalizeTitle(candidate.filename) === normalizeTitle(row.filename)
-    && titleYear(candidate.filename) === titleYear(row.filename));
+function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, reviews: Map<string, ReviewRow>) {
+  const identityKey = `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
+  const sameIdentity = (indexes.identity.get(identityKey) ?? []).filter((candidate) => candidate.id !== row.id);
   const exactDuplicate = row.checksum
-    ? rows.find((candidate) => candidate.id !== row.id && candidate.scan_status === "active" && candidate.checksum === row.checksum)
+    ? (indexes.checksum.get(row.checksum) ?? []).find((candidate) => candidate.id !== row.id)
     : undefined;
   const fingerprintDuplicate = row.fingerprint
-    ? rows.find((candidate) => candidate.id !== row.id && candidate.scan_status === "active" && candidate.fingerprint === row.fingerprint)
+    ? (indexes.fingerprint.get(row.fingerprint) ?? []).find((candidate) => candidate.id !== row.id)
     : undefined;
-  const match = plexMatch(row, plexRows);
+  const match = plexMatch(row, plexRows, episodeIndex);
   let qualityStatus: QualityStatus = row.scan_status === "missing"
     ? "file_missing"
     : row.scan_status === "error"
@@ -529,7 +754,7 @@ function mapFile(ownerId: string, row: FileRow, rows: FileRow[], plexRows: PlexR
     qualityStatus = "duplicate";
     qualitySummary = exactDuplicate ? "Exact SHA-256 checksum matches another local file." : "Normalized title, duration, dimensions, and codecs match another local file.";
   } else if (row.scan_status === "active" && sameIdentity.length) {
-    const best = [row, ...sameIdentity].sort((left, right) => qualityRank(qualityShape(right)) - qualityRank(qualityShape(left)))[0];
+    const best = indexes.bestByIdentity.get(identityKey) ?? row;
     if (best.id === row.id) {
       qualityStatus = "best_local_version";
       qualitySummary = "Highest available local version for this normalized media identity.";
@@ -569,7 +794,7 @@ function mapFile(ownerId: string, row: FileRow, rows: FileRow[], plexRows: PlexR
     qualityDifferences,
     plexMatch: plexMatchResult,
   });
-  const review = readReview(ownerId, row.id, qualityStatus, evidenceKey);
+  const review = readReview(ownerId, row.id, qualityStatus, evidenceKey, reviews);
   return {
     id: row.id,
     archiveItemId: row.archive_item_id,
@@ -613,12 +838,59 @@ function qualityDifferencesFor(local: FileRow, other: FileRow | PlexRow) {
   );
 }
 
+type InventoryIndexes = {
+  identity: Map<string, FileRow[]>;
+  checksum: Map<string, FileRow[]>;
+  fingerprint: Map<string, FileRow[]>;
+  bestByIdentity: Map<string, FileRow>;
+};
+
 export function readArchiveInventory(ownerId: string) {
   const rows = archiveDb.prepare(
     "SELECT id, archive_item_id, filename, path, relative_path, size_bytes, checksum, media_type, scan_status, error_message, duration_seconds, video_codec, audio_codec, width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages, subtitle_languages, fingerprint, modified_at_ms, last_seen_at FROM file_record WHERE owner_id = ? ORDER BY filename COLLATE NOCASE, path",
   ).all(ownerId) as FileRow[];
   const plexRows = readPlexRows(ownerId);
-  const records = rows.map((row) => mapFile(ownerId, row, rows, plexRows));
+  const episodeIndex = plexEpisodeIndex(plexRows);
+  const indexes: InventoryIndexes = {
+    identity: new Map(),
+    checksum: new Map(),
+    fingerprint: new Map(),
+    bestByIdentity: new Map(),
+  };
+  for (const row of rows) {
+    if (row.scan_status !== "active") continue;
+    const identityKey = `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
+    const identityRows = indexes.identity.get(identityKey) ?? [];
+    identityRows.push(row);
+    indexes.identity.set(identityKey, identityRows);
+    if (row.checksum) {
+      const checksumRows = indexes.checksum.get(row.checksum) ?? [];
+      checksumRows.push(row);
+      indexes.checksum.set(row.checksum, checksumRows);
+    }
+    if (row.fingerprint) {
+      const fingerprintRows = indexes.fingerprint.get(row.fingerprint) ?? [];
+      fingerprintRows.push(row);
+      indexes.fingerprint.set(row.fingerprint, fingerprintRows);
+    }
+    const best = indexes.bestByIdentity.get(identityKey);
+    if (!best || qualityRank(qualityShape(row)) > qualityRank(qualityShape(best))) {
+      indexes.bestByIdentity.set(identityKey, row);
+    }
+  }
+  const reviews = new Map<string, ReviewRow>();
+  const reviewRows = archiveDb.prepare(
+    "SELECT owner_id, file_record_id, finding_type, evidence_key, status, note, updated_at FROM archive_review WHERE owner_id = ?",
+  ).all(ownerId) as Array<ReviewRow & {
+    owner_id: string;
+    file_record_id: number;
+    finding_type: QualityStatus;
+    evidence_key: string;
+  }>;
+  for (const review of reviewRows) {
+    reviews.set(`${review.owner_id}:${review.file_record_id}:${review.finding_type}:${review.evidence_key}`, review);
+  }
+  const records = rows.map((row) => mapFile(ownerId, row, indexes, plexRows, episodeIndex, reviews));
   const matchedPlexKeys = new Set(records.map((record) => record.plexMatch?.ratingKey).filter((key): key is string => Boolean(key)));
   const plexOnly = plexRows
     .filter((plex) => !matchedPlexKeys.has(plex.rating_key))

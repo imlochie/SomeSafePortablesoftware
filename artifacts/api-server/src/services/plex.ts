@@ -5,6 +5,7 @@ import { isIP } from "node:net";
 import { archiveDb, addEvent, readSettings, readUserSetting, writeUserSetting } from "../lib/archive-db";
 
 const requestTimeoutMs = 15_000;
+const plexPersistenceBatchSize = 100;
 const syncs = new Map<string, Promise<void>>();
 
 type PlexRecord = Record<string, unknown>;
@@ -198,7 +199,7 @@ async function readLibraries(target: ValidatedTarget, token: string) {
     .filter((library): library is { key: string; name: string; type: string } => Boolean(library.key));
 }
 
-async function readLibraryItems(target: ValidatedTarget, token: string, libraryKey: string) {
+async function readPagedItems(target: ValidatedTarget, token: string, path: string) {
   const items: PlexRecord[] = [];
   let offset = 0;
   const pageSize = 1000;
@@ -206,7 +207,7 @@ async function readLibraryItems(target: ValidatedTarget, token: string, libraryK
     const payload = containerFrom(await requestJson(
       target,
       token,
-      `/library/sections/${encodeURIComponent(libraryKey)}/all?includeGuids=1&X-Plex-Container-Start=${offset}&X-Plex-Container-Size=${pageSize}`,
+      `${path}${path.includes("?") ? "&" : "?"}includeGuids=1&X-Plex-Container-Start=${offset}&X-Plex-Container-Size=${pageSize}`,
     ));
     const page = asArray(payload.Metadata);
     items.push(...page);
@@ -220,6 +221,14 @@ async function readLibraryItems(target: ValidatedTarget, token: string, libraryK
     offset += page.length;
   }
   return items;
+}
+
+async function readLibraryItems(target: ValidatedTarget, token: string, libraryKey: string) {
+  return readPagedItems(target, token, `/library/sections/${encodeURIComponent(libraryKey)}/all`);
+}
+
+async function readShowEpisodes(target: ValidatedTarget, token: string, ratingKey: string) {
+  return readPagedItems(target, token, `/library/metadata/${encodeURIComponent(ratingKey)}/allLeaves`);
 }
 
 function mapItem(item: PlexRecord) {
@@ -249,6 +258,80 @@ function mapItem(item: PlexRecord) {
   };
 }
 
+type PlexHierarchyCache = {
+  showIds: Map<string, number>;
+  seasonIds: Map<string, number>;
+};
+
+function persistPlexHierarchy(
+  ownerId: string,
+  itemId: number,
+  item: NonNullable<ReturnType<typeof mapItem>>,
+  cache: PlexHierarchyCache,
+) {
+  const metadata = asRecord(item.metadata);
+  if (item.itemType === "show") {
+    archiveDb.prepare("DELETE FROM plex_episode WHERE item_id = ?").run(itemId);
+    archiveDb.prepare(`
+      INSERT INTO plex_show (item_id, owner_id, rating_key, title, year, updated_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(item_id) DO UPDATE SET
+        owner_id = excluded.owner_id,
+        rating_key = excluded.rating_key,
+        title = excluded.title,
+        year = excluded.year,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(itemId, ownerId, item.ratingKey, item.title, item.year);
+    cache.showIds.set(item.ratingKey, itemId);
+    return;
+  }
+  if (item.itemType !== "episode") return;
+
+  const grandparentRatingKey = text(metadata.grandparentRatingKey);
+  const parentRatingKey = text(metadata.parentRatingKey);
+  const seasonNumber = number(metadata.parentIndex);
+  const episodeNumber = number(metadata.index);
+  if (!grandparentRatingKey || seasonNumber === null) return;
+  archiveDb.prepare("DELETE FROM plex_show WHERE item_id = ?").run(itemId);
+  let showId = cache.showIds.get(grandparentRatingKey);
+  if (showId === undefined) {
+    const show = archiveDb.prepare(
+      "SELECT id FROM plex_show WHERE owner_id = ? AND rating_key = ?",
+    ).get(ownerId, grandparentRatingKey) as { id: number } | undefined;
+    if (!show) return;
+    showId = show.id;
+    cache.showIds.set(grandparentRatingKey, showId);
+  }
+  const seasonKey = `${showId}:${seasonNumber}`;
+  let seasonId = cache.seasonIds.get(seasonKey);
+  archiveDb.prepare(`
+    INSERT INTO plex_season (show_id, rating_key, season_number, title, updated_at)
+    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(show_id, season_number) DO UPDATE SET
+      rating_key = excluded.rating_key,
+      title = excluded.title,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(showId, parentRatingKey, seasonNumber, text(metadata.parentTitle));
+  if (seasonId === undefined) {
+    const season = archiveDb.prepare(
+      "SELECT id FROM plex_season WHERE show_id = ? AND season_number = ?",
+    ).get(showId, seasonNumber) as { id: number };
+    seasonId = season.id;
+    cache.seasonIds.set(seasonKey, seasonId);
+  }
+  archiveDb.prepare(`
+    INSERT INTO plex_episode (item_id, season_id, owner_id, rating_key, episode_number, title, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(item_id) DO UPDATE SET
+      season_id = excluded.season_id,
+      owner_id = excluded.owner_id,
+      rating_key = excluded.rating_key,
+      episode_number = excluded.episode_number,
+      title = excluded.title,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(itemId, seasonId, ownerId, item.ratingKey, episodeNumber, item.title);
+}
+
 function writeState(ownerId: string, updates: Record<string, unknown>) {
   for (const [key, value] of Object.entries(updates)) {
     if (value !== undefined) writeUserSetting(ownerId, key, value);
@@ -271,6 +354,73 @@ function readInventoryStats(ownerId: string, serverUrl: string) {
     LEFT JOIN plex_media m ON m.item_id = i.id
     WHERE l.owner_id = ? AND l.server_url = ?
   `).get(ownerId, serverUrl) as { library_count: number; item_count: number; media_count: number };
+}
+
+function yieldToEventLoop() {
+  return new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+async function mapItemsInBatches(items: PlexRecord[]) {
+  const mapped: ReturnType<typeof mapItem>[] = [];
+  for (let start = 0; start < items.length; start += plexPersistenceBatchSize) {
+    mapped.push(...items.slice(start, start + plexPersistenceBatchSize).map(mapItem));
+    await yieldToEventLoop();
+  }
+  return mapped;
+}
+
+async function stageLibraryRatingKeys(ownerId: string, libraryId: number, ratingKeys: string[]) {
+  archiveDb.exec(`
+    CREATE TEMP TABLE IF NOT EXISTS plex_sync_keys (
+      owner_id TEXT NOT NULL,
+      library_id INTEGER NOT NULL,
+      rating_key TEXT NOT NULL,
+      PRIMARY KEY (owner_id, library_id, rating_key)
+    )
+  `);
+  archiveDb.prepare(
+    "DELETE FROM plex_sync_keys WHERE owner_id = ? AND library_id = ?",
+  ).run(ownerId, libraryId);
+  for (let start = 0; start < ratingKeys.length; start += plexPersistenceBatchSize) {
+    archiveDb.exec("BEGIN IMMEDIATE");
+    try {
+      for (const ratingKey of ratingKeys.slice(start, start + plexPersistenceBatchSize)) {
+        archiveDb.prepare(
+          "INSERT OR IGNORE INTO plex_sync_keys (owner_id, library_id, rating_key) VALUES (?, ?, ?)",
+        ).run(ownerId, libraryId, ratingKey);
+      }
+      archiveDb.exec("COMMIT");
+    } catch (error) {
+      archiveDb.exec("ROLLBACK");
+      throw error;
+    }
+    await yieldToEventLoop();
+  }
+}
+
+async function deleteStaleLibraryItems(ownerId: string, libraryId: number) {
+  while (true) {
+    const staleRows = archiveDb.prepare(
+      `SELECT id
+       FROM plex_item
+       WHERE owner_id = ? AND library_id = ?
+         AND NOT EXISTS (
+           SELECT 1
+           FROM plex_sync_keys
+           WHERE owner_id = plex_item.owner_id
+             AND library_id = plex_item.library_id
+             AND rating_key = plex_item.rating_key
+         )
+       LIMIT ?`,
+    ).all(ownerId, libraryId, plexPersistenceBatchSize) as Array<{ id: number }>;
+    if (!staleRows.length) return;
+    const placeholders = staleRows.map(() => "?").join(", ");
+    archiveDb.prepare(
+      `DELETE FROM plex_item
+       WHERE owner_id = ? AND library_id = ? AND id IN (${placeholders})`,
+    ).run(ownerId, libraryId, ...staleRows.map((row) => row.id));
+    await yieldToEventLoop();
+  }
 }
 
 export function getPlexConfig(ownerId: string) {
@@ -368,7 +518,12 @@ export async function testPlexConnection(ownerId: string) {
   return getPlexConfig(ownerId);
 }
 
-function persistLibrary(ownerId: string, serverUrl: string, library: { key: string; name: string; type: string }, items: ReturnType<typeof mapItem>[]) {
+async function persistLibrary(
+  ownerId: string,
+  serverUrl: string,
+  library: { key: string; name: string; type: string; complete: boolean },
+  items: ReturnType<typeof mapItem>[],
+) {
     const existing = archiveDb.prepare(
       "SELECT id FROM plex_library WHERE owner_id = ? AND server_url = ? AND library_key = ?",
     ).get(ownerId, serverUrl, library.key) as { id: number } | undefined;
@@ -391,64 +546,75 @@ function persistLibrary(ownerId: string, serverUrl: string, library: { key: stri
 
     const ratingKeys: string[] = [];
     for (const item of items) {
-      if (!item) continue;
-      ratingKeys.push(item.ratingKey);
-      archiveDb.prepare(`
-        INSERT INTO plex_item
-          (library_id, rating_key, title, item_type, year, metadata_json, owner_id, thumb_url, added_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(owner_id, rating_key) DO UPDATE SET
-          library_id = excluded.library_id,
-          title = excluded.title,
-          item_type = excluded.item_type,
-          year = excluded.year,
-          metadata_json = excluded.metadata_json,
-          thumb_url = excluded.thumb_url,
-          added_at = excluded.added_at,
-          updated_at = CURRENT_TIMESTAMP
-      `).run(
-        libraryId,
-        item.ratingKey,
-        item.title,
-        item.itemType,
-        item.year,
-        JSON.stringify(item.metadata),
-        ownerId,
-        item.thumbUrl,
-        item.addedAt,
-      );
-      const itemRow = archiveDb.prepare(
-        "SELECT id FROM plex_item WHERE owner_id = ? AND rating_key = ?",
-      ).get(ownerId, item.ratingKey) as { id: number };
-      const itemId = Number(itemRow.id);
-      archiveDb.prepare(
-        "DELETE FROM plex_part WHERE media_id IN (SELECT id FROM plex_media WHERE item_id = ?)",
-      ).run(itemId);
-      archiveDb.prepare("DELETE FROM plex_media WHERE item_id = ?").run(itemId);
-      for (const media of item.media) {
-        const mediaResult = archiveDb.prepare(`
-          INSERT INTO plex_media
-            (item_id, video_resolution, video_codec, audio_codec, bitrate, duration_ms)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(itemId, media.videoResolution, media.videoCodec, media.audioCodec, media.bitrate, media.durationMs);
-        const mediaId = Number(mediaResult.lastInsertRowid);
-        for (const part of media.parts) {
+      if (item) ratingKeys.push(item.ratingKey);
+    }
+    for (let start = 0; start < items.length; start += plexPersistenceBatchSize) {
+      archiveDb.exec("BEGIN IMMEDIATE");
+      try {
+        const hierarchyCache: PlexHierarchyCache = {
+          showIds: new Map(),
+          seasonIds: new Map(),
+        };
+        for (const item of items.slice(start, start + plexPersistenceBatchSize)) {
+          if (!item) continue;
+          archiveDb.prepare(`
+            INSERT INTO plex_item
+              (library_id, rating_key, title, item_type, year, metadata_json, owner_id, thumb_url, added_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(owner_id, rating_key) DO UPDATE SET
+              library_id = excluded.library_id,
+              title = excluded.title,
+              item_type = excluded.item_type,
+              year = excluded.year,
+              metadata_json = excluded.metadata_json,
+              thumb_url = excluded.thumb_url,
+              added_at = excluded.added_at,
+              updated_at = CURRENT_TIMESTAMP
+          `).run(
+            libraryId,
+            item.ratingKey,
+            item.title,
+            item.itemType,
+            item.year,
+            JSON.stringify(item.metadata),
+            ownerId,
+            item.thumbUrl,
+            item.addedAt,
+          );
+          const itemRow = archiveDb.prepare(
+            "SELECT id FROM plex_item WHERE owner_id = ? AND rating_key = ?",
+          ).get(ownerId, item.ratingKey) as { id: number };
+          const itemId = Number(itemRow.id);
+          persistPlexHierarchy(ownerId, itemId, item, hierarchyCache);
           archiveDb.prepare(
-            "INSERT INTO plex_part (media_id, file_path, size_bytes, checksum) VALUES (?, ?, ?, ?)",
-          ).run(mediaId, part.filePath, part.sizeBytes, part.checksum);
+            "DELETE FROM plex_part WHERE media_id IN (SELECT id FROM plex_media WHERE item_id = ?)",
+          ).run(itemId);
+          archiveDb.prepare("DELETE FROM plex_media WHERE item_id = ?").run(itemId);
+          for (const media of item.media) {
+            const mediaResult = archiveDb.prepare(`
+              INSERT INTO plex_media
+                (item_id, video_resolution, video_codec, audio_codec, bitrate, duration_ms)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `).run(itemId, media.videoResolution, media.videoCodec, media.audioCodec, media.bitrate, media.durationMs);
+            const mediaId = Number(mediaResult.lastInsertRowid);
+            for (const part of media.parts) {
+              archiveDb.prepare(
+                "INSERT INTO plex_part (media_id, file_path, size_bytes, checksum) VALUES (?, ?, ?, ?)",
+              ).run(mediaId, part.filePath, part.sizeBytes, part.checksum);
+            }
+          }
         }
+        archiveDb.exec("COMMIT");
+      } catch (error) {
+        archiveDb.exec("ROLLBACK");
+        throw error;
       }
+      await yieldToEventLoop();
     }
 
-    if (ratingKeys.length) {
-      const placeholders = ratingKeys.map(() => "?").join(", ");
-      archiveDb.prepare(
-        `DELETE FROM plex_item WHERE owner_id = ? AND library_id = ? AND rating_key NOT IN (${placeholders})`,
-      ).run(ownerId, libraryId, ...ratingKeys);
-    } else {
-      archiveDb.prepare(
-        "DELETE FROM plex_item WHERE owner_id = ? AND library_id = ?",
-      ).run(ownerId, libraryId);
+    if (library.complete) {
+      await stageLibraryRatingKeys(ownerId, libraryId, ratingKeys);
+      await deleteStaleLibraryItems(ownerId, libraryId);
     }
     const itemCount = archiveDb.prepare(
       "SELECT COUNT(*) AS count FROM plex_item WHERE owner_id = ? AND library_id = ?",
@@ -461,27 +627,29 @@ function persistLibrary(ownerId: string, serverUrl: string, library: { key: stri
     `).run(Number(itemCount.count), libraryId, ownerId);
 }
 
-function reconcileInventory(ownerId: string, serverUrl: string, libraries: Array<{
+async function reconcileInventory(ownerId: string, serverUrl: string, libraries: Array<{
   key: string;
   name: string;
   type: string;
+  complete: boolean;
   items: ReturnType<typeof mapItem>[];
 }>) {
+  for (const library of libraries) {
+    await persistLibrary(ownerId, serverUrl, library, library.items);
+    await yieldToEventLoop();
+  }
   archiveDb.exec("BEGIN IMMEDIATE");
   try {
-    for (const library of libraries) {
-      persistLibrary(ownerId, serverUrl, library, library.items);
-    }
-    const libraryKeys = libraries.map((library) => library.key);
-    if (libraryKeys.length) {
-      const placeholders = libraryKeys.map(() => "?").join(", ");
-      archiveDb.prepare(
-        `DELETE FROM plex_library WHERE owner_id = ? AND server_url = ? AND library_key NOT IN (${placeholders})`,
-      ).run(ownerId, serverUrl, ...libraryKeys);
-    } else {
-      archiveDb.prepare(
-        "DELETE FROM plex_library WHERE owner_id = ? AND server_url = ?",
-      ).run(ownerId, serverUrl);
+    const currentLibraryKeys = new Set(libraries.map((library) => library.key));
+    const existingLibraries = archiveDb.prepare(
+      "SELECT id, library_key FROM plex_library WHERE owner_id = ? AND server_url = ?",
+    ).all(ownerId, serverUrl) as Array<{ id: number; library_key: string }>;
+    for (const library of existingLibraries) {
+      if (!currentLibraryKeys.has(library.library_key)) {
+        archiveDb.prepare(
+          "DELETE FROM plex_library WHERE owner_id = ? AND server_url = ? AND id = ?",
+        ).run(ownerId, serverUrl, library.id);
+      }
     }
     archiveDb.exec("COMMIT");
   } catch (error) {
@@ -509,19 +677,39 @@ export async function syncPlexInventory(ownerId: string) {
       key: string;
       name: string;
       type: string;
+      complete: boolean;
       items: ReturnType<typeof mapItem>[];
     }> = [];
+    const warnings: string[] = [];
     for (const library of libraries) {
       const rawItems = await readLibraryItems(target, token, library.key);
-      remoteInventory.push({ ...library, items: rawItems.map(mapItem) });
+      let complete = true;
+      if (library.type === "show") {
+        const episodeItems: PlexRecord[] = [];
+        for (const show of rawItems) {
+          const ratingKey = text(show.ratingKey);
+          if (!ratingKey) continue;
+          try {
+            episodeItems.push(...await readShowEpisodes(target, token, ratingKey));
+          } catch (error) {
+            complete = false;
+            warnings.push(`Plex episode sync skipped "${text(show.title) ?? ratingKey}": ${publicError(error)}`);
+          }
+        }
+        const combinedItems = [...rawItems, ...episodeItems];
+        remoteInventory.push({ ...library, complete, items: await mapItemsInBatches(combinedItems) });
+        continue;
+      }
+      remoteInventory.push({ ...library, complete, items: await mapItemsInBatches(rawItems) });
     }
-    reconcileInventory(ownerId, serverUrl, remoteInventory);
+    await reconcileInventory(ownerId, serverUrl, remoteInventory);
     const successfulAt = new Date().toISOString();
     writeState(ownerId, {
       plexSyncStatus: "synced",
       plexLastSuccessfulSyncAt: successfulAt,
       plexLastError: null,
     });
+    for (const warning of warnings) addEvent("warning", warning, "plex", ownerId);
     addEvent("success", `Plex inventory synchronized: ${libraries.length} libraries`, "plex", ownerId);
   } catch (error) {
     const message = publicError(error);

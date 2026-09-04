@@ -20,6 +20,8 @@ import {
   updateArchiveRecordReview,
   updateArchiveRecordReviews,
 } from "../services/archive";
+import { readReconciliationReport } from "../services/reconciliation";
+import { readNamingProposals } from "../services/naming-intelligence";
 
 const router: IRouter = Router();
 
@@ -34,6 +36,45 @@ router.post("/archive/scan", (req, res) => {
 
 router.get("/archive/inventory", (req, res) => {
   res.json(GetArchiveInventoryResponse.parse(readArchiveInventory(getAuthenticatedUserId(req))));
+});
+
+router.get("/archive/reconciliation", async (req, res, next) => {
+  try {
+    const page = Number(req.query.page);
+    const pageSize = Number(req.query.pageSize);
+    res.json(await readReconciliationReport(
+      getAuthenticatedUserId(req),
+      Number.isFinite(page) ? page : undefined,
+      Number.isFinite(pageSize) ? pageSize : undefined,
+    ));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/archive/naming-proposals", async (req, res, next) => {
+  try {
+    const numberQuery = (key: string) => {
+      const value = Number(req.query[key]);
+      return Number.isFinite(value) ? value : undefined;
+    };
+    const booleanQuery = req.query.uncertain === undefined
+      ? undefined
+      : req.query.uncertain === "true";
+    res.json(await readNamingProposals(getAuthenticatedUserId(req), {
+      page: numberQuery("page"),
+      pageSize: numberQuery("pageSize"),
+      confidence: typeof req.query.confidence === "string" ? req.query.confidence : undefined,
+      operation: typeof req.query.operation === "string" ? req.query.operation : undefined,
+      pattern: typeof req.query.pattern === "string" ? req.query.pattern : undefined,
+      mediaType: typeof req.query.mediaType === "string" ? req.query.mediaType : undefined,
+      volume: typeof req.query.volume === "string" ? req.query.volume : undefined,
+      state: typeof req.query.state === "string" ? req.query.state : undefined,
+      uncertain: booleanQuery,
+    }));
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get("/archive/records/:id", (req, res) => {

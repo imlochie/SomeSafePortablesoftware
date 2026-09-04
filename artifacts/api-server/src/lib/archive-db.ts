@@ -59,6 +59,38 @@ archiveDb.exec(`
     size_bytes INTEGER,
     checksum TEXT
   );
+  CREATE INDEX IF NOT EXISTS plex_media_item_id_idx ON plex_media(item_id);
+  CREATE INDEX IF NOT EXISTS plex_part_media_id_idx ON plex_part(media_id);
+  CREATE TABLE IF NOT EXISTS plex_show (
+    id INTEGER PRIMARY KEY,
+    item_id INTEGER NOT NULL UNIQUE REFERENCES plex_item(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+    rating_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    year INTEGER,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, rating_key)
+  );
+  CREATE TABLE IF NOT EXISTS plex_season (
+    id INTEGER PRIMARY KEY,
+    show_id INTEGER NOT NULL REFERENCES plex_show(id) ON DELETE CASCADE,
+    rating_key TEXT,
+    season_number INTEGER NOT NULL,
+    title TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (show_id, season_number)
+  );
+  CREATE TABLE IF NOT EXISTS plex_episode (
+    id INTEGER PRIMARY KEY,
+    item_id INTEGER NOT NULL UNIQUE REFERENCES plex_item(id) ON DELETE CASCADE,
+    season_id INTEGER REFERENCES plex_season(id) ON DELETE SET NULL,
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+    rating_key TEXT NOT NULL,
+    episode_number INTEGER,
+    title TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, rating_key)
+  );
   CREATE TABLE IF NOT EXISTS archive_item (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL,
@@ -132,8 +164,28 @@ archiveDb.exec(`
     subtitle_languages TEXT NOT NULL DEFAULT '[]',
     fingerprint TEXT,
     error_message TEXT,
+    local_identity_id INTEGER REFERENCES local_media_identity(id),
+    volume_id TEXT,
+    archive_root TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (owner_id, path)
+  );
+  CREATE TABLE IF NOT EXISTS local_media_identity (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+    identity_key TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    year INTEGER,
+    show_identity TEXT,
+    season_number INTEGER,
+    episode_number INTEGER,
+    size_bytes INTEGER,
+    fingerprint TEXT,
+    checksum TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, identity_key)
   );
   CREATE TABLE IF NOT EXISTS archive_scan (
     owner_id TEXT PRIMARY KEY,
@@ -289,6 +341,9 @@ for (const [column, definition] of [
   ["thumb_url", "TEXT"],
   ["added_at", "TEXT"],
   ["updated_at", "TEXT NOT NULL DEFAULT ''"],
+  ["local_identity_id", "INTEGER REFERENCES local_media_identity(id)"],
+  ["volume_id", "TEXT"],
+  ["archive_root", "TEXT"],
 ] as Array<[string, string]>) {
   ensureColumn("plex_item", column, definition);
 }
@@ -414,10 +469,17 @@ for (const [column, definition] of [
   ["subtitle_languages", "TEXT NOT NULL DEFAULT '[]'"],
   ["fingerprint", "TEXT"],
   ["error_message", "TEXT"],
+  ["local_identity_id", "INTEGER"],
+  ["volume_id", "TEXT"],
+  ["archive_root", "TEXT"],
   ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
 ] as Array<[string, string]>) {
   ensureColumn("file_record", column, definition);
 }
+archiveDb.exec(`
+  CREATE INDEX IF NOT EXISTS file_record_local_identity_idx ON file_record(local_identity_id);
+  CREATE INDEX IF NOT EXISTS local_media_identity_owner_type_idx ON local_media_identity(owner_id, media_type);
+`);
 ensureColumn("archive_scan", "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
 for (const table of ["archive_item", "source_record", "download_job", "assistant_conversation", "system_event", "plex_library", "plex_item"]) {
   ensureColumn(table, "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
@@ -427,7 +489,15 @@ const defaultSettings = {
   mockMode: runtimeConfig.mockMode,
   dataDirectory: runtimeConfig.paths.data,
   downloadDirectory: runtimeConfig.paths.downloads,
-  archiveDirectory: runtimeConfig.paths.archive,
+  archiveDirectory:
+  process.platform === "win32"
+    ? [
+        "D:\\Movies",
+        "D:\\Tv Shows",
+        "E:\\Movies",
+        "E:\\Tv Shows",
+      ].join("\n")
+    : runtimeConfig.paths.archive,
   temporaryDirectory: runtimeConfig.paths.temporary,
   ytDlpPath: runtimeConfig.tools.ytDlp,
   ffmpegPath: runtimeConfig.tools.ffmpeg,
@@ -441,6 +511,7 @@ const defaultSettings = {
   bandwidthLimit: 0,
   outputContainer: "mp4",
   inspectionCacheMinutes: 15,
+  archiveScanConcurrency: 4,
   warningFreePercent: 15,
   criticalFreePercent: 5,
 } as const;
@@ -450,6 +521,13 @@ const settingStatement = archiveDb.prepare(
 );
 for (const [key, value] of Object.entries(defaultSettings)) {
   settingStatement.run(key, JSON.stringify(value));
+}
+if (process.platform === "win32") {
+  archiveDb
+    .prepare(
+      "UPDATE setting SET value = ? WHERE key = 'archiveDirectory'",
+    )
+    .run(JSON.stringify(defaultSettings.archiveDirectory));
 }
 
 const eventCount = archiveDb
