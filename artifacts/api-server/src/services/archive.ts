@@ -11,6 +11,7 @@ const supportedExtensions = new Set([
   ".mpeg", ".mpg", ".ogg", ".ogv", ".ts", ".wav", ".webm", ".wmv",
 ]);
 const scans = new Map<string, Promise<void>>();
+const inventoryCache = new Map<string, ReturnType<typeof buildArchiveInventory>>();
 
 type ScanStatus = "not_scanned" | "scanning" | "completed" | "failed";
 type FileStatus = "active" | "missing" | "error";
@@ -445,6 +446,7 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
 }
 
 async function scanArchive(ownerId: string) {
+  invalidateArchiveInventoryCache(ownerId);
   const settings = readSettings();
   const roots = scanRoots(settings);
   const found = new Set<string>();
@@ -596,6 +598,7 @@ for (const root of roots) {
     addEvent("warning", warning, "archive", ownerId);
   }
 
+  invalidateArchiveInventoryCache(ownerId);
   const final = readArchiveInventory(ownerId);
   const error = rootError ?? (failedFiles ? `Scan completed with ${failedFiles} file${failedFiles === 1 ? "" : "s"} that could not be inspected.` : null);
   updateScan(ownerId, {
@@ -717,7 +720,40 @@ function plexEpisodeIndex(plexRows: PlexRow[]) {
   return index;
 }
 
-function plexMatch(row: FileRow, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>) {
+type PlexTitleIndexes = {
+  byTitle: Map<string, PlexRow[]>;
+  byTitleAndYear: Map<string, PlexRow[]>;
+  byTitleWithoutYear: Map<string, PlexRow[]>;
+  order: Map<PlexRow, number>;
+};
+
+function plexTitleIndexes(plexRows: PlexRow[]): PlexTitleIndexes {
+  const byTitle = new Map<string, PlexRow[]>();
+  const byTitleAndYear = new Map<string, PlexRow[]>();
+  const byTitleWithoutYear = new Map<string, PlexRow[]>();
+  const order = new Map<PlexRow, number>();
+  for (const [index, plex] of plexRows.entries()) {
+    order.set(plex, index);
+    const title = normalizeTitle(plex.title);
+    if (!title) continue;
+    const titleRows = byTitle.get(title) ?? [];
+    titleRows.push(plex);
+    byTitle.set(title, titleRows);
+    if (plex.year === null) {
+      const rowsWithoutYear = byTitleWithoutYear.get(title) ?? [];
+      rowsWithoutYear.push(plex);
+      byTitleWithoutYear.set(title, rowsWithoutYear);
+    } else {
+      const titleYearKey = `${title}:${plex.year}`;
+      const rowsForYear = byTitleAndYear.get(titleYearKey) ?? [];
+      rowsForYear.push(plex);
+      byTitleAndYear.set(titleYearKey, rowsForYear);
+    }
+  }
+  return { byTitle, byTitleAndYear, byTitleWithoutYear, order };
+}
+
+function plexMatch(row: FileRow, indexes: PlexTitleIndexes, episodeIndex: Map<string, PlexRow>) {
   const episode = localEpisodeIdentity(row.filename);
   if (episode) {
     const episodeMatch = episodeIndex.get(episodeIdentityKey(episode));
@@ -725,11 +761,17 @@ function plexMatch(row: FileRow, plexRows: PlexRow[], episodeIndex: Map<string, 
   }
   const localTitle = normalizeTitle(row.filename);
   const localYear = titleYear(row.filename);
-  return plexRows.find((plex) => normalizeTitle(plex.title) === localTitle
-    && (localYear === null || plex.year === null || localYear === plex.year));
+  if (localYear === null) return indexes.byTitle.get(localTitle)?.[0];
+  const exactYearRows = indexes.byTitleAndYear.get(`${localTitle}:${localYear}`) ?? [];
+  const missingYearRows = indexes.byTitleWithoutYear.get(localTitle) ?? [];
+  const candidates = [...exactYearRows, ...missingYearRows];
+  return candidates.length ? candidates.reduce((first, candidate) => {
+    if (!first) return candidate;
+    return indexes.order.get(candidate)! < indexes.order.get(first)! ? candidate : first;
+  }, candidates[0]) : undefined;
 }
 
-function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, reviews: Map<string, ReviewRow>) {
+function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, plexTitleIndex: PlexTitleIndexes, reviews: Map<string, ReviewRow>) {
   const identityKey = `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
   const sameIdentity = (indexes.identity.get(identityKey) ?? []).filter((candidate) => candidate.id !== row.id);
   const exactDuplicate = row.checksum
@@ -738,7 +780,7 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
   const fingerprintDuplicate = row.fingerprint
     ? (indexes.fingerprint.get(row.fingerprint) ?? []).find((candidate) => candidate.id !== row.id)
     : undefined;
-  const match = plexMatch(row, plexRows, episodeIndex);
+  const match = plexMatch(row, plexTitleIndex, episodeIndex);
   let qualityStatus: QualityStatus = row.scan_status === "missing"
     ? "file_missing"
     : row.scan_status === "error"
@@ -845,12 +887,13 @@ type InventoryIndexes = {
   bestByIdentity: Map<string, FileRow>;
 };
 
-export function readArchiveInventory(ownerId: string) {
+function buildArchiveInventory(ownerId: string) {
   const rows = archiveDb.prepare(
     "SELECT id, archive_item_id, filename, path, relative_path, size_bytes, checksum, media_type, scan_status, error_message, duration_seconds, video_codec, audio_codec, width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages, subtitle_languages, fingerprint, modified_at_ms, last_seen_at FROM file_record WHERE owner_id = ? ORDER BY filename COLLATE NOCASE, path",
   ).all(ownerId) as FileRow[];
   const plexRows = readPlexRows(ownerId);
   const episodeIndex = plexEpisodeIndex(plexRows);
+  const plexTitleIndex = plexTitleIndexes(plexRows);
   const indexes: InventoryIndexes = {
     identity: new Map(),
     checksum: new Map(),
@@ -890,7 +933,7 @@ export function readArchiveInventory(ownerId: string) {
   for (const review of reviewRows) {
     reviews.set(`${review.owner_id}:${review.file_record_id}:${review.finding_type}:${review.evidence_key}`, review);
   }
-  const records = rows.map((row) => mapFile(ownerId, row, indexes, plexRows, episodeIndex, reviews));
+  const records = rows.map((row) => mapFile(ownerId, row, indexes, plexRows, episodeIndex, plexTitleIndex, reviews));
   const matchedPlexKeys = new Set(records.map((record) => record.plexMatch?.ratingKey).filter((key): key is string => Boolean(key)));
   const plexOnly = plexRows
     .filter((plex) => !matchedPlexKeys.has(plex.rating_key))
@@ -918,6 +961,18 @@ export function readArchiveInventory(ownerId: string) {
     records,
     plexOnly,
   };
+}
+
+export function invalidateArchiveInventoryCache(ownerId: string) {
+  inventoryCache.delete(ownerId);
+}
+
+export function readArchiveInventory(ownerId: string) {
+  const cached = inventoryCache.get(ownerId);
+  if (cached) return cached;
+  const inventory = buildArchiveInventory(ownerId);
+  inventoryCache.set(ownerId, inventory);
+  return inventory;
 }
 
 export function readArchiveRecord(ownerId: string, id: number) {
@@ -952,13 +1007,15 @@ function persistArchiveRecordReview(
     note: string | null;
     updated_at: string;
   };
-  return {
+  const result = {
     status: saved.status,
     findingType: saved.finding_type,
     note: saved.note,
     reviewedAt: saved.updated_at,
     updatedAt: saved.updated_at,
   };
+  invalidateArchiveInventoryCache(ownerId);
+  return result;
 }
 
 export function updateArchiveRecordReview(ownerId: string, id: number, status: SavedReviewStatus, note: string | null) {

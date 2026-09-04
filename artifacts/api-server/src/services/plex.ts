@@ -3,6 +3,7 @@ import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import { archiveDb, addEvent, readSettings, readUserSetting, writeUserSetting } from "../lib/archive-db";
+import { invalidateArchiveInventoryCache } from "./archive";
 
 const requestTimeoutMs = 15_000;
 const plexPersistenceBatchSize = 100;
@@ -636,6 +637,7 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
 }>) {
   for (const library of libraries) {
     await persistLibrary(ownerId, serverUrl, library, library.items);
+    invalidateArchiveInventoryCache(ownerId);
     await yieldToEventLoop();
   }
   archiveDb.exec("BEGIN IMMEDIATE");
@@ -652,6 +654,7 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
       }
     }
     archiveDb.exec("COMMIT");
+    invalidateArchiveInventoryCache(ownerId);
   } catch (error) {
     archiveDb.exec("ROLLBACK");
     throw error;
