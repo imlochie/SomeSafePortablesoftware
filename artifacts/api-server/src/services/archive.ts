@@ -689,9 +689,9 @@ type EpisodeIdentity = {
 
 export function localEpisodeIdentity(filename: string): EpisodeIdentity | null {
   const name = filename.replace(/\.[^.]+$/, "");
-  const match = name.match(/^(.+?)[\s._-]+(?:S(\d{1,2})[\s._-]*E(\d{1,2})|(\d{1,2})x(\d{1,2}))(?:[\s._-]|$)/i);
+  const match = name.match(/^(.+?)[\s._-]+(?:S(\d{1,2})[\s._-]*E(\d{1,2})|(\d{1,2})x(\d{1,2}))(?=E\d{1,2}(?:[\s._-]|$)|[\s._-]|$)/i);
   if (!match) return null;
-  const show = normalizeTitle(match[1]);
+  const show = normalizeTitle(`${match[1]}.mkv`);
   const season = Number(match[2] ?? match[4]);
   const episode = Number(match[3] ?? match[5]);
   return show && Number.isInteger(season) && Number.isInteger(episode)

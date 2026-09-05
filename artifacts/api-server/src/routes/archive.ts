@@ -22,6 +22,7 @@ import {
 } from "../services/archive";
 import { readReconciliationReport } from "../services/reconciliation";
 import { readNamingProposals } from "../services/naming-intelligence";
+import { readIdentityAudit } from "../services/identity-audit";
 
 const router: IRouter = Router();
 
@@ -71,6 +72,28 @@ router.get("/archive/naming-proposals", async (req, res, next) => {
       volume: typeof req.query.volume === "string" ? req.query.volume : undefined,
       state: typeof req.query.state === "string" ? req.query.state : undefined,
       uncertain: booleanQuery,
+    }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/archive/identity-audit", async (req, res, next) => {
+  try {
+    const numberQuery = (key: string) => {
+      const value = Number(req.query[key]);
+      return Number.isFinite(value) ? value : undefined;
+    };
+    const booleanQuery = req.query.needsReview === undefined
+      ? undefined
+      : req.query.needsReview === "true";
+    res.json(await readIdentityAudit(getAuthenticatedUserId(req), {
+      page: numberQuery("page"),
+      pageSize: numberQuery("pageSize"),
+      auditType: typeof req.query.auditType === "string" ? req.query.auditType : undefined,
+      confidence: typeof req.query.confidence === "string" ? req.query.confidence : undefined,
+      mediaType: typeof req.query.mediaType === "string" ? req.query.mediaType : undefined,
+      needsReview: booleanQuery,
     }));
   } catch (error) {
     next(error);
