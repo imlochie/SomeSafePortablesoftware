@@ -371,6 +371,24 @@ type FindingRecord = {
   reviewStatus: string;
 };
 
+function qualityReviewSeverity(
+  differences: string[],
+): 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO' {
+  if (differences.includes('resolution') || differences.includes('dynamic_range')) {
+    return 'HIGH';
+  }
+
+  if (differences.includes('video_codec') || differences.includes('audio_codec')) {
+    return 'MEDIUM';
+  }
+
+  if (differences.length > 0) {
+    return 'LOW';
+  }
+
+  return 'INFO';
+}
+
 function explainFinding(record: FindingRecord) {
   const differences = record.plexMatch?.qualityDifferences.length
     ? record.plexMatch.qualityDifferences
@@ -393,10 +411,17 @@ function explainFinding(record: FindingRecord) {
     consider = 'Compare the linked records and keep the copy that best fits your storage and library needs.';
     assessment = 'REVIEW';
   } else if (record.plexMatch && differences.length > 0) {
+    const severity = qualityReviewSeverity(differences);
     finding = `LOCAL is matched to PLEX item "${record.plexMatch.title}"${record.plexMatch.year ? ` (${record.plexMatch.year})` : ''}, with quality differences already reported by the system.`;
-    why = record.qualitySummary || 'The local and Plex versions do not have identical reported quality metadata.';
+    if (severity === 'HIGH') {
+      why = 'A high-impact visual or dynamic-range difference exists between LOCAL and PLEX.';
+    } else if (severity === 'MEDIUM') {
+      why = 'A codec difference exists between LOCAL and PLEX and may affect compatibility or playback characteristics.';
+    } else {
+      why = 'The reported differences are limited to lower-impact technical metadata.';
+    }
     consider = `Review the supplied LOCAL / PLEX differences: ${differences.join('; ')}`;
-    assessment = 'KEEP / REVIEW';
+    assessment = `${severity} / REVIEW`;
   } else if (record.qualityStatus === 'higher_quality_available') {
     finding = 'A higher-quality local version is available for this media identity.';
     why = record.qualitySummary || 'Another local version has a higher quality ranking.';
@@ -443,9 +468,10 @@ function reviewPriority(record: Pick<FindingRecord, 'qualityStatus' | 'duplicate
     ? record.plexMatch.qualityDifferences
     : record.qualityDifferences;
 
-  if (differences.includes('resolution') || differences.includes('dynamic_range')) return 70;
-  if (differences.includes('video_codec') || differences.includes('audio_codec')) return 55;
-  if (differences.length > 0) return 35;
+  const severity = qualityReviewSeverity(differences);
+  if (severity === 'HIGH') return 70;
+  if (severity === 'MEDIUM') return 55;
+  if (severity === 'LOW') return 35;
 
   if (record.qualityStatus === 'local_only') return 60;
 
