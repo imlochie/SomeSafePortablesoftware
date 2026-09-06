@@ -430,7 +430,28 @@ function explainFinding(record: FindingRecord) {
 
   return { finding, why, consider, assessment };
 }
+function reviewPriority(record: Pick<FindingRecord, 'qualityStatus' | 'duplicateOfId' | 'reviewStatus'>) {
+  if (record.reviewStatus === 'reviewed') return 0;
+  if (record.reviewStatus === 'deferred') return 25;
+  if (record.reviewStatus === 'unresolved') return 100;
 
+  if (record.qualityStatus === 'file_missing') return 100;
+  if (record.qualityStatus === 'needs_review') return 90;
+  if (record.qualityStatus === 'duplicate' || record.duplicateOfId !== null) return 80;
+  if (['higher_quality_available', 'lower_quality_version'].includes(record.qualityStatus)) return 70;
+  if (record.qualityStatus === 'local_only') return 60;
+
+  return 10;
+}
+
+function reviewPriorityLabel(record: Pick<FindingRecord, 'qualityStatus' | 'duplicateOfId' | 'reviewStatus'>) {
+  const priority = reviewPriority(record);
+
+  if (priority >= 90) return 'HIGH';
+  if (priority >= 60) return 'REVIEW';
+  if (priority >= 25) return 'DEFERRED';
+  return 'INFO';
+}
 function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { data: record, isLoading, isError, refetch } = useGetArchiveRecord(id);
@@ -563,7 +584,7 @@ function ArchivePage() {
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
   const [view, setView] = useState<'local' | 'plex_only'>('local');
-  const [filter, setFilter] = useState<'all' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
+  const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
 
   const [isScanning, setIsScanning] = useState(false);
   const { data: scan, isLoading: scanLoading, refetch: refetchScan } = useGetArchiveScan({
@@ -609,9 +630,16 @@ function ArchivePage() {
   if (scanLoading) return <><PageIntro eyebrow="ARCHIVE / LOCAL" title="Archive inventory" description="Reading local media records." /><Skeleton className="h-[400px]" /></>;
   if (invError) return <ErrorState title="Inventory read failed" message="Could not read the archive inventory from the local node." onRetry={() => refetchInv()} testId="button-retry-archive" />;
 
-  const records = inventory?.records ?? [];
-  let displayedRecords = records;
-  if (filter === 'duplicates') displayedRecords = records.filter(r => r.qualityStatus.includes('duplicate'));
+ const records = inventory?.records ?? [];
+ let displayedRecords = records;
+ if (filter === 'queue') {
+   displayedRecords = [...records]
+     .filter(record => record.reviewStatus !== 'reviewed')
+     .sort((a, b) => {
+       const priorityDifference = reviewPriority(b) - reviewPriority(a);
+       return priorityDifference !== 0 ? priorityDifference : a.id - b.id;
+     });
+ } else if (filter === 'duplicates') displayedRecords = records.filter(r => r.qualityStatus.includes('duplicate'));
   else if (filter === 'conflicts') displayedRecords = records.filter(r => ['higher_quality_available', 'lower_quality_version', 'needs_review'].includes(r.qualityStatus) || (r.qualityDifferences && r.qualityDifferences.length > 0));
   else if (filter === 'missing') displayedRecords = records.filter(r => r.scanStatus === 'missing' || r.qualityStatus === 'file_missing');
   else if (filter === 'local_only') displayedRecords = records.filter(r => r.qualityStatus === 'local_only');
@@ -707,9 +735,9 @@ function ArchivePage() {
 
             {view === 'local' && (
               <div className="flex flex-wrap items-center gap-2">
-                {(['all', 'duplicates', 'conflicts', 'missing', 'local_only', 'reviewed', 'unresolved'] as const).map(f => (
+                {(['all', 'queue', 'duplicates', 'conflicts', 'missing', 'local_only', 'reviewed', 'unresolved'] as const).map(f => (
                   <button key={f} onClick={() => { setFilter(f); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`archive-mono text-[9px] tracking-[.08em] px-2 py-1 border ${filter === f ? 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]' : 'border-[#d6dfdc] bg-white text-[#7f9194] hover:border-[#aabfba]'}`}>
-                    {f.replace('_', ' ').toUpperCase()}
+                    {f === 'queue' ? 'REVIEW QUEUE' : f.replace('_', ' ').toUpperCase()}
                   </button>
                 ))}
               </div>
@@ -792,6 +820,15 @@ function ArchivePage() {
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[12px] font-semibold text-[#43545b]" title={r.filename}>{r.filename}</div>
                         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+<span className={`archive-mono tracking-[.05em] ${
+  reviewPriority(r) >= 90
+    ? 'text-[#994b43]'
+    : reviewPriority(r) >= 60
+      ? 'text-[#a77517]'
+      : 'text-[#7f9194]'
+}`}>
+  {reviewPriorityLabel(r)}
+</span>
                           <span className={`archive-mono tracking-[.05em] ${r.qualityStatus.includes('duplicate') || r.qualityStatus.includes('missing') || r.qualityStatus.includes('needs_review') ? 'text-[#a77517]' : 'text-[#4e9690]'}`}>
                             {r.qualityStatus.replace(/_/g, ' ').toUpperCase()}
                           </span>
