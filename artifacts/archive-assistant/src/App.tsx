@@ -42,7 +42,10 @@ const clerkPubKey = authMode === 'clerk'
   : null;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-setBaseUrl(import.meta.env.VITE_API_BASE_URL?.trim() || null);
+const desktopApiBaseUrl = (window as Window & {
+  __ARCHIVE_API_BASE_URL__?: string;
+}).__ARCHIVE_API_BASE_URL__;
+setBaseUrl(import.meta.env.VITE_API_BASE_URL?.trim() || desktopApiBaseUrl || null);
 
 if (authMode === 'clerk' && !clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');

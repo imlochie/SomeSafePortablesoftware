@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ARCHIVE ASSISTANT",
+  "version": "0.1.0",
+  "identifier": "com.imlochie.archiveassistant",
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../.. --filter @workspace/api-server run build && pnpm --dir ../.. --filter @workspace/archive-assistant run dev",
+    "devUrl": "http://127.0.0.1:3000",
+    "beforeBuildCommand": "pnpm --dir ../.. --filter @workspace/api-server run build && pnpm --dir ../.. --filter @workspace/archive-assistant run build",
+    "frontendDist": "../dist/public"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ARCHIVE ASSISTANT",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 640,
+        "visible": false,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.png"],
+    "resources": ["../../api-server/dist"]
+  }
+}

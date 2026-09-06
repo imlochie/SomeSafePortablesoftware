@@ -4,3 +4,4 @@
 - [Plex sync safety](plex-sync-safety.md) — Reconcile only after a complete fetch; pin approved DNS targets and preserve prior inventory on remote failure.
 - [Archive review identity](archive-review-identity.md) — Review decisions follow owner-scoped evidence, not mutable file flags; changed evidence reopens the finding.
 - [Local and hosted auth modes](local-hosted-auth-modes.md) — Desktop-local use resolves a server-owned __local__ identity; Clerk remains an explicit hosted mode.
+- [Desktop sidecar boundary](desktop-sidecar-boundary.md) — Tauri is only a shell; Node owns the API, SQLite, media tools, and runtime paths.

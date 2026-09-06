@@ -2,6 +2,8 @@
 
 # compiled output
 dist
+artifacts/archive-assistant/src-tauri/target
+artifacts/archive-assistant/src-tauri/gen
 tmp
 out-tsc
 *.tsbuildinfo
