@@ -362,6 +362,75 @@ function EmptyState({ icon: Icon, title, description }: { icon: typeof Activity;
   );
 }
 
+type FindingRecord = {
+  qualityStatus: string;
+  qualitySummary: string;
+  qualityDifferences: string[];
+  duplicateOfId: number | null;
+  plexMatch: { title: string; year: number | null; qualityDifferences: string[] } | null;
+  reviewStatus: string;
+};
+
+function explainFinding(record: FindingRecord) {
+  const differences = record.plexMatch?.qualityDifferences.length
+    ? record.plexMatch.qualityDifferences
+    : record.qualityDifferences;
+  let finding: string;
+  let why: string;
+  let consider: string;
+  let assessment: string;
+
+  if (record.qualityStatus === 'file_missing') {
+    finding = 'This file is known to the archive but was not present during the latest completed scan.';
+    why = 'The local path may have changed, the storage may be unavailable, or the file may have been removed.';
+    consider = 'Check the recorded path and storage before deciding whether the archive record should remain.';
+    assessment = 'INVESTIGATE';
+  } else if (record.qualityStatus === 'duplicate' || record.duplicateOfId !== null) {
+    finding = record.duplicateOfId !== null
+      ? `This record is linked as a duplicate of archive record #${record.duplicateOfId}.`
+      : 'The system found another local record with matching media evidence.';
+    why = 'Duplicate records can represent redundant storage or multiple copies that need an operator decision.';
+    consider = 'Compare the linked records and keep the copy that best fits your storage and library needs.';
+    assessment = 'REVIEW';
+  } else if (record.plexMatch && differences.length > 0) {
+    finding = `LOCAL is matched to PLEX item "${record.plexMatch.title}"${record.plexMatch.year ? ` (${record.plexMatch.year})` : ''}, with quality differences already reported by the system.`;
+    why = record.qualitySummary || 'The local and Plex versions do not have identical reported quality metadata.';
+    consider = `Review the supplied LOCAL / PLEX differences: ${differences.join('; ')}`;
+    assessment = 'KEEP / REVIEW';
+  } else if (record.qualityStatus === 'higher_quality_available') {
+    finding = 'A higher-quality local version is available for this media identity.';
+    why = record.qualitySummary || 'Another local version has a higher quality ranking.';
+    consider = 'Compare versions before deciding whether this record should remain in active use.';
+    assessment = 'REVIEW';
+  } else if (record.qualityStatus === 'lower_quality_version') {
+    finding = 'This is a lower-quality local version of an identity with another available version.';
+    why = record.qualitySummary || 'Another local version ranks higher for the same identity.';
+    consider = 'Review the higher-ranked version and decide whether this copy is still needed.';
+    assessment = 'REVIEW';
+  } else if (record.qualityStatus === 'needs_review') {
+    finding = 'The system could not establish a reliable quality result for this record.';
+    why = record.qualitySummary || 'The record needs operator attention.';
+    consider = 'Inspect the file and metadata before making a library decision.';
+    assessment = 'INVESTIGATE';
+  } else if (record.qualityStatus === 'local_only') {
+    finding = 'This local file exists in the archive, but no Plex identity match was found.';
+    why = 'Identity matching may be unresolved; this does not establish that Plex is missing the media globally.';
+    consider = 'Review the filename, path, and Plex inventory before deciding whether further matching work is needed.';
+    assessment = 'REVIEW';
+  } else {
+    finding = 'The system found no active quality finding for this record.';
+    why = record.qualitySummary || 'The record is informational at this time.';
+    consider = 'No action is required unless the surrounding library context suggests otherwise.';
+    assessment = 'INFORMATIONAL';
+  }
+
+  if (record.reviewStatus === 'unresolved') {
+    consider = `${consider} This finding has not received a resolved operator decision yet.`;
+  }
+
+  return { finding, why, consider, assessment };
+}
+
 function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { data: record, isLoading, isError, refetch } = useGetArchiveRecord(id);
@@ -399,6 +468,24 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
         </div>
         <button onClick={onClose} className="grid h-8 w-8 shrink-0 place-items-center border border-[#e1e8e5] text-[#8a9b9e] hover:bg-[#f3f5f4] hover:text-[#21303d]" aria-label="Close" data-testid="button-close-record"><X size={14} /></button>
       </div>
+
+      {(() => {
+       const explanation = explainFinding(record);
+       return (
+         <section className="mb-6 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-4 text-[11px] leading-5 text-[#43545b]" data-testid="panel-archive-finding">
+           <div className="archive-mono mb-3 text-[10px] tracking-[.14em] text-[#39736e]">WHY THIS IS FLAGGED</div>
+           <div className="space-y-2">
+             <p><span className="font-bold text-[#344851]">FOUND / </span>{explanation.finding}</p>
+             <p><span className="font-bold text-[#344851]">WHY IT MATTERS / </span>{explanation.why}</p>
+             <p><span className="font-bold text-[#344851]">CONSIDER / </span>{explanation.consider}</p>
+           </div>
+           <div className="mt-4 border-t border-[#c9dfd9] pt-3" data-testid="panel-archive-assessment">
+             <div className="archive-mono text-[9px] tracking-[.12em] text-[#6e8185]">SYSTEM ASSESSMENT</div>
+             <div className="mt-1 font-bold tracking-[.08em] text-[#39736e]">{explanation.assessment}</div>
+           </div>
+         </section>
+       );
+      })()}
 
       <div className="space-y-4 text-[12px]">
         <Readout label="Scan Status" value={record.scanStatus.toUpperCase()} tone={record.scanStatus === 'active' ? 'good' : 'warn'} />
