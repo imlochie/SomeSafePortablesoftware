@@ -430,7 +430,7 @@ function explainFinding(record: FindingRecord) {
 
   return { finding, why, consider, assessment };
 }
-function reviewPriority(record: Pick<FindingRecord, 'qualityStatus' | 'duplicateOfId' | 'reviewStatus'>) {
+function reviewPriority(record: Pick<FindingRecord, 'qualityStatus' | 'duplicateOfId' | 'reviewStatus' | 'qualityDifferences' | 'plexMatch'>) {
   if (record.reviewStatus === 'reviewed') return 0;
   if (record.reviewStatus === 'deferred') return 25;
   if (record.reviewStatus === 'unresolved') return 100;
@@ -438,13 +438,21 @@ function reviewPriority(record: Pick<FindingRecord, 'qualityStatus' | 'duplicate
   if (record.qualityStatus === 'file_missing') return 100;
   if (record.qualityStatus === 'needs_review') return 90;
   if (record.qualityStatus === 'duplicate' || record.duplicateOfId !== null) return 80;
-  if (['higher_quality_available', 'lower_quality_version'].includes(record.qualityStatus)) return 70;
+
+  const differences = record.plexMatch?.qualityDifferences.length
+    ? record.plexMatch.qualityDifferences
+    : record.qualityDifferences;
+
+  if (differences.includes('resolution') || differences.includes('dynamic_range')) return 70;
+  if (differences.includes('video_codec') || differences.includes('audio_codec')) return 55;
+  if (differences.length > 0) return 35;
+
   if (record.qualityStatus === 'local_only') return 60;
 
   return 10;
 }
 
-function reviewPriorityLabel(record: Pick<FindingRecord, 'qualityStatus' | 'duplicateOfId' | 'reviewStatus'>) {
+function reviewPriorityLabel(record: Pick<FindingRecord, 'qualityStatus' | 'duplicateOfId' | 'reviewStatus' | 'qualityDifferences' | 'plexMatch'>) {
   const priority = reviewPriority(record);
 
   if (priority >= 90) return 'HIGH';
