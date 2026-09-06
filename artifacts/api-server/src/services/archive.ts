@@ -65,6 +65,20 @@ type FileRow = {
   archive_root?: string | null;
 };
 
+type LocalMediaIdentity = {
+  id: number;
+  identity_key: string;
+  media_type: string;
+  normalized_title: string;
+  year: number | null;
+  show_identity: string | null;
+  season_number: number | null;
+  episode_number: number | null;
+  size_bytes: number | null;
+  fingerprint: string | null;
+  checksum: string | null;
+};
+
 type PlexRow = {
   id: number;
   rating_key: string;
@@ -185,7 +199,7 @@ function plexQualityShape(row: PlexRow): QualityShape {
   };
 }
 
-function qualityRank(shape: QualityShape) {
+export function qualityRank(shape: QualityShape) {
   const height = shape.height ?? 0;
   const hdr = shape.hdr ? 5000 : 0;
   const codec = /av1/i.test(shape.videoCodec ?? "") ? 300 : /265|hevc/i.test(shape.videoCodec ?? "") ? 250 : /264/i.test(shape.videoCodec ?? "") ? 150 : 50;
@@ -753,7 +767,27 @@ function plexTitleIndexes(plexRows: PlexRow[]): PlexTitleIndexes {
   return { byTitle, byTitleAndYear, byTitleWithoutYear, order };
 }
 
-function plexMatch(row: FileRow, indexes: PlexTitleIndexes, episodeIndex: Map<string, PlexRow>) {
+function plexMatch(row: FileRow, indexes: PlexTitleIndexes, episodeIndex: Map<string, PlexRow>, localIdentity?: LocalMediaIdentity) {
+  if (localIdentity) {
+    if (localIdentity.media_type === "tv") {
+      const { show_identity: show, season_number: season, episode_number: episode } = localIdentity;
+      if (show && typeof season === "number" && typeof episode === "number") {
+        return episodeIndex.get(episodeIdentityKey({ show, season, episode }));
+      }
+    }
+    if (localIdentity.media_type === "movie") {
+      const localTitle = localIdentity.normalized_title;
+      const localYear = localIdentity.year;
+      if (localYear === null) return indexes.byTitle.get(localTitle)?.[0];
+      const exactYearRows = indexes.byTitleAndYear.get(`${localTitle}:${localYear}`) ?? [];
+      const missingYearRows = indexes.byTitleWithoutYear.get(localTitle) ?? [];
+      const candidates = [...exactYearRows, ...missingYearRows];
+      return candidates.length ? candidates.reduce((first, candidate) => {
+        if (!first) return candidate;
+        return indexes.order.get(candidate)! < indexes.order.get(first)! ? candidate : first;
+      }, candidates[0]) : undefined;
+    }
+  }
   const episode = localEpisodeIdentity(row.filename);
   if (episode) {
     const episodeMatch = episodeIndex.get(episodeIdentityKey(episode));
@@ -771,8 +805,9 @@ function plexMatch(row: FileRow, indexes: PlexTitleIndexes, episodeIndex: Map<st
   }, candidates[0]) : undefined;
 }
 
-function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, plexTitleIndex: PlexTitleIndexes, reviews: Map<string, ReviewRow>) {
-  const identityKey = `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
+function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, plexTitleIndex: PlexTitleIndexes, reviews: Map<string, ReviewRow>, localIdentity?: LocalMediaIdentity) {
+  const identityKey = localIdentity?.identity_key
+    ?? `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
   const sameIdentity = (indexes.identity.get(identityKey) ?? []).filter((candidate) => candidate.id !== row.id);
   const exactDuplicate = row.checksum
     ? (indexes.checksum.get(row.checksum) ?? []).find((candidate) => candidate.id !== row.id)
@@ -780,7 +815,7 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
   const fingerprintDuplicate = row.fingerprint
     ? (indexes.fingerprint.get(row.fingerprint) ?? []).find((candidate) => candidate.id !== row.id)
     : undefined;
-  const match = plexMatch(row, plexTitleIndex, episodeIndex);
+  const match = plexMatch(row, plexTitleIndex, episodeIndex, localIdentity);
   let qualityStatus: QualityStatus = row.scan_status === "missing"
     ? "file_missing"
     : row.scan_status === "error"
@@ -807,12 +842,28 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     }
   } else if (row.scan_status === "active" && match) {
     const differences = qualityDifferencesFor(row, match);
-    const localRank = qualityRank(qualityShape(row));
-    const plexRank = qualityRank(plexQualityShape(match));
+    const localQuality = qualityShape(row);
+    const plexQuality = plexQualityShape(match);
+    const localRank = qualityRank(localQuality);
+    const plexRank = qualityRank(plexQuality);
+    const resolutionDiffers =
+      localQuality.height !== null &&
+      plexQuality.height !== null &&
+      localQuality.height !== plexQuality.height;
+    const localHasHigherResolution =
+      resolutionDiffers && localQuality.height! > plexQuality.height!;
+    const localHasHdr = localQuality.hdr && !plexQuality.hdr;
+    const plexHasHdr = plexQuality.hdr && !localQuality.hdr;
+    const materialTradeoff =
+      resolutionDiffers &&
+      (localHasHigherResolution ? plexHasHdr : localHasHdr);
     qualityDifferences = differences;
     if (!differences.length) {
       qualityStatus = "plex_version_exists";
       qualitySummary = "A matching Plex item exists with equivalent available quality metadata.";
+    } else if (materialTradeoff) {
+      qualityStatus = "needs_review";
+      qualitySummary = "The local and Plex versions make a material resolution-versus-HDR tradeoff.";
     } else if (localRank > plexRank) {
       qualityStatus = "higher_quality_available";
       qualitySummary = "The local file ranks higher than the matched Plex version on available metadata.";
@@ -889,8 +940,15 @@ type InventoryIndexes = {
 
 function buildArchiveInventory(ownerId: string) {
   const rows = archiveDb.prepare(
-    "SELECT id, archive_item_id, filename, path, relative_path, size_bytes, checksum, media_type, scan_status, error_message, duration_seconds, video_codec, audio_codec, width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages, subtitle_languages, fingerprint, modified_at_ms, last_seen_at FROM file_record WHERE owner_id = ? ORDER BY filename COLLATE NOCASE, path",
+    "SELECT id, archive_item_id, local_identity_id, filename, path, relative_path, size_bytes, checksum, media_type, scan_status, error_message, duration_seconds, video_codec, audio_codec, width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages, subtitle_languages, fingerprint, modified_at_ms, last_seen_at FROM file_record WHERE owner_id = ? ORDER BY filename COLLATE NOCASE, path",
   ).all(ownerId) as FileRow[];
+  const identityRows = archiveDb.prepare(
+    `SELECT id, identity_key, media_type, normalized_title, year, show_identity,
+            season_number, episode_number, size_bytes, fingerprint, checksum
+     FROM local_media_identity
+     WHERE owner_id = ?`,
+  ).all(ownerId) as LocalMediaIdentity[];
+  const identities = new Map(identityRows.map((identity) => [identity.id, identity]));
   const plexRows = readPlexRows(ownerId);
   const episodeIndex = plexEpisodeIndex(plexRows);
   const plexTitleIndex = plexTitleIndexes(plexRows);
@@ -902,7 +960,11 @@ function buildArchiveInventory(ownerId: string) {
   };
   for (const row of rows) {
     if (row.scan_status !== "active") continue;
-    const identityKey = `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
+    const localIdentity = row.local_identity_id === null || row.local_identity_id === undefined
+      ? undefined
+      : identities.get(row.local_identity_id);
+    const identityKey = localIdentity?.identity_key
+      ?? `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
     const identityRows = indexes.identity.get(identityKey) ?? [];
     identityRows.push(row);
     indexes.identity.set(identityKey, identityRows);
@@ -933,7 +995,18 @@ function buildArchiveInventory(ownerId: string) {
   for (const review of reviewRows) {
     reviews.set(`${review.owner_id}:${review.file_record_id}:${review.finding_type}:${review.evidence_key}`, review);
   }
-  const records = rows.map((row) => mapFile(ownerId, row, indexes, plexRows, episodeIndex, plexTitleIndex, reviews));
+  const records = rows.map((row) => mapFile(
+    ownerId,
+    row,
+    indexes,
+    plexRows,
+    episodeIndex,
+    plexTitleIndex,
+    reviews,
+    row.local_identity_id === null || row.local_identity_id === undefined
+      ? undefined
+      : identities.get(row.local_identity_id),
+  ));
   const matchedPlexKeys = new Set(records.map((record) => record.plexMatch?.ratingKey).filter((key): key is string => Boolean(key)));
   const plexOnly = plexRows
     .filter((plex) => !matchedPlexKeys.has(plex.rating_key))
