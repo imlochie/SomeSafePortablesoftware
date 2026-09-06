@@ -156,8 +156,8 @@ fn sidecar_command(app: &AppHandle, port: u16) -> Result<Command, String> {
             configured_path("ARCHIVE_MOCK_MODE", || PathBuf::from("false")),
         )
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
 
     #[cfg(windows)]
     {

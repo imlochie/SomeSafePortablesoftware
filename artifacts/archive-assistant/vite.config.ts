@@ -52,10 +52,13 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port,
-    strictPort: true,
-    host: '0.0.0.0',
-    proxy: {
+  port,
+  strictPort: true,
+  host: '0.0.0.0',
+  watch: {
+    ignored: ['**/src-tauri/target/**'],
+  },
+  proxy: {
         '/api': {
           target: 'http://127.0.0.1:8080',
         changeOrigin: true,
