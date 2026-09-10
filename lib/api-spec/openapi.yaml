@@ -26,6 +26,10 @@ tags:
     description: Persistent local download jobs
   - name: archive
     description: Local archive inventory and media intelligence
+  - name: review
+    description: Generic owner-scoped approval queue
+  - name: operations
+    description: Approval-gated archive filesystem operations
 paths:
   /healthz:
     get:
@@ -402,6 +406,461 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /acquisition-recommendations:
+    get:
+      operationId: listAcquisitionRecommendations
+      tags: [acquisition]
+      summary: List deterministic acquisition recommendations
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: priority
+          in: query
+          schema:
+            $ref: "#/components/schemas/RecommendationPriority"
+        - name: blocked
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Owner-scoped recommendations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AcquisitionRecommendation"
+    post:
+      operationId: generateAcquisitionRecommendations
+      tags: [acquisition]
+      summary: Reconcile recommendations from current archive and provider evidence
+      responses:
+        "200":
+          description: Current recommendations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AcquisitionRecommendation"
+  /acquisition-recommendations/{id}:
+    get:
+      operationId: getAcquisitionRecommendation
+      tags: [acquisition]
+      summary: Inspect one acquisition recommendation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Acquisition recommendation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionRecommendation"
+        "404":
+          description: Recommendation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /review-items:
+    get:
+      operationId: listReviewItems
+      tags: [review]
+      summary: List and filter generic review items
+      parameters:
+        - name: state
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReviewItemState"
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReviewItemKind"
+      responses:
+        "200":
+          description: Review queue
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReviewItem"
+    post:
+      operationId: createReviewItem
+      tags: [review]
+      summary: Idempotently add a subject to the review queue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReviewItem"
+      responses:
+        "201":
+          description: Review item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewItem"
+  /review-items/{id}:
+    get:
+      operationId: getReviewItem
+      tags: [review]
+      summary: Inspect a review item and decision history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Review item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewItem"
+        "404":
+          description: Review item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /review-items/{id}/approve:
+    post:
+      operationId: approveReviewQueueItem
+      tags: [review]
+      summary: Approve a pending or reopened review item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionInput"
+      responses:
+        "200":
+          description: Approved review item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewItem"
+        "400":
+          description: Invalid transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /review-items/{id}/reject:
+    post:
+      operationId: rejectReviewQueueItem
+      tags: [review]
+      summary: Reject a pending or reopened review item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionInput"
+      responses:
+        "200":
+          description: Rejected review item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewItem"
+  /review-items/{id}/defer:
+    post:
+      operationId: deferReviewQueueItem
+      tags: [review]
+      summary: Defer a pending or reopened review item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionInput"
+      responses:
+        "200":
+          description: Deferred review item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewItem"
+  /review-items/{id}/reopen:
+    post:
+      operationId: reopenReviewQueueItem
+      tags: [review]
+      summary: Reopen a decided review item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionInput"
+      responses:
+        "200":
+          description: Reopened review item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewItem"
+  /review-items/{id}/acquisition-job:
+    post:
+      operationId: createApprovedAcquisitionJob
+      tags: [review, acquisition]
+      summary: Explicitly create or return the acquisition job for an approved recommendation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Recommendation and linked acquisition job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovedAcquisitionResult"
+        "400":
+          description: Approval or provider unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /archive-operations:
+    get:
+      operationId: listArchiveOperations
+      tags: [operations]
+      summary: List owner-scoped approved archive operations
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ArchiveOperationStatus"
+      responses:
+        "200":
+          description: Archive operations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArchiveOperation"
+    post:
+      operationId: createArchiveOperation
+      tags: [operations]
+      summary: Plan an operation linked to an approved review item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateArchiveOperation"
+      responses:
+        "201":
+          description: Planned operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
+        "400":
+          description: Approval or input invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /archive-operations/{id}:
+    get:
+      operationId: getArchiveOperation
+      tags: [operations]
+      summary: Inspect one archive operation and its history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Archive operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
+        "404":
+          description: Operation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /archive-operations/{id}/preflight:
+    post:
+      operationId: preflightArchiveOperation
+      tags: [operations]
+      summary: Validate an approved operation without changing files
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Preflight result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
+  /archive-operations/{id}/execute:
+    post:
+      operationId: executeArchiveOperation
+      tags: [operations]
+      summary: Explicitly execute a ready approved operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperationConfirmation"
+      responses:
+        "200":
+          description: Operation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
+        "400":
+          description: Execution rejected or failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /archive-operations/{id}/cancel:
+    post:
+      operationId: cancelArchiveOperation
+      tags: [operations]
+      summary: Cancel an operation before execution
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Cancelled operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
+  /archive-operations/{id}/retry:
+    post:
+      operationId: retryArchiveOperation
+      tags: [operations]
+      summary: Retry preflight for a failed or cancelled operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Retried operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
+  /archive-operations/{id}/rollback:
+    post:
+      operationId: rollbackArchiveOperation
+      tags: [operations]
+      summary: Explicitly roll back a completed operation where supported
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperationConfirmation"
+      responses:
+        "200":
+          description: Rolled back operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
+  /acquisition-jobs/{id}/download:
+    post:
+      operationId: linkAcquisitionDownload
+      tags: [acquisition]
+      summary: Link an owner-scoped local download to an acquisition job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkAcquisitionDownload"
+      responses:
+        "200":
+          description: Updated acquisition job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionJob"
+  /acquisition-jobs/{id}/import:
+    post:
+      operationId: planApprovedAcquisitionImport
+      tags: [acquisition, operations]
+      summary: Plan an approved import from a completed verified download
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanAcquisitionImport"
+      responses:
+        "201":
+          description: Planned import operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
   /archive/media-lookup:
     get:
       operationId: lookupArchiveMedia
@@ -2048,6 +2507,207 @@ components:
           type: ["string", "null"]
         detail:
           type: string
+    ReviewItemKind:
+      type: string
+      enum: [acquisition_recommendation, naming_proposal, archive_finding, operation_approval]
+    ReviewItemState:
+      type: string
+      enum: [pending, approved, rejected, deferred, reopened]
+    ReviewItemDecision:
+      type: object
+      required: [id, fromState, toState, note, decidedBy, createdAt]
+      properties:
+        id: { type: number }
+        fromState:
+          oneOf:
+            - $ref: "#/components/schemas/ReviewItemState"
+            - type: "null"
+        toState:
+          $ref: "#/components/schemas/ReviewItemState"
+        note: { type: ["string", "null"] }
+        decidedBy: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+    ReviewItem:
+      type: object
+      required: [id, kind, subjectKey, title, state, payload, note, decisionAt, decidedBy, createdAt, updatedAt, decisions]
+      properties:
+        id: { type: number }
+        kind:
+          $ref: "#/components/schemas/ReviewItemKind"
+        subjectKey: { type: string }
+        title: { type: string }
+        state:
+          $ref: "#/components/schemas/ReviewItemState"
+        payload:
+          type: object
+          additionalProperties: true
+        note: { type: ["string", "null"] }
+        decisionAt: { type: ["string", "null"], format: date-time }
+        decidedBy: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewItemDecision"
+    CreateReviewItem:
+      type: object
+      required: [kind, subjectKey, title]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ReviewItemKind"
+        subjectKey: { type: string, minLength: 1 }
+        title: { type: string, minLength: 1 }
+        payload:
+          type: object
+          additionalProperties: true
+    ReviewDecisionInput:
+      type: object
+      properties:
+        note: { type: ["string", "null"] }
+    RecommendationConfidence:
+      type: string
+      enum: [high, medium, low, unknown]
+    RecommendationPriority:
+      type: string
+      enum: [critical, high, medium, low]
+    AcquisitionRecommendation:
+      type: object
+      required: [id, recommendationKey, mediaType, title, year, externalId, target, evidence, preferredQuality, destination, route, blockers, confidence, priority, status, reviewItemId, acquisitionJobId, evidenceHash, generatedAt, updatedAt]
+      properties:
+        id: { type: number }
+        recommendationKey: { type: string }
+        mediaType: { type: string }
+        title: { type: string }
+        year: { type: ["number", "null"] }
+        externalId: { type: ["string", "null"] }
+        target:
+          type: object
+          additionalProperties: true
+        evidence:
+          type: object
+          additionalProperties: true
+        preferredQuality:
+          type: object
+          additionalProperties: true
+        destination:
+          type: object
+          additionalProperties: true
+        route:
+          type: object
+          additionalProperties: true
+        blockers:
+          type: array
+          items: { type: string }
+        confidence:
+          $ref: "#/components/schemas/RecommendationConfidence"
+        priority:
+          $ref: "#/components/schemas/RecommendationPriority"
+        status: { type: string }
+        reviewItemId: { type: ["number", "null"] }
+        acquisitionJobId: { type: ["number", "null"] }
+        evidenceHash: { type: string }
+        generatedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ApprovedAcquisitionResult:
+      type: object
+      required: [recommendation, job, created]
+      properties:
+        recommendation:
+          $ref: "#/components/schemas/AcquisitionRecommendation"
+        job:
+          $ref: "#/components/schemas/AcquisitionJob"
+        created: { type: boolean }
+    ArchiveOperationAction:
+      type: string
+      enum: [rename, move, import]
+    ArchiveOperationStatus:
+      type: string
+      enum: [planned, preflight, ready, executing, completed, failed, cancelled, rolled_back]
+    ArchiveOperationEvent:
+      type: object
+      required: [id, fromStatus, toStatus, detail, metadata, createdAt]
+      properties:
+        id: { type: number }
+        fromStatus:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveOperationStatus"
+            - type: "null"
+        toStatus:
+          $ref: "#/components/schemas/ArchiveOperationStatus"
+        detail: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+    ArchiveOperation:
+      type: object
+      required: [id, operationKey, action, sourceKind, sourceId, sourcePath, destinationPath, reviewItemId, acquisitionJobId, downloadJobId, status, dryRun, retryCount, maxRetries, preflight, rollback, errorCode, errorMessage, createdAt, startedAt, completedAt, cancelledAt, updatedAt, events]
+      properties:
+        id: { type: number }
+        operationKey: { type: string }
+        action:
+          $ref: "#/components/schemas/ArchiveOperationAction"
+        sourceKind: { type: string }
+        sourceId: { type: ["string", "null"] }
+        sourcePath: { type: string }
+        destinationPath: { type: string }
+        reviewItemId: { type: number }
+        acquisitionJobId: { type: ["number", "null"] }
+        downloadJobId: { type: ["number", "null"] }
+        status:
+          $ref: "#/components/schemas/ArchiveOperationStatus"
+        dryRun: { type: boolean }
+        retryCount: { type: number }
+        maxRetries: { type: number }
+        preflight:
+          type: object
+          additionalProperties: true
+        rollback:
+          type: object
+          additionalProperties: true
+        errorCode: { type: ["string", "null"] }
+        errorMessage: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: ["string", "null"], format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+        cancelledAt: { type: ["string", "null"], format: date-time }
+        updatedAt: { type: string, format: date-time }
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveOperationEvent"
+    CreateArchiveOperation:
+      type: object
+      required: [action, sourceKind, sourcePath, destinationPath, reviewItemId]
+      properties:
+        action:
+          $ref: "#/components/schemas/ArchiveOperationAction"
+        sourceKind: { type: string, minLength: 1 }
+        sourceId: { type: ["string", "null"] }
+        sourcePath: { type: string, minLength: 1 }
+        destinationPath: { type: string, minLength: 1 }
+        reviewItemId: { type: number, minimum: 1 }
+        acquisitionJobId: { type: ["number", "null"], minimum: 1 }
+        downloadJobId: { type: ["number", "null"], minimum: 1 }
+        dryRun: { type: boolean, default: false }
+        idempotencyKey: { type: string }
+    OperationConfirmation:
+      type: object
+      required: [confirmed]
+      properties:
+        confirmed: { type: boolean }
+    LinkAcquisitionDownload:
+      type: object
+      required: [downloadJobId]
+      properties:
+        downloadJobId: { type: number, minimum: 1 }
+    PlanAcquisitionImport:
+      type: object
+      required: [destinationPath]
+      properties:
+        destinationPath: { type: string, minLength: 1 }
+        dryRun: { type: boolean, default: false }
     ErrorResponse:
       type: object
       required: [error]

@@ -1175,12 +1175,272 @@ export interface ProgressAcquisitionJob {
   detail?: string;
 }
 
+export type ReviewItemKind = typeof ReviewItemKind[keyof typeof ReviewItemKind];
+
+
+export const ReviewItemKind = {
+  acquisition_recommendation: 'acquisition_recommendation',
+  naming_proposal: 'naming_proposal',
+  archive_finding: 'archive_finding',
+  operation_approval: 'operation_approval',
+} as const;
+
+export type ReviewItemState = typeof ReviewItemState[keyof typeof ReviewItemState];
+
+
+export const ReviewItemState = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+  deferred: 'deferred',
+  reopened: 'reopened',
+} as const;
+
+export interface ReviewItemDecision {
+  id: number;
+  fromState: ReviewItemState | null;
+  toState: ReviewItemState;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  decidedBy: string | null;
+  createdAt: string;
+}
+
+export type ReviewItemPayload = { [key: string]: unknown };
+
+export interface ReviewItem {
+  id: number;
+  kind: ReviewItemKind;
+  subjectKey: string;
+  title: string;
+  state: ReviewItemState;
+  payload: ReviewItemPayload;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  decisionAt: string | null;
+  /** @nullable */
+  decidedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  decisions: ReviewItemDecision[];
+}
+
+export type CreateReviewItemPayload = { [key: string]: unknown };
+
+export interface CreateReviewItem {
+  kind: ReviewItemKind;
+  /** @minLength 1 */
+  subjectKey: string;
+  /** @minLength 1 */
+  title: string;
+  payload?: CreateReviewItemPayload;
+}
+
+export interface ReviewDecisionInput {
+  /** @nullable */
+  note?: string | null;
+}
+
+export type RecommendationConfidence = typeof RecommendationConfidence[keyof typeof RecommendationConfidence];
+
+
+export const RecommendationConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  unknown: 'unknown',
+} as const;
+
+export type RecommendationPriority = typeof RecommendationPriority[keyof typeof RecommendationPriority];
+
+
+export const RecommendationPriority = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type AcquisitionRecommendationTarget = { [key: string]: unknown };
+
+export type AcquisitionRecommendationEvidence = { [key: string]: unknown };
+
+export type AcquisitionRecommendationPreferredQuality = { [key: string]: unknown };
+
+export type AcquisitionRecommendationDestination = { [key: string]: unknown };
+
+export type AcquisitionRecommendationRoute = { [key: string]: unknown };
+
+export interface AcquisitionRecommendation {
+  id: number;
+  recommendationKey: string;
+  mediaType: string;
+  title: string;
+  /** @nullable */
+  year: number | null;
+  /** @nullable */
+  externalId: string | null;
+  target: AcquisitionRecommendationTarget;
+  evidence: AcquisitionRecommendationEvidence;
+  preferredQuality: AcquisitionRecommendationPreferredQuality;
+  destination: AcquisitionRecommendationDestination;
+  route: AcquisitionRecommendationRoute;
+  blockers: string[];
+  confidence: RecommendationConfidence;
+  priority: RecommendationPriority;
+  status: string;
+  /** @nullable */
+  reviewItemId: number | null;
+  /** @nullable */
+  acquisitionJobId: number | null;
+  evidenceHash: string;
+  generatedAt: string;
+  updatedAt: string;
+}
+
+export interface ApprovedAcquisitionResult {
+  recommendation: AcquisitionRecommendation;
+  job: AcquisitionJob;
+  created: boolean;
+}
+
+export type ArchiveOperationAction = typeof ArchiveOperationAction[keyof typeof ArchiveOperationAction];
+
+
+export const ArchiveOperationAction = {
+  rename: 'rename',
+  move: 'move',
+  import: 'import',
+} as const;
+
+export type ArchiveOperationStatus = typeof ArchiveOperationStatus[keyof typeof ArchiveOperationStatus];
+
+
+export const ArchiveOperationStatus = {
+  planned: 'planned',
+  preflight: 'preflight',
+  ready: 'ready',
+  executing: 'executing',
+  completed: 'completed',
+  failed: 'failed',
+  cancelled: 'cancelled',
+  rolled_back: 'rolled_back',
+} as const;
+
+export type ArchiveOperationEventMetadata = { [key: string]: unknown };
+
+export interface ArchiveOperationEvent {
+  id: number;
+  fromStatus: ArchiveOperationStatus | null;
+  toStatus: ArchiveOperationStatus;
+  detail: string;
+  metadata: ArchiveOperationEventMetadata;
+  createdAt: string;
+}
+
+export type ArchiveOperationPreflight = { [key: string]: unknown };
+
+export type ArchiveOperationRollback = { [key: string]: unknown };
+
+export interface ArchiveOperation {
+  id: number;
+  operationKey: string;
+  action: ArchiveOperationAction;
+  sourceKind: string;
+  /** @nullable */
+  sourceId: string | null;
+  sourcePath: string;
+  destinationPath: string;
+  reviewItemId: number;
+  /** @nullable */
+  acquisitionJobId: number | null;
+  /** @nullable */
+  downloadJobId: number | null;
+  status: ArchiveOperationStatus;
+  dryRun: boolean;
+  retryCount: number;
+  maxRetries: number;
+  preflight: ArchiveOperationPreflight;
+  rollback: ArchiveOperationRollback;
+  /** @nullable */
+  errorCode: string | null;
+  /** @nullable */
+  errorMessage: string | null;
+  createdAt: string;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  updatedAt: string;
+  events: ArchiveOperationEvent[];
+}
+
+export interface CreateArchiveOperation {
+  action: ArchiveOperationAction;
+  /** @minLength 1 */
+  sourceKind: string;
+  /** @nullable */
+  sourceId?: string | null;
+  /** @minLength 1 */
+  sourcePath: string;
+  /** @minLength 1 */
+  destinationPath: string;
+  /** @minimum 1 */
+  reviewItemId: number;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  acquisitionJobId?: number | null;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  downloadJobId?: number | null;
+  dryRun?: boolean;
+  idempotencyKey?: string;
+}
+
+export interface OperationConfirmation {
+  confirmed: boolean;
+}
+
+export interface LinkAcquisitionDownload {
+  /** @minimum 1 */
+  downloadJobId: number;
+}
+
+export interface PlanAcquisitionImport {
+  /** @minLength 1 */
+  destinationPath: string;
+  dryRun?: boolean;
+}
+
 export interface ErrorResponse {
   error: string;
 }
 
 export type GetAcquisitionJobsParams = {
 state?: AcquisitionJobState;
+};
+
+export type ListAcquisitionRecommendationsParams = {
+status?: string;
+priority?: RecommendationPriority;
+blocked?: boolean;
+};
+
+export type ListReviewItemsParams = {
+state?: ReviewItemState;
+kind?: ReviewItemKind;
+};
+
+export type ListArchiveOperationsParams = {
+status?: ArchiveOperationStatus;
 };
 
 export type LookupArchiveMediaParams = {

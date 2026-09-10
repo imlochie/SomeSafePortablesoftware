@@ -21,16 +21,21 @@ import type {
 
 import type {
   AcquisitionJob,
+  AcquisitionRecommendation,
   AppSettings,
   AppSettingsUpdate,
+  ApprovedAcquisitionResult,
   ArchiveBulkReviewResponse,
   ArchiveBulkReviewUpdate,
   ArchiveInventory,
   ArchiveInventoryRecord,
+  ArchiveOperation,
   ArchiveReview,
   ArchiveReviewUpdate,
   ArchiveScan,
   CreateAcquisitionJob,
+  CreateArchiveOperation,
+  CreateReviewItem,
   DependencyStatus,
   DiscoverArchiveMissingMediaParams,
   DownloadJob,
@@ -41,6 +46,10 @@ import type {
   GetAcquisitionJobsParams,
   HealthStatus,
   IntegrationStatusResponse,
+  LinkAcquisitionDownload,
+  ListAcquisitionRecommendationsParams,
+  ListArchiveOperationsParams,
+  ListReviewItemsParams,
   LocalMediaInspectInput,
   LocalMediaInspection,
   LookupArchiveMediaParams,
@@ -48,11 +57,15 @@ import type {
   MediaInspection,
   MediaLookupResponse,
   MissingMediaResponse,
+  OperationConfirmation,
+  PlanAcquisitionImport,
   PlexConfig,
   PlexConfigUpdate,
   PlexInventory,
   ProgressAcquisitionJob,
   RequestArchiveAcquisition,
+  ReviewDecisionInput,
+  ReviewItem,
   RotateWebhookSecretBody,
   SystemEvent,
   SystemOverview,
@@ -1653,6 +1666,1562 @@ export const useRefreshAcquisitionJob = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getRefreshAcquisitionJobMutationOptions(options));
+    }
+
+export const getListAcquisitionRecommendationsUrl = (params?: ListAcquisitionRecommendationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acquisition-recommendations?${stringifiedParams}` : `/api/acquisition-recommendations`
+}
+
+/**
+ * @summary List deterministic acquisition recommendations
+ */
+export const listAcquisitionRecommendations = async (params?: ListAcquisitionRecommendationsParams, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionRecommendation[]> => {
+
+  return customFetch<AcquisitionRecommendation[]>(getListAcquisitionRecommendationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcquisitionRecommendationsQueryKey = (params?: ListAcquisitionRecommendationsParams,) => {
+    return [
+    `/api/acquisition-recommendations`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAcquisitionRecommendationsQueryOptions = <TData = Awaited<ReturnType<typeof listAcquisitionRecommendations>>, TError = ErrorType<unknown>>(params?: ListAcquisitionRecommendationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcquisitionRecommendations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcquisitionRecommendationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcquisitionRecommendations>>> = ({ signal }) => listAcquisitionRecommendations(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcquisitionRecommendations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcquisitionRecommendationsQueryResult = NonNullable<Awaited<ReturnType<typeof listAcquisitionRecommendations>>>
+export type ListAcquisitionRecommendationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List deterministic acquisition recommendations
+ */
+
+export function useListAcquisitionRecommendations<TData = Awaited<ReturnType<typeof listAcquisitionRecommendations>>, TError = ErrorType<unknown>>(
+ params?: ListAcquisitionRecommendationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcquisitionRecommendations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcquisitionRecommendationsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGenerateAcquisitionRecommendationsUrl = () => {
+
+
+
+
+  return `/api/acquisition-recommendations`
+}
+
+/**
+ * @summary Reconcile recommendations from current archive and provider evidence
+ */
+export const generateAcquisitionRecommendations = async ( options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionRecommendation[]> => {
+
+  return customFetch<AcquisitionRecommendation[]>(getGenerateAcquisitionRecommendationsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getGenerateAcquisitionRecommendationsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateAcquisitionRecommendations>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateAcquisitionRecommendations>>, TError,void, TContext> => {
+
+const mutationKey = ['generateAcquisitionRecommendations'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateAcquisitionRecommendations>>, void> = () => {
+
+
+          return  generateAcquisitionRecommendations(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateAcquisitionRecommendationsMutationResult = NonNullable<Awaited<ReturnType<typeof generateAcquisitionRecommendations>>>
+
+    export type GenerateAcquisitionRecommendationsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reconcile recommendations from current archive and provider evidence
+ */
+export const useGenerateAcquisitionRecommendations = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateAcquisitionRecommendations>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateAcquisitionRecommendations>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getGenerateAcquisitionRecommendationsMutationOptions(options));
+    }
+
+export const getGetAcquisitionRecommendationUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition-recommendations/${id}`
+}
+
+/**
+ * @summary Inspect one acquisition recommendation
+ */
+export const getAcquisitionRecommendation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionRecommendation> => {
+
+  return customFetch<AcquisitionRecommendation>(getGetAcquisitionRecommendationUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcquisitionRecommendationQueryKey = (id: number,) => {
+    return [
+    `/api/acquisition-recommendations/${id}`
+    ] as const;
+    }
+
+
+export const getGetAcquisitionRecommendationQueryOptions = <TData = Awaited<ReturnType<typeof getAcquisitionRecommendation>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionRecommendation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcquisitionRecommendationQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcquisitionRecommendation>>> = ({ signal }) => getAcquisitionRecommendation(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionRecommendation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcquisitionRecommendationQueryResult = NonNullable<Awaited<ReturnType<typeof getAcquisitionRecommendation>>>
+export type GetAcquisitionRecommendationQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Inspect one acquisition recommendation
+ */
+
+export function useGetAcquisitionRecommendation<TData = Awaited<ReturnType<typeof getAcquisitionRecommendation>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionRecommendation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcquisitionRecommendationQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListReviewItemsUrl = (params?: ListReviewItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/review-items?${stringifiedParams}` : `/api/review-items`
+}
+
+/**
+ * @summary List and filter generic review items
+ */
+export const listReviewItems = async (params?: ListReviewItemsParams, options?: Parameters<typeof customFetch>[1]): Promise<ReviewItem[]> => {
+
+  return customFetch<ReviewItem[]>(getListReviewItemsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListReviewItemsQueryKey = (params?: ListReviewItemsParams,) => {
+    return [
+    `/api/review-items`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListReviewItemsQueryOptions = <TData = Awaited<ReturnType<typeof listReviewItems>>, TError = ErrorType<unknown>>(params?: ListReviewItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReviewItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListReviewItemsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listReviewItems>>> = ({ signal }) => listReviewItems(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listReviewItems>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListReviewItemsQueryResult = NonNullable<Awaited<ReturnType<typeof listReviewItems>>>
+export type ListReviewItemsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List and filter generic review items
+ */
+
+export function useListReviewItems<TData = Awaited<ReturnType<typeof listReviewItems>>, TError = ErrorType<unknown>>(
+ params?: ListReviewItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listReviewItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListReviewItemsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateReviewItemUrl = () => {
+
+
+
+
+  return `/api/review-items`
+}
+
+/**
+ * @summary Idempotently add a subject to the review queue
+ */
+export const createReviewItem = async (createReviewItem: CreateReviewItem, options?: Parameters<typeof customFetch>[1]): Promise<ReviewItem> => {
+
+  return customFetch<ReviewItem>(getCreateReviewItemUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createReviewItem)
+  }
+);}
+
+
+
+
+
+export const getCreateReviewItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReviewItem>>, TError,{data: BodyType<CreateReviewItem>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createReviewItem>>, TError,{data: BodyType<CreateReviewItem>}, TContext> => {
+
+const mutationKey = ['createReviewItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createReviewItem>>, {data: BodyType<CreateReviewItem>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createReviewItem(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateReviewItemMutationResult = NonNullable<Awaited<ReturnType<typeof createReviewItem>>>
+    export type CreateReviewItemMutationBody = BodyType<CreateReviewItem>
+    export type CreateReviewItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Idempotently add a subject to the review queue
+ */
+export const useCreateReviewItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createReviewItem>>, TError,{data: BodyType<CreateReviewItem>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createReviewItem>>,
+        TError,
+        {data: BodyType<CreateReviewItem>},
+        TContext
+      > => {
+      return useMutation(getCreateReviewItemMutationOptions(options));
+    }
+
+export const getGetReviewItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/review-items/${id}`
+}
+
+/**
+ * @summary Inspect a review item and decision history
+ */
+export const getReviewItem = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ReviewItem> => {
+
+  return customFetch<ReviewItem>(getGetReviewItemUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReviewItemQueryKey = (id: number,) => {
+    return [
+    `/api/review-items/${id}`
+    ] as const;
+    }
+
+
+export const getGetReviewItemQueryOptions = <TData = Awaited<ReturnType<typeof getReviewItem>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReviewItem>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReviewItemQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReviewItem>>> = ({ signal }) => getReviewItem(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReviewItem>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReviewItemQueryResult = NonNullable<Awaited<ReturnType<typeof getReviewItem>>>
+export type GetReviewItemQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Inspect a review item and decision history
+ */
+
+export function useGetReviewItem<TData = Awaited<ReturnType<typeof getReviewItem>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReviewItem>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReviewItemQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getApproveReviewQueueItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/review-items/${id}/approve`
+}
+
+/**
+ * @summary Approve a pending or reopened review item
+ */
+export const approveReviewQueueItem = async (id: number,
+    reviewDecisionInput?: ReviewDecisionInput, options?: Parameters<typeof customFetch>[1]): Promise<ReviewItem> => {
+
+  return customFetch<ReviewItem>(getApproveReviewQueueItemUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reviewDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getApproveReviewQueueItemMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext> => {
+
+const mutationKey = ['approveReviewQueueItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveReviewQueueItem>>, {id: number;data?: BodyType<ReviewDecisionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  approveReviewQueueItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveReviewQueueItemMutationResult = NonNullable<Awaited<ReturnType<typeof approveReviewQueueItem>>>
+    export type ApproveReviewQueueItemMutationBody = BodyType<ReviewDecisionInput> | undefined
+    export type ApproveReviewQueueItemMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Approve a pending or reopened review item
+ */
+export const useApproveReviewQueueItem = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveReviewQueueItem>>,
+        TError,
+        {id: number;data?: BodyType<ReviewDecisionInput>},
+        TContext
+      > => {
+      return useMutation(getApproveReviewQueueItemMutationOptions(options));
+    }
+
+export const getRejectReviewQueueItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/review-items/${id}/reject`
+}
+
+/**
+ * @summary Reject a pending or reopened review item
+ */
+export const rejectReviewQueueItem = async (id: number,
+    reviewDecisionInput?: ReviewDecisionInput, options?: Parameters<typeof customFetch>[1]): Promise<ReviewItem> => {
+
+  return customFetch<ReviewItem>(getRejectReviewQueueItemUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reviewDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getRejectReviewQueueItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rejectReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext> => {
+
+const mutationKey = ['rejectReviewQueueItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rejectReviewQueueItem>>, {id: number;data?: BodyType<ReviewDecisionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  rejectReviewQueueItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RejectReviewQueueItemMutationResult = NonNullable<Awaited<ReturnType<typeof rejectReviewQueueItem>>>
+    export type RejectReviewQueueItemMutationBody = BodyType<ReviewDecisionInput> | undefined
+    export type RejectReviewQueueItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reject a pending or reopened review item
+ */
+export const useRejectReviewQueueItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rejectReviewQueueItem>>,
+        TError,
+        {id: number;data?: BodyType<ReviewDecisionInput>},
+        TContext
+      > => {
+      return useMutation(getRejectReviewQueueItemMutationOptions(options));
+    }
+
+export const getDeferReviewQueueItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/review-items/${id}/defer`
+}
+
+/**
+ * @summary Defer a pending or reopened review item
+ */
+export const deferReviewQueueItem = async (id: number,
+    reviewDecisionInput?: ReviewDecisionInput, options?: Parameters<typeof customFetch>[1]): Promise<ReviewItem> => {
+
+  return customFetch<ReviewItem>(getDeferReviewQueueItemUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reviewDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getDeferReviewQueueItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deferReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deferReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext> => {
+
+const mutationKey = ['deferReviewQueueItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deferReviewQueueItem>>, {id: number;data?: BodyType<ReviewDecisionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  deferReviewQueueItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeferReviewQueueItemMutationResult = NonNullable<Awaited<ReturnType<typeof deferReviewQueueItem>>>
+    export type DeferReviewQueueItemMutationBody = BodyType<ReviewDecisionInput> | undefined
+    export type DeferReviewQueueItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Defer a pending or reopened review item
+ */
+export const useDeferReviewQueueItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deferReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deferReviewQueueItem>>,
+        TError,
+        {id: number;data?: BodyType<ReviewDecisionInput>},
+        TContext
+      > => {
+      return useMutation(getDeferReviewQueueItemMutationOptions(options));
+    }
+
+export const getReopenReviewQueueItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/review-items/${id}/reopen`
+}
+
+/**
+ * @summary Reopen a decided review item
+ */
+export const reopenReviewQueueItem = async (id: number,
+    reviewDecisionInput?: ReviewDecisionInput, options?: Parameters<typeof customFetch>[1]): Promise<ReviewItem> => {
+
+  return customFetch<ReviewItem>(getReopenReviewQueueItemUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reviewDecisionInput)
+  }
+);}
+
+
+
+
+
+export const getReopenReviewQueueItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reopenReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reopenReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext> => {
+
+const mutationKey = ['reopenReviewQueueItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reopenReviewQueueItem>>, {id: number;data?: BodyType<ReviewDecisionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reopenReviewQueueItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReopenReviewQueueItemMutationResult = NonNullable<Awaited<ReturnType<typeof reopenReviewQueueItem>>>
+    export type ReopenReviewQueueItemMutationBody = BodyType<ReviewDecisionInput> | undefined
+    export type ReopenReviewQueueItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reopen a decided review item
+ */
+export const useReopenReviewQueueItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reopenReviewQueueItem>>, TError,{id: number;data?: BodyType<ReviewDecisionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reopenReviewQueueItem>>,
+        TError,
+        {id: number;data?: BodyType<ReviewDecisionInput>},
+        TContext
+      > => {
+      return useMutation(getReopenReviewQueueItemMutationOptions(options));
+    }
+
+export const getCreateApprovedAcquisitionJobUrl = (id: number,) => {
+
+
+
+
+  return `/api/review-items/${id}/acquisition-job`
+}
+
+/**
+ * @summary Explicitly create or return the acquisition job for an approved recommendation
+ */
+export const createApprovedAcquisitionJob = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ApprovedAcquisitionResult> => {
+
+  return customFetch<ApprovedAcquisitionResult>(getCreateApprovedAcquisitionJobUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateApprovedAcquisitionJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createApprovedAcquisitionJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createApprovedAcquisitionJob>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['createApprovedAcquisitionJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createApprovedAcquisitionJob>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  createApprovedAcquisitionJob(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateApprovedAcquisitionJobMutationResult = NonNullable<Awaited<ReturnType<typeof createApprovedAcquisitionJob>>>
+
+    export type CreateApprovedAcquisitionJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Explicitly create or return the acquisition job for an approved recommendation
+ */
+export const useCreateApprovedAcquisitionJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createApprovedAcquisitionJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createApprovedAcquisitionJob>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getCreateApprovedAcquisitionJobMutationOptions(options));
+    }
+
+export const getListArchiveOperationsUrl = (params?: ListArchiveOperationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive-operations?${stringifiedParams}` : `/api/archive-operations`
+}
+
+/**
+ * @summary List owner-scoped approved archive operations
+ */
+export const listArchiveOperations = async (params?: ListArchiveOperationsParams, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation[]> => {
+
+  return customFetch<ArchiveOperation[]>(getListArchiveOperationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListArchiveOperationsQueryKey = (params?: ListArchiveOperationsParams,) => {
+    return [
+    `/api/archive-operations`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListArchiveOperationsQueryOptions = <TData = Awaited<ReturnType<typeof listArchiveOperations>>, TError = ErrorType<unknown>>(params?: ListArchiveOperationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listArchiveOperations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListArchiveOperationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listArchiveOperations>>> = ({ signal }) => listArchiveOperations(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listArchiveOperations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListArchiveOperationsQueryResult = NonNullable<Awaited<ReturnType<typeof listArchiveOperations>>>
+export type ListArchiveOperationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List owner-scoped approved archive operations
+ */
+
+export function useListArchiveOperations<TData = Awaited<ReturnType<typeof listArchiveOperations>>, TError = ErrorType<unknown>>(
+ params?: ListArchiveOperationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listArchiveOperations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListArchiveOperationsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateArchiveOperationUrl = () => {
+
+
+
+
+  return `/api/archive-operations`
+}
+
+/**
+ * @summary Plan an operation linked to an approved review item
+ */
+export const createArchiveOperation = async (createArchiveOperation: CreateArchiveOperation, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getCreateArchiveOperationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createArchiveOperation)
+  }
+);}
+
+
+
+
+
+export const getCreateArchiveOperationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createArchiveOperation>>, TError,{data: BodyType<CreateArchiveOperation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createArchiveOperation>>, TError,{data: BodyType<CreateArchiveOperation>}, TContext> => {
+
+const mutationKey = ['createArchiveOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createArchiveOperation>>, {data: BodyType<CreateArchiveOperation>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createArchiveOperation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateArchiveOperationMutationResult = NonNullable<Awaited<ReturnType<typeof createArchiveOperation>>>
+    export type CreateArchiveOperationMutationBody = BodyType<CreateArchiveOperation>
+    export type CreateArchiveOperationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Plan an operation linked to an approved review item
+ */
+export const useCreateArchiveOperation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createArchiveOperation>>, TError,{data: BodyType<CreateArchiveOperation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createArchiveOperation>>,
+        TError,
+        {data: BodyType<CreateArchiveOperation>},
+        TContext
+      > => {
+      return useMutation(getCreateArchiveOperationMutationOptions(options));
+    }
+
+export const getGetArchiveOperationUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive-operations/${id}`
+}
+
+/**
+ * @summary Inspect one archive operation and its history
+ */
+export const getArchiveOperation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getGetArchiveOperationUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveOperationQueryKey = (id: number,) => {
+    return [
+    `/api/archive-operations/${id}`
+    ] as const;
+    }
+
+
+export const getGetArchiveOperationQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveOperation>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveOperation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveOperationQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveOperation>>> = ({ signal }) => getArchiveOperation(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveOperation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveOperationQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveOperation>>>
+export type GetArchiveOperationQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Inspect one archive operation and its history
+ */
+
+export function useGetArchiveOperation<TData = Awaited<ReturnType<typeof getArchiveOperation>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveOperation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveOperationQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPreflightArchiveOperationUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive-operations/${id}/preflight`
+}
+
+/**
+ * @summary Validate an approved operation without changing files
+ */
+export const preflightArchiveOperation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getPreflightArchiveOperationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPreflightArchiveOperationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof preflightArchiveOperation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof preflightArchiveOperation>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['preflightArchiveOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof preflightArchiveOperation>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  preflightArchiveOperation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreflightArchiveOperationMutationResult = NonNullable<Awaited<ReturnType<typeof preflightArchiveOperation>>>
+
+    export type PreflightArchiveOperationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Validate an approved operation without changing files
+ */
+export const usePreflightArchiveOperation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof preflightArchiveOperation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof preflightArchiveOperation>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getPreflightArchiveOperationMutationOptions(options));
+    }
+
+export const getExecuteArchiveOperationUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive-operations/${id}/execute`
+}
+
+/**
+ * @summary Explicitly execute a ready approved operation
+ */
+export const executeArchiveOperation = async (id: number,
+    operationConfirmation: OperationConfirmation, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getExecuteArchiveOperationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(operationConfirmation)
+  }
+);}
+
+
+
+
+
+export const getExecuteArchiveOperationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof executeArchiveOperation>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof executeArchiveOperation>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext> => {
+
+const mutationKey = ['executeArchiveOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof executeArchiveOperation>>, {id: number;data: BodyType<OperationConfirmation>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  executeArchiveOperation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExecuteArchiveOperationMutationResult = NonNullable<Awaited<ReturnType<typeof executeArchiveOperation>>>
+    export type ExecuteArchiveOperationMutationBody = BodyType<OperationConfirmation>
+    export type ExecuteArchiveOperationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Explicitly execute a ready approved operation
+ */
+export const useExecuteArchiveOperation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof executeArchiveOperation>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof executeArchiveOperation>>,
+        TError,
+        {id: number;data: BodyType<OperationConfirmation>},
+        TContext
+      > => {
+      return useMutation(getExecuteArchiveOperationMutationOptions(options));
+    }
+
+export const getCancelArchiveOperationUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive-operations/${id}/cancel`
+}
+
+/**
+ * @summary Cancel an operation before execution
+ */
+export const cancelArchiveOperation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getCancelArchiveOperationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelArchiveOperationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelArchiveOperation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelArchiveOperation>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['cancelArchiveOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelArchiveOperation>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  cancelArchiveOperation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelArchiveOperationMutationResult = NonNullable<Awaited<ReturnType<typeof cancelArchiveOperation>>>
+
+    export type CancelArchiveOperationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Cancel an operation before execution
+ */
+export const useCancelArchiveOperation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelArchiveOperation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelArchiveOperation>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getCancelArchiveOperationMutationOptions(options));
+    }
+
+export const getRetryArchiveOperationUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive-operations/${id}/retry`
+}
+
+/**
+ * @summary Retry preflight for a failed or cancelled operation
+ */
+export const retryArchiveOperation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getRetryArchiveOperationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryArchiveOperationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryArchiveOperation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryArchiveOperation>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['retryArchiveOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryArchiveOperation>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  retryArchiveOperation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryArchiveOperationMutationResult = NonNullable<Awaited<ReturnType<typeof retryArchiveOperation>>>
+
+    export type RetryArchiveOperationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Retry preflight for a failed or cancelled operation
+ */
+export const useRetryArchiveOperation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryArchiveOperation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryArchiveOperation>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRetryArchiveOperationMutationOptions(options));
+    }
+
+export const getRollbackArchiveOperationUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive-operations/${id}/rollback`
+}
+
+/**
+ * @summary Explicitly roll back a completed operation where supported
+ */
+export const rollbackArchiveOperation = async (id: number,
+    operationConfirmation: OperationConfirmation, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getRollbackArchiveOperationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(operationConfirmation)
+  }
+);}
+
+
+
+
+
+export const getRollbackArchiveOperationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rollbackArchiveOperation>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rollbackArchiveOperation>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext> => {
+
+const mutationKey = ['rollbackArchiveOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rollbackArchiveOperation>>, {id: number;data: BodyType<OperationConfirmation>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  rollbackArchiveOperation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RollbackArchiveOperationMutationResult = NonNullable<Awaited<ReturnType<typeof rollbackArchiveOperation>>>
+    export type RollbackArchiveOperationMutationBody = BodyType<OperationConfirmation>
+    export type RollbackArchiveOperationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Explicitly roll back a completed operation where supported
+ */
+export const useRollbackArchiveOperation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rollbackArchiveOperation>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rollbackArchiveOperation>>,
+        TError,
+        {id: number;data: BodyType<OperationConfirmation>},
+        TContext
+      > => {
+      return useMutation(getRollbackArchiveOperationMutationOptions(options));
+    }
+
+export const getLinkAcquisitionDownloadUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition-jobs/${id}/download`
+}
+
+/**
+ * @summary Link an owner-scoped local download to an acquisition job
+ */
+export const linkAcquisitionDownload = async (id: number,
+    linkAcquisitionDownload: LinkAcquisitionDownload, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionJob> => {
+
+  return customFetch<AcquisitionJob>(getLinkAcquisitionDownloadUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(linkAcquisitionDownload)
+  }
+);}
+
+
+
+
+
+export const getLinkAcquisitionDownloadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof linkAcquisitionDownload>>, TError,{id: number;data: BodyType<LinkAcquisitionDownload>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof linkAcquisitionDownload>>, TError,{id: number;data: BodyType<LinkAcquisitionDownload>}, TContext> => {
+
+const mutationKey = ['linkAcquisitionDownload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof linkAcquisitionDownload>>, {id: number;data: BodyType<LinkAcquisitionDownload>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  linkAcquisitionDownload(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LinkAcquisitionDownloadMutationResult = NonNullable<Awaited<ReturnType<typeof linkAcquisitionDownload>>>
+    export type LinkAcquisitionDownloadMutationBody = BodyType<LinkAcquisitionDownload>
+    export type LinkAcquisitionDownloadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Link an owner-scoped local download to an acquisition job
+ */
+export const useLinkAcquisitionDownload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof linkAcquisitionDownload>>, TError,{id: number;data: BodyType<LinkAcquisitionDownload>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof linkAcquisitionDownload>>,
+        TError,
+        {id: number;data: BodyType<LinkAcquisitionDownload>},
+        TContext
+      > => {
+      return useMutation(getLinkAcquisitionDownloadMutationOptions(options));
+    }
+
+export const getPlanApprovedAcquisitionImportUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition-jobs/${id}/import`
+}
+
+/**
+ * @summary Plan an approved import from a completed verified download
+ */
+export const planApprovedAcquisitionImport = async (id: number,
+    planAcquisitionImport: PlanAcquisitionImport, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getPlanApprovedAcquisitionImportUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(planAcquisitionImport)
+  }
+);}
+
+
+
+
+
+export const getPlanApprovedAcquisitionImportMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planApprovedAcquisitionImport>>, TError,{id: number;data: BodyType<PlanAcquisitionImport>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof planApprovedAcquisitionImport>>, TError,{id: number;data: BodyType<PlanAcquisitionImport>}, TContext> => {
+
+const mutationKey = ['planApprovedAcquisitionImport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof planApprovedAcquisitionImport>>, {id: number;data: BodyType<PlanAcquisitionImport>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  planApprovedAcquisitionImport(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PlanApprovedAcquisitionImportMutationResult = NonNullable<Awaited<ReturnType<typeof planApprovedAcquisitionImport>>>
+    export type PlanApprovedAcquisitionImportMutationBody = BodyType<PlanAcquisitionImport>
+    export type PlanApprovedAcquisitionImportMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Plan an approved import from a completed verified download
+ */
+export const usePlanApprovedAcquisitionImport = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planApprovedAcquisitionImport>>, TError,{id: number;data: BodyType<PlanAcquisitionImport>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof planApprovedAcquisitionImport>>,
+        TError,
+        {id: number;data: BodyType<PlanAcquisitionImport>},
+        TContext
+      > => {
+      return useMutation(getPlanApprovedAcquisitionImportMutationOptions(options));
     }
 
 export const getLookupArchiveMediaUrl = (params?: LookupArchiveMediaParams,) => {

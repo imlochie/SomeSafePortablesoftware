@@ -867,6 +867,925 @@ export const RefreshAcquisitionJobResponse = zod.object({
 
 
 /**
+ * @summary List deterministic acquisition recommendations
+ */
+export const ListAcquisitionRecommendationsQueryParams = zod.object({
+  "status": zod.coerce.string().optional(),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low']).optional(),
+  "blocked": zod.coerce.boolean().optional()
+})
+
+export const ListAcquisitionRecommendationsResponseItem = zod.object({
+  "id": zod.number(),
+  "recommendationKey": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "target": zod.record(zod.string(), zod.unknown()),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "preferredQuality": zod.record(zod.string(), zod.unknown()),
+  "destination": zod.record(zod.string(), zod.unknown()),
+  "route": zod.record(zod.string(), zod.unknown()),
+  "blockers": zod.array(zod.string()),
+  "confidence": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low']),
+  "status": zod.string(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "evidenceHash": zod.string(),
+  "generatedAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListAcquisitionRecommendationsResponse = zod.array(ListAcquisitionRecommendationsResponseItem)
+
+
+/**
+ * @summary Reconcile recommendations from current archive and provider evidence
+ */
+export const GenerateAcquisitionRecommendationsResponseItem = zod.object({
+  "id": zod.number(),
+  "recommendationKey": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "target": zod.record(zod.string(), zod.unknown()),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "preferredQuality": zod.record(zod.string(), zod.unknown()),
+  "destination": zod.record(zod.string(), zod.unknown()),
+  "route": zod.record(zod.string(), zod.unknown()),
+  "blockers": zod.array(zod.string()),
+  "confidence": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low']),
+  "status": zod.string(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "evidenceHash": zod.string(),
+  "generatedAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const GenerateAcquisitionRecommendationsResponse = zod.array(GenerateAcquisitionRecommendationsResponseItem)
+
+
+/**
+ * @summary Inspect one acquisition recommendation
+ */
+
+
+
+export const GetAcquisitionRecommendationParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const GetAcquisitionRecommendationResponse = zod.object({
+  "id": zod.number(),
+  "recommendationKey": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "target": zod.record(zod.string(), zod.unknown()),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "preferredQuality": zod.record(zod.string(), zod.unknown()),
+  "destination": zod.record(zod.string(), zod.unknown()),
+  "route": zod.record(zod.string(), zod.unknown()),
+  "blockers": zod.array(zod.string()),
+  "confidence": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low']),
+  "status": zod.string(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "evidenceHash": zod.string(),
+  "generatedAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List and filter generic review items
+ */
+export const ListReviewItemsQueryParams = zod.object({
+  "state": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']).optional(),
+  "kind": zod.enum(['acquisition_recommendation', 'naming_proposal', 'archive_finding', 'operation_approval']).optional()
+})
+
+export const ListReviewItemsResponseItem = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['acquisition_recommendation', 'naming_proposal', 'archive_finding', 'operation_approval']),
+  "subjectKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "note": zod.string().nullable(),
+  "decisionAt": zod.coerce.date().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "decisions": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),zod.null()]),
+  "toState": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "note": zod.string().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+export const ListReviewItemsResponse = zod.array(ListReviewItemsResponseItem)
+
+
+/**
+ * @summary Idempotently add a subject to the review queue
+ */
+
+
+
+
+export const CreateReviewItemBody = zod.object({
+  "kind": zod.enum(['acquisition_recommendation', 'naming_proposal', 'archive_finding', 'operation_approval']),
+  "subjectKey": zod.string().min(1),
+  "title": zod.string().min(1),
+  "payload": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+export const CreateReviewItemResponse = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['acquisition_recommendation', 'naming_proposal', 'archive_finding', 'operation_approval']),
+  "subjectKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "note": zod.string().nullable(),
+  "decisionAt": zod.coerce.date().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "decisions": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),zod.null()]),
+  "toState": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "note": zod.string().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Inspect a review item and decision history
+ */
+
+
+
+export const GetReviewItemParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const GetReviewItemResponse = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['acquisition_recommendation', 'naming_proposal', 'archive_finding', 'operation_approval']),
+  "subjectKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "note": zod.string().nullable(),
+  "decisionAt": zod.coerce.date().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "decisions": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),zod.null()]),
+  "toState": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "note": zod.string().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Approve a pending or reopened review item
+ */
+
+
+
+export const ApproveReviewQueueItemParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const ApproveReviewQueueItemBody = zod.object({
+  "note": zod.string().nullish()
+})
+
+export const ApproveReviewQueueItemResponse = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['acquisition_recommendation', 'naming_proposal', 'archive_finding', 'operation_approval']),
+  "subjectKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "note": zod.string().nullable(),
+  "decisionAt": zod.coerce.date().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "decisions": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),zod.null()]),
+  "toState": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "note": zod.string().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Reject a pending or reopened review item
+ */
+
+
+
+export const RejectReviewQueueItemParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const RejectReviewQueueItemBody = zod.object({
+  "note": zod.string().nullish()
+})
+
+export const RejectReviewQueueItemResponse = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['acquisition_recommendation', 'naming_proposal', 'archive_finding', 'operation_approval']),
+  "subjectKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "note": zod.string().nullable(),
+  "decisionAt": zod.coerce.date().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "decisions": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),zod.null()]),
+  "toState": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "note": zod.string().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Defer a pending or reopened review item
+ */
+
+
+
+export const DeferReviewQueueItemParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const DeferReviewQueueItemBody = zod.object({
+  "note": zod.string().nullish()
+})
+
+export const DeferReviewQueueItemResponse = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['acquisition_recommendation', 'naming_proposal', 'archive_finding', 'operation_approval']),
+  "subjectKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "note": zod.string().nullable(),
+  "decisionAt": zod.coerce.date().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "decisions": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),zod.null()]),
+  "toState": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "note": zod.string().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Reopen a decided review item
+ */
+
+
+
+export const ReopenReviewQueueItemParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const ReopenReviewQueueItemBody = zod.object({
+  "note": zod.string().nullish()
+})
+
+export const ReopenReviewQueueItemResponse = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['acquisition_recommendation', 'naming_proposal', 'archive_finding', 'operation_approval']),
+  "subjectKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "payload": zod.record(zod.string(), zod.unknown()),
+  "note": zod.string().nullable(),
+  "decisionAt": zod.coerce.date().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "decisions": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),zod.null()]),
+  "toState": zod.enum(['pending', 'approved', 'rejected', 'deferred', 'reopened']),
+  "note": zod.string().nullable(),
+  "decidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Explicitly create or return the acquisition job for an approved recommendation
+ */
+
+
+
+export const CreateApprovedAcquisitionJobParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const CreateApprovedAcquisitionJobResponse = zod.object({
+  "recommendation": zod.object({
+  "id": zod.number(),
+  "recommendationKey": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "target": zod.record(zod.string(), zod.unknown()),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "preferredQuality": zod.record(zod.string(), zod.unknown()),
+  "destination": zod.record(zod.string(), zod.unknown()),
+  "route": zod.record(zod.string(), zod.unknown()),
+  "blockers": zod.array(zod.string()),
+  "confidence": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low']),
+  "status": zod.string(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "evidenceHash": zod.string(),
+  "generatedAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "job": zod.object({
+  "id": zod.number(),
+  "ownerId": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "sourceUrl": zod.string().nullable(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]),
+  "providerJobId": zod.string().nullable(),
+  "providerReference": zod.string().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "request": zod.record(zod.string(), zod.unknown()),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "plannedAt": zod.coerce.date(),
+  "searchingAt": zod.coerce.date().nullable(),
+  "sourceSelectedAt": zod.coerce.date().nullable(),
+  "downloadingAt": zod.coerce.date().nullable(),
+  "processingAt": zod.coerce.date().nullable(),
+  "verifyingAt": zod.coerce.date().nullable(),
+  "importingAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "failedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),zod.null()]),
+  "toState": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+}),
+  "created": zod.boolean()
+})
+
+
+/**
+ * @summary List owner-scoped approved archive operations
+ */
+export const ListArchiveOperationsQueryParams = zod.object({
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']).optional()
+})
+
+export const ListArchiveOperationsResponseItem = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+export const ListArchiveOperationsResponse = zod.array(ListArchiveOperationsResponseItem)
+
+
+/**
+ * @summary Plan an operation linked to an approved review item
+ */
+
+
+
+
+
+
+export const createArchiveOperationBodyDryRunDefault = false;
+
+export const CreateArchiveOperationBody = zod.object({
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string().min(1),
+  "sourceId": zod.string().nullish(),
+  "sourcePath": zod.string().min(1),
+  "destinationPath": zod.string().min(1),
+  "reviewItemId": zod.number().min(1),
+  "acquisitionJobId": zod.number().min(1).nullish(),
+  "downloadJobId": zod.number().min(1).nullish(),
+  "dryRun": zod.boolean().default(createArchiveOperationBodyDryRunDefault),
+  "idempotencyKey": zod.string().optional()
+})
+
+export const CreateArchiveOperationResponse = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Inspect one archive operation and its history
+ */
+
+
+
+export const GetArchiveOperationParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const GetArchiveOperationResponse = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Validate an approved operation without changing files
+ */
+
+
+
+export const PreflightArchiveOperationParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const PreflightArchiveOperationResponse = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Explicitly execute a ready approved operation
+ */
+
+
+
+export const ExecuteArchiveOperationParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const ExecuteArchiveOperationBody = zod.object({
+  "confirmed": zod.boolean()
+})
+
+export const ExecuteArchiveOperationResponse = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Cancel an operation before execution
+ */
+
+
+
+export const CancelArchiveOperationParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const CancelArchiveOperationResponse = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Retry preflight for a failed or cancelled operation
+ */
+
+
+
+export const RetryArchiveOperationParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const RetryArchiveOperationResponse = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Explicitly roll back a completed operation where supported
+ */
+
+
+
+export const RollbackArchiveOperationParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const RollbackArchiveOperationBody = zod.object({
+  "confirmed": zod.boolean()
+})
+
+export const RollbackArchiveOperationResponse = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Link an owner-scoped local download to an acquisition job
+ */
+
+
+
+export const LinkAcquisitionDownloadParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+
+
+
+export const LinkAcquisitionDownloadBody = zod.object({
+  "downloadJobId": zod.number().min(1)
+})
+
+export const LinkAcquisitionDownloadResponse = zod.object({
+  "id": zod.number(),
+  "ownerId": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "sourceUrl": zod.string().nullable(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]),
+  "providerJobId": zod.string().nullable(),
+  "providerReference": zod.string().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "request": zod.record(zod.string(), zod.unknown()),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "plannedAt": zod.coerce.date(),
+  "searchingAt": zod.coerce.date().nullable(),
+  "sourceSelectedAt": zod.coerce.date().nullable(),
+  "downloadingAt": zod.coerce.date().nullable(),
+  "processingAt": zod.coerce.date().nullable(),
+  "verifyingAt": zod.coerce.date().nullable(),
+  "importingAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "failedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),zod.null()]),
+  "toState": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Plan an approved import from a completed verified download
+ */
+
+
+
+export const PlanApprovedAcquisitionImportParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+
+export const planApprovedAcquisitionImportBodyDryRunDefault = false;
+
+export const PlanApprovedAcquisitionImportBody = zod.object({
+  "destinationPath": zod.string().min(1),
+  "dryRun": zod.boolean().default(planApprovedAcquisitionImportBodyDryRunDefault)
+})
+
+export const PlanApprovedAcquisitionImportResponse = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
  * @summary Look up TV and movie metadata through the integration registry
  */
 export const LookupArchiveMediaQueryParams = zod.object({

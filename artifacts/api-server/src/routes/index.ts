@@ -8,6 +8,7 @@ import downloadsRouter from "./downloads";
 import archiveRouter from "./archive";
 import integrationsRouter from "./integrations";
 import acquisitionJobsRouter from "./acquisition-jobs";
+import controlPlaneRouter from "./control-plane";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(downloadsRouter);
 router.use(archiveRouter);
 router.use(integrationsRouter);
 router.use(acquisitionJobsRouter);
+router.use(controlPlaneRouter);
 
 export default router;
