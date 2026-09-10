@@ -22,16 +22,18 @@ const labels: Record<Exclude<IntegrationId, "plex">, string> = {
 };
 
 const adapterCapabilities: Record<Exclude<IntegrationId, "plex">, readonly IntegrationCapability[]> = {
-  sonarr: ["missing_media_discovery", "source_inspection", "acquisition_job_creation"],
-  radarr: ["missing_media_discovery", "source_inspection", "acquisition_job_creation"],
+  sonarr: ["media_lookup", "missing_media_discovery", "source_inspection", "acquisition_job_creation", "acquisition_job_status"],
+  radarr: ["media_lookup", "missing_media_discovery", "source_inspection", "acquisition_job_creation", "acquisition_job_status"],
   prowlarr: ["host_lookup", "source_inspection"],
-  qbittorrent: ["acquisition_job_creation", "media_inspection"],
+  qbittorrent: ["acquisition_job_creation", "acquisition_job_status", "media_inspection"],
   mpilot: [
     "archive_search",
+    "media_lookup",
     "host_lookup",
     "missing_media_discovery",
     "source_inspection",
     "acquisition_job_creation",
+    "acquisition_job_status",
     "media_inspection",
     "media_verification",
     "rename_move",
