@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AcquisitionJob,
   AppSettings,
   AppSettingsUpdate,
   ArchiveBulkReviewResponse,
@@ -29,12 +30,14 @@ import type {
   ArchiveReview,
   ArchiveReviewUpdate,
   ArchiveScan,
+  CreateAcquisitionJob,
   DependencyStatus,
   DownloadJob,
   DownloadJobInput,
   DownloadPreparationInput,
   DownloadSpecification,
   ErrorResponse,
+  GetAcquisitionJobsParams,
   HealthStatus,
   IntegrationStatusResponse,
   LocalMediaInspectInput,
@@ -44,6 +47,7 @@ import type {
   PlexConfig,
   PlexConfigUpdate,
   PlexInventory,
+  ProgressAcquisitionJob,
   SystemEvent,
   SystemOverview
 } from './api.schemas';
@@ -975,6 +979,524 @@ export function useGetIntegrationStatuses<TData = Awaited<ReturnType<typeof getI
 
 
 
+
+export const getGetAcquisitionJobsUrl = (params?: GetAcquisitionJobsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acquisition-jobs?${stringifiedParams}` : `/api/acquisition-jobs`
+}
+
+/**
+ * @summary List owner-scoped acquisition jobs
+ */
+export const getAcquisitionJobs = async (params?: GetAcquisitionJobsParams, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionJob[]> => {
+
+  return customFetch<AcquisitionJob[]>(getGetAcquisitionJobsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcquisitionJobsQueryKey = (params?: GetAcquisitionJobsParams,) => {
+    return [
+    `/api/acquisition-jobs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAcquisitionJobsQueryOptions = <TData = Awaited<ReturnType<typeof getAcquisitionJobs>>, TError = ErrorType<unknown>>(params?: GetAcquisitionJobsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcquisitionJobsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcquisitionJobs>>> = ({ signal }) => getAcquisitionJobs(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionJobs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcquisitionJobsQueryResult = NonNullable<Awaited<ReturnType<typeof getAcquisitionJobs>>>
+export type GetAcquisitionJobsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List owner-scoped acquisition jobs
+ */
+
+export function useGetAcquisitionJobs<TData = Awaited<ReturnType<typeof getAcquisitionJobs>>, TError = ErrorType<unknown>>(
+ params?: GetAcquisitionJobsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcquisitionJobsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateAcquisitionJobUrl = () => {
+
+
+
+
+  return `/api/acquisition-jobs`
+}
+
+/**
+ * @summary Plan an acquisition and optionally send it to a provider
+ */
+export const createAcquisitionJob = async (createAcquisitionJob: CreateAcquisitionJob, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionJob> => {
+
+  return customFetch<AcquisitionJob>(getCreateAcquisitionJobUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createAcquisitionJob)
+  }
+);}
+
+
+
+
+
+export const getCreateAcquisitionJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAcquisitionJob>>, TError,{data: BodyType<CreateAcquisitionJob>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAcquisitionJob>>, TError,{data: BodyType<CreateAcquisitionJob>}, TContext> => {
+
+const mutationKey = ['createAcquisitionJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAcquisitionJob>>, {data: BodyType<CreateAcquisitionJob>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAcquisitionJob(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAcquisitionJobMutationResult = NonNullable<Awaited<ReturnType<typeof createAcquisitionJob>>>
+    export type CreateAcquisitionJobMutationBody = BodyType<CreateAcquisitionJob>
+    export type CreateAcquisitionJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Plan an acquisition and optionally send it to a provider
+ */
+export const useCreateAcquisitionJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAcquisitionJob>>, TError,{data: BodyType<CreateAcquisitionJob>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAcquisitionJob>>,
+        TError,
+        {data: BodyType<CreateAcquisitionJob>},
+        TContext
+      > => {
+      return useMutation(getCreateAcquisitionJobMutationOptions(options));
+    }
+
+export const getGetAcquisitionJobUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition-jobs/${id}`
+}
+
+/**
+ * @summary Inspect an acquisition job and its transition history
+ */
+export const getAcquisitionJob = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionJob> => {
+
+  return customFetch<AcquisitionJob>(getGetAcquisitionJobUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcquisitionJobQueryKey = (id: number,) => {
+    return [
+    `/api/acquisition-jobs/${id}`
+    ] as const;
+    }
+
+
+export const getGetAcquisitionJobQueryOptions = <TData = Awaited<ReturnType<typeof getAcquisitionJob>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcquisitionJobQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcquisitionJob>>> = ({ signal }) => getAcquisitionJob(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionJob>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcquisitionJobQueryResult = NonNullable<Awaited<ReturnType<typeof getAcquisitionJob>>>
+export type GetAcquisitionJobQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Inspect an acquisition job and its transition history
+ */
+
+export function useGetAcquisitionJob<TData = Awaited<ReturnType<typeof getAcquisitionJob>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcquisitionJobQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRetryAcquisitionJobUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition-jobs/${id}/retry`
+}
+
+/**
+ * @summary Retry a failed or cancelled acquisition job
+ */
+export const retryAcquisitionJob = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionJob> => {
+
+  return customFetch<AcquisitionJob>(getRetryAcquisitionJobUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryAcquisitionJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryAcquisitionJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryAcquisitionJob>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['retryAcquisitionJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryAcquisitionJob>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  retryAcquisitionJob(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryAcquisitionJobMutationResult = NonNullable<Awaited<ReturnType<typeof retryAcquisitionJob>>>
+
+    export type RetryAcquisitionJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Retry a failed or cancelled acquisition job
+ */
+export const useRetryAcquisitionJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryAcquisitionJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryAcquisitionJob>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRetryAcquisitionJobMutationOptions(options));
+    }
+
+export const getCancelAcquisitionJobUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition-jobs/${id}/cancel`
+}
+
+/**
+ * Cancelling tracking does not mutate local files or delete a provider download.
+ * @summary Cancel local acquisition tracking
+ */
+export const cancelAcquisitionJob = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionJob> => {
+
+  return customFetch<AcquisitionJob>(getCancelAcquisitionJobUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelAcquisitionJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelAcquisitionJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelAcquisitionJob>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['cancelAcquisitionJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelAcquisitionJob>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  cancelAcquisitionJob(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelAcquisitionJobMutationResult = NonNullable<Awaited<ReturnType<typeof cancelAcquisitionJob>>>
+
+    export type CancelAcquisitionJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Cancel local acquisition tracking
+ */
+export const useCancelAcquisitionJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelAcquisitionJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelAcquisitionJob>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getCancelAcquisitionJobMutationOptions(options));
+    }
+
+export const getProgressAcquisitionJobUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition-jobs/${id}/progress`
+}
+
+/**
+ * @summary Advance an acquisition job through its canonical lifecycle
+ */
+export const progressAcquisitionJob = async (id: number,
+    progressAcquisitionJob: ProgressAcquisitionJob, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionJob> => {
+
+  return customFetch<AcquisitionJob>(getProgressAcquisitionJobUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(progressAcquisitionJob)
+  }
+);}
+
+
+
+
+
+export const getProgressAcquisitionJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof progressAcquisitionJob>>, TError,{id: number;data: BodyType<ProgressAcquisitionJob>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof progressAcquisitionJob>>, TError,{id: number;data: BodyType<ProgressAcquisitionJob>}, TContext> => {
+
+const mutationKey = ['progressAcquisitionJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof progressAcquisitionJob>>, {id: number;data: BodyType<ProgressAcquisitionJob>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  progressAcquisitionJob(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ProgressAcquisitionJobMutationResult = NonNullable<Awaited<ReturnType<typeof progressAcquisitionJob>>>
+    export type ProgressAcquisitionJobMutationBody = BodyType<ProgressAcquisitionJob>
+    export type ProgressAcquisitionJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Advance an acquisition job through its canonical lifecycle
+ */
+export const useProgressAcquisitionJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof progressAcquisitionJob>>, TError,{id: number;data: BodyType<ProgressAcquisitionJob>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof progressAcquisitionJob>>,
+        TError,
+        {id: number;data: BodyType<ProgressAcquisitionJob>},
+        TContext
+      > => {
+      return useMutation(getProgressAcquisitionJobMutationOptions(options));
+    }
+
+export const getRefreshAcquisitionJobUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition-jobs/${id}/refresh`
+}
+
+/**
+ * @summary Refresh an acquisition job from its provider
+ */
+export const refreshAcquisitionJob = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionJob> => {
+
+  return customFetch<AcquisitionJob>(getRefreshAcquisitionJobUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRefreshAcquisitionJobMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshAcquisitionJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshAcquisitionJob>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['refreshAcquisitionJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshAcquisitionJob>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  refreshAcquisitionJob(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshAcquisitionJobMutationResult = NonNullable<Awaited<ReturnType<typeof refreshAcquisitionJob>>>
+
+    export type RefreshAcquisitionJobMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Refresh an acquisition job from its provider
+ */
+export const useRefreshAcquisitionJob = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshAcquisitionJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshAcquisitionJob>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRefreshAcquisitionJobMutationOptions(options));
+    }
 
 export const getGetArchiveScanUrl = () => {
 

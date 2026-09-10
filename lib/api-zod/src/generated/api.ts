@@ -373,6 +373,406 @@ export const GetIntegrationStatusesResponse = zod.object({
 
 
 /**
+ * @summary List owner-scoped acquisition jobs
+ */
+export const GetAcquisitionJobsQueryParams = zod.object({
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']).optional()
+})
+
+export const GetAcquisitionJobsResponseItem = zod.object({
+  "id": zod.number(),
+  "ownerId": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "sourceUrl": zod.string().nullable(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]),
+  "providerJobId": zod.string().nullable(),
+  "providerReference": zod.string().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "request": zod.record(zod.string(), zod.unknown()),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "plannedAt": zod.coerce.date(),
+  "searchingAt": zod.coerce.date().nullable(),
+  "sourceSelectedAt": zod.coerce.date().nullable(),
+  "downloadingAt": zod.coerce.date().nullable(),
+  "processingAt": zod.coerce.date().nullable(),
+  "verifyingAt": zod.coerce.date().nullable(),
+  "importingAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "failedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),zod.null()]),
+  "toState": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+export const GetAcquisitionJobsResponse = zod.array(GetAcquisitionJobsResponseItem)
+
+
+/**
+ * @summary Plan an acquisition and optionally send it to a provider
+ */
+export const createAcquisitionJobBodyStartDefault = false;
+
+export const CreateAcquisitionJobBody = zod.object({
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullish(),
+  "externalId": zod.string().nullish(),
+  "sourceId": zod.string().nullish(),
+  "sourceUrl": zod.string().nullish(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]).optional(),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "start": zod.boolean().default(createAcquisitionJobBodyStartDefault)
+})
+
+export const CreateAcquisitionJobResponse = zod.object({
+  "id": zod.number(),
+  "ownerId": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "sourceUrl": zod.string().nullable(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]),
+  "providerJobId": zod.string().nullable(),
+  "providerReference": zod.string().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "request": zod.record(zod.string(), zod.unknown()),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "plannedAt": zod.coerce.date(),
+  "searchingAt": zod.coerce.date().nullable(),
+  "sourceSelectedAt": zod.coerce.date().nullable(),
+  "downloadingAt": zod.coerce.date().nullable(),
+  "processingAt": zod.coerce.date().nullable(),
+  "verifyingAt": zod.coerce.date().nullable(),
+  "importingAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "failedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),zod.null()]),
+  "toState": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Inspect an acquisition job and its transition history
+ */
+
+
+
+export const GetAcquisitionJobParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const GetAcquisitionJobResponse = zod.object({
+  "id": zod.number(),
+  "ownerId": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "sourceUrl": zod.string().nullable(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]),
+  "providerJobId": zod.string().nullable(),
+  "providerReference": zod.string().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "request": zod.record(zod.string(), zod.unknown()),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "plannedAt": zod.coerce.date(),
+  "searchingAt": zod.coerce.date().nullable(),
+  "sourceSelectedAt": zod.coerce.date().nullable(),
+  "downloadingAt": zod.coerce.date().nullable(),
+  "processingAt": zod.coerce.date().nullable(),
+  "verifyingAt": zod.coerce.date().nullable(),
+  "importingAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "failedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),zod.null()]),
+  "toState": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Retry a failed or cancelled acquisition job
+ */
+
+
+
+export const RetryAcquisitionJobParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const RetryAcquisitionJobResponse = zod.object({
+  "id": zod.number(),
+  "ownerId": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "sourceUrl": zod.string().nullable(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]),
+  "providerJobId": zod.string().nullable(),
+  "providerReference": zod.string().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "request": zod.record(zod.string(), zod.unknown()),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "plannedAt": zod.coerce.date(),
+  "searchingAt": zod.coerce.date().nullable(),
+  "sourceSelectedAt": zod.coerce.date().nullable(),
+  "downloadingAt": zod.coerce.date().nullable(),
+  "processingAt": zod.coerce.date().nullable(),
+  "verifyingAt": zod.coerce.date().nullable(),
+  "importingAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "failedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),zod.null()]),
+  "toState": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * Cancelling tracking does not mutate local files or delete a provider download.
+ * @summary Cancel local acquisition tracking
+ */
+
+
+
+export const CancelAcquisitionJobParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const CancelAcquisitionJobResponse = zod.object({
+  "id": zod.number(),
+  "ownerId": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "sourceUrl": zod.string().nullable(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]),
+  "providerJobId": zod.string().nullable(),
+  "providerReference": zod.string().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "request": zod.record(zod.string(), zod.unknown()),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "plannedAt": zod.coerce.date(),
+  "searchingAt": zod.coerce.date().nullable(),
+  "sourceSelectedAt": zod.coerce.date().nullable(),
+  "downloadingAt": zod.coerce.date().nullable(),
+  "processingAt": zod.coerce.date().nullable(),
+  "verifyingAt": zod.coerce.date().nullable(),
+  "importingAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "failedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),zod.null()]),
+  "toState": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Advance an acquisition job through its canonical lifecycle
+ */
+
+
+
+export const ProgressAcquisitionJobParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const progressAcquisitionJobBodyProgressMin = 0;
+export const progressAcquisitionJobBodyProgressMax = 100;
+
+
+
+export const ProgressAcquisitionJobBody = zod.object({
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number().min(progressAcquisitionJobBodyProgressMin).max(progressAcquisitionJobBodyProgressMax).optional(),
+  "providerJobId": zod.string().nullish(),
+  "providerReference": zod.string().nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "errorCode": zod.string().nullish(),
+  "errorMessage": zod.string().nullish(),
+  "detail": zod.string().optional()
+})
+
+export const ProgressAcquisitionJobResponse = zod.object({
+  "id": zod.number(),
+  "ownerId": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "sourceUrl": zod.string().nullable(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]),
+  "providerJobId": zod.string().nullable(),
+  "providerReference": zod.string().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "request": zod.record(zod.string(), zod.unknown()),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "plannedAt": zod.coerce.date(),
+  "searchingAt": zod.coerce.date().nullable(),
+  "sourceSelectedAt": zod.coerce.date().nullable(),
+  "downloadingAt": zod.coerce.date().nullable(),
+  "processingAt": zod.coerce.date().nullable(),
+  "verifyingAt": zod.coerce.date().nullable(),
+  "importingAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "failedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),zod.null()]),
+  "toState": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Refresh an acquisition job from its provider
+ */
+
+
+
+export const RefreshAcquisitionJobParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const RefreshAcquisitionJobResponse = zod.object({
+  "id": zod.number(),
+  "ownerId": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "sourceUrl": zod.string().nullable(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]),
+  "providerJobId": zod.string().nullable(),
+  "providerReference": zod.string().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "request": zod.record(zod.string(), zod.unknown()),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "plannedAt": zod.coerce.date(),
+  "searchingAt": zod.coerce.date().nullable(),
+  "sourceSelectedAt": zod.coerce.date().nullable(),
+  "downloadingAt": zod.coerce.date().nullable(),
+  "processingAt": zod.coerce.date().nullable(),
+  "verifyingAt": zod.coerce.date().nullable(),
+  "importingAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "failedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),zod.null()]),
+  "toState": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
  * @summary Get the current local archive scan state
  */
 export const getArchiveScanResponseScannedFilesMin = 0;

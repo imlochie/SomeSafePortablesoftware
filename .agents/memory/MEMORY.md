@@ -6,4 +6,5 @@
 - [Local and hosted auth modes](local-hosted-auth-modes.md) — Desktop-local use resolves a server-owned __local__ identity; Clerk remains an explicit hosted mode.
 - [Desktop sidecar boundary](desktop-sidecar-boundary.md) — Tauri is only a shell; Node owns the API, SQLite, media tools, and runtime paths.
 - [Integration adapter boundary](integration-adapter-boundary.md) — Intelligence uses abstract capabilities; external media tools are replaceable providers with honest disconnected states.
+- [Canonical acquisition lifecycle](acquisition-lifecycle.md) — Provider requests are durable, evented jobs above the filesystem download engine; local progression stays explicit.
 - [Workspace test tooling](workspace-test-tooling.md) — Frontend test dependencies belong at the workspace root when artifact-scoped package installation is unavailable.

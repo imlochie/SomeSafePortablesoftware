@@ -6,6 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './acquisitionJob';
+export * from './acquisitionJobEvent';
+export * from './acquisitionJobEventMetadata';
+export * from './acquisitionJobMetadata';
+export * from './acquisitionJobRequest';
+export * from './acquisitionJobState';
+export * from './acquisitionProvider';
 export * from './appSettings';
 export * from './appSettingsHardwareAccelerationMode';
 export * from './appSettingsLogLevel';
@@ -34,6 +41,8 @@ export * from './archiveReviewUpdate';
 export * from './archiveReviewUpdateStatus';
 export * from './archiveScan';
 export * from './archiveScanStatus';
+export * from './createAcquisitionJob';
+export * from './createAcquisitionJobMetadata';
 export * from './dependencyStatus';
 export * from './dependencyStatusStatus';
 export * from './downloadJob';
@@ -44,6 +53,7 @@ export * from './downloadPreparationInput';
 export * from './downloadPreparationInputOutputContainer';
 export * from './downloadSpecification';
 export * from './errorResponse';
+export * from './getAcquisitionJobsParams';
 export * from './healthStatus';
 export * from './integrationStatus';
 export * from './integrationStatusCapabilitiesItem';
@@ -65,6 +75,8 @@ export * from './plexConfigUpdate';
 export * from './plexInventory';
 export * from './plexInventoryItem';
 export * from './plexLibrary';
+export * from './progressAcquisitionJob';
+export * from './progressAcquisitionJobMetadata';
 export * from './statusValue';
 export * from './storageSummary';
 export * from './storageSummaryStatus';

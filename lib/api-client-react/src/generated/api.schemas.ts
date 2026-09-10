@@ -910,7 +910,145 @@ export interface DownloadJob {
   verification: DownloadJobVerification;
 }
 
+export type AcquisitionJobState = typeof AcquisitionJobState[keyof typeof AcquisitionJobState];
+
+
+export const AcquisitionJobState = {
+  planned: 'planned',
+  searching: 'searching',
+  source_selected: 'source_selected',
+  downloading: 'downloading',
+  processing: 'processing',
+  verifying: 'verifying',
+  importing: 'importing',
+  complete: 'complete',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export type AcquisitionProvider = typeof AcquisitionProvider[keyof typeof AcquisitionProvider];
+
+
+export const AcquisitionProvider = {
+  sonarr: 'sonarr',
+  radarr: 'radarr',
+  prowlarr: 'prowlarr',
+  qbittorrent: 'qbittorrent',
+} as const;
+
+export type AcquisitionJobEventMetadata = { [key: string]: unknown };
+
+export interface AcquisitionJobEvent {
+  id: number;
+  fromState: AcquisitionJobState | null;
+  toState: AcquisitionJobState;
+  detail: string;
+  metadata: AcquisitionJobEventMetadata;
+  createdAt: string;
+}
+
+export type AcquisitionJobRequest = { [key: string]: unknown };
+
+export type AcquisitionJobMetadata = { [key: string]: unknown };
+
+export interface AcquisitionJob {
+  id: number;
+  ownerId: string;
+  mediaType: string;
+  title: string;
+  /** @nullable */
+  year: number | null;
+  /** @nullable */
+  externalId: string | null;
+  /** @nullable */
+  sourceId: string | null;
+  /** @nullable */
+  sourceUrl: string | null;
+  providerId: AcquisitionProvider | null;
+  /** @nullable */
+  providerJobId: string | null;
+  /** @nullable */
+  providerReference: string | null;
+  /** @nullable */
+  downloadJobId: number | null;
+  state: AcquisitionJobState;
+  progress: number;
+  retryCount: number;
+  maxRetries: number;
+  /** @nullable */
+  errorCode: string | null;
+  /** @nullable */
+  errorMessage: string | null;
+  request: AcquisitionJobRequest;
+  metadata: AcquisitionJobMetadata;
+  plannedAt: string;
+  /** @nullable */
+  searchingAt: string | null;
+  /** @nullable */
+  sourceSelectedAt: string | null;
+  /** @nullable */
+  downloadingAt: string | null;
+  /** @nullable */
+  processingAt: string | null;
+  /** @nullable */
+  verifyingAt: string | null;
+  /** @nullable */
+  importingAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  failedAt: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  events: AcquisitionJobEvent[];
+}
+
+export type CreateAcquisitionJobMetadata = { [key: string]: unknown };
+
+export interface CreateAcquisitionJob {
+  mediaType: string;
+  title: string;
+  /** @nullable */
+  year?: number | null;
+  /** @nullable */
+  externalId?: string | null;
+  /** @nullable */
+  sourceId?: string | null;
+  /** @nullable */
+  sourceUrl?: string | null;
+  providerId?: AcquisitionProvider | null;
+  metadata?: CreateAcquisitionJobMetadata;
+  start?: boolean;
+}
+
+export type ProgressAcquisitionJobMetadata = { [key: string]: unknown };
+
+export interface ProgressAcquisitionJob {
+  state: AcquisitionJobState;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  progress?: number;
+  /** @nullable */
+  providerJobId?: string | null;
+  /** @nullable */
+  providerReference?: string | null;
+  metadata?: ProgressAcquisitionJobMetadata;
+  /** @nullable */
+  errorCode?: string | null;
+  /** @nullable */
+  errorMessage?: string | null;
+  detail?: string;
+}
+
 export interface ErrorResponse {
   error: string;
 }
+
+export type GetAcquisitionJobsParams = {
+state?: AcquisitionJobState;
+};
 

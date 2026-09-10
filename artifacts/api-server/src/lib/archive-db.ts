@@ -135,6 +135,55 @@ archiveDb.exec(`
     status TEXT NOT NULL DEFAULT 'queued',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS acquisition_job (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    year INTEGER,
+    external_id TEXT,
+    source_id TEXT,
+    source_url TEXT,
+    provider_id TEXT,
+    provider_job_id TEXT,
+    provider_reference TEXT,
+    download_job_id INTEGER REFERENCES download_job(id) ON DELETE SET NULL,
+    state TEXT NOT NULL DEFAULT 'planned',
+    current_phase TEXT NOT NULL DEFAULT 'planned',
+    progress REAL NOT NULL DEFAULT 0,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 3,
+    error_code TEXT,
+    error_message TEXT,
+    request_json TEXT NOT NULL DEFAULT '{}',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    planned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    searching_at TEXT,
+    source_selected_at TEXT,
+    downloading_at TEXT,
+    processing_at TEXT,
+    verifying_at TEXT,
+    importing_at TEXT,
+    completed_at TEXT,
+    failed_at TEXT,
+    cancelled_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS acquisition_job_owner_state_idx
+    ON acquisition_job(owner_id, state, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS acquisition_job_event (
+    id INTEGER PRIMARY KEY,
+    acquisition_job_id INTEGER NOT NULL REFERENCES acquisition_job(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL,
+    from_state TEXT,
+    to_state TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS acquisition_job_event_job_idx
+    ON acquisition_job_event(acquisition_job_id, created_at ASC, id ASC);
   CREATE TABLE IF NOT EXISTS file_record (
     id INTEGER PRIMARY KEY,
     path TEXT NOT NULL,

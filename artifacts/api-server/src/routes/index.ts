@@ -7,6 +7,7 @@ import mediaRouter from "./media";
 import downloadsRouter from "./downloads";
 import archiveRouter from "./archive";
 import integrationsRouter from "./integrations";
+import acquisitionJobsRouter from "./acquisition-jobs";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(mediaRouter);
 router.use(downloadsRouter);
 router.use(archiveRouter);
 router.use(integrationsRouter);
+router.use(acquisitionJobsRouter);
 
 export default router;

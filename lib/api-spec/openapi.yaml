@@ -18,6 +18,8 @@ tags:
     description: Plex connection configuration
   - name: integrations
     description: External media integration adapter status
+  - name: acquisition
+    description: Durable provider-backed acquisition lifecycle
   - name: media
     description: Local media inspection and source selection
   - name: downloads
@@ -184,6 +186,181 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationStatusResponse"
+  /acquisition-jobs:
+    get:
+      operationId: getAcquisitionJobs
+      tags: [acquisition]
+      summary: List owner-scoped acquisition jobs
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AcquisitionJobState"
+      responses:
+        "200":
+          description: Acquisition jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AcquisitionJob"
+    post:
+      operationId: createAcquisitionJob
+      tags: [acquisition]
+      summary: Plan an acquisition and optionally send it to a provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAcquisitionJob"
+      responses:
+        "201":
+          description: Acquisition job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionJob"
+        "400":
+          description: Invalid acquisition request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /acquisition-jobs/{id}:
+    get:
+      operationId: getAcquisitionJob
+      tags: [acquisition]
+      summary: Inspect an acquisition job and its transition history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Acquisition job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionJob"
+        "404":
+          description: Acquisition job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /acquisition-jobs/{id}/retry:
+    post:
+      operationId: retryAcquisitionJob
+      tags: [acquisition]
+      summary: Retry a failed or cancelled acquisition job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Retried acquisition job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionJob"
+        "400":
+          description: Acquisition retry rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /acquisition-jobs/{id}/cancel:
+    post:
+      operationId: cancelAcquisitionJob
+      tags: [acquisition]
+      summary: Cancel local acquisition tracking
+      description: Cancelling tracking does not mutate local files or delete a provider download.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Cancelled acquisition job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionJob"
+        "400":
+          description: Acquisition cancellation rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /acquisition-jobs/{id}/progress:
+    post:
+      operationId: progressAcquisitionJob
+      tags: [acquisition]
+      summary: Advance an acquisition job through its canonical lifecycle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProgressAcquisitionJob"
+      responses:
+        "200":
+          description: Progressed acquisition job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionJob"
+        "400":
+          description: Invalid lifecycle transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /acquisition-jobs/{id}/refresh:
+    post:
+      operationId: refreshAcquisitionJob
+      tags: [acquisition]
+      summary: Refresh an acquisition job from its provider
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Refreshed acquisition job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionJob"
+        "400":
+          description: Provider refresh failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /archive/scan:
     get:
       operationId: getArchiveScan
@@ -1425,6 +1602,169 @@ components:
         verification:
           type: string
           enum: [waiting, passed, failed, not_required]
+    AcquisitionJobState:
+      type: string
+      enum: [planned, searching, source_selected, downloading, processing, verifying, importing, complete, failed, cancelled]
+    AcquisitionProvider:
+      type: string
+      enum: [sonarr, radarr, prowlarr, qbittorrent]
+    AcquisitionJobEvent:
+      type: object
+      required: [id, fromState, toState, detail, metadata, createdAt]
+      properties:
+        id:
+          type: number
+        fromState:
+          oneOf:
+            - $ref: "#/components/schemas/AcquisitionJobState"
+            - type: "null"
+        toState:
+          $ref: "#/components/schemas/AcquisitionJobState"
+        detail:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+    AcquisitionJob:
+      type: object
+      required: [id, ownerId, mediaType, title, year, externalId, sourceId, sourceUrl, providerId, providerJobId, providerReference, downloadJobId, state, progress, retryCount, maxRetries, errorCode, errorMessage, request, metadata, plannedAt, searchingAt, sourceSelectedAt, downloadingAt, processingAt, verifyingAt, importingAt, completedAt, failedAt, cancelledAt, createdAt, updatedAt, events]
+      properties:
+        id:
+          type: number
+        ownerId:
+          type: string
+        mediaType:
+          type: string
+        title:
+          type: string
+        year:
+          type: ["number", "null"]
+        externalId:
+          type: ["string", "null"]
+        sourceId:
+          type: ["string", "null"]
+        sourceUrl:
+          type: ["string", "null"]
+        providerId:
+          oneOf:
+            - $ref: "#/components/schemas/AcquisitionProvider"
+            - type: "null"
+        providerJobId:
+          type: ["string", "null"]
+        providerReference:
+          type: ["string", "null"]
+        downloadJobId:
+          type: ["number", "null"]
+        state:
+          $ref: "#/components/schemas/AcquisitionJobState"
+        progress:
+          type: number
+        retryCount:
+          type: number
+        maxRetries:
+          type: number
+        errorCode:
+          type: ["string", "null"]
+        errorMessage:
+          type: ["string", "null"]
+        request:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties: true
+        plannedAt:
+          type: string
+          format: date-time
+        searchingAt:
+          type: ["string", "null"]
+          format: date-time
+        sourceSelectedAt:
+          type: ["string", "null"]
+          format: date-time
+        downloadingAt:
+          type: ["string", "null"]
+          format: date-time
+        processingAt:
+          type: ["string", "null"]
+          format: date-time
+        verifyingAt:
+          type: ["string", "null"]
+          format: date-time
+        importingAt:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        failedAt:
+          type: ["string", "null"]
+          format: date-time
+        cancelledAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionJobEvent"
+    CreateAcquisitionJob:
+      type: object
+      required: [mediaType, title]
+      properties:
+        mediaType:
+          type: string
+        title:
+          type: string
+        year:
+          type: ["number", "null"]
+        externalId:
+          type: ["string", "null"]
+        sourceId:
+          type: ["string", "null"]
+        sourceUrl:
+          type: ["string", "null"]
+        providerId:
+          oneOf:
+            - $ref: "#/components/schemas/AcquisitionProvider"
+            - type: "null"
+        metadata:
+          type: object
+          additionalProperties: true
+        start:
+          type: boolean
+          default: false
+    ProgressAcquisitionJob:
+      type: object
+      required: [state]
+      properties:
+        state:
+          $ref: "#/components/schemas/AcquisitionJobState"
+        progress:
+          type: number
+          minimum: 0
+          maximum: 100
+        providerJobId:
+          type: ["string", "null"]
+        providerReference:
+          type: ["string", "null"]
+        metadata:
+          type: object
+          additionalProperties: true
+        errorCode:
+          type: ["string", "null"]
+        errorMessage:
+          type: ["string", "null"]
+        detail:
+          type: string
     ErrorResponse:
       type: object
       required: [error]
