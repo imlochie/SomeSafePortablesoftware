@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { WebhookDeliveryDiagnostics } from './webhookDeliveryDiagnostics';
 import type { WebhookProvider } from './webhookProvider';
 
 export interface WebhookSecretStatus {
@@ -12,4 +13,5 @@ export interface WebhookSecretStatus {
   configured: boolean;
   /** @nullable */
   overlapUntil: Date | null;
+  diagnostics: WebhookDeliveryDiagnostics;
 }

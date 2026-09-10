@@ -375,11 +375,36 @@ export const GetIntegrationStatusesResponse = zod.object({
 /**
  * @summary Get provider webhook secret status without credentials
  */
+export const getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsAcceptedMin = 0;
+export const getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsAcceptedMultipleOf = 1;
+
+export const getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsRejectedMin = 0;
+export const getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsRejectedMultipleOf = 1;
+
+export const getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsUnavailableMin = 0;
+export const getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsUnavailableMultipleOf = 1;
+
+export const getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsMalformedMin = 0;
+export const getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsMalformedMultipleOf = 1;
+
+
+
 export const GetWebhookSecretStatusesResponse = zod.object({
   "providers": zod.array(zod.object({
   "provider": zod.enum(['sonarr', 'radarr']),
   "configured": zod.boolean(),
-  "overlapUntil": zod.coerce.date().nullable()
+  "overlapUntil": zod.coerce.date().nullable(),
+  "diagnostics": zod.object({
+  "windowStartedAt": zod.coerce.date(),
+  "lastReceivedAt": zod.coerce.date().nullable(),
+  "lastResult": zod.union([zod.enum(['accepted', 'rejected', 'unavailable', 'malformed']),zod.null()]),
+  "counts": zod.object({
+  "accepted": zod.number().min(getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsAcceptedMin).multipleOf(getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsAcceptedMultipleOf),
+  "rejected": zod.number().min(getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsRejectedMin).multipleOf(getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsRejectedMultipleOf),
+  "unavailable": zod.number().min(getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsUnavailableMin).multipleOf(getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsUnavailableMultipleOf),
+  "malformed": zod.number().min(getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsMalformedMin).multipleOf(getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsMalformedMultipleOf)
+})
+})
 }))
 })
 
@@ -403,10 +428,35 @@ export const ReplaceWebhookSecretBody = zod.object({
   "overlapMinutes": zod.number().min(1).max(replaceWebhookSecretBodyOverlapMinutesMax).optional().describe('Required for overlap mode; old deliveries are accepted for this many minutes.')
 })
 
+export const replaceWebhookSecretResponseDiagnosticsCountsAcceptedMin = 0;
+export const replaceWebhookSecretResponseDiagnosticsCountsAcceptedMultipleOf = 1;
+
+export const replaceWebhookSecretResponseDiagnosticsCountsRejectedMin = 0;
+export const replaceWebhookSecretResponseDiagnosticsCountsRejectedMultipleOf = 1;
+
+export const replaceWebhookSecretResponseDiagnosticsCountsUnavailableMin = 0;
+export const replaceWebhookSecretResponseDiagnosticsCountsUnavailableMultipleOf = 1;
+
+export const replaceWebhookSecretResponseDiagnosticsCountsMalformedMin = 0;
+export const replaceWebhookSecretResponseDiagnosticsCountsMalformedMultipleOf = 1;
+
+
+
 export const ReplaceWebhookSecretResponse = zod.object({
   "provider": zod.enum(['sonarr', 'radarr']),
   "configured": zod.boolean(),
-  "overlapUntil": zod.coerce.date().nullable()
+  "overlapUntil": zod.coerce.date().nullable(),
+  "diagnostics": zod.object({
+  "windowStartedAt": zod.coerce.date(),
+  "lastReceivedAt": zod.coerce.date().nullable(),
+  "lastResult": zod.union([zod.enum(['accepted', 'rejected', 'unavailable', 'malformed']),zod.null()]),
+  "counts": zod.object({
+  "accepted": zod.number().min(replaceWebhookSecretResponseDiagnosticsCountsAcceptedMin).multipleOf(replaceWebhookSecretResponseDiagnosticsCountsAcceptedMultipleOf),
+  "rejected": zod.number().min(replaceWebhookSecretResponseDiagnosticsCountsRejectedMin).multipleOf(replaceWebhookSecretResponseDiagnosticsCountsRejectedMultipleOf),
+  "unavailable": zod.number().min(replaceWebhookSecretResponseDiagnosticsCountsUnavailableMin).multipleOf(replaceWebhookSecretResponseDiagnosticsCountsUnavailableMultipleOf),
+  "malformed": zod.number().min(replaceWebhookSecretResponseDiagnosticsCountsMalformedMin).multipleOf(replaceWebhookSecretResponseDiagnosticsCountsMalformedMultipleOf)
+})
+})
 })
 
 

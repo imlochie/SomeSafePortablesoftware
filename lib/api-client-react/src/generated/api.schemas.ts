@@ -421,11 +421,41 @@ export const WebhookProvider = {
   radarr: 'radarr',
 } as const;
 
+export type WebhookDeliveryResultClass = typeof WebhookDeliveryResultClass[keyof typeof WebhookDeliveryResultClass];
+
+
+export const WebhookDeliveryResultClass = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+  unavailable: 'unavailable',
+  malformed: 'malformed',
+} as const;
+
+export interface WebhookDeliveryCounts {
+  /** @minimum 0 */
+  accepted: number;
+  /** @minimum 0 */
+  rejected: number;
+  /** @minimum 0 */
+  unavailable: number;
+  /** @minimum 0 */
+  malformed: number;
+}
+
+export interface WebhookDeliveryDiagnostics {
+  windowStartedAt: string;
+  /** @nullable */
+  lastReceivedAt: string | null;
+  lastResult: WebhookDeliveryResultClass | null;
+  counts: WebhookDeliveryCounts;
+}
+
 export interface WebhookSecretStatus {
   provider: WebhookProvider;
   configured: boolean;
   /** @nullable */
   overlapUntil: string | null;
+  diagnostics: WebhookDeliveryDiagnostics;
 }
 
 export interface WebhookSecretStatusesResponse {

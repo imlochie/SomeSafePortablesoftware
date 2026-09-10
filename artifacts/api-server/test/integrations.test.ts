@@ -8,8 +8,10 @@ import {
 } from "../src/integrations";
 import { archiveDb } from "../src/lib/archive-db";
 import {
+  getWebhookDeliveryDiagnostics,
   readWebhookSecretCandidates,
   readWebhookSecretStatus,
+  recordWebhookDelivery,
   rotateWebhookSecret,
 } from "../src/services/settings";
 
@@ -121,6 +123,45 @@ describe("integration adapter foundation", () => {
         () => rotateWebhookSecret("sonarr", { secret: "too-short", mode: "cutover" }, env, firstNow),
         /at least 16 characters/i,
       );
+    } finally {
+      archiveDb.prepare("DELETE FROM setting WHERE key = ?").run(key);
+    }
+  });
+
+  test("webhook delivery diagnostics keep redacted rolling result counts", () => {
+    const key = "integration.webhook.sonarr.diagnostics";
+    archiveDb.prepare("DELETE FROM setting WHERE key = ?").run(key);
+    const firstNow = Date.parse("2026-09-10T12:00:00.000Z");
+
+    try {
+      recordWebhookDelivery("sonarr", "accepted", firstNow);
+      recordWebhookDelivery("sonarr", "accepted", firstNow + 1_000);
+      recordWebhookDelivery("sonarr", "rejected", firstNow + 2_000);
+      recordWebhookDelivery("sonarr", "unavailable", firstNow + 3_000);
+      recordWebhookDelivery("sonarr", "malformed", firstNow + 4_000);
+
+      const diagnostics = getWebhookDeliveryDiagnostics("sonarr", firstNow + 5_000);
+      assert.deepEqual(diagnostics.counts, {
+        accepted: 2,
+        rejected: 1,
+        unavailable: 1,
+        malformed: 1,
+      });
+      assert.equal(diagnostics.lastResult, "malformed");
+      assert.equal(diagnostics.lastReceivedAt, "2026-09-10T12:00:04.000Z");
+
+      const row = archiveDb.prepare("SELECT value FROM setting WHERE key = ?").get(key) as { value: string };
+      assert.doesNotMatch(row.value, /request-body|signature|secret/i);
+
+      const expired = getWebhookDeliveryDiagnostics("sonarr", firstNow + 24 * 60 * 60 * 1000 + 1);
+      assert.deepEqual(expired.counts, {
+        accepted: 0,
+        rejected: 0,
+        unavailable: 0,
+        malformed: 0,
+      });
+      assert.equal(expired.lastResult, null);
+      assert.equal(expired.lastReceivedAt, null);
     } finally {
       archiveDb.prepare("DELETE FROM setting WHERE key = ?").run(key);
     }

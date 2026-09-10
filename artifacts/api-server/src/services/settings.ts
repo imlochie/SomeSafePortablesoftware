@@ -3,9 +3,17 @@ import { archiveDb } from "../lib/archive-db";
 export const webhookProviders = ["sonarr", "radarr"] as const;
 export type WebhookProvider = (typeof webhookProviders)[number];
 export type WebhookRotationMode = "overlap" | "cutover";
+export const webhookDeliveryResultClasses = [
+  "accepted",
+  "rejected",
+  "unavailable",
+  "malformed",
+] as const;
+export type WebhookDeliveryResultClass = (typeof webhookDeliveryResultClasses)[number];
 
 const MINIMUM_WEBHOOK_SECRET_LENGTH = 16;
 const MAXIMUM_OVERLAP_MINUTES = 24 * 60;
+const WEBHOOK_DIAGNOSTICS_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 interface StoredWebhookSecret {
   activeSecret: string;
@@ -17,10 +25,29 @@ export interface WebhookSecretStatus {
   provider: WebhookProvider;
   configured: boolean;
   overlapUntil: string | null;
+  diagnostics: WebhookDeliveryDiagnostics;
+}
+
+export interface WebhookDeliveryCounts {
+  accepted: number;
+  rejected: number;
+  unavailable: number;
+  malformed: number;
+}
+
+export interface WebhookDeliveryDiagnostics {
+  windowStartedAt: string;
+  lastReceivedAt: string | null;
+  lastResult: WebhookDeliveryResultClass | null;
+  counts: WebhookDeliveryCounts;
 }
 
 function settingKey(provider: WebhookProvider) {
   return `integration.webhook.${provider}`;
+}
+
+function diagnosticsSettingKey(provider: WebhookProvider) {
+  return `integration.webhook.${provider}.diagnostics`;
 }
 
 function environmentKey(provider: WebhookProvider) {
@@ -59,6 +86,102 @@ function isActiveExpiry(value: string | null, now = Date.now()) {
   return Boolean(value && Date.parse(value) > now);
 }
 
+function emptyWebhookDeliveryCounts(): WebhookDeliveryCounts {
+  return {
+    accepted: 0,
+    rejected: 0,
+    unavailable: 0,
+    malformed: 0,
+  };
+}
+
+function nonNegativeInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function readWebhookDeliveryDiagnostics(
+  provider: WebhookProvider,
+  now = Date.now(),
+): WebhookDeliveryDiagnostics {
+  const row = archiveDb
+    .prepare("SELECT value FROM setting WHERE key = ?")
+    .get(diagnosticsSettingKey(provider)) as { value?: string } | undefined;
+  let parsed: Partial<WebhookDeliveryDiagnostics> = {};
+  try {
+    parsed = row?.value ? JSON.parse(row.value) as Partial<WebhookDeliveryDiagnostics> : {};
+  } catch {
+    parsed = {};
+  }
+
+  const storedWindowStartedAt = typeof parsed.windowStartedAt === "string"
+    && Number.isFinite(Date.parse(parsed.windowStartedAt))
+    ? parsed.windowStartedAt
+    : null;
+  const windowStartedAt = storedWindowStartedAt
+    && Date.parse(storedWindowStartedAt) > now - WEBHOOK_DIAGNOSTICS_WINDOW_MS
+    ? storedWindowStartedAt
+    : new Date(now).toISOString();
+  const storedCounts = parsed.counts && typeof parsed.counts === "object"
+    ? parsed.counts as Partial<WebhookDeliveryCounts>
+    : {};
+  const counts = windowStartedAt === storedWindowStartedAt
+    ? {
+      accepted: nonNegativeInteger(storedCounts.accepted),
+      rejected: nonNegativeInteger(storedCounts.rejected),
+      unavailable: nonNegativeInteger(storedCounts.unavailable),
+      malformed: nonNegativeInteger(storedCounts.malformed),
+    }
+    : emptyWebhookDeliveryCounts();
+  const lastResult = windowStartedAt === storedWindowStartedAt
+    && webhookDeliveryResultClasses.includes(parsed.lastResult as WebhookDeliveryResultClass)
+    ? parsed.lastResult as WebhookDeliveryResultClass
+    : null;
+  const lastReceivedAt = windowStartedAt === storedWindowStartedAt
+    && typeof parsed.lastReceivedAt === "string"
+    && Number.isFinite(Date.parse(parsed.lastReceivedAt))
+    ? parsed.lastReceivedAt
+    : null;
+  return {
+    windowStartedAt,
+    lastReceivedAt,
+    lastResult,
+    counts,
+  };
+}
+
+export function recordWebhookDelivery(
+  provider: WebhookProvider,
+  result: WebhookDeliveryResultClass,
+  now = Date.now(),
+) {
+  if (!webhookDeliveryResultClasses.includes(result)) {
+    throw new Error("Webhook delivery result class is not supported.");
+  }
+  const current = readWebhookDeliveryDiagnostics(provider, now);
+  const diagnostics: WebhookDeliveryDiagnostics = {
+    ...current,
+    lastReceivedAt: new Date(now).toISOString(),
+    lastResult: result,
+    counts: {
+      ...current.counts,
+      [result]: current.counts[result] + 1,
+    },
+  };
+  archiveDb
+    .prepare(
+      "INSERT INTO setting (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
+    )
+    .run(diagnosticsSettingKey(provider), JSON.stringify(diagnostics));
+  return diagnostics;
+}
+
+export function getWebhookDeliveryDiagnostics(
+  provider: WebhookProvider,
+  now = Date.now(),
+) {
+  return readWebhookDeliveryDiagnostics(provider, now);
+}
+
 export function readWebhookSecretCandidates(
   provider: WebhookProvider,
   env: NodeJS.ProcessEnv = process.env,
@@ -87,6 +210,7 @@ export function readWebhookSecretStatus(
     provider,
     configured: Boolean(activeSecret),
     overlapUntil,
+    diagnostics: readWebhookDeliveryDiagnostics(provider, now),
   };
 }
 

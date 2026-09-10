@@ -1069,6 +1069,8 @@ function WebhookSecretPanel() {
 function WebhookSecretRow({ provider, status, form, disabled, onChange, onSave }: { provider: typeof webhookProviders[number]; status?: WebhookSecretStatus; form: WebhookForm; disabled: boolean; onChange: (update: Partial<WebhookForm>) => void; onSave: () => void }) {
   const configured = status?.configured ?? false;
   const overlap = status?.overlapUntil ? `OLD SECRET ACCEPTED UNTIL ${new Date(status.overlapUntil).toLocaleString()}` : 'CUTOVER ONLY';
+  const diagnostics = status?.diagnostics;
+  const counts = diagnostics?.counts ?? { accepted: 0, rejected: 0, unavailable: 0, malformed: 0 };
   return <div className="border border-[#e3e8e7] bg-white/45 p-4" data-testid={`webhook-row-${provider}`}>
     <div className="flex items-center justify-between gap-3">
       <div><div className="archive-display text-[14px] font-extrabold text-[#354851]">{provider[0].toUpperCase()}{provider.slice(1)}</div><div className="mt-1 flex items-center gap-2 archive-mono text-[9px] tracking-[.08em] text-[#7f9194]"><span className={`status-dot ${configured ? 'ready' : 'warning'}`} />{configured ? 'CONFIGURED' : 'NOT CONFIGURED'}</div></div>
@@ -1078,6 +1080,19 @@ function WebhookSecretRow({ provider, status, form, disabled, onChange, onSave }
     <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_110px]">
       <label className="block text-[10px] font-bold tracking-[.08em] text-[#71858a]">ROTATION PATH<select value={form.mode} onChange={(event) => onChange({ mode: event.target.value as WebhookForm['mode'] })} className="mt-2 block w-full border border-[#d8e1de] bg-white px-3 py-2.5 text-[11px] text-[#354851] outline-none focus:border-[#4e9690]" data-testid={`select-webhook-mode-${provider}`}><option value="overlap">Overlap old secret</option><option value="cutover">Cut over immediately</option></select></label>
       {form.mode === 'overlap' && <label className="block text-[10px] font-bold tracking-[.08em] text-[#71858a]">MINUTES<input type="number" min="1" max="1440" step="1" value={form.overlapMinutes} onChange={(event) => onChange({ overlapMinutes: event.target.value })} className="mt-2 block w-full border border-[#d8e1de] bg-white px-3 py-2.5 text-[11px] text-[#354851] outline-none focus:border-[#4e9690]" data-testid={`input-webhook-overlap-${provider}`} /></label>}
+    </div>
+    <div className="mt-4 border-t border-[#e3e8e7] pt-4" data-testid={`panel-webhook-diagnostics-${provider}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">DELIVERY DIAGNOSTICS / LAST 24 HOURS</div>
+          <div className="mt-1 text-[10px] text-[#879599]">{diagnostics?.lastReceivedAt ? `Last delivery ${formatTime(diagnostics.lastReceivedAt)}` : 'No delivery has reached this node yet.'}</div>
+        </div>
+        {diagnostics?.lastResult && <span className="archive-mono text-[9px] font-bold tracking-[.08em] text-[#39736e]">LAST: {diagnostics.lastResult.toUpperCase()}</span>}
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] sm:grid-cols-4">
+        {(['accepted', 'rejected', 'unavailable', 'malformed'] as const).map((result) => <div key={result} className="border border-[#e3e8e7] bg-white/60 px-2.5 py-2" data-testid={`text-webhook-${result}-${provider}`}><div className="archive-mono text-[9px] tracking-[.08em] text-[#879599]">{result.toUpperCase()}</div><div className="archive-display mt-1 text-lg font-extrabold text-[#354851]">{counts[result]}</div></div>)}
+      </div>
+      <div className="mt-3 text-[10px] leading-5 text-[#879599]">Counts contain outcomes only. Request bodies, signatures, and both webhook secrets are never displayed or stored.</div>
     </div>
     <button type="button" onClick={onSave} disabled={disabled} className="mt-4 w-full bg-[#39736e] px-3 py-2.5 text-[10px] font-bold tracking-[.1em] text-white disabled:opacity-50" data-testid={`button-save-webhook-${provider}`}>{disabled ? 'SAVING' : 'SAVE WEBHOOK SECRET'}</button>
   </div>;

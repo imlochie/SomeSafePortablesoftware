@@ -10,6 +10,12 @@ import {
   isAcquisitionProviderId,
   type AcquisitionProviderId,
 } from "../services/acquisition-jobs";
+import {
+  recordWebhookDelivery,
+  webhookProviders,
+  type WebhookDeliveryResultClass,
+  type WebhookProvider,
+} from "../services/settings";
 
 const router: IRouter = Router();
 
@@ -27,6 +33,12 @@ function errorMessage(error: unknown) {
     : "The acquisition webhook could not be processed.";
 }
 
+function recordDelivery(provider: string, result: WebhookDeliveryResultClass) {
+  if (webhookProviders.includes(provider as WebhookProvider)) {
+    recordWebhookDelivery(provider as WebhookProvider, result);
+  }
+}
+
 router.post(
   "/:provider",
   (req, res) => {
@@ -35,6 +47,7 @@ router.post(
       return res.status(404).json({ error: "Acquisition webhook provider is not supported." });
     }
     if (!Buffer.isBuffer(req.body)) {
+      recordDelivery(provider, "malformed");
       return res.status(400).json({ error: "Acquisition webhook body must be raw JSON." });
     }
     try {
@@ -47,20 +60,25 @@ router.post(
         input,
       );
       if (!event) {
+        recordDelivery(provider, "accepted");
         return res.status(202).json({ accepted: true, status: "ignored" });
       }
       const result = handleAcquisitionWebhook(provider as AcquisitionProviderId, event);
+      recordDelivery(provider, "accepted");
       return res.status(202).json({
         accepted: true,
         status: result.status,
       });
     } catch (error) {
       if (error instanceof IntegrationWebhookAuthenticationError) {
+        recordDelivery(provider, "rejected");
         return res.status(401).json({ error: errorMessage(error) });
       }
       if (error instanceof IntegrationUnavailableError) {
+        recordDelivery(provider, "unavailable");
         return res.status(503).json({ error: errorMessage(error) });
       }
+      recordDelivery(provider, "malformed");
       return res.status(400).json({ error: errorMessage(error) });
     }
   },
