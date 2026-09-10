@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { afterEach, describe, test } from "node:test";
 import type { IntegrationConfiguration } from "../src/integrations/config";
 import {
@@ -9,6 +10,9 @@ import {
   IntegrationHttpError,
   requestJson,
 } from "../src/integrations";
+import app from "../src/app";
+import { archiveDb, readEvents } from "../src/lib/archive-db";
+import { runtimeConfig } from "../src/lib/runtime-config";
 
 const originalFetch = globalThis.fetch;
 
@@ -41,6 +45,26 @@ function textResponse(value: string, status = 200, headers: Record<string, strin
 function mockFetch(handler: (url: URL, init: RequestInit) => Response | Promise<Response>) {
   globalThis.fetch = (async (input, init = {}) =>
     handler(new URL(String(input)), init)) as typeof fetch;
+}
+
+async function startApiServer() {
+  const server = createServer(app);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  return {
+    server,
+    baseUrl: `http://127.0.0.1:${address.port}`,
+  };
+}
+
+async function stopApiServer(server: ReturnType<typeof createServer>) {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
 }
 
 describe("HTTP integration adapters", { concurrency: false }, () => {
@@ -174,5 +198,84 @@ describe("HTTP integration adapters", { concurrency: false }, () => {
       createSonarrAdapter(config()).getCapability("media_lookup")!({ query: "Example" }, { ownerId: "__local__" }),
       (error: unknown) => error instanceof IntegrationHttpError && error.kind === "malformed",
     );
+  });
+
+  test("authenticated webhook rotations are recorded only in the operator's system history", async () => {
+    const ownerId = runtimeConfig.localOwnerId;
+    const otherOwnerId = "webhook-rotation-other-owner";
+    const settingKeys = ["integration.webhook.sonarr", "integration.webhook.radarr"];
+    archiveDb.prepare("DELETE FROM setting WHERE key IN (?, ?)").run(...settingKeys);
+    archiveDb
+      .prepare("DELETE FROM system_event WHERE owner_id IN (?, ?) AND source = 'integrations'")
+      .run(ownerId, otherOwnerId);
+
+    const { server, baseUrl } = await startApiServer();
+    try {
+      const rotate = (provider: "sonarr" | "radarr", body: Record<string, unknown>) =>
+        originalFetch(`${baseUrl}/api/integrations/webhooks/${provider}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+      const sonarrSuccess = await rotate("sonarr", {
+        secret: "sonarr-route-secret-1234",
+        mode: "cutover",
+      });
+      assert.equal(sonarrSuccess.status, 200);
+
+      const radarrSuccess = await rotate("radarr", {
+        secret: "radarr-route-secret-1234",
+        mode: "overlap",
+        overlapMinutes: 30,
+      });
+      assert.equal(radarrSuccess.status, 200);
+
+      const sonarrFailure = await rotate("sonarr", {
+        secret: "too-short",
+        mode: "cutover",
+      });
+      assert.equal(sonarrFailure.status, 400);
+
+      const radarrFailure = await rotate("radarr", {
+        secret: "radarr-route-secret-5678",
+        mode: "overlap",
+      });
+      assert.equal(radarrFailure.status, 400);
+
+      const ownerEvents = readEvents(ownerId, 100).filter(
+        (event) => event.source === "integrations" && event.message.includes("Webhook secret rotated"),
+      );
+      assert.equal(ownerEvents.length, 2);
+      assert.deepEqual(
+        ownerEvents.map((event) => event.operatorId).sort(),
+        [ownerId, ownerId],
+      );
+      assert.ok(ownerEvents.some((event) => /sonarr/i.test(event.message)));
+      assert.ok(ownerEvents.some((event) => /radarr/i.test(event.message)));
+      assert.ok(ownerEvents.every((event) => event.retentionClass === "security"));
+      assert.ok(!ownerEvents.some((event) => /sonarr-route-secret|radarr-route-secret/.test(JSON.stringify(event))));
+
+      const historyResponse = await originalFetch(`${baseUrl}/api/system/events`);
+      assert.equal(historyResponse.status, 200);
+      const history = await historyResponse.json() as Array<{
+        operatorId: string | null;
+        message: string;
+      }>;
+      assert.equal(
+        history.filter((event) => event.message.includes("Webhook secret rotated")).length,
+        2,
+      );
+      assert.ok(history.every((event) => event.operatorId === null || event.operatorId === ownerId));
+
+      const otherOwnerEvents = readEvents(otherOwnerId, 100);
+      assert.equal(otherOwnerEvents.length, 0);
+    } finally {
+      await stopApiServer(server);
+      archiveDb.prepare("DELETE FROM setting WHERE key IN (?, ?)").run(...settingKeys);
+      archiveDb
+        .prepare("DELETE FROM system_event WHERE owner_id IN (?, ?) AND source = 'integrations'")
+        .run(ownerId, otherOwnerId);
+    }
   });
 });
