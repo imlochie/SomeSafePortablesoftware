@@ -26,6 +26,7 @@ import type {
   ArchiveBulkReviewUpdate,
   ArchiveInventory,
   ArchiveInventoryRecord,
+  ArchiveNamingProposalResponse,
   ArchiveReview,
   ArchiveReviewUpdate,
   ArchiveScan,
@@ -35,6 +36,7 @@ import type {
   DownloadPreparationInput,
   DownloadSpecification,
   ErrorResponse,
+  GetArchiveNamingProposalsParams,
   HealthStatus,
   LocalMediaInspectInput,
   LocalMediaInspection,
@@ -1111,6 +1113,90 @@ export function useGetArchiveInventory<TData = Awaited<ReturnType<typeof getArch
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetArchiveInventoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetArchiveNamingProposalsUrl = (params?: GetArchiveNamingProposalsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive/naming-proposals?${stringifiedParams}` : `/api/archive/naming-proposals`
+}
+
+/**
+ * @summary Get archive naming proposals
+ */
+export const getArchiveNamingProposals = async (params?: GetArchiveNamingProposalsParams, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveNamingProposalResponse> => {
+
+  return customFetch<ArchiveNamingProposalResponse>(getGetArchiveNamingProposalsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveNamingProposalsQueryKey = (params?: GetArchiveNamingProposalsParams,) => {
+    return [
+    `/api/archive/naming-proposals`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetArchiveNamingProposalsQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveNamingProposals>>, TError = ErrorType<unknown>>(params?: GetArchiveNamingProposalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveNamingProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveNamingProposalsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveNamingProposals>>> = ({ signal }) => getArchiveNamingProposals(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveNamingProposals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveNamingProposalsQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveNamingProposals>>>
+export type GetArchiveNamingProposalsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get archive naming proposals
+ */
+
+export function useGetArchiveNamingProposals<TData = Awaited<ReturnType<typeof getArchiveNamingProposals>>, TError = ErrorType<unknown>>(
+ params?: GetArchiveNamingProposalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveNamingProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveNamingProposalsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

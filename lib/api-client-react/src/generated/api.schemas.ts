@@ -9,6 +9,98 @@ export interface HealthStatus {
   status: string;
 }
 
+/**
+ * Parsed or proposed media identity. Movie identities contain title and
+ * year fields; TV identities contain show, season, episode, episodes,
+ * episodeTitle, and ambiguity fields.
+ */
+export interface ArchiveNamingProposalIdentity { [key: string]: unknown }
+
+export type ArchiveNamingProposalConfidence = typeof ArchiveNamingProposalConfidence[keyof typeof ArchiveNamingProposalConfidence];
+
+
+export const ArchiveNamingProposalConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  uncertain: 'uncertain',
+} as const;
+
+export type ArchiveNamingProposalOperation = typeof ArchiveNamingProposalOperation[keyof typeof ArchiveNamingProposalOperation];
+
+
+export const ArchiveNamingProposalOperation = {
+  rename: 'rename',
+  restructure: 'restructure',
+  move: 'move',
+  'uncertain/no_action': 'uncertain/no_action',
+} as const;
+
+export type ArchiveNamingProposalMediaType = typeof ArchiveNamingProposalMediaType[keyof typeof ArchiveNamingProposalMediaType];
+
+
+export const ArchiveNamingProposalMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export interface ArchiveNamingProposal {
+  fileRecordId: number;
+  /** @nullable */
+  localIdentityId: number | null;
+  sourcePath: string;
+  /** @nullable */
+  proposedPath: string | null;
+  sourceFilename: string;
+  /** @nullable */
+  proposedFilename: string | null;
+  currentIdentity: ArchiveNamingProposalIdentity | null;
+  proposedIdentity: ArchiveNamingProposalIdentity | null;
+  patternId: string;
+  confidence: ArchiveNamingProposalConfidence;
+  operation: ArchiveNamingProposalOperation;
+  reason: string;
+  evidence: string[];
+  mediaType: ArchiveNamingProposalMediaType;
+  volumeId: string;
+  archiveRoot: string;
+  collision: boolean;
+}
+
+export interface ArchiveNamingProposalSummary {
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  highConfidence: number;
+  /** @minimum 0 */
+  mediumConfidence: number;
+  /** @minimum 0 */
+  lowConfidence: number;
+  /** @minimum 0 */
+  actionable: number;
+  /** @minimum 0 */
+  uncertain: number;
+  /** @minimum 0 */
+  collisions: number;
+}
+
+export interface ArchiveNamingProposalPagination {
+  /** @minimum 1 */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  totalPages: number;
+}
+
+export interface ArchiveNamingProposalResponse {
+  summary: ArchiveNamingProposalSummary;
+  pagination: ArchiveNamingProposalPagination;
+  results: ArchiveNamingProposal[];
+}
+
 export type StatusValue = typeof StatusValue[keyof typeof StatusValue];
 
 
@@ -855,4 +947,59 @@ export interface DownloadJob {
 export interface ErrorResponse {
   error: string;
 }
+
+export type GetArchiveNamingProposalsParams = {
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+pageSize?: number;
+confidence?: GetArchiveNamingProposalsConfidence;
+operation?: GetArchiveNamingProposalsOperation;
+pattern?: string;
+mediaType?: GetArchiveNamingProposalsMediaType;
+volume?: string;
+state?: GetArchiveNamingProposalsState;
+uncertain?: boolean;
+};
+
+export type GetArchiveNamingProposalsConfidence = typeof GetArchiveNamingProposalsConfidence[keyof typeof GetArchiveNamingProposalsConfidence];
+
+
+export const GetArchiveNamingProposalsConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  uncertain: 'uncertain',
+} as const;
+
+export type GetArchiveNamingProposalsOperation = typeof GetArchiveNamingProposalsOperation[keyof typeof GetArchiveNamingProposalsOperation];
+
+
+export const GetArchiveNamingProposalsOperation = {
+  rename: 'rename',
+  restructure: 'restructure',
+  move: 'move',
+  'uncertain/no_action': 'uncertain/no_action',
+} as const;
+
+export type GetArchiveNamingProposalsMediaType = typeof GetArchiveNamingProposalsMediaType[keyof typeof GetArchiveNamingProposalsMediaType];
+
+
+export const GetArchiveNamingProposalsMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export type GetArchiveNamingProposalsState = typeof GetArchiveNamingProposalsState[keyof typeof GetArchiveNamingProposalsState];
+
+
+export const GetArchiveNamingProposalsState = {
+  actionable: 'actionable',
+  uncertain: 'uncertain',
+} as const;
 

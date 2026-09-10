@@ -542,6 +542,86 @@ export const GetArchiveInventoryResponse = zod.object({
 
 
 /**
+ * @summary Get archive naming proposals
+ */
+
+export const getArchiveNamingProposalsQueryPageSizeMax = 500;
+
+
+
+export const GetArchiveNamingProposalsQueryParams = zod.object({
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(getArchiveNamingProposalsQueryPageSizeMax).optional(),
+  "confidence": zod.enum(['high', 'medium', 'low', 'uncertain']).optional(),
+  "operation": zod.enum(['rename', 'restructure', 'move', 'uncertain/no_action']).optional(),
+  "pattern": zod.coerce.string().optional(),
+  "mediaType": zod.enum(['movie', 'tv']).optional(),
+  "volume": zod.coerce.string().optional(),
+  "state": zod.enum(['actionable', 'uncertain']).optional(),
+  "uncertain": zod.coerce.boolean().optional()
+})
+
+export const getArchiveNamingProposalsResponseSummaryTotalMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryHighConfidenceMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryMediumConfidenceMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryLowConfidenceMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryActionableMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryUncertainMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryCollisionsMin = 0;
+
+
+
+export const getArchiveNamingProposalsResponsePaginationTotalMin = 0;
+
+export const getArchiveNamingProposalsResponsePaginationTotalPagesMin = 0;
+
+
+
+export const GetArchiveNamingProposalsResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().min(getArchiveNamingProposalsResponseSummaryTotalMin),
+  "highConfidence": zod.number().min(getArchiveNamingProposalsResponseSummaryHighConfidenceMin),
+  "mediumConfidence": zod.number().min(getArchiveNamingProposalsResponseSummaryMediumConfidenceMin),
+  "lowConfidence": zod.number().min(getArchiveNamingProposalsResponseSummaryLowConfidenceMin),
+  "actionable": zod.number().min(getArchiveNamingProposalsResponseSummaryActionableMin),
+  "uncertain": zod.number().min(getArchiveNamingProposalsResponseSummaryUncertainMin),
+  "collisions": zod.number().min(getArchiveNamingProposalsResponseSummaryCollisionsMin)
+}),
+  "pagination": zod.object({
+  "page": zod.number().min(1),
+  "pageSize": zod.number().min(1),
+  "total": zod.number().min(getArchiveNamingProposalsResponsePaginationTotalMin),
+  "totalPages": zod.number().min(getArchiveNamingProposalsResponsePaginationTotalPagesMin)
+}),
+  "results": zod.array(zod.object({
+  "fileRecordId": zod.number(),
+  "localIdentityId": zod.number().nullable(),
+  "sourcePath": zod.string(),
+  "proposedPath": zod.string().nullable(),
+  "sourceFilename": zod.string(),
+  "proposedFilename": zod.string().nullable(),
+  "currentIdentity": zod.union([zod.record(zod.string(), zod.unknown()).describe('Parsed or proposed media identity. Movie identities contain title and\nyear fields; TV identities contain show, season, episode, episodes,\nepisodeTitle, and ambiguity fields.\n'),zod.null()]),
+  "proposedIdentity": zod.union([zod.record(zod.string(), zod.unknown()).describe('Parsed or proposed media identity. Movie identities contain title and\nyear fields; TV identities contain show, season, episode, episodes,\nepisodeTitle, and ambiguity fields.\n'),zod.null()]),
+  "patternId": zod.string(),
+  "confidence": zod.enum(['high', 'medium', 'low', 'uncertain']),
+  "operation": zod.enum(['rename', 'restructure', 'move', 'uncertain/no_action']),
+  "reason": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "volumeId": zod.string(),
+  "archiveRoot": zod.string(),
+  "collision": zod.boolean()
+}))
+})
+
+
+/**
  * @summary Get one local archive record with comparison details
  */
 

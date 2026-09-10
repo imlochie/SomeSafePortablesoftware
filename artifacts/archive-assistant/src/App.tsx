@@ -17,7 +17,7 @@ import {
   useGetSystemEvents, useGetSystemOverview, useHealthCheck, useInspectMediaSource,
   usePauseDownload, usePrepareDownload, useRetryDownload, useResumeDownload,
   useStartDownload, useStartPlexSync, useTestPlexConnection, useUpdatePlexConfig, useUpdateSettings,
-  useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord,
+  useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord, useGetArchiveNamingProposals,
   useUpdateArchiveRecordReview, useUpdateArchiveRecordReviews, getGetArchiveScanQueryKey, getGetArchiveInventoryQueryKey,
   getGetArchiveRecordQueryKey,
   setBaseUrl,
@@ -620,7 +620,7 @@ function ArchivePage() {
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
-  const [view, setView] = useState<'local' | 'plex_only'>('local');
+  const [view, setView] = useState<'local' | 'naming_proposals' | 'plex_only'>('local');
   const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
 
   const [isScanning, setIsScanning] = useState(false);
@@ -647,6 +647,8 @@ function ArchivePage() {
       queryKey: getGetArchiveInventoryQueryKey()
     }
   });
+
+  const { data: namingProposals, isLoading: namingLoading, isError: namingError, refetch: refetchNaming } = useGetArchiveNamingProposals();
 
   const startScan = useStartArchiveScan();
   const bulkReview = useUpdateArchiveRecordReviews();
@@ -767,7 +769,8 @@ function ArchivePage() {
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e3e8e7] bg-[#fbfcfa] p-4 md:px-6">
             <div className="flex flex-wrap gap-2">
               <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
-              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
+             <button onClick={() => { setView('naming_proposals'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'naming_proposals' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-naming-proposals">NAMING PROPOSALS</button>
+             <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
             </div>
 
             {view === 'local' && (
@@ -781,7 +784,7 @@ function ArchivePage() {
             )}
           </div>
 
-          {!showPlex && selectableRecords.length > 0 && (
+          {view === 'local' && selectableRecords.length > 0 && (
             <div className="border-b border-[#e3e8e7] bg-[#f7faf8] px-4 py-3 md:px-6" data-testid="panel-bulk-review">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <label className="inline-flex cursor-pointer items-center gap-2 text-[10px] font-bold tracking-[.08em] text-[#53656b]">
@@ -823,7 +826,48 @@ function ArchivePage() {
           )}
 
           <div className="flex-1 overflow-y-auto p-4 md:p-6" style={{ maxHeight: '600px' }}>
-            {showPlex ? (
+            {view === 'naming_proposals' ? (
+              namingLoading ? (
+                <div className="flex min-h-[250px] items-center justify-center archive-mono text-[10px] tracking-[.12em] text-[#7f9194]" data-testid="status-naming-proposals-loading">ANALYSING ARCHIVE NAMING...</div>
+              ) : namingError ? (
+                <ErrorState title="Naming intelligence unavailable" message="Naming proposals could not be loaded from the local node." onRetry={() => refetchNaming()} testId="button-retry-naming-proposals" />
+              ) : !namingProposals?.results.length ? (
+                <EmptyState icon={Sparkles} title="No naming proposals" description="The archive currently has no naming changes requiring review." />
+              ) : (
+                <div className="space-y-3" data-testid="panel-naming-proposals">
+                  {namingProposals.results.map(proposal => (
+                    <div key={proposal.fileRecordId} className="border border-[#e1e8e5] bg-white/50 p-4">
+                      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                        <div className="min-w-0">
+                          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">CURRENT</div>
+                          <div className="mt-1 break-all text-[12px] font-semibold text-[#43545b]">{proposal.sourcePath}</div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="archive-mono text-[9px] tracking-[.12em] text-[#39736e]">PROPOSED</div>
+                          <div className="mt-1 break-all text-[12px] font-semibold text-[#344851]">{proposal.proposedPath ?? proposal.proposedFilename ?? 'No proposed path'}</div>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-x-3 gap-y-2 border-t border-[#edf1ef] pt-3">
+                        <span className="archive-mono text-[9px] text-[#7f9194]">CONFIDENCE / {proposal.confidence.toUpperCase()}</span>
+                        <span className="archive-mono text-[9px] text-[#7f9194]">OPERATION / {proposal.operation.toUpperCase()}</span>
+                        <span className="archive-mono text-[9px] text-[#7f9194]">PATTERN / {proposal.patternId}</span>
+                        <span className="archive-mono text-[9px] text-[#7f9194]">MEDIA TYPE / {proposal.mediaType.toUpperCase()}</span>
+                        <span className="archive-mono text-[9px] text-[#7f9194]">VOLUME / {proposal.volumeId}</span>
+                        {(proposal.confidence === 'uncertain' || proposal.operation === 'uncertain/no_action') && <span className="archive-mono text-[9px] text-[#a77517]">UNCERTAIN</span>}
+                        {proposal.collision && <span className="archive-mono text-[9px] text-[#994b43]">COLLISION / YES</span>}
+                      </div>
+                      {(proposal.reason || proposal.evidence.length > 0) && (
+                        <div className="mt-3 border-l-2 border-[#d9bd77] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]">
+                          {proposal.reason && <div><span className="font-bold">WHY / </span>{proposal.reason}</div>}
+                          {proposal.evidence.length > 0 && <div className="mt-1"><span className="font-bold">EVIDENCE / </span>{proposal.evidence.join('; ')}</div>}
+                        </div>
+                      )}
+                      <div className="mt-3 archive-mono text-[9px] tracking-[.08em] text-[#a0afaf]">PROPOSAL ONLY / NO FILESYSTEM ACTION</div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : showPlex ? (
               plexOnly.length ? (
                 <div className="space-y-3">
                   {plexOnly.map(p => (

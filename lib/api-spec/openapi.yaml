@@ -205,6 +205,62 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ArchiveInventory"
+  /archive/naming-proposals:
+    get:
+      operationId: getArchiveNamingProposals
+      tags: [archive]
+      summary: Get archive naming proposals
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: number
+            minimum: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 500
+        - name: confidence
+          in: query
+          schema:
+            type: string
+            enum: [high, medium, low, uncertain]
+        - name: operation
+          in: query
+          schema:
+            type: string
+            enum: [rename, restructure, move, uncertain/no_action]
+        - name: pattern
+          in: query
+          schema:
+            type: string
+        - name: mediaType
+          in: query
+          schema:
+            type: string
+            enum: [movie, tv]
+        - name: volume
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [actionable, uncertain]
+        - name: uncertain
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Archive naming proposals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveNamingProposalResponse"
   /archive/records/{id}:
     get:
       operationId: getArchiveRecord
@@ -508,6 +564,175 @@ components:
           type: string
       required:
         - status
+    ArchiveNamingProposalIdentity:
+      type: object
+      additionalProperties: true
+      description: |
+        Parsed or proposed media identity. Movie identities contain title and
+        year fields; TV identities contain show, season, episode, episodes,
+        episodeTitle, and ambiguity fields.
+
+    ArchiveNamingProposal:
+      type: object
+      required:
+        - fileRecordId
+        - localIdentityId
+        - sourcePath
+        - proposedPath
+        - sourceFilename
+        - proposedFilename
+        - currentIdentity
+        - proposedIdentity
+        - patternId
+        - confidence
+        - operation
+        - reason
+        - evidence
+        - mediaType
+        - volumeId
+        - archiveRoot
+        - collision
+      properties:
+        fileRecordId:
+          type: number
+
+        localIdentityId:
+          type: [number, "null"]
+
+        sourcePath:
+          type: string
+
+        proposedPath:
+          type: [string, "null"]
+
+        sourceFilename:
+          type: string
+
+        proposedFilename:
+          type: [string, "null"]
+
+        currentIdentity:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveNamingProposalIdentity"
+            - type: "null"
+
+        proposedIdentity:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveNamingProposalIdentity"
+            - type: "null"
+
+        patternId:
+          type: string
+
+        confidence:
+          type: string
+          enum: [high, medium, low, uncertain]
+
+        operation:
+          type: string
+          enum: [rename, restructure, move, uncertain/no_action]
+
+        reason:
+          type: string
+
+        evidence:
+          type: array
+          items:
+            type: string
+
+        mediaType:
+          type: string
+          enum: [movie, tv]
+
+        volumeId:
+          type: string
+
+        archiveRoot:
+          type: string
+
+        collision:
+          type: boolean
+
+    ArchiveNamingProposalSummary:
+      type: object
+      required:
+        - total
+        - highConfidence
+        - mediumConfidence
+        - lowConfidence
+        - actionable
+        - uncertain
+        - collisions
+      properties:
+        total:
+          type: number
+          minimum: 0
+
+        highConfidence:
+          type: number
+          minimum: 0
+
+        mediumConfidence:
+          type: number
+          minimum: 0
+
+        lowConfidence:
+          type: number
+          minimum: 0
+
+        actionable:
+          type: number
+          minimum: 0
+
+        uncertain:
+          type: number
+          minimum: 0
+
+        collisions:
+          type: number
+          minimum: 0
+
+    ArchiveNamingProposalPagination:
+      type: object
+      required:
+        - page
+        - pageSize
+        - total
+        - totalPages
+      properties:
+        page:
+          type: number
+          minimum: 1
+
+        pageSize:
+          type: number
+          minimum: 1
+
+        total:
+          type: number
+          minimum: 0
+
+        totalPages:
+          type: number
+          minimum: 0
+
+    ArchiveNamingProposalResponse:
+      type: object
+      required:
+        - summary
+        - pagination
+        - results
+      properties:
+        summary:
+          $ref: "#/components/schemas/ArchiveNamingProposalSummary"
+
+        pagination:
+          $ref: "#/components/schemas/ArchiveNamingProposalPagination"
+
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveNamingProposal"
     StatusValue:
       type: string
       enum: [ready, connected, idle, placeholder, warning, unavailable, processing]
@@ -1382,4 +1607,5 @@ components:
       properties:
         error:
           type: string
+
 
