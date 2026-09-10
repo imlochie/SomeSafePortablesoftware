@@ -32,6 +32,14 @@ export const SystemEventLevel = {
   error: 'error',
 } as const;
 
+export type SystemEventRetentionClass = typeof SystemEventRetentionClass[keyof typeof SystemEventRetentionClass];
+
+
+export const SystemEventRetentionClass = {
+  operational: 'operational',
+  security: 'security',
+} as const;
+
 export interface SystemEvent {
   id: string;
   level: SystemEventLevel;
@@ -40,6 +48,7 @@ export interface SystemEvent {
   source: string;
   /** @nullable */
   operatorId: string | null;
+  retentionClass: SystemEventRetentionClass;
 }
 
 export type StorageSummaryStatus = typeof StorageSummaryStatus[keyof typeof StorageSummaryStatus];

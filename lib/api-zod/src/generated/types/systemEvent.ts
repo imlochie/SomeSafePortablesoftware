@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SystemEventLevel } from './systemEventLevel';
+import type { SystemEventRetentionClass } from './systemEventRetentionClass';
 
 export interface SystemEvent {
   id: string;
@@ -15,4 +16,5 @@ export interface SystemEvent {
   source: string;
   /** @nullable */
   operatorId: string | null;
+  retentionClass: SystemEventRetentionClass;
 }

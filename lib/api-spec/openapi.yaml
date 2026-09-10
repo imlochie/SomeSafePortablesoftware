@@ -914,7 +914,7 @@ components:
             type: string
     SystemEvent:
       type: object
-      required: [id, level, message, timestamp, source, operatorId]
+      required: [id, level, message, timestamp, source, operatorId, retentionClass]
       properties:
         id:
           type: string
@@ -930,6 +930,9 @@ components:
           type: string
         operatorId:
           type: ["string", "null"]
+        retentionClass:
+          type: string
+          enum: [operational, security]
     AppSettings:
       type: object
       required: [mockMode, dataDirectory, downloadDirectory, archiveDirectory, temporaryDirectory, ytDlpPath, ffmpegPath, ffprobePath, logLevel, hardwareAcceleration, hardwareAccelerationMode, networkMode, concurrentDownloads, maxRetries, bandwidthLimit, outputContainer, inspectionCacheMinutes, warningFreePercent, criticalFreePercent]

@@ -6,7 +6,7 @@ import {
   IntegrationRegistry,
   IntegrationUnavailableError,
 } from "../src/integrations";
-import { archiveDb, readEvents } from "../src/lib/archive-db";
+import { addEvent, archiveDb, pruneSystemEvents, readEvents } from "../src/lib/archive-db";
 import {
   getWebhookDeliveryDiagnostics,
   readWebhookSecretCandidates,
@@ -150,6 +150,7 @@ describe("integration adapter foundation", () => {
       assert.equal(event.level, "success");
       assert.equal(event.source, "integrations");
       assert.equal(event.operatorId, "operator-42");
+      assert.equal(event.retentionClass, "security");
       assert.equal(event.timestamp, "2026-09-10T13:00:00.000Z");
       assert.match(event.message, /radarr/i);
       assert.match(event.message, /overlap/i);
@@ -157,6 +158,32 @@ describe("integration adapter foundation", () => {
     } finally {
       archiveDb.prepare("DELETE FROM setting WHERE key = ?").run(settingKey);
       archiveDb.prepare("DELETE FROM system_event WHERE owner_id = ?").run(ownerId);
+    }
+  });
+
+  test("event retention prunes only aged operational history for the requested owner", () => {
+    const ownerA = "retention-owner-a";
+    const ownerB = "retention-owner-b";
+    const now = Date.parse("2026-09-10T15:00:00.000Z");
+    const old = new Date(now - 31 * 24 * 60 * 60 * 1000).toISOString();
+    const recent = new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString();
+
+    archiveDb.prepare("DELETE FROM system_event WHERE owner_id IN (?, ?)").run(ownerA, ownerB);
+    try {
+      addEvent("info", "Old operational A", "retention-test", ownerA, null, old);
+      addEvent("info", "Old operational B", "retention-test", ownerB, null, old);
+      addEvent("info", "Recent operational A", "retention-test", ownerA, null, recent);
+      addEvent("success", "Webhook secret rotated for sonarr using cutover mode.", "integrations", ownerA, "operator-a", old, "security");
+
+      assert.equal(pruneSystemEvents(ownerA, now), 1);
+      const eventsA = readEvents(ownerA, 20);
+      const eventsB = readEvents(ownerB, 20);
+      assert.ok(!eventsA.some((event) => event.message === "Old operational A"));
+      assert.ok(eventsA.some((event) => event.message === "Recent operational A"));
+      assert.ok(eventsA.some((event) => event.message.includes("Webhook secret rotated")));
+      assert.ok(eventsB.some((event) => event.message === "Old operational B"));
+    } finally {
+      archiveDb.prepare("DELETE FROM system_event WHERE owner_id IN (?, ?)").run(ownerA, ownerB);
     }
   });
 

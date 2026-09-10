@@ -292,6 +292,7 @@ export function rotateWebhookSecret(
     audit.ownerId,
     audit.operatorId,
     new Date(now).toISOString(),
+    "security",
   );
 
   return readWebhookSecretStatus(provider, env, now);

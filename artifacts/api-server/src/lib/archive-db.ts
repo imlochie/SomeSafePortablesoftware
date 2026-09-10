@@ -284,7 +284,8 @@ archiveDb.exec(`
     message TEXT NOT NULL,
     source TEXT NOT NULL,
     timestamp TEXT NOT NULL,
-    operator_id TEXT
+    operator_id TEXT,
+    retention_class TEXT NOT NULL DEFAULT 'operational'
   );
   CREATE TABLE IF NOT EXISTS setting (
     key TEXT PRIMARY KEY,
@@ -535,6 +536,17 @@ for (const table of ["archive_item", "source_record", "download_job", "assistant
   ensureColumn(table, "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
 }
 ensureColumn("system_event", "operator_id", "TEXT");
+ensureColumn("system_event", "retention_class", "TEXT NOT NULL DEFAULT 'operational'");
+archiveDb.exec(`
+  UPDATE system_event
+  SET retention_class = 'security'
+  WHERE source = 'integrations'
+    AND message LIKE 'Webhook secret rotated for %'
+    AND retention_class <> 'security';
+
+  CREATE INDEX IF NOT EXISTS system_event_owner_timestamp_idx
+    ON system_event(owner_id, timestamp DESC, id DESC);
+`);
 
 const defaultSettings = {
   mockMode: runtimeConfig.mockMode,
@@ -692,10 +704,32 @@ export function writeSettings(updates: Record<string, unknown>): SettingsRecord 
   return readSettings();
 }
 
+export const SYSTEM_EVENT_RETENTION = {
+  operationalDays: 30,
+  security: "indefinite",
+} as const;
+
+export type SystemEventRetentionClass = "operational" | "security";
+
+export function pruneSystemEvents(ownerId: string, now = Date.now()) {
+  if (!ownerId) {
+    throw new Error("A valid event owner is required.");
+  }
+  const cutoff = new Date(
+    now - SYSTEM_EVENT_RETENTION.operationalDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const result = archiveDb
+    .prepare(
+      "DELETE FROM system_event WHERE owner_id = ? AND retention_class = 'operational' AND timestamp < ?",
+    )
+    .run(ownerId, cutoff);
+  return Number(result.changes);
+}
+
 export function readEvents(ownerId: string, limit = 12) {
   return archiveDb
     .prepare(
-      "SELECT id, level, message, timestamp, source, operator_id AS operatorId FROM system_event WHERE owner_id = ? ORDER BY timestamp DESC LIMIT ?",
+      "SELECT id, level, message, timestamp, source, operator_id AS operatorId, retention_class AS retentionClass FROM system_event WHERE owner_id = ? ORDER BY timestamp DESC, id DESC LIMIT ?",
     )
     .all(ownerId, limit) as Array<{
     id: string;
@@ -704,6 +738,7 @@ export function readEvents(ownerId: string, limit = 12) {
     timestamp: string;
     source: string;
     operatorId: string | null;
+    retentionClass: SystemEventRetentionClass;
   }>;
 }
 
@@ -714,13 +749,17 @@ export function addEvent(
   ownerId = LEGACY_OWNER_ID,
   operatorId: string | null = null,
   timestamp = new Date().toISOString(),
+  retentionClass: SystemEventRetentionClass = "operational",
 ) {
+  if (retentionClass !== "operational" && retentionClass !== "security") {
+    throw new Error("System event retention class is not supported.");
+  }
   const id = `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   archiveDb
     .prepare(
-      "INSERT INTO system_event (id, level, message, source, timestamp, owner_id, operator_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO system_event (id, level, message, source, timestamp, owner_id, operator_id, retention_class) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
-    .run(id, level, message, source, timestamp, ownerId, operatorId);
+    .run(id, level, message, source, timestamp, ownerId, operatorId, retentionClass);
 }
 
 export function readUserSetting(ownerId: string, key: string) {

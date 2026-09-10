@@ -7,7 +7,7 @@ import {
   GetSystemEventsResponse,
   GetSystemOverviewResponse,
 } from "@workspace/api-zod";
-import { archiveDb, readEvents, readSettings } from "../lib/archive-db";
+import { archiveDb, pruneSystemEvents, readEvents, readSettings } from "../lib/archive-db";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import { getArchiveVolumes } from "../services/storage";
 import {
@@ -72,6 +72,7 @@ function readStorage(settings: ReturnType<typeof readSettings>) {
 
 router.get("/system/overview", (req, res) => {
   const ownerId = getAuthenticatedUserId(req);
+  pruneSystemEvents(ownerId);
   const settings = readSettings();
   const events = readEvents(ownerId, 8);
   const activeDownloads = archiveDb.prepare("SELECT COUNT(*) AS count FROM download_job WHERE owner_id = ? AND status IN ('inspecting', 'downloading')").get(ownerId) as { count: number };
@@ -105,7 +106,9 @@ router.get("/system/dependencies", (_req, res) => {
 });
 
 router.get("/system/events", (req, res) => {
-  res.json(GetSystemEventsResponse.parse(readEvents(getAuthenticatedUserId(req))));
+  const ownerId = getAuthenticatedUserId(req);
+  pruneSystemEvents(ownerId);
+  res.json(GetSystemEventsResponse.parse(readEvents(ownerId)));
 });
 
 export default router;

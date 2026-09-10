@@ -34,7 +34,8 @@ export const GetSystemOverviewResponse = zod.object({
   "message": zod.string(),
   "timestamp": zod.coerce.date(),
   "source": zod.string(),
-  "operatorId": zod.string().nullable()
+  "operatorId": zod.string().nullable(),
+  "retentionClass": zod.enum(['operational', 'security'])
 })),
   "activeDownloads": zod.number(),
   "queuedJobs": zod.number(),
@@ -75,7 +76,8 @@ export const GetSystemEventsResponseItem = zod.object({
   "message": zod.string(),
   "timestamp": zod.coerce.date(),
   "source": zod.string(),
-  "operatorId": zod.string().nullable()
+  "operatorId": zod.string().nullable(),
+  "retentionClass": zod.enum(['operational', 'security'])
 })
 export const GetSystemEventsResponse = zod.array(GetSystemEventsResponseItem)
 

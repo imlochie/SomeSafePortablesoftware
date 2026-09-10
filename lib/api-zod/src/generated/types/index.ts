@@ -94,6 +94,7 @@ export * from './storageSummary';
 export * from './storageSummaryStatus';
 export * from './systemEvent';
 export * from './systemEventLevel';
+export * from './systemEventRetentionClass';
 export * from './systemOverview';
 export * from './webhookDeliveryCounts';
 export * from './webhookDeliveryDiagnostics';
