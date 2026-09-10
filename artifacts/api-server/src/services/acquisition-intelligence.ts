@@ -24,6 +24,7 @@ export interface AcquisitionRecommendation {
   destination: Record<string, unknown>;
   route: Record<string, unknown>;
   blockers: string[];
+  recommendedAction: string;
   confidence: RecommendationConfidence;
   priority: RecommendationPriority;
   status: string;
@@ -95,6 +96,7 @@ function routeFor(mediaType: string): AcquisitionProviderId | null {
 }
 
 function mapRecommendation(row: Record<string, unknown>): AcquisitionRecommendation {
+  const blockers = parseStrings(row.blockers_json);
   return {
     id: Number(row.id),
     recommendationKey: String(row.recommendation_key),
@@ -107,7 +109,12 @@ function mapRecommendation(row: Record<string, unknown>): AcquisitionRecommendat
     preferredQuality: parseRecord(row.quality_json),
     destination: parseRecord(row.destination_json),
     route: parseRecord(row.route_json),
-    blockers: parseStrings(row.blockers_json),
+    blockers,
+    recommendedAction: blockers.length
+      ? "Resolve the listed blockers, regenerate evidence, then review again."
+      : row.acquisition_job_id == null
+        ? "Approve this review item to enable acquisition job creation."
+        : "Track the linked acquisition through download verification and approved import.",
     confidence: String(row.confidence) as RecommendationConfidence,
     priority: String(row.priority) as RecommendationPriority,
     status: String(row.status),

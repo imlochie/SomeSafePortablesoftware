@@ -24,6 +24,9 @@ import {
   useListAcquisitionRecommendations, useGenerateAcquisitionRecommendations, useListReviewItems,
   useApproveReviewQueueItem, useRejectReviewQueueItem, useDeferReviewQueueItem, useReopenReviewQueueItem,
   useCreateApprovedAcquisitionJob, useListArchiveOperations, useGetIntegrationStatuses,
+  useSyncControlPlaneReviewItems, useCreateArchiveOperation, usePreflightArchiveOperation,
+  useExecuteArchiveOperation, useCancelArchiveOperation, useRetryArchiveOperation,
+  useRollbackArchiveOperation,
   setBaseUrl,
 } from '@workspace/api-client-react';
 import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
@@ -280,6 +283,14 @@ function AssistantPage() {
   const defer = useDeferReviewQueueItem();
   const reopen = useReopenReviewQueueItem();
   const createJob = useCreateApprovedAcquisitionJob();
+  const syncReviews = useSyncControlPlaneReviewItems();
+  const createOperation = useCreateArchiveOperation();
+  const preflightOperation = usePreflightArchiveOperation();
+  const executeOperation = useExecuteArchiveOperation();
+  const cancelOperation = useCancelArchiveOperation();
+  const retryOperation = useRetryArchiveOperation();
+  const rollbackOperation = useRollbackArchiveOperation();
+  const [notice, setNotice] = useState('');
   const refresh = async () => Promise.all([
     recommendations.refetch(),
     reviews.refetch(),
@@ -291,17 +302,36 @@ function AssistantPage() {
     await mutation.mutateAsync({ id: itemId, data: {} });
     await refresh();
   };
+  const operate = async (operationId: number, next: 'preflight' | 'execute' | 'cancel' | 'retry' | 'rollback') => {
+    if ((next === 'execute' || next === 'rollback') && !window.confirm(
+      next === 'execute'
+        ? 'Execute this approved, successfully preflighted filesystem operation?'
+        : 'Roll back this completed filesystem operation?',
+    )) return;
+    try {
+      if (next === 'preflight') await preflightOperation.mutateAsync({ id: operationId });
+      if (next === 'execute') await executeOperation.mutateAsync({ id: operationId, data: { confirmed: true } });
+      if (next === 'cancel') await cancelOperation.mutateAsync({ id: operationId });
+      if (next === 'retry') await retryOperation.mutateAsync({ id: operationId });
+      if (next === 'rollback') await rollbackOperation.mutateAsync({ id: operationId, data: { confirmed: true } });
+      setNotice(`Operation #${operationId} ${next} completed.`);
+      await refresh();
+    } catch (error) {
+      setNotice(errorText(error));
+    }
+  };
   const pendingCount = (reviews.data ?? []).filter((item) => ['pending', 'reopened'].includes(item.state)).length;
   const blockedCount = (recommendations.data ?? []).filter((item) => item.blockers.length).length;
   const providerItems = providers.data?.integrations ?? [];
-  const busy = generate.isPending || approve.isPending || reject.isPending || defer.isPending || reopen.isPending || createJob.isPending;
+  const busy = generate.isPending || syncReviews.isPending || approve.isPending || reject.isPending || defer.isPending || reopen.isPending || createJob.isPending;
   return <>
     <PageIntro
       eyebrow="CONTROL PLANE / ASSISTANT"
       title="Review before action"
       description="Current archive evidence, provider health, approvals, acquisition jobs, and filesystem operations. Nothing is auto-approved or moved."
-      action={<button disabled={busy} onClick={async () => { await generate.mutateAsync(); await refresh(); }} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.11em] text-white disabled:opacity-50" data-testid="button-generate-recommendations"><Sparkles size={14} /> EVALUATE CURRENT STATE</button>}
+      action={<button disabled={busy} onClick={async () => { await generate.mutateAsync(); const result = await syncReviews.mutateAsync(); setNotice(`Evaluated recommendations and synchronized ${result.total} review items.`); await refresh(); }} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.11em] text-white disabled:opacity-50" data-testid="button-generate-recommendations"><Sparkles size={14} /> EVALUATE CURRENT STATE</button>}
     />
+    {notice && <div className="mb-5 border-l-2 border-[#4e9690] bg-[#eaf3ef] px-4 py-3 text-[11px] text-[#39736e]">{notice}</div>}
     <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard icon={Sparkles} label="RECOMMENDATIONS" value={String(recommendations.data?.length ?? 0)} note={`${blockedCount} with blockers`} status={blockedCount ? 'warning' : 'ready'} accent="amber" />
       <MetricCard icon={ShieldCheck} label="AWAITING REVIEW" value={String(pendingCount)} note="Explicit operator decisions" status={pendingCount ? 'warning' : 'ready'} />
@@ -322,13 +352,26 @@ function AssistantPage() {
             </>}
             {['approved', 'rejected', 'deferred'].includes(item.state) && <button onClick={() => decide(item.id, 'reopen')} className="border border-[#b8c5c2] px-3 py-2 text-[9px] font-bold tracking-[.1em] text-[#61767a]">REOPEN</button>}
             {item.state === 'approved' && item.kind === 'acquisition_recommendation' && <button onClick={async () => { await createJob.mutateAsync({ id: item.id }); await refresh(); }} className="bg-[#1d2b38] px-3 py-2 text-[9px] font-bold tracking-[.1em] text-white">CREATE / VIEW JOB</button>}
+            {item.state === 'approved' && ['naming_proposal', 'archive_finding'].includes(item.kind) && typeof item.payload.sourcePath === 'string' && typeof item.payload.destinationPath === 'string' && item.payload.destinationPath && <button onClick={async () => {
+              await createOperation.mutateAsync({ data: {
+                action: item.payload.action === 'rename' ? 'rename' : 'move',
+                sourceKind: item.kind,
+                sourceId: String(item.payload.fileRecordId ?? item.id),
+                sourcePath: item.payload.sourcePath as string,
+                destinationPath: item.payload.destinationPath as string,
+                reviewItemId: item.id,
+              } });
+              setNotice(`Approved operation planned from review #${item.id}. Preflight is still required.`);
+              await refresh();
+            }} className="bg-[#1d2b38] px-3 py-2 text-[9px] font-bold tracking-[.1em] text-white">PLAN SAFE OPERATION</button>}
           </div>
           {item.decisions.length > 0 && <div className="mt-3 text-[10px] text-[#8b999c]">{item.decisions.length} durable decision{item.decisions.length === 1 ? '' : 's'} · last {formatTime(item.decisions.at(-1)?.createdAt ?? item.updatedAt)}</div>}
         </article>)}</div> : <div className="p-8 text-center text-[12px] text-[#829095]">No review items. Evaluate the current state to reconcile recommendations.</div>}
       </section>
       <div className="space-y-5">
+        <section className="archive-panel p-5" data-testid="panel-recommendation-evidence"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">RECOMMENDATION EVIDENCE</div><div className="mt-4 space-y-4">{(recommendations.data ?? []).map((recommendation) => <article key={recommendation.id} className="border-t border-[#e3e8e7] pt-3"><div className="flex justify-between gap-3"><div className="text-[11px] font-bold text-[#42545b]">{recommendation.title}</div><span className="archive-mono text-[9px] uppercase text-[#80652e]">{recommendation.priority} / {recommendation.confidence}</span></div><p className="mt-2 text-[10px] leading-5 text-[#66787d]">{String(recommendation.evidence.reason ?? 'Evidence is recorded in the recommendation payload.')}</p>{recommendation.blockers.length > 0 && <ul className="mt-2 list-disc pl-4 text-[10px] leading-5 text-[#9b514a]">{recommendation.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul>}<p className="mt-2 border-l-2 border-[#4e9690] pl-2 text-[10px] leading-5 text-[#39736e]">{recommendation.recommendedAction}</p></article>)}{!(recommendations.data ?? []).length && <p className="text-[11px] text-[#829095]">Evaluate current state to generate deterministic recommendations.</p>}</div></section>
         <section className="archive-panel p-5" data-testid="panel-provider-health"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">PROVIDER HEALTH</div><div className="mt-4 space-y-3">{providerItems.map((provider) => <div key={provider.id} className="flex items-center justify-between gap-3 border-t border-[#e3e8e7] pt-3"><div><div className="text-[11px] font-bold text-[#42545b]">{provider.name}</div><div className="mt-1 text-[9px] text-[#8b999c]">{provider.detail}</div></div><StatusPill status={provider.state} /></div>)}</div></section>
-        <section className="archive-panel p-5" data-testid="panel-operation-history"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">SAFE OPERATIONS</div><div className="mt-4 space-y-3">{(operations.data ?? []).slice(0, 8).map((operation) => <div key={operation.id} className="border-t border-[#e3e8e7] pt-3"><div className="flex items-center justify-between"><span className="text-[11px] font-bold uppercase text-[#42545b]">{operation.action}</span><StatusPill status={operation.status} /></div><div className="mt-1 truncate text-[9px] text-[#8b999c]">{operation.destinationPath}</div>{operation.errorMessage && <div className="mt-2 text-[10px] text-[#a24d46]">{operation.errorMessage}</div>}</div>)}{!(operations.data ?? []).length && <p className="text-[11px] leading-5 text-[#829095]">No operations have been planned. Filesystem mutation remains disabled.</p>}</div></section>
+        <section className="archive-panel p-5" data-testid="panel-operation-history"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">SAFE OPERATIONS</div><div className="mt-4 space-y-3">{(operations.data ?? []).slice(0, 8).map((operation) => <div key={operation.id} className="border-t border-[#e3e8e7] pt-3"><div className="flex items-center justify-between"><span className="text-[11px] font-bold uppercase text-[#42545b]">{operation.action} #{operation.id}</span><StatusPill status={operation.status} /></div><div className="mt-1 truncate text-[9px] text-[#8b999c]">{operation.destinationPath}</div>{operation.errorMessage && <div className="mt-2 text-[10px] text-[#a24d46]">{operation.errorMessage}</div>}<div className="mt-2 flex flex-wrap gap-1">{operation.status === 'planned' && <button onClick={() => operate(operation.id, 'preflight')} className="border px-2 py-1 text-[8px] font-bold">PREFLIGHT</button>}{operation.status === 'ready' && <button onClick={() => operate(operation.id, 'execute')} className="bg-[#1d2b38] px-2 py-1 text-[8px] font-bold text-white">EXECUTE</button>}{['planned', 'preflight', 'ready', 'failed'].includes(operation.status) && <button onClick={() => operate(operation.id, 'cancel')} className="border px-2 py-1 text-[8px] font-bold">CANCEL</button>}{['failed', 'cancelled'].includes(operation.status) && operation.retryCount < operation.maxRetries && <button onClick={() => operate(operation.id, 'retry')} className="border px-2 py-1 text-[8px] font-bold">RETRY</button>}{operation.status === 'completed' && <button onClick={() => operate(operation.id, 'rollback')} className="border border-[#d79a94] px-2 py-1 text-[8px] font-bold text-[#9b514a]">ROLLBACK</button>}</div>{operation.events.length > 0 && <details className="mt-2 text-[9px] text-[#75868a]"><summary>{operation.events.length} audit events</summary>{operation.events.map(event => <div key={event.id} className="mt-1">{formatTime(event.createdAt)} · {event.detail}</div>)}</details>}</div>)}{!(operations.data ?? []).length && <p className="text-[11px] leading-5 text-[#829095]">No operations have been planned. Filesystem mutation remains disabled.</p>}</div></section>
       </div>
     </div>
   </>;

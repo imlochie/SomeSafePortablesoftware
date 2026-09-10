@@ -28,6 +28,7 @@ export interface AcquisitionRecommendation {
   destination: AcquisitionRecommendationDestination;
   route: AcquisitionRecommendationRoute;
   blockers: string[];
+  recommendedAction: string;
   confidence: RecommendationConfidence;
   priority: RecommendationPriority;
   status: string;

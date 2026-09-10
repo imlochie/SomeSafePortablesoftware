@@ -6,8 +6,9 @@ import { inspectLocalMedia, isPathWithin } from "./media";
 import { findArchiveVolumeForPath, getArchiveScanRoots } from "./storage";
 import { readReviewItem } from "./review-queue";
 import { readAcquisitionJob } from "./acquisition-jobs";
-import { getPlexConfig, startPlexSync } from "./plex";
-import { startArchiveScan } from "./archive";
+import { getPlexConfig, syncPlexInventory } from "./plex";
+import { readArchiveScan, startArchiveScan } from "./archive";
+import { readReconciliationReport } from "./reconciliation";
 
 export const archiveOperationActions = ["rename", "move", "import"] as const;
 export type ArchiveOperationAction = (typeof archiveOperationActions)[number];
@@ -49,6 +50,7 @@ export interface ArchiveOperation {
   maxRetries: number;
   preflight: Record<string, unknown>;
   rollback: Record<string, unknown>;
+  postflight: Record<string, unknown>;
   errorCode: string | null;
   errorMessage: string | null;
   createdAt: string;
@@ -155,6 +157,7 @@ function mapOperation(row: Record<string, unknown>, ownerId: string): ArchiveOpe
     maxRetries: Number(row.max_retries),
     preflight: json(row.preflight_json),
     rollback: json(row.rollback_json),
+    postflight: json(row.postflight_json),
     errorCode: row.error_code == null ? null : String(row.error_code),
     errorMessage: row.error_message == null ? null : String(row.error_message),
     createdAt: String(row.created_at),
@@ -192,6 +195,93 @@ function updateOperation(
     SET ${entries.map(([key]) => `${key} = ?`).join(", ")}, updated_at = CURRENT_TIMESTAMP
     WHERE id = ? AND owner_id = ?
   `).run(...entries.map(([, value]) => value), id, ownerId);
+}
+
+async function waitForArchiveScan(ownerId: string) {
+  for (let attempt = 0; attempt < 1_200; attempt += 1) {
+    const scan = readArchiveScan(ownerId);
+    if (scan.status !== "scanning") return scan;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("Post-operation archive scan did not finish within 60 seconds.");
+}
+
+async function persistPostflight(operation: ArchiveOperation, ownerId: string) {
+  const outcome: Record<string, unknown> = {
+    startedAt: new Date().toISOString(),
+    archiveScan: null,
+    plex: { configured: false, attempted: false },
+    reconciliation: null,
+    errors: [],
+  };
+  const errors = outcome.errors as string[];
+  try {
+    startArchiveScan(ownerId);
+    outcome.archiveScan = await waitForArchiveScan(ownerId);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "Archive scan failed.");
+  }
+  try {
+    const plex = getPlexConfig(ownerId);
+    outcome.plex = {
+      configured: plex.configured,
+      attempted: plex.configured,
+      status: plex.syncStatus,
+      error: plex.lastError,
+    };
+    if (plex.configured) {
+      await syncPlexInventory(ownerId);
+      const refreshed = getPlexConfig(ownerId);
+      outcome.plex = {
+        configured: true,
+        attempted: true,
+        status: refreshed.syncStatus,
+        error: refreshed.lastError,
+        lastSuccessfulSyncAt: refreshed.lastSuccessfulSyncAt,
+      };
+      if (refreshed.syncStatus === "sync_error") {
+        errors.push(refreshed.lastError ?? "Plex synchronization failed.");
+      }
+    }
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "Plex refresh failed.");
+  }
+  try {
+    outcome.reconciliation = await readReconciliationReport(ownerId, 1, 25);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "Reconciliation failed.");
+  }
+  outcome.completedAt = new Date().toISOString();
+  outcome.status = errors.length ? "completed_with_errors" : "completed";
+  updateOperation(operation.id, ownerId, {
+    postflight_json: JSON.stringify(outcome),
+  });
+  const updated = readArchiveOperation(operation.id, ownerId)!;
+  appendEvent(
+    updated,
+    ownerId,
+    "completed",
+    errors.length
+      ? "Post-operation refresh completed with recorded errors."
+      : "Post-operation archive scan, Plex refresh, and reconciliation completed.",
+    outcome,
+  );
+  if (updated.acquisitionJobId) {
+    const row = archiveDb.prepare(
+      "SELECT metadata_json FROM acquisition_job WHERE id = ? AND owner_id = ?",
+    ).get(updated.acquisitionJobId, ownerId) as { metadata_json: string } | undefined;
+    if (row) {
+      archiveDb.prepare(`
+        UPDATE acquisition_job
+        SET metadata_json = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND owner_id = ?
+      `).run(JSON.stringify({
+        ...json(row.metadata_json),
+        importOperationId: updated.id,
+        postImport: outcome,
+      }), updated.acquisitionJobId, ownerId);
+    }
+  }
 }
 
 function operationKey(ownerId: string, input: CreateArchiveOperationInput) {
@@ -442,16 +532,7 @@ export async function executeArchiveOperation(
       rollback,
     });
     addEvent("success", `Archive operation ${id} completed.`, "archive-operations", ownerId);
-    try {
-      startArchiveScan(ownerId);
-      const plex = getPlexConfig(ownerId);
-      if (plex.configured) startPlexSync(ownerId);
-    } catch (error) {
-      const current = readArchiveOperation(id, ownerId)!;
-      appendEvent(current, ownerId, "completed", "Post-import refresh could not be scheduled.", {
-        error: error instanceof Error ? error.message : "Refresh scheduling failed.",
-      });
-    }
+    await persistPostflight(completed, ownerId);
     return readArchiveOperation(id, ownerId)!;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Filesystem operation failed.";

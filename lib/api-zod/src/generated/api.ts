@@ -888,6 +888,7 @@ export const ListAcquisitionRecommendationsResponseItem = zod.object({
   "destination": zod.record(zod.string(), zod.unknown()),
   "route": zod.record(zod.string(), zod.unknown()),
   "blockers": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
   "confidence": zod.enum(['high', 'medium', 'low', 'unknown']),
   "priority": zod.enum(['critical', 'high', 'medium', 'low']),
   "status": zod.string(),
@@ -916,6 +917,7 @@ export const GenerateAcquisitionRecommendationsResponseItem = zod.object({
   "destination": zod.record(zod.string(), zod.unknown()),
   "route": zod.record(zod.string(), zod.unknown()),
   "blockers": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
   "confidence": zod.enum(['high', 'medium', 'low', 'unknown']),
   "priority": zod.enum(['critical', 'high', 'medium', 'low']),
   "status": zod.string(),
@@ -951,6 +953,7 @@ export const GetAcquisitionRecommendationResponse = zod.object({
   "destination": zod.record(zod.string(), zod.unknown()),
   "route": zod.record(zod.string(), zod.unknown()),
   "blockers": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
   "confidence": zod.enum(['high', 'medium', 'low', 'unknown']),
   "priority": zod.enum(['critical', 'high', 'medium', 'low']),
   "status": zod.string(),
@@ -1029,6 +1032,22 @@ export const CreateReviewItemResponse = zod.object({
   "createdAt": zod.coerce.date()
 }))
 })
+
+
+/**
+ * @summary Synchronize Naming Proposals and archive findings into the generic queue
+ */
+export const SyncControlPlaneReviewItemsResponse = zod.object({
+  "namingItems": zod.number(),
+  "archiveFindingItems": zod.number(),
+  "total": zod.number()
+})
+
+
+/**
+ * @summary List deterministic auditable Assistant capabilities
+ */
+export const GetAssistantToolCatalogResponse = zod.record(zod.string(), zod.unknown())
 
 
 /**
@@ -1236,6 +1255,7 @@ export const CreateApprovedAcquisitionJobResponse = zod.object({
   "destination": zod.record(zod.string(), zod.unknown()),
   "route": zod.record(zod.string(), zod.unknown()),
   "blockers": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
   "confidence": zod.enum(['high', 'medium', 'low', 'unknown']),
   "priority": zod.enum(['critical', 'high', 'medium', 'low']),
   "status": zod.string(),
@@ -1315,6 +1335,7 @@ export const ListArchiveOperationsResponseItem = zod.object({
   "maxRetries": zod.number(),
   "preflight": zod.record(zod.string(), zod.unknown()),
   "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
   "errorCode": zod.string().nullable(),
   "errorMessage": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
@@ -1375,6 +1396,7 @@ export const CreateArchiveOperationResponse = zod.object({
   "maxRetries": zod.number(),
   "preflight": zod.record(zod.string(), zod.unknown()),
   "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
   "errorCode": zod.string().nullable(),
   "errorMessage": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
@@ -1420,6 +1442,7 @@ export const GetArchiveOperationResponse = zod.object({
   "maxRetries": zod.number(),
   "preflight": zod.record(zod.string(), zod.unknown()),
   "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
   "errorCode": zod.string().nullable(),
   "errorMessage": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
@@ -1465,6 +1488,7 @@ export const PreflightArchiveOperationResponse = zod.object({
   "maxRetries": zod.number(),
   "preflight": zod.record(zod.string(), zod.unknown()),
   "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
   "errorCode": zod.string().nullable(),
   "errorMessage": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
@@ -1514,6 +1538,7 @@ export const ExecuteArchiveOperationResponse = zod.object({
   "maxRetries": zod.number(),
   "preflight": zod.record(zod.string(), zod.unknown()),
   "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
   "errorCode": zod.string().nullable(),
   "errorMessage": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
@@ -1559,6 +1584,7 @@ export const CancelArchiveOperationResponse = zod.object({
   "maxRetries": zod.number(),
   "preflight": zod.record(zod.string(), zod.unknown()),
   "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
   "errorCode": zod.string().nullable(),
   "errorMessage": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
@@ -1604,6 +1630,7 @@ export const RetryArchiveOperationResponse = zod.object({
   "maxRetries": zod.number(),
   "preflight": zod.record(zod.string(), zod.unknown()),
   "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
   "errorCode": zod.string().nullable(),
   "errorMessage": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
@@ -1653,6 +1680,7 @@ export const RollbackArchiveOperationResponse = zod.object({
   "maxRetries": zod.number(),
   "preflight": zod.record(zod.string(), zod.unknown()),
   "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
   "errorCode": zod.string().nullable(),
   "errorMessage": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
@@ -1767,6 +1795,7 @@ export const PlanApprovedAcquisitionImportResponse = zod.object({
   "maxRetries": zod.number(),
   "preflight": zod.record(zod.string(), zod.unknown()),
   "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
   "errorCode": zod.string().nullable(),
   "errorMessage": zod.string().nullable(),
   "createdAt": zod.coerce.date(),

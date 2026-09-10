@@ -507,6 +507,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReviewItem"
+  /review-items/sync:
+    post:
+      operationId: syncControlPlaneReviewItems
+      tags: [review]
+      summary: Synchronize Naming Proposals and archive findings into the generic queue
+      responses:
+        "200":
+          description: Synchronization counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewSyncResult"
+  /assistant/tools:
+    get:
+      operationId: getAssistantToolCatalog
+      tags: [assistant]
+      summary: List deterministic auditable Assistant capabilities
+      responses:
+        "200":
+          description: Deterministic capability catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
   /review-items/{id}:
     get:
       operationId: getReviewItem
@@ -2573,7 +2598,7 @@ components:
       enum: [critical, high, medium, low]
     AcquisitionRecommendation:
       type: object
-      required: [id, recommendationKey, mediaType, title, year, externalId, target, evidence, preferredQuality, destination, route, blockers, confidence, priority, status, reviewItemId, acquisitionJobId, evidenceHash, generatedAt, updatedAt]
+      required: [id, recommendationKey, mediaType, title, year, externalId, target, evidence, preferredQuality, destination, route, blockers, recommendedAction, confidence, priority, status, reviewItemId, acquisitionJobId, evidenceHash, generatedAt, updatedAt]
       properties:
         id: { type: number }
         recommendationKey: { type: string }
@@ -2599,6 +2624,7 @@ components:
         blockers:
           type: array
           items: { type: string }
+        recommendedAction: { type: string }
         confidence:
           $ref: "#/components/schemas/RecommendationConfidence"
         priority:
@@ -2642,7 +2668,7 @@ components:
         createdAt: { type: string, format: date-time }
     ArchiveOperation:
       type: object
-      required: [id, operationKey, action, sourceKind, sourceId, sourcePath, destinationPath, reviewItemId, acquisitionJobId, downloadJobId, status, dryRun, retryCount, maxRetries, preflight, rollback, errorCode, errorMessage, createdAt, startedAt, completedAt, cancelledAt, updatedAt, events]
+      required: [id, operationKey, action, sourceKind, sourceId, sourcePath, destinationPath, reviewItemId, acquisitionJobId, downloadJobId, status, dryRun, retryCount, maxRetries, preflight, rollback, postflight, errorCode, errorMessage, createdAt, startedAt, completedAt, cancelledAt, updatedAt, events]
       properties:
         id: { type: number }
         operationKey: { type: string }
@@ -2664,6 +2690,9 @@ components:
           type: object
           additionalProperties: true
         rollback:
+          type: object
+          additionalProperties: true
+        postflight:
           type: object
           additionalProperties: true
         errorCode: { type: ["string", "null"] }
@@ -2708,6 +2737,13 @@ components:
       properties:
         destinationPath: { type: string, minLength: 1 }
         dryRun: { type: boolean, default: false }
+    ReviewSyncResult:
+      type: object
+      required: [namingItems, archiveFindingItems, total]
+      properties:
+        namingItems: { type: number }
+        archiveFindingItems: { type: number }
+        total: { type: number }
     ErrorResponse:
       type: object
       required: [error]

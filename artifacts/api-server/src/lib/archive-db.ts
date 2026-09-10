@@ -337,6 +337,7 @@ archiveDb.exec(`
     max_retries INTEGER NOT NULL DEFAULT 3,
     preflight_json TEXT NOT NULL DEFAULT '{}',
     rollback_json TEXT NOT NULL DEFAULT '{}',
+    postflight_json TEXT NOT NULL DEFAULT '{}',
     error_code TEXT,
     error_message TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -633,6 +634,7 @@ for (const table of ["archive_item", "source_record", "download_job", "assistant
 }
 ensureColumn("system_event", "operator_id", "TEXT");
 ensureColumn("system_event", "retention_class", "TEXT NOT NULL DEFAULT 'operational'");
+ensureColumn("archive_operation", "postflight_json", "TEXT NOT NULL DEFAULT '{}'");
 archiveDb.exec(`
   UPDATE system_event
   SET retention_class = 'security'

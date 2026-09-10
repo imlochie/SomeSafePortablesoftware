@@ -44,6 +44,7 @@ import type {
   DownloadSpecification,
   ErrorResponse,
   GetAcquisitionJobsParams,
+  GetAssistantToolCatalog200,
   HealthStatus,
   IntegrationStatusResponse,
   LinkAcquisitionDownload,
@@ -66,6 +67,7 @@ import type {
   RequestArchiveAcquisition,
   ReviewDecisionInput,
   ReviewItem,
+  ReviewSyncResult,
   RotateWebhookSecretBody,
   SystemEvent,
   SystemOverview,
@@ -2054,6 +2056,154 @@ export const useCreateReviewItem = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreateReviewItemMutationOptions(options));
     }
+
+export const getSyncControlPlaneReviewItemsUrl = () => {
+
+
+
+
+  return `/api/review-items/sync`
+}
+
+/**
+ * @summary Synchronize Naming Proposals and archive findings into the generic queue
+ */
+export const syncControlPlaneReviewItems = async ( options?: Parameters<typeof customFetch>[1]): Promise<ReviewSyncResult> => {
+
+  return customFetch<ReviewSyncResult>(getSyncControlPlaneReviewItemsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSyncControlPlaneReviewItemsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncControlPlaneReviewItems>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncControlPlaneReviewItems>>, TError,void, TContext> => {
+
+const mutationKey = ['syncControlPlaneReviewItems'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncControlPlaneReviewItems>>, void> = () => {
+
+
+          return  syncControlPlaneReviewItems(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncControlPlaneReviewItemsMutationResult = NonNullable<Awaited<ReturnType<typeof syncControlPlaneReviewItems>>>
+
+    export type SyncControlPlaneReviewItemsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Synchronize Naming Proposals and archive findings into the generic queue
+ */
+export const useSyncControlPlaneReviewItems = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncControlPlaneReviewItems>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncControlPlaneReviewItems>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getSyncControlPlaneReviewItemsMutationOptions(options));
+    }
+
+export const getGetAssistantToolCatalogUrl = () => {
+
+
+
+
+  return `/api/assistant/tools`
+}
+
+/**
+ * @summary List deterministic auditable Assistant capabilities
+ */
+export const getAssistantToolCatalog = async ( options?: Parameters<typeof customFetch>[1]): Promise<GetAssistantToolCatalog200> => {
+
+  return customFetch<GetAssistantToolCatalog200>(getGetAssistantToolCatalogUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssistantToolCatalogQueryKey = () => {
+    return [
+    `/api/assistant/tools`
+    ] as const;
+    }
+
+
+export const getGetAssistantToolCatalogQueryOptions = <TData = Awaited<ReturnType<typeof getAssistantToolCatalog>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssistantToolCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssistantToolCatalogQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssistantToolCatalog>>> = ({ signal }) => getAssistantToolCatalog({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssistantToolCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAssistantToolCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof getAssistantToolCatalog>>>
+export type GetAssistantToolCatalogQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List deterministic auditable Assistant capabilities
+ */
+
+export function useGetAssistantToolCatalog<TData = Awaited<ReturnType<typeof getAssistantToolCatalog>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssistantToolCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAssistantToolCatalogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetReviewItemUrl = (id: number,) => {
 

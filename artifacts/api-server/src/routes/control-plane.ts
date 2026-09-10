@@ -30,6 +30,7 @@ import {
   linkAcquisitionDownload,
   planApprovedAcquisitionImport,
 } from "../services/acquisition-orchestration";
+import { syncControlPlaneReviewItems } from "../services/review-sync";
 
 const router: IRouter = Router();
 
@@ -55,11 +56,46 @@ router.get("/acquisition-recommendations", (req, res) => {
 
 router.post("/acquisition-recommendations", async (req, res) => {
   try {
-    const result = await generateAcquisitionRecommendations(getAuthenticatedUserId(req));
+    const ownerId = getAuthenticatedUserId(req);
+    const result = await generateAcquisitionRecommendations(ownerId);
+    await syncControlPlaneReviewItems(ownerId);
     res.json(Api.GenerateAcquisitionRecommendationsResponse.parse(result));
   } catch (error) {
     res.status(400).json({ error: message(error) });
   }
+});
+
+router.post("/review-items/sync", async (req, res) => {
+  try {
+    res.json(await syncControlPlaneReviewItems(getAuthenticatedUserId(req)));
+  } catch (error) {
+    res.status(400).json({ error: message(error) });
+  }
+});
+
+router.get("/assistant/tools", (_req, res) => {
+  res.json({
+    deterministic: true,
+    conversationalAi: false,
+    capabilities: [
+      { id: "archive-search", method: "GET", path: "/archive", mutatesFiles: false },
+      { id: "host-lookup", method: "GET", path: "/archive/lookup", mutatesFiles: false },
+      { id: "missing-media", method: "GET", path: "/archive/missing", mutatesFiles: false },
+      { id: "source-inspection", method: "POST", path: "/downloads/inspect", mutatesFiles: false },
+      { id: "quality-comparison", method: "GET", path: "/archive/records/{id}", mutatesFiles: false },
+      { id: "recommendations", method: "POST", path: "/acquisition-recommendations", mutatesFiles: false },
+      { id: "review-sync", method: "POST", path: "/review-items/sync", mutatesFiles: false },
+      { id: "review-decision", method: "POST", path: "/review-items/{id}/{decision}", mutatesFiles: false },
+      { id: "acquisition-create", method: "POST", path: "/review-items/{id}/acquisition-job", mutatesFiles: false, requiresApproval: true },
+      { id: "media-verification", method: "POST", path: "/system/media/inspect", mutatesFiles: false },
+      { id: "operation-plan", method: "POST", path: "/archive-operations", mutatesFiles: false, requiresApproval: true },
+      { id: "operation-preflight", method: "POST", path: "/archive-operations/{id}/preflight", mutatesFiles: false, requiresApproval: true },
+      { id: "operation-execute", method: "POST", path: "/archive-operations/{id}/execute", mutatesFiles: true, requiresApproval: true, requiresPreflight: true, requiresConfirmation: true },
+      { id: "scan", method: "POST", path: "/archive/scan", mutatesFiles: false },
+      { id: "storage-status", method: "GET", path: "/system/storage", mutatesFiles: false },
+      { id: "reconciliation", method: "GET", path: "/archive/reconciliation", mutatesFiles: false },
+    ],
+  });
 });
 
 router.get("/acquisition-recommendations/:id", (req, res) => {

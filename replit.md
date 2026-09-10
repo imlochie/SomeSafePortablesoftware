@@ -38,12 +38,12 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 - The API never returns Plex tokens; configuration endpoints expose only safe status fields.
 - Intelligence/control-plane code must use abstract integration capabilities through the registry; adapters may report disconnected and must not return mocked external data.
 - Sonarr, Radarr, Prowlarr, and qBittorrent use environment configuration only; API keys, passwords, and session cookies stay server-side and are never included in status responses or logs.
-- Phase 1 uses real persistence for settings and events while future external services remain explicit placeholders.
+- The control plane uses durable local persistence; external providers remain explicit, replaceable adapters with honest disconnected/error states.
 - Optional dependency detection uses direct process execution without a shell and never accepts arbitrary commands from the UI.
 
 ## Product
 
-The app gives a personal media archivist a calm control room for local archive state, dependency readiness, system events, Plex configuration, and persistent local preferences. Assistant, queue, archive browser, sources, and history workflows are reserved for later phases.
+The app gives a personal media archivist a local control room for archive state, downloads, review decisions, approved acquisitions and filesystem operations, Plex synchronization, naming proposals, system events, sources, and history.
 
 ## User preferences
 

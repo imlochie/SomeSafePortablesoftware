@@ -23,7 +23,7 @@ ARCHIVE ASSISTANT is a Windows-first, local-first personal media archive control
 - FFmpeg processing and hardware-accelerated transcodes.
 - Filesystem monitoring, duplicate detection, archive actions, and real job execution.
 
-The UI intentionally shows these as placeholders instead of claiming they are connected.
+The UI reports unconfigured providers as disconnected and surfaces real provider errors instead of fabricating availability.
 
 ## Run on Windows
 

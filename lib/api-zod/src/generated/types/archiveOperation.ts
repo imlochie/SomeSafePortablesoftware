@@ -7,6 +7,7 @@
  */
 import type { ArchiveOperationAction } from './archiveOperationAction';
 import type { ArchiveOperationEvent } from './archiveOperationEvent';
+import type { ArchiveOperationPostflight } from './archiveOperationPostflight';
 import type { ArchiveOperationPreflight } from './archiveOperationPreflight';
 import type { ArchiveOperationRollback } from './archiveOperationRollback';
 import type { ArchiveOperationStatus } from './archiveOperationStatus';
@@ -31,6 +32,7 @@ export interface ArchiveOperation {
   maxRetries: number;
   preflight: ArchiveOperationPreflight;
   rollback: ArchiveOperationRollback;
+  postflight: ArchiveOperationPostflight;
   /** @nullable */
   errorCode: string | null;
   /** @nullable */

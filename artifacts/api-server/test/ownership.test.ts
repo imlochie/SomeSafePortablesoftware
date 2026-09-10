@@ -78,7 +78,6 @@ describe("user ownership", { concurrency: false }, () => {
       "source_record",
       "download_job",
       "assistant_conversation",
-      "system_event",
       "file_record",
     ]) {
       const legacyCount = archiveDb
@@ -90,6 +89,13 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(legacyCount.count, 0, `${table} retained legacy rows`);
       assert.ok(claimedCount.count > 0, `${table} was not claimed`);
     }
+    assert.equal(
+      (archiveDb.prepare(
+        "SELECT COUNT(*) AS count FROM system_event WHERE id = 'legacy-event' AND owner_id = ?",
+      ).get(ownerA) as { count: number }).count,
+      1,
+      "the seeded legacy event was not claimed",
+    );
 
     assert.equal(readUserSetting(ownerA, "plexServerUrl"), "http://legacy-plex");
     assert.equal(readUserSetting(ownerA, "plexToken"), "legacy-token");
@@ -114,16 +120,22 @@ describe("user ownership", { concurrency: false }, () => {
     );
   });
 
-  test("download reads, mutations, queue positions, and subscriptions are owner-isolated", () => {
+  test("download reads, mutations, queue positions, and subscriptions are owner-isolated", async () => {
     const settings = {
       ...readSettings(),
       temporaryDirectory: join(testRoot, "tmp"),
       archiveDirectory: join(testRoot, "library"),
     };
+    await Promise.all([
+      mkdir(settings.temporaryDirectory, { recursive: true }),
+      mkdir(settings.archiveDirectory, { recursive: true }),
+    ]);
     const input = (title: string) => ({
       sourceUrl: `https://example.com/${title.toLowerCase().replaceAll(" ", "-")}`,
       title,
       selectedFormatId: "best",
+      temporaryDirectory: settings.temporaryDirectory,
+      destinationDirectory: settings.archiveDirectory,
     });
 
     const eventsA: string[] = [];
@@ -416,7 +428,7 @@ process.stdout.write(JSON.stringify({
       writeFile(files.corrupt, "corrupt"),
     ]);
     writeSettings({
-      archiveDirectory,
+      archiveDirectory: JSON.stringify([archiveDirectory, downloadDirectory]),
       downloadDirectory,
       ffprobePath,
     });

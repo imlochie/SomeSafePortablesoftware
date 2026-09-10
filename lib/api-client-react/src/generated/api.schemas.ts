@@ -1288,6 +1288,7 @@ export interface AcquisitionRecommendation {
   destination: AcquisitionRecommendationDestination;
   route: AcquisitionRecommendationRoute;
   blockers: string[];
+  recommendedAction: string;
   confidence: RecommendationConfidence;
   priority: RecommendationPriority;
   status: string;
@@ -1344,6 +1345,8 @@ export type ArchiveOperationPreflight = { [key: string]: unknown };
 
 export type ArchiveOperationRollback = { [key: string]: unknown };
 
+export type ArchiveOperationPostflight = { [key: string]: unknown };
+
 export interface ArchiveOperation {
   id: number;
   operationKey: string;
@@ -1364,6 +1367,7 @@ export interface ArchiveOperation {
   maxRetries: number;
   preflight: ArchiveOperationPreflight;
   rollback: ArchiveOperationRollback;
+  postflight: ArchiveOperationPostflight;
   /** @nullable */
   errorCode: string | null;
   /** @nullable */
@@ -1420,6 +1424,12 @@ export interface PlanAcquisitionImport {
   dryRun?: boolean;
 }
 
+export interface ReviewSyncResult {
+  namingItems: number;
+  archiveFindingItems: number;
+  total: number;
+}
+
 export interface ErrorResponse {
   error: string;
 }
@@ -1438,6 +1448,8 @@ export type ListReviewItemsParams = {
 state?: ReviewItemState;
 kind?: ReviewItemKind;
 };
+
+export type GetAssistantToolCatalog200 = { [key: string]: unknown };
 
 export type ListArchiveOperationsParams = {
 status?: ArchiveOperationStatus;
