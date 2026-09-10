@@ -361,6 +361,104 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /archive/media-lookup:
+    get:
+      operationId: lookupArchiveMedia
+      tags: [archive]
+      summary: Look up TV and movie metadata through the integration registry
+      parameters:
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: externalId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: mediaType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: providerId
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AcquisitionProvider"
+      responses:
+        "200":
+          description: Provider media lookup results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaLookupResponse"
+        "400":
+          description: Lookup unavailable or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /archive/missing-media:
+    get:
+      operationId: discoverArchiveMissingMedia
+      tags: [archive]
+      summary: Discover missing TV and movie media through the integration registry
+      parameters:
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: mediaType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: providerId
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AcquisitionProvider"
+      responses:
+        "200":
+          description: Provider missing-media results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MissingMediaResponse"
+        "400":
+          description: Discovery unavailable or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /archive/acquisitions:
+    post:
+      operationId: requestArchiveAcquisition
+      tags: [archive, acquisition]
+      summary: Request a provider acquisition while preserving archive context
+      description: The request is persisted locally before its provider job is created. Provider state never replaces archive state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestArchiveAcquisition"
+      responses:
+        "201":
+          description: Provider-backed acquisition tracking job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionJob"
+        "400":
+          description: Acquisition request rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /archive/scan:
     get:
       operationId: getArchiveScan
@@ -1046,6 +1144,57 @@ components:
           type: string
         lastCheckedAt:
           type: [string, "null"]
+    MediaLookupRecord:
+      type: object
+      required: [externalId, title, mediaType, year, source, metadata]
+      properties:
+        externalId:
+          type: string
+        title:
+          type: string
+        mediaType:
+          type: string
+        year:
+          type: [number, "null"]
+        source:
+          $ref: "#/components/schemas/AcquisitionProvider"
+        metadata:
+          type: object
+          additionalProperties: true
+    MediaLookupResponse:
+      type: object
+      required: [providerId, records]
+      properties:
+        providerId:
+          $ref: "#/components/schemas/AcquisitionProvider"
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaLookupRecord"
+    MissingMediaItem:
+      type: object
+      required: [externalId, title, mediaType, year, detail]
+      properties:
+        externalId:
+          type: string
+        title:
+          type: string
+        mediaType:
+          type: string
+        year:
+          type: [number, "null"]
+        detail:
+          type: [string, "null"]
+    MissingMediaResponse:
+      type: object
+      required: [providerId, items]
+      properties:
+        providerId:
+          $ref: "#/components/schemas/AcquisitionProvider"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MissingMediaItem"
     ArchiveScan:
       type: object
       required: [status, startedAt, completedAt, lastError, scannedFiles, activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount]
@@ -1736,12 +1885,22 @@ components:
           oneOf:
             - $ref: "#/components/schemas/AcquisitionProvider"
             - type: "null"
+        archiveIdentity:
+          type: [object, "null"]
+          additionalProperties: true
+        policyDecision:
+          type: [object, "null"]
+          additionalProperties: true
         metadata:
           type: object
           additionalProperties: true
         start:
           type: boolean
           default: false
+    RequestArchiveAcquisition:
+      allOf:
+        - $ref: "#/components/schemas/CreateAcquisitionJob"
+      description: A provider acquisition request carrying archive identity and the policy decision that authorized it.
     ProgressAcquisitionJob:
       type: object
       required: [state]

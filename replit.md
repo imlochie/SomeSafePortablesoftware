@@ -28,6 +28,7 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 - `artifacts/api-server/src/routes/` — health, system diagnostics, settings, Plex configuration, and integration status APIs.
 - `artifacts/api-server/src/integrations/` — abstract media capabilities, adapter registry, Plex wiring, and explicit disconnected adapters for future integrations.
 - `artifacts/api-server/src/services/acquisition-jobs.ts` — durable provider-backed acquisition lifecycle and transition history; it does not replace the local download engine or mutate archive files automatically.
+- `artifacts/api-server/src/services/media-acquisition.ts` — owner-scoped registry orchestration for media lookup, missing-media discovery, and archive-context acquisition requests.
 - `lib/api-spec/openapi.yaml` — API contract source of truth.
 - `install.ps1`, `start.ps1`, `start.bat`, `README.md` — Windows local setup and launch.
 
@@ -56,6 +57,7 @@ The app gives a personal media archivist a calm control room for local archive s
 - `YT_DLP_PATH`, `FFMPEG_PATH`, and `FFPROBE_PATH` can provide Windows executable defaults; the same paths are editable in System Settings.
 - External integration configuration uses `SONARR_URL`/`SONARR_API_KEY`, `RADARR_URL`/`RADARR_API_KEY`, `PROWLARR_URL`/`PROWLARR_API_KEY`, and `QBITTORRENT_URL`/`QBITTORRENT_USERNAME`/`QBITTORRENT_PASSWORD`. Sonarr/Radarr requests may also use their `*_ROOT_FOLDER` and `*_QUALITY_PROFILE_ID` defaults.
 - Acquisition jobs are owner-scoped and expose their provider references plus transition history through `/api/acquisition-jobs`. Provider refreshes may advance the external portion of a job; processing, verification, importing, and completion remain explicit control-plane transitions.
+- Archive acquisition requests use `/api/archive/media-lookup`, `/api/archive/missing-media`, and `/api/archive/acquisitions`; archive identity and policy context are persisted as request metadata before provider calls.
 
 ## Pointers
 

@@ -4,6 +4,12 @@ import {
   GetArchiveRecordParams,
   GetArchiveRecordResponse,
   GetArchiveScanResponse,
+  DiscoverArchiveMissingMediaQueryParams,
+  DiscoverArchiveMissingMediaResponse,
+  LookupArchiveMediaQueryParams,
+  LookupArchiveMediaResponse,
+  RequestArchiveAcquisitionBody,
+  RequestArchiveAcquisitionResponse,
   StartArchiveScanResponse,
   UpdateArchiveRecordReviewBody,
   UpdateArchiveRecordReviewParams,
@@ -20,11 +26,20 @@ import {
   updateArchiveRecordReview,
   updateArchiveRecordReviews,
 } from "../services/archive";
+import {
+  discoverMissingMedia,
+  lookupMedia,
+  requestMediaAcquisition,
+} from "../services/media-acquisition";
 import { readReconciliationReport } from "../services/reconciliation";
 import { readNamingProposals } from "../services/naming-intelligence";
 import { readIdentityAudit } from "../services/identity-audit";
 
 const router: IRouter = Router();
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "The archive control plane could not complete the request.";
+}
 
 router.get("/archive/scan", (req, res) => {
   res.json(GetArchiveScanResponse.parse(readArchiveScan(getAuthenticatedUserId(req))));
@@ -37,6 +52,41 @@ router.post("/archive/scan", (req, res) => {
 
 router.get("/archive/inventory", (req, res) => {
   res.json(GetArchiveInventoryResponse.parse(readArchiveInventory(getAuthenticatedUserId(req))));
+});
+
+router.get("/archive/media-lookup", async (req, res) => {
+  try {
+    const parsed = LookupArchiveMediaQueryParams.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    if (!parsed.data.query && !parsed.data.externalId) {
+      return res.status(400).json({ error: "A media query or external ID is required." });
+    }
+    const result = await lookupMedia(parsed.data, getAuthenticatedUserId(req));
+    return res.json(LookupArchiveMediaResponse.parse(result));
+  } catch (error) {
+    return res.status(400).json({ error: errorMessage(error) });
+  }
+});
+
+router.get("/archive/missing-media", async (req, res) => {
+  try {
+    const parsed = DiscoverArchiveMissingMediaQueryParams.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    const result = await discoverMissingMedia(parsed.data, getAuthenticatedUserId(req));
+    return res.json(DiscoverArchiveMissingMediaResponse.parse(result));
+  } catch (error) {
+    return res.status(400).json({ error: errorMessage(error) });
+  }
+});
+
+router.post("/archive/acquisitions", async (req, res) => {
+  try {
+    const body = RequestArchiveAcquisitionBody.parse(req.body ?? {});
+    const result = await requestMediaAcquisition(body, getAuthenticatedUserId(req));
+    return res.status(201).json(RequestArchiveAcquisitionResponse.parse(result));
+  } catch (error) {
+    return res.status(400).json({ error: errorMessage(error) });
+  }
 });
 
 router.get("/archive/reconciliation", async (req, res, next) => {

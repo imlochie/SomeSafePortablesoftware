@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AcquisitionProvider } from './acquisitionProvider';
+import type { CreateAcquisitionJobArchiveIdentity } from './createAcquisitionJobArchiveIdentity';
 import type { CreateAcquisitionJobMetadata } from './createAcquisitionJobMetadata';
+import type { CreateAcquisitionJobPolicyDecision } from './createAcquisitionJobPolicyDecision';
 
 export interface CreateAcquisitionJob {
   mediaType: string;
@@ -20,6 +22,10 @@ export interface CreateAcquisitionJob {
   /** @nullable */
   sourceUrl?: string | null;
   providerId?: AcquisitionProvider | null;
+  /** @nullable */
+  archiveIdentity?: CreateAcquisitionJobArchiveIdentity;
+  /** @nullable */
+  policyDecision?: CreateAcquisitionJobPolicyDecision;
   metadata?: CreateAcquisitionJobMetadata;
   start?: boolean;
 }

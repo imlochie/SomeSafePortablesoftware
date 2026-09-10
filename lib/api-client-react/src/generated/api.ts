@@ -32,6 +32,7 @@ import type {
   ArchiveScan,
   CreateAcquisitionJob,
   DependencyStatus,
+  DiscoverArchiveMissingMediaParams,
   DownloadJob,
   DownloadJobInput,
   DownloadPreparationInput,
@@ -42,12 +43,16 @@ import type {
   IntegrationStatusResponse,
   LocalMediaInspectInput,
   LocalMediaInspection,
+  LookupArchiveMediaParams,
   MediaInspectInput,
   MediaInspection,
+  MediaLookupResponse,
+  MissingMediaResponse,
   PlexConfig,
   PlexConfigUpdate,
   PlexInventory,
   ProgressAcquisitionJob,
+  RequestArchiveAcquisition,
   SystemEvent,
   SystemOverview
 } from './api.schemas';
@@ -1496,6 +1501,246 @@ export const useRefreshAcquisitionJob = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getRefreshAcquisitionJobMutationOptions(options));
+    }
+
+export const getLookupArchiveMediaUrl = (params?: LookupArchiveMediaParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive/media-lookup?${stringifiedParams}` : `/api/archive/media-lookup`
+}
+
+/**
+ * @summary Look up TV and movie metadata through the integration registry
+ */
+export const lookupArchiveMedia = async (params?: LookupArchiveMediaParams, options?: Parameters<typeof customFetch>[1]): Promise<MediaLookupResponse> => {
+
+  return customFetch<MediaLookupResponse>(getLookupArchiveMediaUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getLookupArchiveMediaQueryKey = (params?: LookupArchiveMediaParams,) => {
+    return [
+    `/api/archive/media-lookup`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getLookupArchiveMediaQueryOptions = <TData = Awaited<ReturnType<typeof lookupArchiveMedia>>, TError = ErrorType<ErrorResponse>>(params?: LookupArchiveMediaParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof lookupArchiveMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getLookupArchiveMediaQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof lookupArchiveMedia>>> = ({ signal }) => lookupArchiveMedia(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof lookupArchiveMedia>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type LookupArchiveMediaQueryResult = NonNullable<Awaited<ReturnType<typeof lookupArchiveMedia>>>
+export type LookupArchiveMediaQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Look up TV and movie metadata through the integration registry
+ */
+
+export function useLookupArchiveMedia<TData = Awaited<ReturnType<typeof lookupArchiveMedia>>, TError = ErrorType<ErrorResponse>>(
+ params?: LookupArchiveMediaParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof lookupArchiveMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getLookupArchiveMediaQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDiscoverArchiveMissingMediaUrl = (params?: DiscoverArchiveMissingMediaParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive/missing-media?${stringifiedParams}` : `/api/archive/missing-media`
+}
+
+/**
+ * @summary Discover missing TV and movie media through the integration registry
+ */
+export const discoverArchiveMissingMedia = async (params?: DiscoverArchiveMissingMediaParams, options?: Parameters<typeof customFetch>[1]): Promise<MissingMediaResponse> => {
+
+  return customFetch<MissingMediaResponse>(getDiscoverArchiveMissingMediaUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDiscoverArchiveMissingMediaQueryKey = (params?: DiscoverArchiveMissingMediaParams,) => {
+    return [
+    `/api/archive/missing-media`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getDiscoverArchiveMissingMediaQueryOptions = <TData = Awaited<ReturnType<typeof discoverArchiveMissingMedia>>, TError = ErrorType<ErrorResponse>>(params?: DiscoverArchiveMissingMediaParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof discoverArchiveMissingMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDiscoverArchiveMissingMediaQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof discoverArchiveMissingMedia>>> = ({ signal }) => discoverArchiveMissingMedia(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof discoverArchiveMissingMedia>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type DiscoverArchiveMissingMediaQueryResult = NonNullable<Awaited<ReturnType<typeof discoverArchiveMissingMedia>>>
+export type DiscoverArchiveMissingMediaQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Discover missing TV and movie media through the integration registry
+ */
+
+export function useDiscoverArchiveMissingMedia<TData = Awaited<ReturnType<typeof discoverArchiveMissingMedia>>, TError = ErrorType<ErrorResponse>>(
+ params?: DiscoverArchiveMissingMediaParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof discoverArchiveMissingMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getDiscoverArchiveMissingMediaQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRequestArchiveAcquisitionUrl = () => {
+
+
+
+
+  return `/api/archive/acquisitions`
+}
+
+/**
+ * The request is persisted locally before its provider job is created. Provider state never replaces archive state.
+ * @summary Request a provider acquisition while preserving archive context
+ */
+export const requestArchiveAcquisition = async (requestArchiveAcquisition: RequestArchiveAcquisition, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionJob> => {
+
+  return customFetch<AcquisitionJob>(getRequestArchiveAcquisitionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(requestArchiveAcquisition)
+  }
+);}
+
+
+
+
+
+export const getRequestArchiveAcquisitionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestArchiveAcquisition>>, TError,{data: BodyType<RequestArchiveAcquisition>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestArchiveAcquisition>>, TError,{data: BodyType<RequestArchiveAcquisition>}, TContext> => {
+
+const mutationKey = ['requestArchiveAcquisition'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestArchiveAcquisition>>, {data: BodyType<RequestArchiveAcquisition>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestArchiveAcquisition(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestArchiveAcquisitionMutationResult = NonNullable<Awaited<ReturnType<typeof requestArchiveAcquisition>>>
+    export type RequestArchiveAcquisitionMutationBody = BodyType<RequestArchiveAcquisition>
+    export type RequestArchiveAcquisitionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Request a provider acquisition while preserving archive context
+ */
+export const useRequestArchiveAcquisition = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestArchiveAcquisition>>, TError,{data: BodyType<RequestArchiveAcquisition>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestArchiveAcquisition>>,
+        TError,
+        {data: BodyType<RequestArchiveAcquisition>},
+        TContext
+      > => {
+      return useMutation(getRequestArchiveAcquisitionMutationOptions(options));
     }
 
 export const getGetArchiveScanUrl = () => {

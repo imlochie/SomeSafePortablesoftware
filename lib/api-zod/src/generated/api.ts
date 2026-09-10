@@ -437,6 +437,8 @@ export const CreateAcquisitionJobBody = zod.object({
   "sourceId": zod.string().nullish(),
   "sourceUrl": zod.string().nullish(),
   "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]).optional(),
+  "archiveIdentity": zod.record(zod.string(), zod.unknown()).nullish(),
+  "policyDecision": zod.record(zod.string(), zod.unknown()).nullish(),
   "metadata": zod.record(zod.string(), zod.unknown()).optional(),
   "start": zod.boolean().default(createAcquisitionJobBodyStartDefault)
 })
@@ -729,6 +731,114 @@ export const RefreshAcquisitionJobParams = zod.object({
 })
 
 export const RefreshAcquisitionJobResponse = zod.object({
+  "id": zod.number(),
+  "ownerId": zod.string(),
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "externalId": zod.string().nullable(),
+  "sourceId": zod.string().nullable(),
+  "sourceUrl": zod.string().nullable(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]),
+  "providerJobId": zod.string().nullable(),
+  "providerReference": zod.string().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "state": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "progress": zod.number(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "request": zod.record(zod.string(), zod.unknown()),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "plannedAt": zod.coerce.date(),
+  "searchingAt": zod.coerce.date().nullable(),
+  "sourceSelectedAt": zod.coerce.date().nullable(),
+  "downloadingAt": zod.coerce.date().nullable(),
+  "processingAt": zod.coerce.date().nullable(),
+  "verifyingAt": zod.coerce.date().nullable(),
+  "importingAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "failedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromState": zod.union([zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),zod.null()]),
+  "toState": zod.enum(['planned', 'searching', 'source_selected', 'downloading', 'processing', 'verifying', 'importing', 'complete', 'failed', 'cancelled']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Look up TV and movie metadata through the integration registry
+ */
+export const LookupArchiveMediaQueryParams = zod.object({
+  "query": zod.coerce.string().optional(),
+  "externalId": zod.coerce.string().optional(),
+  "mediaType": zod.coerce.string().optional(),
+  "providerId": zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']).optional()
+})
+
+export const LookupArchiveMediaResponse = zod.object({
+  "providerId": zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),
+  "records": zod.array(zod.object({
+  "externalId": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.string(),
+  "year": zod.number().nullable(),
+  "source": zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),
+  "metadata": zod.record(zod.string(), zod.unknown())
+}))
+})
+
+
+/**
+ * @summary Discover missing TV and movie media through the integration registry
+ */
+export const DiscoverArchiveMissingMediaQueryParams = zod.object({
+  "query": zod.coerce.string().optional(),
+  "mediaType": zod.coerce.string().optional(),
+  "providerId": zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']).optional()
+})
+
+export const DiscoverArchiveMissingMediaResponse = zod.object({
+  "providerId": zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),
+  "items": zod.array(zod.object({
+  "externalId": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.string(),
+  "year": zod.number().nullable(),
+  "detail": zod.string().nullable()
+}))
+})
+
+
+/**
+ * The request is persisted locally before its provider job is created. Provider state never replaces archive state.
+ * @summary Request a provider acquisition while preserving archive context
+ */
+export const requestArchiveAcquisitionBodyOneStartDefault = false;
+
+export const RequestArchiveAcquisitionBody = zod.object({
+  "mediaType": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullish(),
+  "externalId": zod.string().nullish(),
+  "sourceId": zod.string().nullish(),
+  "sourceUrl": zod.string().nullish(),
+  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]).optional(),
+  "archiveIdentity": zod.record(zod.string(), zod.unknown()).nullish(),
+  "policyDecision": zod.record(zod.string(), zod.unknown()).nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "start": zod.boolean().default(requestArchiveAcquisitionBodyOneStartDefault)
+}).describe('A provider acquisition request carrying archive identity and the policy decision that authorized it.')
+
+export const RequestArchiveAcquisitionResponse = zod.object({
   "id": zod.number(),
   "ownerId": zod.string(),
   "mediaType": zod.string(),

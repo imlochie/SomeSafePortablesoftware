@@ -75,6 +75,8 @@ export interface CreateAcquisitionJobInput {
   sourceId?: string | null;
   sourceUrl?: string | null;
   providerId?: AcquisitionProviderId | null;
+  archiveIdentity?: Record<string, unknown> | null;
+  policyDecision?: Record<string, unknown> | null;
   metadata?: Record<string, unknown>;
   start?: boolean;
 }
@@ -359,6 +361,9 @@ async function startProvider(job: AcquisitionJob, ownerId: string) {
       { ownerId },
       providerId as IntegrationId,
     );
+    if (!result.accepted || result.status !== "accepted") {
+      throw new Error(result.detail || `The ${providerId} provider rejected the acquisition request.`);
+    }
     const nextState: AcquisitionJobState = providerId === "qbittorrent"
       ? "downloading"
       : "searching";
@@ -414,7 +419,11 @@ export async function createAcquisitionJob(
     input.sourceUrl ?? null,
     selectedProvider,
     JSON.stringify(input),
-    JSON.stringify(input.metadata ?? {}),
+    JSON.stringify({
+      ...(input.metadata ?? {}),
+      ...(input.archiveIdentity === undefined ? {} : { archiveIdentity: input.archiveIdentity }),
+      ...(input.policyDecision === undefined ? {} : { policyDecision: input.policyDecision }),
+    }),
   );
   const id = Number(result.lastInsertRowid);
   addJobEvent(id, ownerId, null, "planned", "Acquisition request planned.", {

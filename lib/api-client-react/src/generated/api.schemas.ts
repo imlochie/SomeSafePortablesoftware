@@ -413,6 +413,48 @@ export interface IntegrationStatusResponse {
   integrations: IntegrationStatus[];
 }
 
+export type MediaLookupRecordMetadata = { [key: string]: unknown };
+
+export type AcquisitionProvider = typeof AcquisitionProvider[keyof typeof AcquisitionProvider];
+
+
+export const AcquisitionProvider = {
+  sonarr: 'sonarr',
+  radarr: 'radarr',
+  prowlarr: 'prowlarr',
+  qbittorrent: 'qbittorrent',
+} as const;
+
+export interface MediaLookupRecord {
+  externalId: string;
+  title: string;
+  mediaType: string;
+  /** @nullable */
+  year: number | null;
+  source: AcquisitionProvider;
+  metadata: MediaLookupRecordMetadata;
+}
+
+export interface MediaLookupResponse {
+  providerId: AcquisitionProvider;
+  records: MediaLookupRecord[];
+}
+
+export interface MissingMediaItem {
+  externalId: string;
+  title: string;
+  mediaType: string;
+  /** @nullable */
+  year: number | null;
+  /** @nullable */
+  detail: string | null;
+}
+
+export interface MissingMediaResponse {
+  providerId: AcquisitionProvider;
+  items: MissingMediaItem[];
+}
+
 export type ArchiveScanStatus = typeof ArchiveScanStatus[keyof typeof ArchiveScanStatus];
 
 
@@ -926,16 +968,6 @@ export const AcquisitionJobState = {
   cancelled: 'cancelled',
 } as const;
 
-export type AcquisitionProvider = typeof AcquisitionProvider[keyof typeof AcquisitionProvider];
-
-
-export const AcquisitionProvider = {
-  sonarr: 'sonarr',
-  radarr: 'radarr',
-  prowlarr: 'prowlarr',
-  qbittorrent: 'qbittorrent',
-} as const;
-
 export type AcquisitionJobEventMetadata = { [key: string]: unknown };
 
 export interface AcquisitionJobEvent {
@@ -1005,6 +1037,16 @@ export interface AcquisitionJob {
   events: AcquisitionJobEvent[];
 }
 
+/**
+ * @nullable
+ */
+export type CreateAcquisitionJobArchiveIdentity = { [key: string]: unknown } | null;
+
+/**
+ * @nullable
+ */
+export type CreateAcquisitionJobPolicyDecision = { [key: string]: unknown } | null;
+
 export type CreateAcquisitionJobMetadata = { [key: string]: unknown };
 
 export interface CreateAcquisitionJob {
@@ -1019,9 +1061,18 @@ export interface CreateAcquisitionJob {
   /** @nullable */
   sourceUrl?: string | null;
   providerId?: AcquisitionProvider | null;
+  /** @nullable */
+  archiveIdentity?: CreateAcquisitionJobArchiveIdentity;
+  /** @nullable */
+  policyDecision?: CreateAcquisitionJobPolicyDecision;
   metadata?: CreateAcquisitionJobMetadata;
   start?: boolean;
 }
+
+/**
+ * A provider acquisition request carrying archive identity and the policy decision that authorized it.
+ */
+export type RequestArchiveAcquisition = CreateAcquisitionJob;
 
 export type ProgressAcquisitionJobMetadata = { [key: string]: unknown };
 
@@ -1050,5 +1101,18 @@ export interface ErrorResponse {
 
 export type GetAcquisitionJobsParams = {
 state?: AcquisitionJobState;
+};
+
+export type LookupArchiveMediaParams = {
+query?: string;
+externalId?: string;
+mediaType?: string;
+providerId?: AcquisitionProvider;
+};
+
+export type DiscoverArchiveMissingMediaParams = {
+query?: string;
+mediaType?: string;
+providerId?: AcquisitionProvider;
 };
 
