@@ -283,7 +283,8 @@ archiveDb.exec(`
     level TEXT NOT NULL,
     message TEXT NOT NULL,
     source TEXT NOT NULL,
-    timestamp TEXT NOT NULL
+    timestamp TEXT NOT NULL,
+    operator_id TEXT
   );
   CREATE TABLE IF NOT EXISTS setting (
     key TEXT PRIMARY KEY,
@@ -533,6 +534,7 @@ ensureColumn("archive_scan", "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_
 for (const table of ["archive_item", "source_record", "download_job", "assistant_conversation", "system_event", "plex_library", "plex_item"]) {
   ensureColumn(table, "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
 }
+ensureColumn("system_event", "operator_id", "TEXT");
 
 const defaultSettings = {
   mockMode: runtimeConfig.mockMode,
@@ -693,7 +695,7 @@ export function writeSettings(updates: Record<string, unknown>): SettingsRecord 
 export function readEvents(ownerId: string, limit = 12) {
   return archiveDb
     .prepare(
-      "SELECT id, level, message, timestamp, source FROM system_event WHERE owner_id = ? ORDER BY timestamp DESC LIMIT ?",
+      "SELECT id, level, message, timestamp, source, operator_id AS operatorId FROM system_event WHERE owner_id = ? ORDER BY timestamp DESC LIMIT ?",
     )
     .all(ownerId, limit) as Array<{
     id: string;
@@ -701,6 +703,7 @@ export function readEvents(ownerId: string, limit = 12) {
     message: string;
     timestamp: string;
     source: string;
+    operatorId: string | null;
   }>;
 }
 
@@ -709,13 +712,15 @@ export function addEvent(
   message: string,
   source: string,
   ownerId = LEGACY_OWNER_ID,
+  operatorId: string | null = null,
+  timestamp = new Date().toISOString(),
 ) {
   const id = `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   archiveDb
     .prepare(
-      "INSERT INTO system_event (id, level, message, source, timestamp, owner_id) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO system_event (id, level, message, source, timestamp, owner_id, operator_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
-    .run(id, level, message, source, new Date().toISOString(), ownerId);
+    .run(id, level, message, source, timestamp, ownerId, operatorId);
 }
 
 export function readUserSetting(ownerId: string, key: string) {

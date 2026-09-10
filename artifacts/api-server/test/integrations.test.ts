@@ -6,7 +6,7 @@ import {
   IntegrationRegistry,
   IntegrationUnavailableError,
 } from "../src/integrations";
-import { archiveDb } from "../src/lib/archive-db";
+import { archiveDb, readEvents } from "../src/lib/archive-db";
 import {
   getWebhookDeliveryDiagnostics,
   readWebhookSecretCandidates,
@@ -125,6 +125,63 @@ describe("integration adapter foundation", () => {
       );
     } finally {
       archiveDb.prepare("DELETE FROM setting WHERE key = ?").run(key);
+    }
+  });
+
+  test("successful webhook rotations create a redacted owner-scoped audit event", () => {
+    const settingKey = "integration.webhook.radarr";
+    const ownerId = "rotation-audit-owner";
+    const secret = "audit-secret-123456";
+    const now = Date.parse("2026-09-10T13:00:00.000Z");
+    archiveDb.prepare("DELETE FROM setting WHERE key = ?").run(settingKey);
+    archiveDb.prepare("DELETE FROM system_event WHERE owner_id = ?").run(ownerId);
+
+    try {
+      rotateWebhookSecret(
+        "radarr",
+        { secret, mode: "overlap", overlapMinutes: 45 },
+        {},
+        now,
+        { ownerId, operatorId: "operator-42" },
+      );
+
+      const [event] = readEvents(ownerId);
+      assert.ok(event);
+      assert.equal(event.level, "success");
+      assert.equal(event.source, "integrations");
+      assert.equal(event.operatorId, "operator-42");
+      assert.equal(event.timestamp, "2026-09-10T13:00:00.000Z");
+      assert.match(event.message, /radarr/i);
+      assert.match(event.message, /overlap/i);
+      assert.doesNotMatch(JSON.stringify(event), new RegExp(secret));
+    } finally {
+      archiveDb.prepare("DELETE FROM setting WHERE key = ?").run(settingKey);
+      archiveDb.prepare("DELETE FROM system_event WHERE owner_id = ?").run(ownerId);
+    }
+  });
+
+  test("invalid webhook rotation attempts do not create audit events", () => {
+    const settingKey = "integration.webhook.radarr";
+    const ownerId = "rotation-validation-owner";
+    const now = Date.parse("2026-09-10T14:00:00.000Z");
+    archiveDb.prepare("DELETE FROM setting WHERE key = ?").run(settingKey);
+    archiveDb.prepare("DELETE FROM system_event WHERE owner_id = ?").run(ownerId);
+
+    try {
+      assert.throws(
+        () => rotateWebhookSecret(
+          "radarr",
+          { secret: "too-short", mode: "cutover" },
+          {},
+          now,
+          { ownerId, operatorId: "operator-42" },
+        ),
+        /at least 16 characters/i,
+      );
+      assert.deepEqual(readEvents(ownerId), []);
+    } finally {
+      archiveDb.prepare("DELETE FROM setting WHERE key = ?").run(settingKey);
+      archiveDb.prepare("DELETE FROM system_event WHERE owner_id = ?").run(ownerId);
     }
   });
 

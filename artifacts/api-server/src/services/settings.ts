@@ -1,8 +1,12 @@
-import { archiveDb } from "../lib/archive-db";
+import { addEvent, archiveDb, LEGACY_OWNER_ID } from "../lib/archive-db";
 
 export const webhookProviders = ["sonarr", "radarr"] as const;
 export type WebhookProvider = (typeof webhookProviders)[number];
 export type WebhookRotationMode = "overlap" | "cutover";
+export interface WebhookRotationAudit {
+  ownerId: string;
+  operatorId: string;
+}
 export const webhookDeliveryResultClasses = [
   "accepted",
   "rejected",
@@ -241,6 +245,10 @@ export function rotateWebhookSecret(
   },
   env: NodeJS.ProcessEnv = process.env,
   now = Date.now(),
+  audit: WebhookRotationAudit = {
+    ownerId: LEGACY_OWNER_ID,
+    operatorId: "system",
+  },
 ) {
   const secret = validateSecret(input.secret);
   if (input.mode !== "overlap" && input.mode !== "cutover") {
@@ -276,6 +284,15 @@ export function rotateWebhookSecret(
       "INSERT INTO setting (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
     )
     .run(settingKey(provider), JSON.stringify(next));
+
+  addEvent(
+    "success",
+    `Webhook secret rotated for ${provider} using ${input.mode} mode.`,
+    "integrations",
+    audit.ownerId,
+    audit.operatorId,
+    new Date(now).toISOString(),
+  );
 
   return readWebhookSecretStatus(provider, env, now);
 }

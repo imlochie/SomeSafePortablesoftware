@@ -13,4 +13,6 @@ export interface SystemEvent {
   message: string;
   timestamp: Date;
   source: string;
+  /** @nullable */
+  operatorId: string | null;
 }

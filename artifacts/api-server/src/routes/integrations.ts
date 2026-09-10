@@ -31,6 +31,7 @@ router.get("/integrations/webhooks", (_req, res) => {
 });
 
 router.put("/integrations/webhooks/:provider", (req, res) => {
+  const operatorId = getAuthenticatedUserId(req);
   const provider = req.params.provider;
   if (!webhookProviders.includes(provider as WebhookProvider)) {
     res.status(404).json({ error: "Webhook provider is not supported." });
@@ -42,7 +43,10 @@ router.put("/integrations/webhooks/:provider", (req, res) => {
     return;
   }
   try {
-    const result = rotateWebhookSecret(provider as WebhookProvider, parsed.data);
+    const result = rotateWebhookSecret(provider as WebhookProvider, parsed.data, process.env, Date.now(), {
+      ownerId: operatorId,
+      operatorId,
+    });
     res.json(ReplaceWebhookSecretResponse.parse(result));
   } catch (error) {
     res.status(400).json({

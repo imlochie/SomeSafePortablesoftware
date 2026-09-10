@@ -38,6 +38,8 @@ export interface SystemEvent {
   message: string;
   timestamp: string;
   source: string;
+  /** @nullable */
+  operatorId: string | null;
 }
 
 export type StorageSummaryStatus = typeof StorageSummaryStatus[keyof typeof StorageSummaryStatus];
