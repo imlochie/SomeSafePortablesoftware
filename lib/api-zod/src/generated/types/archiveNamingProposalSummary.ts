@@ -21,4 +21,18 @@ export interface ArchiveNamingProposalSummary {
   uncertain: number;
   /** @minimum 0 */
   collisions: number;
+  /**
+     * Proposals whose currently-matching decision is accepted.
+     * @minimum 0
+     */
+  acceptedCount: number;
+  /** @minimum 0 */
+  rejectedCount: number;
+  /** @minimum 0 */
+  deferredCount: number;
+  /**
+     * Proposals carrying a decision made against superseded evidence.
+     * @minimum 0
+     */
+  staleDecisionCount: number;
 }

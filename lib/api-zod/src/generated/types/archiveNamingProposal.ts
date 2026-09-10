@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ArchiveNamingProposalConfidence } from './archiveNamingProposalConfidence';
+import type { ArchiveNamingProposalDecisionStatus } from './archiveNamingProposalDecisionStatus';
 import type { ArchiveNamingProposalIdentity } from './archiveNamingProposalIdentity';
 import type { ArchiveNamingProposalMediaType } from './archiveNamingProposalMediaType';
 import type { ArchiveNamingProposalOperation } from './archiveNamingProposalOperation';
@@ -31,4 +32,26 @@ export interface ArchiveNamingProposal {
   volumeId: string;
   archiveRoot: string;
   collision: boolean;
+  /** @nullable */
+  sizeBytes: number | null;
+  /** @nullable */
+  modifiedAtMs: number | null;
+  /**
+     * SHA-256 over the evidence this proposal was derived from (source
+     * path, filename, size, mtime, pattern, confidence, operation, and
+     * destination). Decisions and applies are bound to this key.
+     */
+  evidenceKey: string;
+  /**
+     * The durable decision that currently matches this proposal's
+     * evidence. A stored decision whose evidence key no longer matches
+     * reads back as `unreviewed` (the proposal reopens for review).
+     */
+  decisionStatus: ArchiveNamingProposalDecisionStatus;
+  /** @nullable */
+  decisionNote: string | null;
+  /** @nullable */
+  decisionUpdatedAt: string | null;
+  /** True when a decision exists but was made against superseded evidence. */
+  decisionStale: boolean;
 }

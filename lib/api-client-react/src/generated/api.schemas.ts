@@ -44,6 +44,21 @@ export const ArchiveNamingProposalMediaType = {
   tv: 'tv',
 } as const;
 
+/**
+ * The durable decision that currently matches this proposal's
+ * evidence. A stored decision whose evidence key no longer matches
+ * reads back as `unreviewed` (the proposal reopens for review).
+ */
+export type ArchiveNamingProposalDecisionStatus = typeof ArchiveNamingProposalDecisionStatus[keyof typeof ArchiveNamingProposalDecisionStatus];
+
+
+export const ArchiveNamingProposalDecisionStatus = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+  deferred: 'deferred',
+  unreviewed: 'unreviewed',
+} as const;
+
 export interface ArchiveNamingProposal {
   fileRecordId: number;
   /** @nullable */
@@ -65,6 +80,28 @@ export interface ArchiveNamingProposal {
   volumeId: string;
   archiveRoot: string;
   collision: boolean;
+  /** @nullable */
+  sizeBytes: number | null;
+  /** @nullable */
+  modifiedAtMs: number | null;
+  /**
+     * SHA-256 over the evidence this proposal was derived from (source
+     * path, filename, size, mtime, pattern, confidence, operation, and
+     * destination). Decisions and applies are bound to this key.
+     */
+  evidenceKey: string;
+  /**
+     * The durable decision that currently matches this proposal's
+     * evidence. A stored decision whose evidence key no longer matches
+     * reads back as `unreviewed` (the proposal reopens for review).
+     */
+  decisionStatus: ArchiveNamingProposalDecisionStatus;
+  /** @nullable */
+  decisionNote: string | null;
+  /** @nullable */
+  decisionUpdatedAt: string | null;
+  /** True when a decision exists but was made against superseded evidence. */
+  decisionStale: boolean;
 }
 
 export interface ArchiveNamingProposalSummary {
@@ -82,6 +119,20 @@ export interface ArchiveNamingProposalSummary {
   uncertain: number;
   /** @minimum 0 */
   collisions: number;
+  /**
+     * Proposals whose currently-matching decision is accepted.
+     * @minimum 0
+     */
+  acceptedCount: number;
+  /** @minimum 0 */
+  rejectedCount: number;
+  /** @minimum 0 */
+  deferredCount: number;
+  /**
+     * Proposals carrying a decision made against superseded evidence.
+     * @minimum 0
+     */
+  staleDecisionCount: number;
 }
 
 export interface ArchiveNamingProposalPagination {
@@ -99,6 +150,180 @@ export interface ArchiveNamingProposalResponse {
   summary: ArchiveNamingProposalSummary;
   pagination: ArchiveNamingProposalPagination;
   results: ArchiveNamingProposal[];
+}
+
+export type ArchiveNamingProposalDecisionUpdateStatus = typeof ArchiveNamingProposalDecisionUpdateStatus[keyof typeof ArchiveNamingProposalDecisionUpdateStatus];
+
+
+export const ArchiveNamingProposalDecisionUpdateStatus = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+  deferred: 'deferred',
+} as const;
+
+export interface ArchiveNamingProposalDecisionUpdate {
+  /** @minimum 1 */
+  fileRecordId: number;
+  status: ArchiveNamingProposalDecisionUpdateStatus;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  note?: string | null;
+}
+
+export interface ArchiveNamingProposalDecisionsBody {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  decisions: ArchiveNamingProposalDecisionUpdate[];
+}
+
+export interface ArchiveNamingProposalDecision {
+  status: ArchiveNamingProposalDecisionStatus;
+  evidenceKey: string;
+  /** @nullable */
+  note: string | null;
+  updatedAt: string;
+}
+
+export interface ArchiveNamingProposalDecisionResult {
+  fileRecordId: number;
+  success: boolean;
+  decision: ArchiveNamingProposalDecision | null;
+  /** @nullable */
+  error: string | null;
+}
+
+export interface ArchiveNamingProposalDecisionsResponse {
+  /** @minimum 1 */
+  attempted: number;
+  /** @minimum 0 */
+  succeeded: number;
+  /** @minimum 0 */
+  failed: number;
+  results: ArchiveNamingProposalDecisionResult[];
+}
+
+export interface ArchiveNamingProposalApplyBody {
+  /**
+     * Bounded batch of file_record ids whose accepted naming proposals
+     * should be applied. A single apply request touches at most 25 files.
+     * @minItems 1
+     * @maxItems 25
+     * @items.minimum 1
+     */
+  fileRecordIds: number[];
+  /**
+     * When true, every gate (accepted decision, executable destination,
+     * path confinement, collision, source-freshness) is evaluated but no
+     * filesystem or journal write happens.
+     */
+  dryRun?: boolean;
+}
+
+export type ArchiveOperationKind = typeof ArchiveOperationKind[keyof typeof ArchiveOperationKind];
+
+
+export const ArchiveOperationKind = {
+  rename: 'rename',
+  move: 'move',
+  restructure: 'restructure',
+} as const;
+
+export type ArchiveOperationStatus = typeof ArchiveOperationStatus[keyof typeof ArchiveOperationStatus];
+
+
+export const ArchiveOperationStatus = {
+  proposed: 'proposed',
+  approved: 'approved',
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  rolled_back: 'rolled_back',
+} as const;
+
+export type ArchiveOperationProposalEvidence = { [key: string]: unknown };
+
+/**
+ * Durable, owner-scoped journal entry for one filesystem mutation.
+ * Source and target are confined to configured archive volumes; the
+ * evidence snapshot plus expected size/mtime make the change auditable,
+ * and successful entries carry enough information to roll the mutation
+ * back.
+ */
+export interface ArchiveOperation {
+  id: number;
+  kind: ArchiveOperationKind;
+  status: ArchiveOperationStatus;
+  sourcePath: string;
+  targetPath: string;
+  /** @nullable */
+  fileRecordId: number | null;
+  /** @nullable */
+  sourceEvidenceKey: string | null;
+  proposalEvidence: ArchiveOperationProposalEvidence;
+  /** @nullable */
+  expectedSizeBytes: number | null;
+  /** @nullable */
+  expectedModifiedAtMs: number | null;
+  createdDirectories: string[];
+  /** @nullable */
+  error: string | null;
+  /** @nullable */
+  appliedAt: string | null;
+  /** @nullable */
+  rolledBackAt: string | null;
+  rollbackAvailable: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ArchiveOperationCheck {
+  step: string;
+  ok: boolean;
+  message: string;
+}
+
+export type ArchiveOperationPlanKind = typeof ArchiveOperationPlanKind[keyof typeof ArchiveOperationPlanKind];
+
+
+export const ArchiveOperationPlanKind = {
+  rename: 'rename',
+  move: 'move',
+  restructure: 'restructure',
+} as const;
+
+export interface ArchiveOperationPlan {
+  ok: boolean;
+  kind: ArchiveOperationPlanKind;
+  /** @nullable */
+  sourcePath: string | null;
+  /** @nullable */
+  targetPath: string | null;
+  checks: ArchiveOperationCheck[];
+}
+
+export interface ArchiveNamingProposalApplyResult {
+  fileRecordId: number;
+  success: boolean;
+  /** @nullable */
+  error: string | null;
+  operation: ArchiveOperation | null;
+  plan: ArchiveOperationPlan | null;
+}
+
+export interface ArchiveNamingProposalApplyResponse {
+  /** @minimum 1 */
+  requested: number;
+  dryRun: boolean;
+  /** @minimum 0 */
+  succeeded: number;
+  /** @minimum 0 */
+  failed: number;
+  results: ArchiveNamingProposalApplyResult[];
 }
 
 export type StatusValue = typeof StatusValue[keyof typeof StatusValue];
@@ -965,6 +1190,7 @@ mediaType?: GetArchiveNamingProposalsMediaType;
 volume?: string;
 state?: GetArchiveNamingProposalsState;
 uncertain?: boolean;
+decision?: GetArchiveNamingProposalsDecision;
 };
 
 export type GetArchiveNamingProposalsConfidence = typeof GetArchiveNamingProposalsConfidence[keyof typeof GetArchiveNamingProposalsConfidence];
@@ -1002,4 +1228,22 @@ export const GetArchiveNamingProposalsState = {
   actionable: 'actionable',
   uncertain: 'uncertain',
 } as const;
+
+export type GetArchiveNamingProposalsDecision = typeof GetArchiveNamingProposalsDecision[keyof typeof GetArchiveNamingProposalsDecision];
+
+
+export const GetArchiveNamingProposalsDecision = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+  deferred: 'deferred',
+  unreviewed: 'unreviewed',
+} as const;
+
+export type GetArchiveOperationsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
 

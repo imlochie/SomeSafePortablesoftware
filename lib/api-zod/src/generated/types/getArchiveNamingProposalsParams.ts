@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GetArchiveNamingProposalsConfidence } from './getArchiveNamingProposalsConfidence';
+import type { GetArchiveNamingProposalsDecision } from './getArchiveNamingProposalsDecision';
 import type { GetArchiveNamingProposalsMediaType } from './getArchiveNamingProposalsMediaType';
 import type { GetArchiveNamingProposalsOperation } from './getArchiveNamingProposalsOperation';
 import type { GetArchiveNamingProposalsState } from './getArchiveNamingProposalsState';
@@ -27,4 +28,5 @@ mediaType?: GetArchiveNamingProposalsMediaType;
 volume?: string;
 state?: GetArchiveNamingProposalsState;
 uncertain?: boolean;
+decision?: GetArchiveNamingProposalsDecision;
 };

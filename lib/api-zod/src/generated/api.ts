@@ -558,7 +558,8 @@ export const GetArchiveNamingProposalsQueryParams = zod.object({
   "mediaType": zod.enum(['movie', 'tv']).optional(),
   "volume": zod.coerce.string().optional(),
   "state": zod.enum(['actionable', 'uncertain']).optional(),
-  "uncertain": zod.coerce.boolean().optional()
+  "uncertain": zod.coerce.boolean().optional(),
+  "decision": zod.enum(['accepted', 'rejected', 'deferred', 'unreviewed']).optional()
 })
 
 export const getArchiveNamingProposalsResponseSummaryTotalMin = 0;
@@ -574,6 +575,14 @@ export const getArchiveNamingProposalsResponseSummaryActionableMin = 0;
 export const getArchiveNamingProposalsResponseSummaryUncertainMin = 0;
 
 export const getArchiveNamingProposalsResponseSummaryCollisionsMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryAcceptedCountMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryRejectedCountMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryDeferredCountMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryStaleDecisionCountMin = 0;
 
 
 
@@ -591,7 +600,11 @@ export const GetArchiveNamingProposalsResponse = zod.object({
   "lowConfidence": zod.number().min(getArchiveNamingProposalsResponseSummaryLowConfidenceMin),
   "actionable": zod.number().min(getArchiveNamingProposalsResponseSummaryActionableMin),
   "uncertain": zod.number().min(getArchiveNamingProposalsResponseSummaryUncertainMin),
-  "collisions": zod.number().min(getArchiveNamingProposalsResponseSummaryCollisionsMin)
+  "collisions": zod.number().min(getArchiveNamingProposalsResponseSummaryCollisionsMin),
+  "acceptedCount": zod.number().min(getArchiveNamingProposalsResponseSummaryAcceptedCountMin).describe('Proposals whose currently-matching decision is accepted.'),
+  "rejectedCount": zod.number().min(getArchiveNamingProposalsResponseSummaryRejectedCountMin),
+  "deferredCount": zod.number().min(getArchiveNamingProposalsResponseSummaryDeferredCountMin),
+  "staleDecisionCount": zod.number().min(getArchiveNamingProposalsResponseSummaryStaleDecisionCountMin).describe('Proposals carrying a decision made against superseded evidence.')
 }),
   "pagination": zod.object({
   "page": zod.number().min(1),
@@ -616,9 +629,203 @@ export const GetArchiveNamingProposalsResponse = zod.object({
   "mediaType": zod.enum(['movie', 'tv']),
   "volumeId": zod.string(),
   "archiveRoot": zod.string(),
-  "collision": zod.boolean()
+  "collision": zod.boolean(),
+  "sizeBytes": zod.number().nullable(),
+  "modifiedAtMs": zod.number().nullable(),
+  "evidenceKey": zod.string().describe('SHA-256 over the evidence this proposal was derived from (source\npath, filename, size, mtime, pattern, confidence, operation, and\ndestination). Decisions and applies are bound to this key.\n'),
+  "decisionStatus": zod.enum(['accepted', 'rejected', 'deferred', 'unreviewed']).describe('The durable decision that currently matches this proposal\'s\nevidence. A stored decision whose evidence key no longer matches\nreads back as `unreviewed` (the proposal reopens for review).\n'),
+  "decisionNote": zod.string().nullable(),
+  "decisionUpdatedAt": zod.string().nullable(),
+  "decisionStale": zod.boolean().describe('True when a decision exists but was made against superseded evidence.')
 }))
 })
+
+
+/**
+ * Persists accepted/rejected/deferred decisions tied to the exact proposal
+ * evidence (including the source file's size and modification time). When
+ * the underlying evidence changes, the stored decision no longer matches
+ * and the proposal reopens as unreviewed instead of silently remaining
+ * accepted. Only proposals with an executable, collision-free destination
+ * can be accepted.
+ * @summary Save durable decisions for archive naming proposals
+ */
+
+export const updateArchiveNamingProposalDecisionsBodyDecisionsItemNoteMax = 500;
+
+export const updateArchiveNamingProposalDecisionsBodyDecisionsMax = 100;
+
+
+
+export const UpdateArchiveNamingProposalDecisionsBody = zod.object({
+  "decisions": zod.array(zod.object({
+  "fileRecordId": zod.number().min(1),
+  "status": zod.enum(['accepted', 'rejected', 'deferred']),
+  "note": zod.string().max(updateArchiveNamingProposalDecisionsBodyDecisionsItemNoteMax).nullish()
+})).min(1).max(updateArchiveNamingProposalDecisionsBodyDecisionsMax)
+})
+
+
+export const updateArchiveNamingProposalDecisionsResponseSucceededMin = 0;
+
+export const updateArchiveNamingProposalDecisionsResponseFailedMin = 0;
+
+
+
+export const UpdateArchiveNamingProposalDecisionsResponse = zod.object({
+  "attempted": zod.number().min(1),
+  "succeeded": zod.number().min(updateArchiveNamingProposalDecisionsResponseSucceededMin),
+  "failed": zod.number().min(updateArchiveNamingProposalDecisionsResponseFailedMin),
+  "results": zod.array(zod.object({
+  "fileRecordId": zod.number(),
+  "success": zod.boolean(),
+  "decision": zod.union([zod.object({
+  "status": zod.enum(['accepted', 'rejected', 'deferred']),
+  "evidenceKey": zod.string(),
+  "note": zod.string().nullable(),
+  "updatedAt": zod.string()
+}),zod.null()]),
+  "error": zod.string().nullable()
+}))
+})
+
+
+/**
+ * Applies a bounded batch of naming proposals. Every item must currently
+ * be accepted against matching evidence, must have an executable
+ * collision-free destination, and is re-validated at apply time: paths
+ * are confined to configured archive volumes, traversal is rejected, and
+ * an existing target aborts that item (files are never overwritten).
+ * Destructive phases only run through the archive operation journal,
+ * which records state transitions and enables rollback. With `dryRun`
+ * the same gates and checks run without any filesystem or journal write.
+ * @summary Apply accepted archive naming proposals through the mutation journal
+ */
+
+export const applyArchiveNamingProposalsBodyFileRecordIdsMax = 25;
+
+export const applyArchiveNamingProposalsBodyDryRunDefault = false;
+
+export const ApplyArchiveNamingProposalsBody = zod.object({
+  "fileRecordIds": zod.array(zod.number().min(1)).min(1).max(applyArchiveNamingProposalsBodyFileRecordIdsMax).describe('Bounded batch of file_record ids whose accepted naming proposals\nshould be applied. A single apply request touches at most 25 files.\n'),
+  "dryRun": zod.boolean().default(applyArchiveNamingProposalsBodyDryRunDefault).describe('When true, every gate (accepted decision, executable destination,\npath confinement, collision, source-freshness) is evaluated but no\nfilesystem or journal write happens.\n')
+})
+
+
+export const applyArchiveNamingProposalsResponseSucceededMin = 0;
+
+export const applyArchiveNamingProposalsResponseFailedMin = 0;
+
+
+
+export const ApplyArchiveNamingProposalsResponse = zod.object({
+  "requested": zod.number().min(1),
+  "dryRun": zod.boolean(),
+  "succeeded": zod.number().min(applyArchiveNamingProposalsResponseSucceededMin),
+  "failed": zod.number().min(applyArchiveNamingProposalsResponseFailedMin),
+  "results": zod.array(zod.object({
+  "fileRecordId": zod.number(),
+  "success": zod.boolean(),
+  "error": zod.string().nullable(),
+  "operation": zod.union([zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['rename', 'move', 'restructure']),
+  "status": zod.enum(['proposed', 'approved', 'queued', 'running', 'succeeded', 'failed', 'rolled_back']),
+  "sourcePath": zod.string(),
+  "targetPath": zod.string(),
+  "fileRecordId": zod.number().nullable(),
+  "sourceEvidenceKey": zod.string().nullable(),
+  "proposalEvidence": zod.record(zod.string(), zod.unknown()),
+  "expectedSizeBytes": zod.number().nullable(),
+  "expectedModifiedAtMs": zod.number().nullable(),
+  "createdDirectories": zod.array(zod.string()),
+  "error": zod.string().nullable(),
+  "appliedAt": zod.string().nullable(),
+  "rolledBackAt": zod.string().nullable(),
+  "rollbackAvailable": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).describe('Durable, owner-scoped journal entry for one filesystem mutation.\nSource and target are confined to configured archive volumes; the\nevidence snapshot plus expected size\/mtime make the change auditable,\nand successful entries carry enough information to roll the mutation\nback.\n'),zod.null()]),
+  "plan": zod.union([zod.object({
+  "ok": zod.boolean(),
+  "kind": zod.enum(['rename', 'move', 'restructure']),
+  "sourcePath": zod.string().nullable(),
+  "targetPath": zod.string().nullable(),
+  "checks": zod.array(zod.object({
+  "step": zod.string(),
+  "ok": zod.boolean(),
+  "message": zod.string()
+}))
+}),zod.null()])
+}))
+})
+
+
+/**
+ * @summary List recent archive mutation operations
+ */
+export const getArchiveOperationsQueryLimitMax = 100;
+
+
+
+export const GetArchiveOperationsQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(getArchiveOperationsQueryLimitMax).optional()
+})
+
+export const GetArchiveOperationsResponseItem = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['rename', 'move', 'restructure']),
+  "status": zod.enum(['proposed', 'approved', 'queued', 'running', 'succeeded', 'failed', 'rolled_back']),
+  "sourcePath": zod.string(),
+  "targetPath": zod.string(),
+  "fileRecordId": zod.number().nullable(),
+  "sourceEvidenceKey": zod.string().nullable(),
+  "proposalEvidence": zod.record(zod.string(), zod.unknown()),
+  "expectedSizeBytes": zod.number().nullable(),
+  "expectedModifiedAtMs": zod.number().nullable(),
+  "createdDirectories": zod.array(zod.string()),
+  "error": zod.string().nullable(),
+  "appliedAt": zod.string().nullable(),
+  "rolledBackAt": zod.string().nullable(),
+  "rollbackAvailable": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).describe('Durable, owner-scoped journal entry for one filesystem mutation.\nSource and target are confined to configured archive volumes; the\nevidence snapshot plus expected size\/mtime make the change auditable,\nand successful entries carry enough information to roll the mutation\nback.\n')
+export const GetArchiveOperationsResponse = zod.array(GetArchiveOperationsResponseItem)
+
+
+/**
+ * Restores the original path only when the moved file still exists at
+ * the recorded destination and the original path is free again. Any
+ * other condition refuses the rollback without touching files.
+ * @summary Roll back a successful archive operation using its journal entry
+ */
+
+
+
+export const RollbackArchiveOperationParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const RollbackArchiveOperationResponse = zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['rename', 'move', 'restructure']),
+  "status": zod.enum(['proposed', 'approved', 'queued', 'running', 'succeeded', 'failed', 'rolled_back']),
+  "sourcePath": zod.string(),
+  "targetPath": zod.string(),
+  "fileRecordId": zod.number().nullable(),
+  "sourceEvidenceKey": zod.string().nullable(),
+  "proposalEvidence": zod.record(zod.string(), zod.unknown()),
+  "expectedSizeBytes": zod.number().nullable(),
+  "expectedModifiedAtMs": zod.number().nullable(),
+  "createdDirectories": zod.array(zod.string()),
+  "error": zod.string().nullable(),
+  "appliedAt": zod.string().nullable(),
+  "rolledBackAt": zod.string().nullable(),
+  "rollbackAvailable": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).describe('Durable, owner-scoped journal entry for one filesystem mutation.\nSource and target are confined to configured archive volumes; the\nevidence snapshot plus expected size\/mtime make the change auditable,\nand successful entries carry enough information to roll the mutation\nback.\n')
 
 
 /**

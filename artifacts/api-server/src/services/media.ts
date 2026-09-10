@@ -517,7 +517,16 @@ export function prepareDownload(input: {
 }, settings: SettingsRecord) {
   validateSourceUrl(input.sourceUrl);
   const outputContainer = input.outputContainer === "mkv" || input.outputContainer === "webm" ? input.outputContainer : settings.outputContainer;
-  const temporaryDirectory = validateSafeDirectory(input.temporaryDirectory, settings.temporaryDirectory, "Temporary directory");
+  // The API contract allows clients to omit temporaryDirectory; the persisted
+  // setting is the fallback. An explicit client value is still validated
+  // against the configured safe-directory roots, so omitting never weakens
+  // path confinement.
+  const configuredTemporaryDirectory = settings.temporaryDirectory?.trim() ?? "";
+  const temporaryDirectoryCandidate = input.temporaryDirectory?.trim() || configuredTemporaryDirectory;
+  if (!temporaryDirectoryCandidate) {
+    throw new Error("Temporary directory is required. Configure one in System Settings or pass it explicitly.");
+  }
+  const temporaryDirectory = validateSafeDirectory(temporaryDirectoryCandidate, configuredTemporaryDirectory, "Temporary directory");
  const mediaType: ArchiveMediaType =
   /\bS\d{1,2}(?:E\d{1,2})?\b|\bSeason\s+\d+\b|\bEpisode\s+\d+\b|\bEp(?:isode)?\.?\s*\d+\b|\bSeries\s+\d+\b/i.test(input.title)
     ? "tv"
