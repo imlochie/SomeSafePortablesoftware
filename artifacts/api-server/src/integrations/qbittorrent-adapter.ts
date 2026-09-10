@@ -55,9 +55,18 @@ function mapTorrent(record: Record<string, unknown>) {
   const progress = typeof record.progress === "number"
     ? Math.max(0, Math.min(1, record.progress))
     : null;
+  const status = stringField(record, "state") ?? "unknown";
+  const normalizedStatus = status.toLowerCase();
+  const lifecycle = progress !== null && progress >= 1
+    || ["uploading", "stalledup", "queuedup", "checkingup"].includes(normalizedStatus)
+    ? "completed" as const
+    : ["pausedup", "missingfiles", "error"].includes(normalizedStatus)
+      ? "failed" as const
+      : "active" as const;
   return {
     jobId,
-    status: stringField(record, "state") ?? "unknown",
+    status,
+    lifecycle,
     progress,
     title,
     mediaType: null,

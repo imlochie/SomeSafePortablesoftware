@@ -1,9 +1,10 @@
 import {
   IntegrationUnavailableError,
   integrationRegistry,
+  type AcquisitionProviderLifecycleState,
   type IntegrationId,
 } from "../integrations";
-import { archiveDb, addEvent } from "../lib/archive-db";
+import { archiveDb } from "../lib/archive-db";
 
 export const acquisitionJobStates = [
   "planned",
@@ -66,6 +67,54 @@ const stateRank: Record<AcquisitionJobState, number> = {
   failed: -1,
   cancelled: -1,
 };
+
+export const activeProviderAcquisitionStates = [
+  "searching",
+  "source_selected",
+  "downloading",
+  "processing",
+] as const satisfies readonly AcquisitionJobState[];
+
+export const acquisitionProviderRefreshStates = [
+  "active",
+  "completed",
+  "failed",
+  "stale",
+  "unavailable",
+] as const;
+
+export type AcquisitionProviderRefreshState =
+  (typeof acquisitionProviderRefreshStates)[number];
+
+export const DEFAULT_ACQUISITION_REFRESH_INTERVAL_MS = 15_000;
+export const DEFAULT_ACQUISITION_REFRESH_MAX_JOBS = 100;
+export const DEFAULT_ACQUISITION_REFRESH_MAX_JOBS_PER_OWNER = 25;
+export const DEFAULT_ACQUISITION_REFRESH_CONCURRENCY = 4;
+
+const MIN_ACQUISITION_REFRESH_INTERVAL_MS = 5_000;
+const MAX_ACQUISITION_REFRESH_INTERVAL_MS = 5 * 60_000;
+const MAX_ACQUISITION_REFRESH_JOBS = 500;
+const MAX_ACQUISITION_REFRESH_CONCURRENCY = 16;
+
+export interface AcquisitionRefreshSummary {
+  attempted: number;
+  refreshed: number;
+  active: number;
+  completed: number;
+  failed: number;
+  stale: number;
+  unavailable: number;
+}
+
+export interface AcquisitionRefreshOptions {
+  maxJobs?: number;
+  maxJobsPerOwner?: number;
+  concurrency?: number;
+}
+
+export interface AcquisitionPollingOptions extends AcquisitionRefreshOptions {
+  intervalMs?: number;
+}
 
 export interface CreateAcquisitionJobInput {
   mediaType: string;
@@ -220,6 +269,43 @@ function readEvents(id: number, ownerId: string) {
   `).all(id, ownerId) as Array<Record<string, unknown>>).map(toEvent);
 }
 
+function boundedInteger(value: number | undefined, fallback: number, minimum: number, maximum: number) {
+  if (value === undefined) return fallback;
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(minimum, Math.min(maximum, Math.floor(value)));
+}
+
+function providerRefreshState(value: unknown): AcquisitionProviderRefreshState | null {
+  return typeof value === "string"
+    && (acquisitionProviderRefreshStates as readonly string[]).includes(value)
+    ? value as AcquisitionProviderRefreshState
+    : null;
+}
+
+function refreshStateOf(job: AcquisitionJob): AcquisitionProviderRefreshState {
+  return providerRefreshState(job.metadata.providerStatusState) ?? "active";
+}
+
+function providerMetadata(
+  metadata: Record<string, unknown>,
+  updates: {
+    state: AcquisitionProviderRefreshState;
+    checkedAt: string;
+    status?: string;
+    detail?: string;
+    errorCode?: string | null;
+  },
+) {
+  return {
+    ...metadata,
+    providerStatusState: updates.state,
+    providerStatusCheckedAt: updates.checkedAt,
+    ...(updates.status === undefined ? {} : { providerStatus: updates.status }),
+    ...(updates.detail === undefined ? {} : { providerStatusDetail: updates.detail }),
+    ...(updates.errorCode === undefined ? {} : { providerStatusErrorCode: updates.errorCode }),
+  };
+}
+
 export function readAcquisitionJob(id: number, ownerId: string) {
   const row = archiveDb.prepare(`
     SELECT * FROM acquisition_job WHERE id = ? AND owner_id = ?
@@ -244,6 +330,40 @@ export function listAcquisitionJobs(
     `).all(ownerId);
   return (rows as Array<Record<string, unknown>>).map((row) =>
     toJob(row, readEvents(Number(row.id), ownerId)));
+}
+
+export function listActiveProviderAcquisitionJobs(
+  ownerId: string,
+  limit = DEFAULT_ACQUISITION_REFRESH_MAX_JOBS_PER_OWNER,
+) {
+  const boundedLimit = boundedInteger(limit, DEFAULT_ACQUISITION_REFRESH_MAX_JOBS_PER_OWNER, 1, MAX_ACQUISITION_REFRESH_JOBS);
+  const placeholders = activeProviderAcquisitionStates.map(() => "?").join(", ");
+  const rows = archiveDb.prepare(`
+    SELECT * FROM acquisition_job
+    WHERE owner_id = ?
+      AND provider_id IS NOT NULL
+      AND provider_job_id IS NOT NULL
+      AND state IN (${placeholders})
+    ORDER BY updated_at ASC, id ASC
+    LIMIT ?
+  `).all(ownerId, ...activeProviderAcquisitionStates, boundedLimit);
+  return (rows as Array<Record<string, unknown>>)
+    .map((row) => toJob(row, readEvents(Number(row.id), ownerId)))
+    .filter((job) => refreshStateOf(job) !== "completed");
+}
+
+function listActiveProviderAcquisitionOwnerIds(limit: number) {
+  const placeholders = activeProviderAcquisitionStates.map(() => "?").join(", ");
+  const rows = archiveDb.prepare(`
+    SELECT DISTINCT owner_id
+    FROM acquisition_job
+    WHERE provider_id IS NOT NULL
+      AND provider_job_id IS NOT NULL
+      AND state IN (${placeholders})
+    ORDER BY owner_id ASC
+    LIMIT ?
+  `).all(...activeProviderAcquisitionStates, limit) as Array<Record<string, unknown>>;
+  return rows.map((row) => String(row.owner_id));
 }
 
 function updateJob(
@@ -517,7 +637,37 @@ export function progressAcquisitionJob(
   return progressed;
 }
 
-function stateFromProvider(providerId: AcquisitionProviderId, status: string, progress: number | null): AcquisitionJobState {
+function lifecycleFromProvider(
+  providerId: AcquisitionProviderId,
+  status: string,
+  progress: number | null,
+  lifecycle?: AcquisitionProviderLifecycleState,
+): Exclude<AcquisitionProviderRefreshState, "stale" | "unavailable"> {
+  if (lifecycle === "completed" || lifecycle === "failed") return lifecycle;
+  const normalized = status.toLowerCase();
+  if (["failed", "error", "aborted", "missing"].some((value) => normalized.includes(value))) {
+    return "failed";
+  }
+  if (
+    (providerId === "qbittorrent"
+      && (progress !== null && progress >= 1
+        || ["uploading", "stalledup", "queuedup", "checkingup"].includes(normalized)))
+    || ["completed", "imported", "downloaded"].some((value) => normalized.includes(value))
+  ) {
+    return "completed";
+  }
+  return "active";
+}
+
+function stateFromProvider(
+  providerId: AcquisitionProviderId,
+  status: string,
+  progress: number | null,
+  lifecycle?: AcquisitionProviderLifecycleState,
+): AcquisitionJobState {
+  const providerLifecycle = lifecycleFromProvider(providerId, status, progress, lifecycle);
+  if (providerLifecycle === "failed") return "failed";
+  if (providerLifecycle === "completed") return "processing";
   const normalized = status.toLowerCase();
   if (providerId === "qbittorrent") {
     if (["uploading", "stalledup", "queuedup", "checkingup"].includes(normalized)) return "processing";
@@ -529,32 +679,78 @@ function stateFromProvider(providerId: AcquisitionProviderId, status: string, pr
   return "searching";
 }
 
+function recordUnavailableRefresh(
+  job: AcquisitionJob,
+  ownerId: string,
+  error: unknown,
+) {
+  const checkedAt = new Date().toISOString();
+  const message = errorMessage(error);
+  const metadata = providerMetadata(job.metadata, {
+    state: "unavailable",
+    checkedAt,
+    detail: message,
+    errorCode: errorCode(error),
+  });
+  updateJob(job.id, ownerId, { metadata_json: JSON.stringify(metadata) });
+  addJobEvent(job.id, ownerId, job.state, job.state, "Provider status could not be refreshed.", {
+    providerStatusState: "unavailable",
+    providerStatusErrorCode: errorCode(error),
+  });
+  return readAcquisitionJob(job.id, ownerId);
+}
+
 export async function refreshAcquisitionJob(id: number, ownerId: string) {
   const job = readAcquisitionJob(id, ownerId);
   if (!job) throw new Error("Acquisition job not found.");
   if (!job.providerId || !job.providerJobId) {
     throw new Error("This acquisition job has no provider job reference to refresh.");
   }
-  const result = await integrationRegistry.invoke(
-    "acquisition_job_status",
-    { jobId: job.providerJobId, externalId: job.externalId ?? undefined },
-    { ownerId },
-    job.providerId as IntegrationId,
-  );
-  const providerJob = result.jobs.find((candidate) => candidate.jobId === job.providerJobId)
-    ?? result.jobs[0];
+  let result;
+  try {
+    result = await integrationRegistry.invoke(
+      "acquisition_job_status",
+      { jobId: job.providerJobId, externalId: job.externalId ?? undefined },
+      { ownerId },
+      job.providerId as IntegrationId,
+    );
+  } catch (error) {
+    return recordUnavailableRefresh(job, ownerId, error);
+  }
+  const providerJob = result.jobs.find((candidate) => candidate.jobId === job.providerJobId);
   if (!providerJob) {
+    const checkedAt = new Date().toISOString();
+    const metadata = providerMetadata(job.metadata, {
+      state: "stale",
+      checkedAt,
+      detail: "The provider returned no matching acquisition job.",
+      errorCode: null,
+    });
+    updateJob(id, ownerId, { metadata_json: JSON.stringify(metadata) });
     addJobEvent(id, ownerId, job.state, job.state, "Provider returned no matching job.", {
       providerJobId: job.providerJobId,
+      providerStatusState: "stale",
     });
     return readAcquisitionJob(id, ownerId);
   }
   const nextState = stateFromProvider(job.providerId, providerJob.status, providerJob.progress);
   const providerProgress = providerJob.progress == null ? undefined : providerJob.progress * 100;
+  const lifecycle = lifecycleFromProvider(
+    job.providerId,
+    providerJob.status,
+    providerJob.progress,
+    providerJob.lifecycle,
+  );
+  const checkedAt = new Date().toISOString();
   const mergedMetadata = {
-    ...job.metadata,
-    providerStatus: providerJob.status,
     ...(providerJob.metadata ?? {}),
+    ...providerMetadata(job.metadata, {
+      state: lifecycle,
+      checkedAt,
+      status: providerJob.status,
+      detail: providerJob.detail,
+      errorCode: null,
+    }),
   };
   if (nextState === "failed") {
     updateJob(id, ownerId, {
@@ -567,10 +763,17 @@ export async function refreshAcquisitionJob(id: number, ownerId: string) {
       metadata_json: JSON.stringify(mergedMetadata),
       provider_reference: providerJob.detail,
     });
-    addJobEvent(id, ownerId, job.state, "failed", providerJob.detail, { providerStatus: providerJob.status });
+    addJobEvent(id, ownerId, job.state, "failed", providerJob.detail, {
+      providerStatus: providerJob.status,
+      providerStatusState: "failed",
+    });
     return readAcquisitionJob(id, ownerId);
   }
-  if (stateRank[nextState] >= stateRank[job.state] && nextState !== job.state) {
+  if (
+    stateRank[nextState] >= stateRank[job.state]
+    && nextState !== job.state
+    && transitions[job.state].includes(nextState)
+  ) {
     return progressAcquisitionJob(id, ownerId, {
       state: nextState,
       progress: providerProgress,
@@ -586,8 +789,104 @@ export async function refreshAcquisitionJob(id: number, ownerId: string) {
   });
   addJobEvent(id, ownerId, job.state, job.state, `Provider reports ${providerJob.status}.`, {
     providerStatus: providerJob.status,
+    providerStatusState: lifecycle,
   });
   return readAcquisitionJob(id, ownerId);
+}
+
+async function refreshActiveAcquisitionJobsOnce(
+  options: AcquisitionRefreshOptions,
+): Promise<AcquisitionRefreshSummary> {
+  const maxJobs = boundedInteger(
+    options.maxJobs,
+    DEFAULT_ACQUISITION_REFRESH_MAX_JOBS,
+    1,
+    MAX_ACQUISITION_REFRESH_JOBS,
+  );
+  const maxJobsPerOwner = boundedInteger(
+    options.maxJobsPerOwner,
+    DEFAULT_ACQUISITION_REFRESH_MAX_JOBS_PER_OWNER,
+    1,
+    MAX_ACQUISITION_REFRESH_JOBS,
+  );
+  const concurrency = boundedInteger(
+    options.concurrency,
+    DEFAULT_ACQUISITION_REFRESH_CONCURRENCY,
+    1,
+    MAX_ACQUISITION_REFRESH_CONCURRENCY,
+  );
+  const jobs: AcquisitionJob[] = [];
+  for (const ownerId of listActiveProviderAcquisitionOwnerIds(maxJobs)) {
+    if (jobs.length >= maxJobs) break;
+    jobs.push(...listActiveProviderAcquisitionJobs(
+      ownerId,
+      Math.min(maxJobsPerOwner, maxJobs - jobs.length),
+    ));
+  }
+
+  const summary: AcquisitionRefreshSummary = {
+    attempted: jobs.length,
+    refreshed: 0,
+    active: 0,
+    completed: 0,
+    failed: 0,
+    stale: 0,
+    unavailable: 0,
+  };
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < jobs.length) {
+      const job = jobs[nextIndex++];
+      try {
+        const refreshed = await refreshAcquisitionJob(job.id, job.ownerId);
+        summary.refreshed += 1;
+        const state = refreshed ? refreshStateOf(refreshed) : "unavailable";
+        summary[state] += 1;
+      } catch {
+        // A job can disappear between the bounded read and refresh. Do not
+        // turn that race into a mutation of any other owner or local state.
+        summary.unavailable += 1;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, worker));
+  return summary;
+}
+
+let activeRefreshCycle: Promise<AcquisitionRefreshSummary> | null = null;
+
+export function refreshActiveAcquisitionJobs(options: AcquisitionRefreshOptions = {}) {
+  if (activeRefreshCycle) return activeRefreshCycle;
+  const cycle = refreshActiveAcquisitionJobsOnce(options);
+  const tracked = cycle.finally(() => {
+    if (activeRefreshCycle === tracked) activeRefreshCycle = null;
+  });
+  activeRefreshCycle = tracked;
+  return tracked;
+}
+
+export function startAcquisitionJobPolling(options: AcquisitionPollingOptions = {}) {
+  const intervalMs = boundedInteger(
+    options.intervalMs,
+    DEFAULT_ACQUISITION_REFRESH_INTERVAL_MS,
+    MIN_ACQUISITION_REFRESH_INTERVAL_MS,
+    MAX_ACQUISITION_REFRESH_INTERVAL_MS,
+  );
+  let stopped = false;
+  const tick = () => {
+    if (stopped) return;
+    void refreshActiveAcquisitionJobs(options).catch(() => {
+      // Individual provider failures are persisted as unavailable evidence.
+      // A database or process-level failure should not stop future polling.
+    });
+  };
+  tick();
+  const timer = setInterval(tick, intervalMs);
+  timer.unref?.();
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
 }
 
 export function isAcquisitionJobState(value: unknown): value is AcquisitionJobState {

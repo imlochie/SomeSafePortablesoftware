@@ -126,9 +126,21 @@ function mapQueue(kind: ArrKind, value: unknown) {
       : {};
   const size = numberField(record, "size");
   const sizeLeft = numberField(record, "sizeleft");
+  const status = stringField(record, "status", "trackedDownloadStatus") ?? "unknown";
+  const normalizedStatus = status.toLowerCase();
+  const lifecycle = ["failed", "error", "aborted", "missing"].some((value) =>
+    normalizedStatus.includes(value)
+  )
+    ? "failed" as const
+    : ["completed", "imported", "downloaded"].some((value) =>
+        normalizedStatus.includes(value)
+      )
+      ? "completed" as const
+      : "active" as const;
   return {
     jobId: String(numberField(record, "id", "downloadId") ?? stringField(record, "downloadId") ?? ""),
-    status: stringField(record, "status", "trackedDownloadStatus") ?? "unknown",
+    status,
+    lifecycle,
     progress: size !== null && size > 0 && sizeLeft !== null
       ? Math.max(0, Math.min(1, (size - sizeLeft) / size))
       : numberField(record, "progress"),

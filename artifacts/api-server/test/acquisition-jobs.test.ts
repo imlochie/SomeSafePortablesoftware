@@ -173,6 +173,69 @@ describe("canonical acquisition jobs", { concurrency: false }, () => {
     assert.equal(refreshed?.state, "processing");
     assert.equal(refreshed?.progress, 100);
     assert.equal(refreshed?.metadata.providerStatus, "uploading");
+    assert.equal(refreshed?.metadata.providerStatusState, "completed");
+  });
+
+  test("automatically refreshes active jobs and keeps stale or unavailable providers explicit", async () => {
+    let providerMode: "active" | "stale" | "unavailable" = "active";
+    mockFetch((url) => {
+      if (providerMode === "unavailable") throw new Error("provider is offline");
+      if (url.pathname.endsWith("/system/status")) return jsonResponse({ version: "4.0.0" });
+      if (url.pathname.endsWith("/command")) return jsonResponse({ id: 701, status: "started" });
+      if (url.pathname.endsWith("/queue")) {
+        return jsonResponse(providerMode === "stale"
+          ? { records: [] }
+          : {
+              records: [{
+                id: 701,
+                status: "downloading",
+                size: 100,
+                sizeleft: 75,
+                title: "Polling Movie",
+              }],
+            });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+
+    const ownerId = "acquisition-owner-polling";
+    const job = await acquisition.createAcquisitionJob({
+      mediaType: "series",
+      title: "Polling Movie",
+      externalId: "701",
+      providerId: "sonarr",
+      start: true,
+    }, ownerId);
+    assert.equal(job?.state, "searching");
+
+    let summary = await acquisition.refreshActiveAcquisitionJobs({
+      maxJobs: 10,
+      maxJobsPerOwner: 10,
+      concurrency: 1,
+    });
+    let refreshed = acquisition.readAcquisitionJob(job!.id, ownerId);
+    assert.equal(summary.active, 1);
+    assert.equal(refreshed?.metadata.providerStatusState, "active");
+    assert.equal(refreshed?.progress, 25);
+    assert.equal(refreshed?.state, "downloading");
+    assert.equal(refreshed?.downloadJobId, null);
+
+    providerMode = "stale";
+    summary = await acquisition.refreshActiveAcquisitionJobs({ concurrency: 1 });
+    refreshed = acquisition.readAcquisitionJob(job!.id, ownerId);
+    assert.equal(summary.stale, 1);
+    assert.equal(refreshed?.metadata.providerStatusState, "stale");
+    assert.equal(refreshed?.state, "downloading");
+    assert.equal(refreshed?.downloadJobId, null);
+
+    providerMode = "unavailable";
+    summary = await acquisition.refreshActiveAcquisitionJobs({ concurrency: 1 });
+    refreshed = acquisition.readAcquisitionJob(job!.id, ownerId);
+    assert.equal(summary.unavailable, 1);
+    assert.equal(refreshed?.metadata.providerStatusState, "unavailable");
+    assert.equal(refreshed?.state, "downloading");
+    assert.equal(refreshed?.errorCode, null);
+    assert.equal(refreshed?.downloadJobId, null);
   });
 
   test("cancellation is local tracking only and retry returns a planned job", async () => {

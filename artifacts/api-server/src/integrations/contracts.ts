@@ -151,9 +151,19 @@ export interface AcquisitionJobStatusRequest {
   externalId?: string;
 }
 
+export const acquisitionProviderLifecycleStates = [
+  "active",
+  "completed",
+  "failed",
+] as const;
+
+export type AcquisitionProviderLifecycleState =
+  (typeof acquisitionProviderLifecycleStates)[number];
+
 export interface AcquisitionJobStatus {
   jobId: string;
   status: string;
+  lifecycle?: AcquisitionProviderLifecycleState;
   progress: number | null;
   title: string | null;
   mediaType: string | null;

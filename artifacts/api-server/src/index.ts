@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { runtimeConfig } from "./lib/runtime-config";
+import { startAcquisitionJobPolling } from "./services/acquisition-jobs";
 
 app.listen(runtimeConfig.port, runtimeConfig.host, (err) => {
   if (err) {
@@ -16,4 +17,7 @@ app.listen(runtimeConfig.port, runtimeConfig.host, (err) => {
     },
     "Server listening",
   );
+  const stopAcquisitionPolling = startAcquisitionJobPolling();
+  process.once("SIGTERM", stopAcquisitionPolling);
+  process.once("SIGINT", stopAcquisitionPolling);
 });
