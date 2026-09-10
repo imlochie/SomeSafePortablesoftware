@@ -55,7 +55,7 @@ The app gives a personal media archivist a calm control room for local archive s
 - Node.js 22+ is required for the embedded `node:sqlite` runtime.
 - The local launcher starts the API on port 8080 and the Vite UI on port 3000.
 - `YT_DLP_PATH`, `FFMPEG_PATH`, and `FFPROBE_PATH` can provide Windows executable defaults; the same paths are editable in System Settings.
-- External integration configuration uses `SONARR_URL`/`SONARR_API_KEY`, `RADARR_URL`/`RADARR_API_KEY`, `PROWLARR_URL`/`PROWLARR_API_KEY`, and `QBITTORRENT_URL`/`QBITTORRENT_USERNAME`/`QBITTORRENT_PASSWORD`. Sonarr/Radarr requests may also use their `*_ROOT_FOLDER` and `*_QUALITY_PROFILE_ID` defaults.
+- External integration configuration uses `SONARR_URL`/`SONARR_API_KEY`, `RADARR_URL`/`RADARR_API_KEY`, `PROWLARR_URL`/`PROWLARR_API_KEY`, and `QBITTORRENT_URL`/`QBITTORRENT_USERNAME`/`QBITTORRENT_PASSWORD`. Sonarr/Radarr requests may also use their `*_ROOT_FOLDER` and `*_QUALITY_PROFILE_ID` defaults. Signed Sonarr/Radarr acquisition webhooks use `SONARR_WEBHOOK_SECRET` and `RADARR_WEBHOOK_SECRET` at `/api/acquisition-webhooks/{provider}`.
 - Acquisition jobs are owner-scoped and expose their provider references plus transition history through `/api/acquisition-jobs`. Provider refreshes may advance the external portion of a job; processing, verification, importing, and completion remain explicit control-plane transitions.
 - Archive acquisition requests use `/api/archive/media-lookup`, `/api/archive/missing-media`, and `/api/archive/acquisitions`; archive identity and policy context are persisted as request metadata before provider calls.
 

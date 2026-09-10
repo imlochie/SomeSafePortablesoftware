@@ -12,6 +12,7 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 import { requireAuth } from "./middlewares/requireAuth";
 import { isAllowedLocalOrigin, runtimeConfig } from "./lib/runtime-config";
+import acquisitionWebhooksRouter from "./routes/acquisition-webhooks";
 
 const app: Express = express();
 
@@ -51,6 +52,14 @@ app.use(
           callback(new Error("Origin is not allowed by the local API boundary."));
         },
   }),
+);
+app.use(
+  "/api/acquisition-webhooks",
+  express.raw({
+    type: "*/*",
+    limit: "256kb",
+  }),
+  acquisitionWebhooksRouter,
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

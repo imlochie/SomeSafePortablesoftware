@@ -1,23 +1,29 @@
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { after, before, describe, test } from "node:test";
+import type { IntegrationConfiguration } from "../src/integrations/config";
 
 const originalFetch = globalThis.fetch;
 const originalEnvironment = {
   SONARR_URL: process.env.SONARR_URL,
   SONARR_API_KEY: process.env.SONARR_API_KEY,
+  SONARR_WEBHOOK_SECRET: process.env.SONARR_WEBHOOK_SECRET,
   QBITTORRENT_URL: process.env.QBITTORRENT_URL,
   QBITTORRENT_USERNAME: process.env.QBITTORRENT_USERNAME,
   QBITTORRENT_PASSWORD: process.env.QBITTORRENT_PASSWORD,
 };
 
 let acquisition: typeof import("../src/services/acquisition-jobs");
+let createSonarrAdapter: typeof import("../src/integrations").createSonarrAdapter;
 
 before(async () => {
   process.env.SONARR_URL = "http://acquisition.test";
   process.env.SONARR_API_KEY = "test-sonarr-key";
+  process.env.SONARR_WEBHOOK_SECRET = "test-webhook-secret";
   process.env.QBITTORRENT_URL = "http://acquisition.test";
   process.env.QBITTORRENT_USERNAME = "test-user";
   process.env.QBITTORRENT_PASSWORD = "test-password";
+  ({ createSonarrAdapter } = await import("../src/integrations"));
   acquisition = await import("../src/services/acquisition-jobs");
 });
 
@@ -43,6 +49,10 @@ function textResponse(value: string, status = 200, headers: Record<string, strin
 function mockFetch(handler: (url: URL, init: RequestInit) => Response | Promise<Response>) {
   globalThis.fetch = (async (input, init = {}) =>
     handler(new URL(String(input)), init)) as typeof fetch;
+}
+
+function signWebhook(body: string, secret = "test-webhook-secret") {
+  return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 }
 
 describe("canonical acquisition jobs", { concurrency: false }, () => {
@@ -253,5 +263,92 @@ describe("canonical acquisition jobs", { concurrency: false }, () => {
     assert.equal(retried?.state, "planned");
     assert.equal(retried?.retryCount, 1);
     assert.equal(retried?.providerId, null);
+  });
+
+  test("authenticated Sonarr webhooks normalize lifecycle events and reject tampering", () => {
+    const config: IntegrationConfiguration = {
+      endpoint: "http://acquisition.test",
+      credentialsConfigured: true,
+      apiKey: "test-sonarr-key",
+      webhookSecret: "test-webhook-secret",
+    };
+    const adapter = createSonarrAdapter(config);
+    const rawBody = JSON.stringify({
+      eventType: "Download",
+      eventId: "event-1",
+      downloadId: "700",
+      progress: 35,
+      series: { title: "Webhook Series" },
+      downloadClient: "qBittorrent",
+    });
+    const event = adapter.parseAcquisitionWebhook!({
+      rawBody,
+      headers: { "x-webhook-signature": signWebhook(rawBody) },
+    });
+    assert.equal(event?.providerJobId, "700");
+    assert.equal(event?.lifecycle, "completed");
+    assert.equal(event?.progress, 0.35);
+    assert.equal(event?.metadata?.providerWebhookEventId, "event-1");
+    assert.throws(
+      () => adapter.parseAcquisitionWebhook!({
+        rawBody,
+        headers: { "x-webhook-signature": signWebhook(rawBody, "wrong-secret") },
+      }),
+      /signature is invalid/i,
+    );
+  });
+
+  test("webhooks update only the matching owner job and deduplicate delivery", async () => {
+    mockFetch((url) => {
+      if (url.pathname.endsWith("/system/status")) return jsonResponse({ version: "4.0.0" });
+      if (url.pathname.endsWith("/command")) return jsonResponse({ id: 702 });
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    const ownerA = await acquisition.createAcquisitionJob({
+      mediaType: "series",
+      title: "Owner A",
+      externalId: "1",
+      providerId: "sonarr",
+      start: true,
+    }, "webhook-owner-a");
+    const ownerB = await acquisition.createAcquisitionJob({
+      mediaType: "series",
+      title: "Owner B",
+      externalId: "2",
+      providerId: "sonarr",
+      start: false,
+    }, "webhook-owner-b");
+    const grabbedEvent = {
+      providerJobId: ownerA!.providerJobId!,
+      status: "Grab",
+      lifecycle: "active" as const,
+      progress: 0.2,
+      providerReference: "qBittorrent",
+      detail: "Owner A download was grabbed.",
+      eventId: "event-owner-a-grab",
+      metadata: { providerWebhookEventId: "event-owner-a-grab" },
+    };
+    const event = {
+      providerJobId: ownerA!.providerJobId!,
+      status: "Download",
+      lifecycle: "completed" as const,
+      progress: 0.6,
+      providerReference: "qBittorrent",
+      detail: "Owner A download completed.",
+      eventId: "event-owner-a",
+      metadata: { providerWebhookEventId: "event-owner-a" },
+    };
+    const grabbed = acquisition.handleAcquisitionWebhook("sonarr", grabbedEvent);
+    assert.equal(grabbed.status, "processed");
+    assert.equal(grabbed.job?.state, "downloading");
+    const handled = acquisition.handleAcquisitionWebhook("sonarr", event);
+    assert.equal(handled.status, "processed");
+    assert.equal(handled.job?.ownerId, "webhook-owner-a");
+    assert.equal(handled.job?.state, "processing");
+    assert.equal(acquisition.readAcquisitionJob(ownerB!.id, "webhook-owner-b")?.state, "planned");
+
+    const duplicate = acquisition.handleAcquisitionWebhook("sonarr", event);
+    assert.equal(duplicate.status, "duplicate");
+    assert.equal(duplicate.job?.events.length, handled.job?.events.length);
   });
 });

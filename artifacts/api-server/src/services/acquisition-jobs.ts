@@ -1,6 +1,7 @@
 import {
   IntegrationUnavailableError,
   integrationRegistry,
+  type AcquisitionWebhookEvent,
   type AcquisitionProviderLifecycleState,
   type IntegrationId,
 } from "../integrations";
@@ -150,6 +151,11 @@ export interface AcquisitionJobEvent {
   createdAt: string;
 }
 
+export interface AcquisitionWebhookResult {
+  status: "processed" | "duplicate" | "ignored";
+  job: AcquisitionJob | null;
+}
+
 export interface AcquisitionJob {
   id: number;
   ownerId: string;
@@ -267,6 +273,22 @@ function readEvents(id: number, ownerId: string) {
     WHERE acquisition_job_id = ? AND owner_id = ?
     ORDER BY created_at ASC, id ASC
   `).all(id, ownerId) as Array<Record<string, unknown>>).map(toEvent);
+}
+
+function readAcquisitionJobByProviderJobId(
+  providerId: AcquisitionProviderId,
+  providerJobId: string,
+) {
+  const rows = archiveDb.prepare(`
+    SELECT * FROM acquisition_job
+    WHERE provider_id = ? AND provider_job_id = ?
+    ORDER BY id ASC
+  `).all(providerId, providerJobId) as Array<Record<string, unknown>>;
+  if (rows.length > 1) {
+    throw new Error("The provider webhook matched more than one acquisition owner.");
+  }
+  const row = rows[0];
+  return row ? toJob(row, readEvents(Number(row.id), String(row.owner_id))) : null;
 }
 
 function boundedInteger(value: number | undefined, fallback: number, minimum: number, maximum: number) {
@@ -674,9 +696,111 @@ function stateFromProvider(
     if (["pausedup", "missingfiles"].includes(normalized)) return "failed";
     return progress !== null && progress >= 1 ? "processing" : "downloading";
   }
+  if (["grab", "queued", "started"].includes(normalized)) return "downloading";
   if (normalized.includes("import") || normalized.includes("completed")) return "processing";
   if (normalized.includes("download")) return "downloading";
   return "searching";
+}
+
+interface ProviderLifecycleUpdate {
+  status: string;
+  progress: number | null;
+  lifecycle?: AcquisitionProviderLifecycleState;
+  providerReference?: string | null;
+  detail: string;
+  metadata?: Record<string, unknown>;
+  eventId?: string | null;
+}
+
+function applyProviderLifecycleUpdate(
+  id: number,
+  ownerId: string,
+  update: ProviderLifecycleUpdate,
+) {
+  const job = readAcquisitionJob(id, ownerId);
+  if (!job) throw new Error("Acquisition job not found.");
+  if (
+    update.eventId
+    && job.metadata.providerWebhookEventId === update.eventId
+  ) {
+    return { job, duplicate: true };
+  }
+  const nextState = stateFromProvider(
+    job.providerId!,
+    update.status,
+    update.progress,
+    update.lifecycle,
+  );
+  const providerProgress = update.progress == null ? undefined : update.progress * 100;
+  const lifecycle = lifecycleFromProvider(
+    job.providerId!,
+    update.status,
+    update.progress,
+    update.lifecycle,
+  );
+  const baseMetadata = {
+    ...job.metadata,
+    ...(update.metadata ?? {}),
+  };
+  const mergedMetadata = providerMetadata(baseMetadata, {
+    state: lifecycle,
+    checkedAt: new Date().toISOString(),
+    status: update.status,
+    detail: update.detail,
+    errorCode: null,
+  });
+  const providerReference = update.providerReference ?? update.detail;
+
+  if (nextState === "failed") {
+    if (job.state === "failed" || transitions[job.state].includes("failed")) {
+      const failed = progressAcquisitionJob(id, ownerId, {
+        state: "failed",
+        progress: providerProgress,
+        providerReference,
+        metadata: mergedMetadata,
+        errorCode: "PROVIDER_REPORTED_FAILURE",
+        errorMessage: update.detail,
+        detail: update.detail,
+      });
+      return { job: failed, duplicate: false };
+    }
+  }
+  if (
+    stateRank[nextState] >= stateRank[job.state]
+    && nextState !== job.state
+    && transitions[job.state].includes(nextState)
+  ) {
+    const progressed = progressAcquisitionJob(id, ownerId, {
+      state: nextState,
+      progress: providerProgress,
+      providerReference,
+      metadata: mergedMetadata,
+      detail: update.eventId
+        ? `Provider webhook reports ${update.status}.`
+        : `Provider reports ${update.status}.`,
+    });
+    return { job: progressed, duplicate: false };
+  }
+  updateJob(id, ownerId, {
+    ...(providerProgress === undefined ? {} : { progress: providerProgress }),
+    provider_reference: providerReference,
+    metadata_json: JSON.stringify(mergedMetadata),
+  });
+  addJobEvent(
+    id,
+    ownerId,
+    job.state,
+    job.state,
+    update.eventId
+      ? `Provider webhook reports ${update.status}.`
+      : `Provider reports ${update.status}.`,
+    {
+      providerStatus: update.status,
+      providerStatusState: lifecycle,
+      ...(update.eventId ? { providerWebhookEventId: update.eventId } : {}),
+    },
+  );
+  return { job: readAcquisitionJob(id, ownerId), duplicate: false };
 }
 
 function recordUnavailableRefresh(
@@ -733,65 +857,35 @@ export async function refreshAcquisitionJob(id: number, ownerId: string) {
     });
     return readAcquisitionJob(id, ownerId);
   }
-  const nextState = stateFromProvider(job.providerId, providerJob.status, providerJob.progress);
-  const providerProgress = providerJob.progress == null ? undefined : providerJob.progress * 100;
-  const lifecycle = lifecycleFromProvider(
-    job.providerId,
-    providerJob.status,
-    providerJob.progress,
-    providerJob.lifecycle,
-  );
-  const checkedAt = new Date().toISOString();
-  const mergedMetadata = {
-    ...(providerJob.metadata ?? {}),
-    ...providerMetadata(job.metadata, {
-      state: lifecycle,
-      checkedAt,
-      status: providerJob.status,
-      detail: providerJob.detail,
-      errorCode: null,
-    }),
+  return applyProviderLifecycleUpdate(id, ownerId, {
+    status: providerJob.status,
+    progress: providerJob.progress,
+    lifecycle: providerJob.lifecycle,
+    providerReference: providerJob.detail,
+    detail: providerJob.detail,
+    metadata: providerJob.metadata,
+  }).job;
+}
+
+export function handleAcquisitionWebhook(
+  providerId: AcquisitionProviderId,
+  event: AcquisitionWebhookEvent,
+): AcquisitionWebhookResult {
+  const job = readAcquisitionJobByProviderJobId(providerId, event.providerJobId);
+  if (!job) return { status: "ignored", job: null };
+  const applied = applyProviderLifecycleUpdate(job.id, job.ownerId, {
+    status: event.status,
+    progress: event.progress,
+    lifecycle: event.lifecycle,
+    providerReference: event.providerReference,
+    detail: event.detail,
+    metadata: event.metadata,
+    eventId: event.eventId,
+  });
+  return {
+    status: applied.duplicate ? "duplicate" : "processed",
+    job: applied.job,
   };
-  if (nextState === "failed") {
-    updateJob(id, ownerId, {
-      state: "failed",
-      current_phase: "failed",
-      failed_at: new Date().toISOString(),
-      error_code: "PROVIDER_REPORTED_FAILURE",
-      error_message: providerJob.detail,
-      ...(providerProgress === undefined ? {} : { progress: providerProgress }),
-      metadata_json: JSON.stringify(mergedMetadata),
-      provider_reference: providerJob.detail,
-    });
-    addJobEvent(id, ownerId, job.state, "failed", providerJob.detail, {
-      providerStatus: providerJob.status,
-      providerStatusState: "failed",
-    });
-    return readAcquisitionJob(id, ownerId);
-  }
-  if (
-    stateRank[nextState] >= stateRank[job.state]
-    && nextState !== job.state
-    && transitions[job.state].includes(nextState)
-  ) {
-    return progressAcquisitionJob(id, ownerId, {
-      state: nextState,
-      progress: providerProgress,
-      providerReference: providerJob.detail,
-      metadata: mergedMetadata,
-      detail: `Provider reports ${providerJob.status}.`,
-    });
-  }
-  updateJob(id, ownerId, {
-    ...(providerProgress === undefined ? {} : { progress: providerProgress }),
-    provider_reference: providerJob.detail,
-    metadata_json: JSON.stringify(mergedMetadata),
-  });
-  addJobEvent(id, ownerId, job.state, job.state, `Provider reports ${providerJob.status}.`, {
-    providerStatus: providerJob.status,
-    providerStatusState: lifecycle,
-  });
-  return readAcquisitionJob(id, ownerId);
 }
 
 async function refreshActiveAcquisitionJobsOnce(

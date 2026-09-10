@@ -7,6 +7,8 @@ import { createRadarrAdapter } from "./radarr-adapter";
 import { createSonarrAdapter } from "./sonarr-adapter";
 import {
   IntegrationUnavailableError,
+  type AcquisitionWebhookEvent,
+  type AcquisitionWebhookInput,
   integrationIds,
   type CapabilityContext,
   type CapabilityInputByName,
@@ -39,6 +41,20 @@ export class IntegrationRegistry {
 
   getAdapter(id: IntegrationId) {
     return this.adaptersById.get(id);
+  }
+
+  parseAcquisitionWebhook(
+    id: IntegrationId,
+    input: AcquisitionWebhookInput,
+  ): AcquisitionWebhookEvent | null {
+    const adapter = this.adaptersById.get(id);
+    if (!adapter?.parseAcquisitionWebhook) {
+      throw new IntegrationUnavailableError(
+        `${id} does not support acquisition webhooks.`,
+        { integrationId: id },
+      );
+    }
+    return adapter.parseAcquisitionWebhook(input);
   }
 
   async getStatuses(ownerId: string): Promise<IntegrationStatus[]> {

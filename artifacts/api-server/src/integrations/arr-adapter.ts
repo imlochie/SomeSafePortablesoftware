@@ -1,5 +1,9 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   IntegrationUnavailableError,
+  IntegrationWebhookAuthenticationError,
+  type AcquisitionWebhookEvent,
+  type AcquisitionWebhookInput,
   type ArchiveSearchRecord,
   type CapabilityHandlerMap,
   type IntegrationCapability,
@@ -68,6 +72,102 @@ function metadataRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function webhookHeader(input: AcquisitionWebhookInput, kind: ArrKind) {
+  return [
+    input.headers[`x-${kind}-webhook-signature`],
+    input.headers["x-archive-webhook-signature"],
+    input.headers["x-webhook-signature"],
+  ].find((value) => typeof value === "string" && value.trim())?.trim() ?? null;
+}
+
+function verifyWebhookSignature(
+  input: AcquisitionWebhookInput,
+  kind: ArrKind,
+  secret: string | null | undefined,
+) {
+  if (!secret) {
+    throw new IntegrationUnavailableError(
+      `${nameFor(kind)} webhook authentication is not configured.`,
+      { integrationId: kind },
+    );
+  }
+  const provided = webhookHeader(input, kind);
+  if (!provided) throw new IntegrationWebhookAuthenticationError();
+  const normalized = provided.replace(/^sha256=/i, "").trim();
+  const expectedHex = createHmac("sha256", secret).update(input.rawBody).digest("hex");
+  const expectedBase64 = createHmac("sha256", secret).update(input.rawBody).digest("base64");
+  const matches = (expected: string) => {
+    const actualBuffer = Buffer.from(normalized);
+    const expectedBuffer = Buffer.from(expected);
+    return actualBuffer.length === expectedBuffer.length
+      && timingSafeEqual(actualBuffer, expectedBuffer);
+  };
+  if (!matches(expectedHex) && !matches(expectedBase64)) {
+    throw new IntegrationWebhookAuthenticationError();
+  }
+}
+
+function parseWebhookEvent(
+  kind: ArrKind,
+  input: AcquisitionWebhookInput,
+  secret: string | null | undefined,
+): AcquisitionWebhookEvent | null {
+  verifyWebhookSignature(input, kind, secret);
+  let payload: unknown;
+  try {
+    payload = JSON.parse(input.rawBody);
+  } catch {
+    throw malformedResponse(`${nameFor(kind)} returned malformed webhook JSON.`);
+  }
+  const record = responseRecord(payload, nameFor(kind));
+  const eventType = stringField(record, "eventType", "event", "type") ?? "unknown";
+  const eventId = stringField(record, "eventId", "webhookId", "notificationId");
+  const providerJobId = stringField(record, "downloadId", "downloadID", "jobId", "providerJobId", "id");
+  if (!providerJobId && eventType.toLowerCase() === "test") return null;
+  if (!providerJobId) {
+    throw malformedResponse(`${nameFor(kind)} webhook did not include a provider download identifier.`);
+  }
+  const normalizedEvent = eventType.toLowerCase();
+  const lifecycle = normalizedEvent.includes("failed")
+    || normalizedEvent.includes("error")
+    || normalizedEvent.includes("aborted")
+    ? "failed" as const
+    : normalizedEvent.includes("download")
+      || normalizedEvent.includes("import")
+      || normalizedEvent.includes("complete")
+      ? "completed" as const
+      : "active" as const;
+  const rawProgress = numberField(record, "progress", "downloadProgress");
+  const progress = rawProgress === null
+    ? null
+    : Math.max(0, Math.min(1, rawProgress > 1 ? rawProgress / 100 : rawProgress));
+  const titleRecord = record.series && typeof record.series === "object"
+    ? record.series as Record<string, unknown>
+    : record.movie && typeof record.movie === "object"
+      ? record.movie as Record<string, unknown>
+      : {};
+  const title = stringField(titleRecord, "title", "seriesName")
+    ?? stringField(record, "title", "name");
+  const detail = title
+    ? `${nameFor(kind)} webhook ${eventType} for ${title}.`
+    : `${nameFor(kind)} webhook reports ${eventType}.`;
+  return {
+    providerJobId,
+    status: eventType,
+    lifecycle,
+    progress,
+    providerReference: stringField(record, "downloadClient", "downloadId"),
+    detail,
+    eventId,
+    metadata: {
+      providerWebhookEvent: eventType,
+      ...(eventId ? { providerWebhookEventId: eventId } : {}),
+      ...(title ? { providerWebhookTitle: title } : {}),
+      ...(record.downloadClient ? { downloadClient: record.downloadClient } : {}),
+    },
+  };
 }
 
 function requiredExternalId(record: Record<string, unknown>, service: string) {
@@ -352,6 +452,9 @@ export function createArrAdapter(
     },
     getCapability(capability) {
       return handlers[capability] as typeof handlers[typeof capability];
+    },
+    parseAcquisitionWebhook(input) {
+      return parseWebhookEvent(kind, input, config.webhookSecret);
     },
   };
 }

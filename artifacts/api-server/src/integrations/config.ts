@@ -3,6 +3,7 @@ import type { IntegrationId } from "./contracts";
 export interface IntegrationConfiguration {
   endpoint: string | null;
   credentialsConfigured: boolean;
+  webhookSecret?: string | null;
   apiKey?: string | null;
   username?: string | null;
   password?: string | null;
@@ -42,6 +43,7 @@ export function resolveExternalIntegrationConfiguration(
     sonarr: {
       endpoint: readValue(env, "SONARR_URL"),
       credentialsConfigured: hasAll(env, ["SONARR_API_KEY"]),
+      webhookSecret: readValue(env, "SONARR_WEBHOOK_SECRET"),
       apiKey: readValue(env, "SONARR_API_KEY"),
       rootFolderPath: readValue(env, "SONARR_ROOT_FOLDER"),
       qualityProfileId: optionalInteger(env, "SONARR_QUALITY_PROFILE_ID"),
@@ -50,6 +52,7 @@ export function resolveExternalIntegrationConfiguration(
     radarr: {
       endpoint: readValue(env, "RADARR_URL"),
       credentialsConfigured: hasAll(env, ["RADARR_API_KEY"]),
+      webhookSecret: readValue(env, "RADARR_WEBHOOK_SECRET"),
       apiKey: readValue(env, "RADARR_API_KEY"),
       rootFolderPath: readValue(env, "RADARR_ROOT_FOLDER"),
       qualityProfileId: optionalInteger(env, "RADARR_QUALITY_PROFILE_ID"),

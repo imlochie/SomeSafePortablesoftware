@@ -23,6 +23,22 @@ export type IntegrationCapability =
   | "rename_move"
   | "library_scan";
 
+export interface AcquisitionWebhookInput {
+  rawBody: string;
+  headers: Readonly<Record<string, string | undefined>>;
+}
+
+export interface AcquisitionWebhookEvent {
+  providerJobId: string;
+  status: string;
+  lifecycle?: AcquisitionProviderLifecycleState;
+  progress: number | null;
+  providerReference?: string | null;
+  detail: string;
+  metadata?: Record<string, unknown>;
+  eventId?: string | null;
+}
+
 export const integrationCapabilities: readonly IntegrationCapability[] = [
   "archive_search",
   "media_lookup",
@@ -267,6 +283,9 @@ export interface MediaIntegrationAdapter {
   getCapability<K extends IntegrationCapability>(
     capability: K,
   ): CapabilityHandler<K> | undefined;
+  parseAcquisitionWebhook?(
+    input: AcquisitionWebhookInput,
+  ): AcquisitionWebhookEvent | null;
 }
 
 export class IntegrationUnavailableError extends Error {
@@ -284,5 +303,12 @@ export class IntegrationUnavailableError extends Error {
     this.name = "IntegrationUnavailableError";
     this.integrationId = details.integrationId;
     this.capability = details.capability;
+  }
+}
+
+export class IntegrationWebhookAuthenticationError extends Error {
+  constructor(message = "The provider webhook signature is invalid.") {
+    super(message);
+    this.name = "IntegrationWebhookAuthenticationError";
   }
 }
