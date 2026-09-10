@@ -4,12 +4,14 @@ import {
   X,
   Send,
   RefreshCw,
+  RotateCcw,
   AlertTriangle,
   CheckCircle2,
 } from 'lucide-react';
 import {
   useLookupArchiveMedia,
   useRequestArchiveAcquisition,
+  useRetryAcquisitionJob,
   getLookupArchiveMediaQueryKey,
 } from '@workspace/api-client-react';
 import type {
@@ -93,13 +95,15 @@ export function ArchiveAcquisitionPanel({
     providerId: AcquisitionProvider;
   } | undefined>();
   const [policyReason, setPolicyReason] = useState('');
-  const [notice, setNotice] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null);
+  const [latestJob, setLatestJob] = useState<AcquisitionJob | null>(null);
+  const [notice, setNotice] = useState<{ tone: 'good' | 'bad' | 'pending'; text: string } | null>(null);
 
   useEffect(() => {
     setQuery(defaultQuery(target));
     setProviderId(defaultProvider(target));
     setLookupParams(undefined);
     setPolicyReason('');
+    setLatestJob(null);
     setNotice(null);
   }, [target]);
 
@@ -111,6 +115,7 @@ export function ArchiveAcquisitionPanel({
     },
   });
   const acquisition = useRequestArchiveAcquisition();
+  const retryAcquisition = useRetryAcquisitionJob();
 
   const mediaType = target.kind === 'missing'
     ? target.item.mediaType
@@ -124,6 +129,7 @@ export function ArchiveAcquisitionPanel({
     source?: AcquisitionProvider;
   }) => {
     const selectedProvider = result.source ?? providerId;
+    setLatestJob(null);
     setNotice(null);
     acquisition.mutate({
       data: {
@@ -146,6 +152,7 @@ export function ArchiveAcquisitionPanel({
       },
     }, {
       onSuccess: (job: AcquisitionJob) => {
+        setLatestJob(job);
         setNotice({
           tone: job.state === 'failed' ? 'bad' : 'good',
           text: job.state === 'failed'
@@ -155,6 +162,36 @@ export function ArchiveAcquisitionPanel({
       },
       onError: (error) => {
         setNotice({ tone: 'bad', text: `Acquisition request failed: ${errorText(error)}` });
+      },
+    });
+  };
+
+  const canRetry = latestJob
+    ? (latestJob.state === 'failed' || latestJob.state === 'cancelled')
+      && latestJob.retryCount < latestJob.maxRetries
+    : false;
+  const retriesRemaining = latestJob
+    ? Math.max(latestJob.maxRetries - latestJob.retryCount, 0)
+    : 0;
+
+  const retryLastJob = () => {
+    if (!latestJob || !canRetry || retryAcquisition.isPending) return;
+    setNotice({
+      tone: 'pending',
+      text: `Retrying acquisition #${latestJob.id}. Provider error remains visible below while the retry is in progress.`,
+    });
+    retryAcquisition.mutate({ id: latestJob.id }, {
+      onSuccess: (job: AcquisitionJob) => {
+        setLatestJob(job);
+        setNotice({
+          tone: job.state === 'failed' ? 'bad' : 'good',
+          text: job.state === 'failed'
+            ? `Acquisition #${job.id} failed again: ${job.errorMessage ?? 'The provider rejected the request.'}`
+            : `Acquisition #${job.id} retry is ${job.state.replace(/_/g, ' ')}. Archive data was not changed.`,
+        });
+      },
+      onError: (error) => {
+        setNotice({ tone: 'bad', text: `Acquisition retry failed: ${errorText(error)}` });
       },
     });
   };
@@ -298,8 +335,57 @@ export function ArchiveAcquisitionPanel({
         </div>
 
         {notice && (
-          <div className={`border p-3 text-[11px] leading-5 ${notice.tone === 'bad' ? 'border-[#e2b9b4] bg-[#fcedea] text-[#994b43]' : 'border-[#b9cbc7] bg-[#eaf3ef] text-[#39736e]'}`} role="status" aria-live="polite" data-testid="status-acquisition-request">
+          <div className={`border p-3 text-[11px] leading-5 ${notice.tone === 'bad' ? 'border-[#e2b9b4] bg-[#fcedea] text-[#994b43]' : notice.tone === 'pending' ? 'border-[#d9bd77] bg-[#fff8e7] text-[#80652e]' : 'border-[#b9cbc7] bg-[#eaf3ef] text-[#39736e]'}`} role="status" aria-live="polite" data-testid="status-acquisition-request">
             {notice.text}
+          </div>
+        )}
+
+        {latestJob && (
+          <div className="border border-[#d6dfdc] bg-[#fbfcfa] p-3 text-[11px] leading-5" data-testid="panel-acquisition-result">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">
+                ACQUISITION #{latestJob.id} / {latestJob.providerId?.toUpperCase() ?? 'PROVIDER'}
+              </div>
+              <span
+                className={`archive-mono text-[9px] font-bold tracking-[.08em] ${
+                  latestJob.state === 'failed' || latestJob.state === 'cancelled'
+                    ? 'text-[#994b43]'
+                    : latestJob.state === 'complete'
+                      ? 'text-[#39736e]'
+                      : 'text-[#a77517]'
+                }`}
+                data-testid="text-acquisition-state"
+              >
+                {latestJob.state.replace(/_/g, ' ').toUpperCase()}
+              </span>
+            </div>
+            {latestJob.errorMessage && (
+              <div className="mt-2 flex gap-2 border-l-2 border-[#c85b51] bg-[#fcedea] px-2.5 py-2 text-[#994b43]" role="alert" data-testid="status-acquisition-provider-error">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                <span>{latestJob.errorMessage}</span>
+              </div>
+            )}
+            {(latestJob.state === 'failed' || latestJob.state === 'cancelled') && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[10px] text-[#829197]" data-testid="text-acquisition-retry-budget">
+                  {canRetry
+                    ? `${retriesRemaining} ${retriesRemaining === 1 ? 'retry' : 'retries'} remaining`
+                    : 'Retry limit reached'}
+                </span>
+                {canRetry && (
+                  <button
+                    type="button"
+                    disabled={retryAcquisition.isPending}
+                    onClick={retryLastJob}
+                    className="inline-flex items-center gap-1.5 border border-[#d9bd77] bg-[#fff8e7] px-2.5 py-2 text-[9px] font-bold tracking-[.06em] text-[#8d681d] disabled:opacity-50"
+                    data-testid="button-retry-acquisition"
+                  >
+                    {retryAcquisition.isPending ? <RefreshCw size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                    {retryAcquisition.isPending ? 'RETRYING' : 'RETRY REQUEST'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
