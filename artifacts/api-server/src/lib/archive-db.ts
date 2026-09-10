@@ -264,6 +264,102 @@ archiveDb.exec(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (owner_id, file_record_id, finding_type, evidence_key)
   );
+  CREATE TABLE IF NOT EXISTS review_item (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    subject_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    note TEXT,
+    decision_at TEXT,
+    decided_by TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, kind, subject_key)
+  );
+  CREATE INDEX IF NOT EXISTS review_item_owner_state_idx
+    ON review_item(owner_id, state, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS review_item_decision (
+    id INTEGER PRIMARY KEY,
+    review_item_id INTEGER NOT NULL REFERENCES review_item(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL,
+    from_state TEXT,
+    to_state TEXT NOT NULL,
+    note TEXT,
+    decided_by TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS review_item_decision_item_idx
+    ON review_item_decision(review_item_id, created_at ASC, id ASC);
+  CREATE TABLE IF NOT EXISTS acquisition_recommendation (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    recommendation_key TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    year INTEGER,
+    external_id TEXT,
+    target_json TEXT NOT NULL DEFAULT '{}',
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    quality_json TEXT NOT NULL DEFAULT '{}',
+    destination_json TEXT NOT NULL DEFAULT '{}',
+    route_json TEXT NOT NULL DEFAULT '{}',
+    blockers_json TEXT NOT NULL DEFAULT '[]',
+    confidence TEXT NOT NULL,
+    priority TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    review_item_id INTEGER REFERENCES review_item(id) ON DELETE SET NULL,
+    acquisition_job_id INTEGER REFERENCES acquisition_job(id) ON DELETE SET NULL,
+    evidence_hash TEXT NOT NULL,
+    generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, recommendation_key, evidence_hash)
+  );
+  CREATE INDEX IF NOT EXISTS acquisition_recommendation_owner_idx
+    ON acquisition_recommendation(owner_id, status, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS archive_operation (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    operation_key TEXT NOT NULL,
+    action TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
+    source_id TEXT,
+    source_path TEXT NOT NULL,
+    destination_path TEXT NOT NULL,
+    review_item_id INTEGER NOT NULL REFERENCES review_item(id),
+    acquisition_job_id INTEGER REFERENCES acquisition_job(id) ON DELETE SET NULL,
+    download_job_id INTEGER REFERENCES download_job(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'planned',
+    dry_run INTEGER NOT NULL DEFAULT 0,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 3,
+    preflight_json TEXT NOT NULL DEFAULT '{}',
+    rollback_json TEXT NOT NULL DEFAULT '{}',
+    error_code TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, operation_key)
+  );
+  CREATE INDEX IF NOT EXISTS archive_operation_owner_idx
+    ON archive_operation(owner_id, status, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS archive_operation_event (
+    id INTEGER PRIMARY KEY,
+    operation_id INTEGER NOT NULL REFERENCES archive_operation(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL,
+    from_status TEXT,
+    to_status TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS archive_operation_event_idx
+    ON archive_operation_event(operation_id, created_at ASC, id ASC);
   CREATE TABLE IF NOT EXISTS assistant_conversation (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New conversation',
