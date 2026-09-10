@@ -613,7 +613,7 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
   );
 }
 
-function ArchivePage() {
+export function ArchivePage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState('');
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
