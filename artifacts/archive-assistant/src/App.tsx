@@ -17,13 +17,14 @@ import {
   useGetSystemEvents, useGetSystemOverview, useHealthCheck, useInspectMediaSource,
   usePauseDownload, usePrepareDownload, useRetryDownload, useResumeDownload,
   useStartDownload, useStartPlexSync, useTestPlexConnection, useUpdatePlexConfig, useUpdateSettings,
-  useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord,
+  useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord, useDiscoverArchiveMissingMedia, getDiscoverArchiveMissingMediaQueryKey,
   useUpdateArchiveRecordReview, useUpdateArchiveRecordReviews, getGetArchiveScanQueryKey, getGetArchiveInventoryQueryKey,
   getGetArchiveRecordQueryKey,
   setBaseUrl,
 } from '@workspace/api-client-react';
-import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent } from '@workspace/api-client-react';
+import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, SystemEvent } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -620,8 +621,9 @@ export function ArchivePage() {
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
-  const [view, setView] = useState<'local' | 'plex_only'>('local');
+  const [view, setView] = useState<'local' | 'plex_only' | 'missing_media'>('local');
   const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
+  const [acquisitionTarget, setAcquisitionTarget] = useState<ArchiveAcquisitionTarget | null>(null);
 
   const [isScanning, setIsScanning] = useState(false);
   const { data: scan, isLoading: scanLoading, refetch: refetchScan } = useGetArchiveScan({
@@ -762,12 +764,13 @@ export function ArchivePage() {
         </div>
       )}
 
-      <div className={`grid items-start gap-5 ${selectedRecordId ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : 'grid-cols-1'}`}>
+      <div className={`grid items-start gap-5 ${selectedRecordId || acquisitionTarget ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : 'grid-cols-1'}`}>
         <section className="archive-panel flex min-h-[500px] flex-col" data-testid="panel-archive-list">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e3e8e7] bg-[#fbfcfa] p-4 md:px-6">
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
-              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
+              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
+              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
+              <button onClick={() => { setView('missing_media'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'missing_media' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-missing-media">MISSING MEDIA</button>
             </div>
 
             {view === 'local' && (
@@ -781,7 +784,7 @@ export function ArchivePage() {
             )}
           </div>
 
-          {!showPlex && selectableRecords.length > 0 && (
+          {view === 'local' && selectableRecords.length > 0 && (
             <div className="border-b border-[#e3e8e7] bg-[#f7faf8] px-4 py-3 md:px-6" data-testid="panel-bulk-review">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <label className="inline-flex cursor-pointer items-center gap-2 text-[10px] font-bold tracking-[.08em] text-[#53656b]">
@@ -823,7 +826,9 @@ export function ArchivePage() {
           )}
 
           <div className="flex-1 overflow-y-auto p-4 md:p-6" style={{ maxHeight: '600px' }}>
-            {showPlex ? (
+            {view === 'missing_media' ? (
+              <ArchiveMissingMediaView onRequest={(item, providerId) => setAcquisitionTarget({ kind: 'missing', item, providerId })} />
+            ) : showPlex ? (
               plexOnly.length ? (
                 <div className="space-y-3">
                   {plexOnly.map(p => (
@@ -878,6 +883,14 @@ export function ArchivePage() {
                         {r.reviewStatus !== 'not_applicable' && <span className={`grid h-6 place-items-center px-2 text-[9px] font-bold ${r.reviewStatus === 'reviewed' ? 'bg-[#eaf3ef] text-[#39736e]' : r.reviewStatus === 'deferred' ? 'bg-[#fff0c9] text-[#8d681d]' : 'bg-[#fcedea] text-[#994b43]'}`}>{r.reviewStatus.replace(/_/g, ' ').toUpperCase()}</span>}
                       </div>
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setAcquisitionTarget({ kind: 'finding', record: r })}
+                        className="self-center mr-3 inline-flex shrink-0 items-center border border-[#d6dfdc] bg-white px-2.5 py-2 text-[9px] font-bold tracking-[.06em] text-[#39736e] hover:border-[#4e9690] hover:bg-[#eaf3ef]"
+                        data-testid={`button-request-archive-record-${r.id}`}
+                      >
+                        REQUEST MEDIA
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -888,9 +901,89 @@ export function ArchivePage() {
           </div>
         </section>
 
-        {selectedRecordId && <ArchiveRecordPanel id={selectedRecordId} onClose={() => setSelectedRecordId(null)} />}
+        <div className="space-y-5">
+          {selectedRecordId && <ArchiveRecordPanel id={selectedRecordId} onClose={() => setSelectedRecordId(null)} />}
+          {acquisitionTarget && (
+            <ArchiveAcquisitionPanel
+              key={acquisitionTarget.kind === 'finding' ? `finding-${acquisitionTarget.record.id}` : `missing-${acquisitionTarget.item.externalId}`}
+              target={acquisitionTarget}
+              onClose={() => setAcquisitionTarget(null)}
+            />
+          )}
+        </div>
       </div>
     </>
+  );
+}
+
+function ArchiveMissingMediaView({
+  onRequest,
+}: {
+  onRequest: (item: MissingMediaItem, providerId: AcquisitionProvider) => void;
+}) {
+  const { data, isLoading, isError, error, refetch } = useDiscoverArchiveMissingMedia(undefined, {
+    query: { retry: false, queryKey: getDiscoverArchiveMissingMediaQueryKey() },
+  });
+
+  if (isLoading) return <div className="p-6"><Skeleton className="h-[260px]" /></div>;
+  if (isError) {
+    return (
+      <div className="p-6">
+        <ErrorState
+          title="Missing-media discovery failed"
+          message={`The provider could not return missing media: ${errorText(error)}`}
+          onRetry={() => refetch()}
+          testId="button-retry-missing-media"
+        />
+      </div>
+    );
+  }
+
+  const items = data?.items ?? [];
+  return (
+    <div className="space-y-4 p-4 md:p-6" data-testid="panel-missing-media">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e3e8e7] pb-4">
+        <div>
+          <div className="archive-mono text-[9px] tracking-[.14em] text-[#7f9194]">
+            PROVIDER DISCOVERY / {data?.providerId?.toUpperCase() ?? 'UNKNOWN'}
+          </div>
+          <h3 className="archive-display mt-1 text-lg font-extrabold text-[#354851]">Missing media</h3>
+          <p className="mt-1 max-w-xl text-[11px] leading-5 text-[#829197]">
+            Provider findings are shown beside archive truth. Requests create separate acquisition jobs and do not rewrite local records.
+          </p>
+        </div>
+        <button type="button" onClick={() => refetch()} className="inline-flex items-center gap-2 border border-[#d6dfdc] bg-white px-3 py-2 text-[10px] font-bold tracking-[.08em] text-[#53656b]" data-testid="button-refresh-missing-media">
+          <RefreshCw size={13} /> REFRESH
+        </button>
+      </div>
+      {items.length ? (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <div key={`${item.externalId}-${item.title}`} className="flex flex-col gap-3 border border-[#e1e8e5] bg-white/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-[12px] font-semibold text-[#43545b]">{item.title}</div>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 archive-mono text-[9px] text-[#8a9b9e]">
+                  <span>{item.mediaType.toUpperCase()}</span>
+                  <span>EXTERNAL ID {item.externalId}</span>
+                  {item.year ? <span>{item.year}</span> : null}
+                </div>
+                {item.detail && <div className="mt-2 text-[10px] text-[#829197]">{item.detail}</div>}
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button type="button" onClick={() => onRequest(item, data!.providerId)} className="inline-flex items-center gap-2 border border-[#4e9690] bg-[#eaf3ef] px-3 py-2 text-[9px] font-bold tracking-[.07em] text-[#39736e]" data-testid={`button-lookup-missing-media-${item.externalId}`}>
+                  LOOK UP
+                </button>
+                <button type="button" onClick={() => onRequest(item, data!.providerId)} className="inline-flex items-center gap-2 bg-[#39736e] px-3 py-2 text-[9px] font-bold tracking-[.07em] text-white" data-testid={`button-request-missing-media-${item.externalId}`}>
+                  REQUEST
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState icon={FolderOpen} title="No missing media reported" description="The selected provider did not report any missing items." />
+      )}
+    </div>
   );
 }
 
