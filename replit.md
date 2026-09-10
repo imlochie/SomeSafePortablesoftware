@@ -25,7 +25,8 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 
 - `artifacts/archive-assistant` — React/Vite application and the Phase 1 UI.
 - `artifacts/api-server/src/lib/archive-db.ts` — SQLite initialization, schema foundation, settings, and event storage.
-- `artifacts/api-server/src/routes/` — health, system diagnostics, settings, and Plex configuration APIs.
+- `artifacts/api-server/src/routes/` — health, system diagnostics, settings, Plex configuration, and integration status APIs.
+- `artifacts/api-server/src/integrations/` — abstract media capabilities, adapter registry, Plex wiring, and explicit disconnected adapters for future integrations.
 - `lib/api-spec/openapi.yaml` — API contract source of truth.
 - `install.ps1`, `start.ps1`, `start.bat`, `README.md` — Windows local setup and launch.
 
@@ -33,6 +34,7 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 
 - SQLite is initialized through Node's embedded `node:sqlite` runtime so a separate database service is not required for the Windows-first product.
 - The API never returns Plex tokens; configuration endpoints expose only safe status fields.
+- Intelligence/control-plane code must use abstract integration capabilities through the registry; adapters may report disconnected and must not return mocked external data.
 - Phase 1 uses real persistence for settings and events while future external services remain explicit placeholders.
 - Optional dependency detection uses direct process execution without a shell and never accepts arbitrary commands from the UI.
 

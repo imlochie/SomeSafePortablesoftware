@@ -355,6 +355,24 @@ export const GetPlexInventoryResponse = zod.object({
 
 
 /**
+ * @summary Get external integration adapter status
+ */
+export const GetIntegrationStatusesResponse = zod.object({
+  "integrations": zod.array(zod.object({
+  "id": zod.enum(['plex', 'sonarr', 'radarr', 'prowlarr', 'qbittorrent', 'mpilot', 'telegram']),
+  "name": zod.string(),
+  "state": zod.enum(['disconnected', 'configured', 'reachable', 'operational', 'error']),
+  "configured": zod.boolean(),
+  "reachable": zod.boolean(),
+  "operational": zod.boolean(),
+  "capabilities": zod.array(zod.enum(['archive_search', 'host_lookup', 'missing_media_discovery', 'source_inspection', 'acquisition_job_creation', 'media_inspection', 'media_verification', 'rename_move', 'library_scan'])),
+  "detail": zod.string(),
+  "lastCheckedAt": zod.string().nullable()
+}))
+})
+
+
+/**
  * @summary Get the current local archive scan state
  */
 export const getArchiveScanResponseScannedFilesMin = 0;

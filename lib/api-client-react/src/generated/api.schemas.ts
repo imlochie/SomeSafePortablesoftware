@@ -355,6 +355,62 @@ export interface PlexInventory {
   items: PlexInventoryItem[];
 }
 
+export type IntegrationStatusId = typeof IntegrationStatusId[keyof typeof IntegrationStatusId];
+
+
+export const IntegrationStatusId = {
+  plex: 'plex',
+  sonarr: 'sonarr',
+  radarr: 'radarr',
+  prowlarr: 'prowlarr',
+  qbittorrent: 'qbittorrent',
+  mpilot: 'mpilot',
+  telegram: 'telegram',
+} as const;
+
+export type IntegrationStatusState = typeof IntegrationStatusState[keyof typeof IntegrationStatusState];
+
+
+export const IntegrationStatusState = {
+  disconnected: 'disconnected',
+  configured: 'configured',
+  reachable: 'reachable',
+  operational: 'operational',
+  error: 'error',
+} as const;
+
+export type IntegrationStatusCapabilitiesItem = typeof IntegrationStatusCapabilitiesItem[keyof typeof IntegrationStatusCapabilitiesItem];
+
+
+export const IntegrationStatusCapabilitiesItem = {
+  archive_search: 'archive_search',
+  host_lookup: 'host_lookup',
+  missing_media_discovery: 'missing_media_discovery',
+  source_inspection: 'source_inspection',
+  acquisition_job_creation: 'acquisition_job_creation',
+  media_inspection: 'media_inspection',
+  media_verification: 'media_verification',
+  rename_move: 'rename_move',
+  library_scan: 'library_scan',
+} as const;
+
+export interface IntegrationStatus {
+  id: IntegrationStatusId;
+  name: string;
+  state: IntegrationStatusState;
+  configured: boolean;
+  reachable: boolean;
+  operational: boolean;
+  capabilities: IntegrationStatusCapabilitiesItem[];
+  detail: string;
+  /** @nullable */
+  lastCheckedAt: string | null;
+}
+
+export interface IntegrationStatusResponse {
+  integrations: IntegrationStatus[];
+}
+
 export type ArchiveScanStatus = typeof ArchiveScanStatus[keyof typeof ArchiveScanStatus];
 
 

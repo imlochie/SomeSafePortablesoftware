@@ -8,7 +8,8 @@ import { build } from "esbuild";
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 const testDir = await mkdtemp(path.join(tmpdir(), "archive-assistant-tests-"));
-const outputFile = path.join(testDir, "ownership.test.mjs");
+const testFiles = ["ownership.test.ts", "integrations.test.ts"];
+const outputFiles = testFiles.map((file) => path.join(testDir, file.replace(/\.ts$/, ".mjs")));
 const databaseFile = path.join(testDir, "ownership.sqlite");
 
 try {
@@ -116,12 +117,13 @@ try {
   legacyDb.close();
 
   await build({
-    entryPoints: [path.join(artifactDir, "test", "ownership.test.ts")],
+    entryPoints: testFiles.map((file) => path.join(artifactDir, "test", file)),
     bundle: true,
     format: "esm",
     platform: "node",
     target: "node22",
-    outfile: outputFile,
+    outdir: testDir,
+    outExtension: { ".js": ".mjs" },
     sourcemap: "inline",
     logLevel: "warning",
   });
@@ -129,7 +131,7 @@ try {
   const exitCode = await new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ["--test", pathToFileURL(outputFile).pathname],
+      ["--test", "--test-concurrency=1", ...outputFiles.map((file) => pathToFileURL(file).pathname)],
       {
         stdio: "inherit",
         env: {

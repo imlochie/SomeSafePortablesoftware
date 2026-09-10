@@ -16,6 +16,8 @@ tags:
     description: Local application settings
   - name: plex
     description: Plex connection configuration
+  - name: integrations
+    description: External media integration adapter status
   - name: media
     description: Local media inspection and source selection
   - name: downloads
@@ -170,6 +172,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PlexInventory"
+  /integrations/status:
+    get:
+      operationId: getIntegrationStatuses
+      tags: [integrations]
+      summary: Get external integration adapter status
+      responses:
+        "200":
+          description: Configured, reachable, and operational adapter states without credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationStatusResponse"
   /archive/scan:
     get:
       operationId: getArchiveScan
@@ -820,6 +834,41 @@ components:
         partCount:
           type: number
           minimum: 0
+    IntegrationStatusResponse:
+      type: object
+      required: [integrations]
+      properties:
+        integrations:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationStatus"
+    IntegrationStatus:
+      type: object
+      required: [id, name, state, configured, reachable, operational, capabilities, detail, lastCheckedAt]
+      properties:
+        id:
+          type: string
+          enum: [plex, sonarr, radarr, prowlarr, qbittorrent, mpilot, telegram]
+        name:
+          type: string
+        state:
+          type: string
+          enum: [disconnected, configured, reachable, operational, error]
+        configured:
+          type: boolean
+        reachable:
+          type: boolean
+        operational:
+          type: boolean
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum: [archive_search, host_lookup, missing_media_discovery, source_inspection, acquisition_job_creation, media_inspection, media_verification, rename_move, library_scan]
+        detail:
+          type: string
+        lastCheckedAt:
+          type: [string, "null"]
     ArchiveScan:
       type: object
       required: [status, startedAt, completedAt, lastError, scannedFiles, activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount]

@@ -36,6 +36,7 @@ import type {
   DownloadSpecification,
   ErrorResponse,
   HealthStatus,
+  IntegrationStatusResponse,
   LocalMediaInspectInput,
   LocalMediaInspection,
   MediaInspectInput,
@@ -886,6 +887,83 @@ export function useGetPlexInventory<TData = Awaited<ReturnType<typeof getPlexInv
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPlexInventoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetIntegrationStatusesUrl = () => {
+
+
+
+
+  return `/api/integrations/status`
+}
+
+/**
+ * @summary Get external integration adapter status
+ */
+export const getIntegrationStatuses = async ( options?: Parameters<typeof customFetch>[1]): Promise<IntegrationStatusResponse> => {
+
+  return customFetch<IntegrationStatusResponse>(getGetIntegrationStatusesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetIntegrationStatusesQueryKey = () => {
+    return [
+    `/api/integrations/status`
+    ] as const;
+    }
+
+
+export const getGetIntegrationStatusesQueryOptions = <TData = Awaited<ReturnType<typeof getIntegrationStatuses>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrationStatuses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetIntegrationStatusesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getIntegrationStatuses>>> = ({ signal }) => getIntegrationStatuses({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getIntegrationStatuses>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetIntegrationStatusesQueryResult = NonNullable<Awaited<ReturnType<typeof getIntegrationStatuses>>>
+export type GetIntegrationStatusesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get external integration adapter status
+ */
+
+export function useGetIntegrationStatuses<TData = Awaited<ReturnType<typeof getIntegrationStatuses>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrationStatuses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetIntegrationStatusesQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

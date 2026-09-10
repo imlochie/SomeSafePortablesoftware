@@ -1,0 +1,90 @@
+import {
+  IntegrationUnavailableError,
+  type CapabilityContext,
+  type CapabilityHandler,
+  type IntegrationCapability,
+  type IntegrationId,
+  type IntegrationStatus,
+  type MediaIntegrationAdapter,
+} from "./contracts";
+import type {
+  ExternalIntegrationConfiguration,
+  IntegrationConfiguration,
+} from "./config";
+
+const labels: Record<Exclude<IntegrationId, "plex">, string> = {
+  sonarr: "Sonarr",
+  radarr: "Radarr",
+  prowlarr: "Prowlarr",
+  qbittorrent: "qBittorrent",
+  mpilot: "MPilot",
+  telegram: "Telegram ingestion",
+};
+
+const adapterCapabilities: Record<Exclude<IntegrationId, "plex">, readonly IntegrationCapability[]> = {
+  sonarr: ["missing_media_discovery", "source_inspection", "acquisition_job_creation"],
+  radarr: ["missing_media_discovery", "source_inspection", "acquisition_job_creation"],
+  prowlarr: ["host_lookup", "source_inspection"],
+  qbittorrent: ["acquisition_job_creation", "media_inspection"],
+  mpilot: [
+    "archive_search",
+    "host_lookup",
+    "missing_media_discovery",
+    "source_inspection",
+    "acquisition_job_creation",
+    "media_inspection",
+    "media_verification",
+    "rename_move",
+    "library_scan",
+  ],
+  telegram: ["source_inspection", "acquisition_job_creation"],
+};
+
+function unavailableHandler(
+  id: IntegrationId,
+  name: string,
+  capability: IntegrationCapability,
+): CapabilityHandler<IntegrationCapability> {
+  return async (_input: never, _context: CapabilityContext) => {
+    throw new IntegrationUnavailableError(
+      `${name} is disconnected; the ${capability.replaceAll("_", " ")} capability is unavailable.`,
+      { integrationId: id, capability },
+    );
+  };
+}
+
+function getConfiguredDetail(config: IntegrationConfiguration) {
+  return config.endpoint || config.credentialsConfigured
+    ? "Configuration is present, but this adapter is not available yet."
+    : "Not configured.";
+}
+
+export function createDisconnectedAdapter(
+  id: Exclude<IntegrationId, "plex">,
+  config: ExternalIntegrationConfiguration[typeof id],
+): MediaIntegrationAdapter {
+  const name = labels[id];
+  const capabilities = adapterCapabilities[id];
+  return {
+    id,
+    name,
+    capabilities,
+    async getStatus(_ownerId) {
+      return {
+        id,
+        name,
+        state: "disconnected",
+        configured: Boolean(config.endpoint || config.credentialsConfigured),
+        reachable: false,
+        operational: false,
+        capabilities,
+        detail: getConfiguredDetail(config),
+        lastCheckedAt: null,
+      };
+    },
+    getCapability(capability) {
+      if (!capabilities.includes(capability)) return undefined;
+      return unavailableHandler(id, name, capability) as CapabilityHandler<typeof capability>;
+    },
+  };
+}
