@@ -4,6 +4,7 @@ export interface IntegrationConfiguration {
   endpoint: string | null;
   credentialsConfigured: boolean;
   webhookSecret?: string | null;
+  webhookSecrets?: () => readonly (string | null | undefined)[];
   apiKey?: string | null;
   username?: string | null;
   password?: string | null;

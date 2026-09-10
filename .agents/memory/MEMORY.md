@@ -9,3 +9,4 @@
 - [Canonical acquisition lifecycle](acquisition-lifecycle.md) — Provider requests are durable, evented jobs above the filesystem download engine; local progression stays explicit.
 - [Workspace test tooling](workspace-test-tooling.md) — Frontend test dependencies belong at the workspace root when artifact-scoped package installation is unavailable.
 - [Generated contract builds](generated-contract-builds.md) — Shared generated API packages can expose stale declaration output during workspace type checks.
+- [OpenAPI operation naming](openapi-operation-naming.md) — Avoid operation/body names that collide with generated component exports in the Zod client.

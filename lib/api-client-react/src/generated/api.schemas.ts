@@ -413,6 +413,45 @@ export interface IntegrationStatusResponse {
   integrations: IntegrationStatus[];
 }
 
+export type WebhookProvider = typeof WebhookProvider[keyof typeof WebhookProvider];
+
+
+export const WebhookProvider = {
+  sonarr: 'sonarr',
+  radarr: 'radarr',
+} as const;
+
+export interface WebhookSecretStatus {
+  provider: WebhookProvider;
+  configured: boolean;
+  /** @nullable */
+  overlapUntil: string | null;
+}
+
+export interface WebhookSecretStatusesResponse {
+  providers: WebhookSecretStatus[];
+}
+
+export type RotateWebhookSecretBodyMode = typeof RotateWebhookSecretBodyMode[keyof typeof RotateWebhookSecretBodyMode];
+
+
+export const RotateWebhookSecretBodyMode = {
+  overlap: 'overlap',
+  cutover: 'cutover',
+} as const;
+
+export interface RotateWebhookSecretBody {
+  /** @minLength 16 */
+  secret: string;
+  mode: RotateWebhookSecretBodyMode;
+  /**
+     * Required for overlap mode; old deliveries are accepted for this many minutes.
+     * @minimum 1
+     * @maximum 1440
+     */
+  overlapMinutes?: number;
+}
+
 export type MediaLookupRecordMetadata = { [key: string]: unknown };
 
 export type AcquisitionProvider = typeof AcquisitionProvider[keyof typeof AcquisitionProvider];

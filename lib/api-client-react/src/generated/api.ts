@@ -53,8 +53,11 @@ import type {
   PlexInventory,
   ProgressAcquisitionJob,
   RequestArchiveAcquisition,
+  RotateWebhookSecretBody,
   SystemEvent,
-  SystemOverview
+  SystemOverview,
+  WebhookSecretStatus,
+  WebhookSecretStatusesResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -984,6 +987,155 @@ export function useGetIntegrationStatuses<TData = Awaited<ReturnType<typeof getI
 
 
 
+
+export const getGetWebhookSecretStatusesUrl = () => {
+
+
+
+
+  return `/api/integrations/webhooks`
+}
+
+/**
+ * @summary Get provider webhook secret status without credentials
+ */
+export const getWebhookSecretStatuses = async ( options?: Parameters<typeof customFetch>[1]): Promise<WebhookSecretStatusesResponse> => {
+
+  return customFetch<WebhookSecretStatusesResponse>(getGetWebhookSecretStatusesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebhookSecretStatusesQueryKey = () => {
+    return [
+    `/api/integrations/webhooks`
+    ] as const;
+    }
+
+
+export const getGetWebhookSecretStatusesQueryOptions = <TData = Awaited<ReturnType<typeof getWebhookSecretStatuses>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookSecretStatuses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebhookSecretStatusesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebhookSecretStatuses>>> = ({ signal }) => getWebhookSecretStatuses({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebhookSecretStatuses>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebhookSecretStatusesQueryResult = NonNullable<Awaited<ReturnType<typeof getWebhookSecretStatuses>>>
+export type GetWebhookSecretStatusesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get provider webhook secret status without credentials
+ */
+
+export function useGetWebhookSecretStatuses<TData = Awaited<ReturnType<typeof getWebhookSecretStatuses>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookSecretStatuses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebhookSecretStatusesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReplaceWebhookSecretUrl = (provider: 'sonarr' | 'radarr',) => {
+
+
+
+
+  return `/api/integrations/webhooks/${provider}`
+}
+
+/**
+ * @summary Replace a provider webhook secret
+ */
+export const replaceWebhookSecret = async (provider: 'sonarr' | 'radarr',
+    rotateWebhookSecretBody: RotateWebhookSecretBody, options?: Parameters<typeof customFetch>[1]): Promise<WebhookSecretStatus> => {
+
+  return customFetch<WebhookSecretStatus>(getReplaceWebhookSecretUrl(provider),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(rotateWebhookSecretBody)
+  }
+);}
+
+
+
+
+
+export const getReplaceWebhookSecretMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceWebhookSecret>>, TError,{provider: 'sonarr' | 'radarr';data: BodyType<RotateWebhookSecretBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof replaceWebhookSecret>>, TError,{provider: 'sonarr' | 'radarr';data: BodyType<RotateWebhookSecretBody>}, TContext> => {
+
+const mutationKey = ['replaceWebhookSecret'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof replaceWebhookSecret>>, {provider: 'sonarr' | 'radarr';data: BodyType<RotateWebhookSecretBody>}> = (props) => {
+          const {provider,data} = props ?? {};
+
+          return  replaceWebhookSecret(provider,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReplaceWebhookSecretMutationResult = NonNullable<Awaited<ReturnType<typeof replaceWebhookSecret>>>
+    export type ReplaceWebhookSecretMutationBody = BodyType<RotateWebhookSecretBody>
+    export type ReplaceWebhookSecretMutationError = ErrorType<void>
+
+    /**
+ * @summary Replace a provider webhook secret
+ */
+export const useReplaceWebhookSecret = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceWebhookSecret>>, TError,{provider: 'sonarr' | 'radarr';data: BodyType<RotateWebhookSecretBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof replaceWebhookSecret>>,
+        TError,
+        {provider: 'sonarr' | 'radarr';data: BodyType<RotateWebhookSecretBody>},
+        TContext
+      > => {
+      return useMutation(getReplaceWebhookSecretMutationOptions(options));
+    }
 
 export const getGetAcquisitionJobsUrl = (params?: GetAcquisitionJobsParams,) => {
   const normalizedParams = new URLSearchParams();

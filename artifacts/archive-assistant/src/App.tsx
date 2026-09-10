@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import {
   getGetDownloadsQueryKey, getGetPlexConfigQueryKey, getGetPlexInventoryQueryKey, getGetSettingsQueryKey, getGetSystemEventsQueryKey,
-  getGetSystemOverviewQueryKey, useCancelDownload, useCreateDownload, useDeleteDownload,
+  getGetSystemOverviewQueryKey, getGetWebhookSecretStatusesQueryKey, useCancelDownload, useCreateDownload, useDeleteDownload,
   useGetDownloads, useGetPlexConfig, useGetPlexInventory, useGetSettings, useGetSystemDependencies,
+  useGetWebhookSecretStatuses, useReplaceWebhookSecret,
   useGetSystemEvents, useGetSystemOverview, useHealthCheck, useInspectMediaSource,
   usePauseDownload, usePrepareDownload, useRetryDownload, useResumeDownload,
   useStartDownload, useStartPlexSync, useTestPlexConnection, useUpdatePlexConfig, useUpdateSettings,
@@ -22,7 +23,7 @@ import {
   getGetArchiveRecordQueryKey,
   setBaseUrl,
 } from '@workspace/api-client-react';
-import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, SystemEvent } from '@workspace/api-client-react';
+import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
 import { Toaster } from '@/components/ui/toaster';
@@ -995,7 +996,91 @@ function SettingsPage() {
   const save = () => { setNotice(''); mutation.mutate({ data: form as AppSettingsUpdate }, { onSuccess: (result) => { setForm(result); setNotice('Settings saved to the local node.'); queryClient.setQueryData(getGetSettingsQueryKey(), result); }, onError: () => setNotice('Settings could not be saved. The local node did not accept the update.') }); };
   if (isLoading) return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Loading editable local preferences." /><Skeleton className="h-[520px]" /></>;
   if (isError || !data) return <ErrorState title="Settings unavailable" message="Preferences could not be read from the local node." onRetry={() => refetch()} testId="button-retry-settings" />;
-  return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Persistent preferences for the local-first control room. Changes are sent to the real settings API." action={<div className="flex items-center gap-3">{notice && <span className={`hidden text-[11px] sm:inline ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save">{notice}</span>}<button onClick={save} disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-settings"><Save size={14} /> {mutation.isPending ? 'SAVING' : 'SAVE CHANGES'}</button></div>} />{notice && <div className={`mb-4 text-[11px] sm:hidden ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save-mobile">{notice}</div>}<div className="grid gap-5 xl:grid-cols-[1fr_280px]"><div className="space-y-4">{settingsGroups.map(({ name, icon: Icon, fields }) => <SettingsGroup key={name} name={name} icon={Icon} fields={fields} form={form} update={update} />)}</div><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL DEPENDENCIES</div><h2 className="archive-display mt-1 text-lg font-extrabold">Capability check</h2><div className="mt-5 space-y-3">{dependencies?.length ? dependencies.map((dep) => <div key={dep.name} className="flex items-center gap-3" data-testid={`row-dependency-${dep.name}`}><span className={`status-dot ${dep.status === 'available' ? 'ready' : dep.status === 'missing' ? 'error' : 'warning'}`} /><div className="min-w-0"><div className="truncate text-[11px] font-semibold text-[#53656b]">{dep.name}</div><div className="archive-mono text-[9px] text-[#96a3a5]">{dep.version ?? dep.status}</div></div></div>) : <p className="text-[11px] leading-5 text-[#879599]">No dependency data returned yet.</p>}</div><div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[10px] leading-5 text-[#879599]">Only values represented by the API are editable. Future sections stay visibly reserved.</div></aside></div></>;
+  return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Persistent preferences for the local-first control room. Changes are sent to the real settings API." action={<div className="flex items-center gap-3">{notice && <span className={`hidden text-[11px] sm:inline ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save">{notice}</span>}<button onClick={save} disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-settings"><Save size={14} /> {mutation.isPending ? 'SAVING' : 'SAVE CHANGES'}</button></div>} />{notice && <div className={`mb-4 text-[11px] sm:hidden ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save-mobile">{notice}</div>}<WebhookSecretPanel /><div className="grid gap-5 xl:grid-cols-[1fr_280px]"><div className="space-y-4">{settingsGroups.map(({ name, icon: Icon, fields }) => <SettingsGroup key={name} name={name} icon={Icon} fields={fields} form={form} update={update} />)}</div><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL DEPENDENCIES</div><h2 className="archive-display mt-1 text-lg font-extrabold">Capability check</h2><div className="mt-5 space-y-3">{dependencies?.length ? dependencies.map((dep) => <div key={dep.name} className="flex items-center gap-3" data-testid={`row-dependency-${dep.name}`}><span className={`status-dot ${dep.status === 'available' ? 'ready' : dep.status === 'missing' ? 'error' : 'warning'}`} /><div className="min-w-0"><div className="truncate text-[11px] font-semibold text-[#53656b]">{dep.name}</div><div className="archive-mono text-[9px] text-[#96a3a5]">{dep.version ?? dep.status}</div></div></div>) : <p className="text-[11px] leading-5 text-[#879599]">No dependency data returned yet.</p>}</div><div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[10px] leading-5 text-[#879599]">Only values represented by the API are editable. Future sections stay visibly reserved.</div></aside></div></>;
+}
+
+type WebhookForm = {
+  secret: string;
+  mode: RotateWebhookSecretBody['mode'];
+  overlapMinutes: string;
+};
+
+const webhookProviders = ['sonarr', 'radarr'] as const;
+
+function WebhookSecretPanel() {
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError, refetch } = useGetWebhookSecretStatuses();
+  const mutation = useReplaceWebhookSecret();
+  const [forms, setForms] = useState<Record<typeof webhookProviders[number], WebhookForm>>({
+    sonarr: { secret: '', mode: 'overlap', overlapMinutes: '60' },
+    radarr: { secret: '', mode: 'overlap', overlapMinutes: '60' },
+  });
+  const [notice, setNotice] = useState('');
+
+  const updateForm = (provider: typeof webhookProviders[number], changes: Partial<WebhookForm>) => {
+    setForms((current) => ({ ...current, [provider]: { ...current[provider], ...changes } }));
+  };
+  const save = (provider: typeof webhookProviders[number]) => {
+    const form = forms[provider];
+    const overlapMinutes = Number(form.overlapMinutes);
+    if (!form.secret.trim()) {
+      setNotice(`Enter a new ${provider} webhook secret before saving.`);
+      return;
+    }
+    if (form.mode === 'overlap' && (!Number.isInteger(overlapMinutes) || overlapMinutes < 1 || overlapMinutes > 1440)) {
+      setNotice('Overlap duration must be a whole number between 1 and 1440 minutes.');
+      return;
+    }
+    setNotice('');
+    mutation.mutate(
+      {
+        provider,
+        data: {
+          secret: form.secret,
+          mode: form.mode,
+          ...(form.mode === 'overlap' ? { overlapMinutes } : {}),
+        },
+      },
+      {
+        onSuccess: () => {
+          updateForm(provider, { secret: '' });
+          setNotice(`${provider[0].toUpperCase()}${provider.slice(1)} webhook secret updated.`);
+          queryClient.invalidateQueries({ queryKey: getGetWebhookSecretStatusesQueryKey() });
+        },
+        onError: () => setNotice(`${provider[0].toUpperCase()}${provider.slice(1)} webhook secret could not be updated.`),
+      },
+    );
+  };
+
+  return <section className="archive-panel mb-5 p-5 md:p-6" data-testid="panel-webhook-secrets">
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">INTEGRATION SECURITY</div>
+        <h2 className="archive-display mt-1 text-lg font-extrabold">Provider webhooks</h2>
+        <p className="mt-2 max-w-2xl text-[11px] leading-5 text-[#7d8b8e]">Secrets are never shown after saving. Use overlap while updating Sonarr or Radarr, then switch the provider to the new secret before the overlap expires.</p>
+      </div>
+      <ShieldCheck size={18} className="shrink-0 text-[#4e9690]" />
+    </div>
+    {notice && <div className={`mt-4 text-[11px] ${notice.includes('could not') || notice.includes('Enter') || notice.includes('duration') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-webhook-secret">{notice}</div>}
+    {isLoading ? <Skeleton className="mt-5 h-32" /> : isError || !data ? <div className="mt-5 flex items-center justify-between gap-4 border-t border-[#e3e8e7] pt-4 text-[11px] text-[#879599]"><span>Webhook configuration could not be read.</span><button type="button" onClick={() => refetch()} className="border border-[var(--line)] px-3 py-2 text-[10px] font-bold tracking-[.08em] text-[#5a6d73]" data-testid="button-retry-webhook-secrets">RETRY</button></div> : <div className="mt-5 grid gap-4 border-t border-[#e3e8e7] pt-5 md:grid-cols-2">{webhookProviders.map((provider) => <WebhookSecretRow key={provider} provider={provider} status={data.providers.find((item) => item.provider === provider)} form={forms[provider]} disabled={mutation.isPending} onChange={(changes) => updateForm(provider, changes)} onSave={() => save(provider)} />)}</div>}
+  </section>;
+}
+
+function WebhookSecretRow({ provider, status, form, disabled, onChange, onSave }: { provider: typeof webhookProviders[number]; status?: WebhookSecretStatus; form: WebhookForm; disabled: boolean; onChange: (update: Partial<WebhookForm>) => void; onSave: () => void }) {
+  const configured = status?.configured ?? false;
+  const overlap = status?.overlapUntil ? `OLD SECRET ACCEPTED UNTIL ${new Date(status.overlapUntil).toLocaleString()}` : 'CUTOVER ONLY';
+  return <div className="border border-[#e3e8e7] bg-white/45 p-4" data-testid={`webhook-row-${provider}`}>
+    <div className="flex items-center justify-between gap-3">
+      <div><div className="archive-display text-[14px] font-extrabold text-[#354851]">{provider[0].toUpperCase()}{provider.slice(1)}</div><div className="mt-1 flex items-center gap-2 archive-mono text-[9px] tracking-[.08em] text-[#7f9194]"><span className={`status-dot ${configured ? 'ready' : 'warning'}`} />{configured ? 'CONFIGURED' : 'NOT CONFIGURED'}</div></div>
+      {status?.overlapUntil && <span className="text-right text-[9px] leading-4 text-[#9a6f32]" data-testid={`text-webhook-overlap-${provider}`}>{overlap}</span>}
+    </div>
+    <label className="mt-4 block text-[10px] font-bold tracking-[.08em] text-[#71858a]">NEW SECRET<input type="password" value={form.secret} onChange={(event) => onChange({ secret: event.target.value })} placeholder="Enter a new secret" autoComplete="new-password" className="mt-2 block w-full border border-[#d8e1de] bg-white px-3 py-2.5 text-[12px] text-[#354851] outline-none focus:border-[#4e9690]" data-testid={`input-webhook-secret-${provider}`} /></label>
+    <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_110px]">
+      <label className="block text-[10px] font-bold tracking-[.08em] text-[#71858a]">ROTATION PATH<select value={form.mode} onChange={(event) => onChange({ mode: event.target.value as WebhookForm['mode'] })} className="mt-2 block w-full border border-[#d8e1de] bg-white px-3 py-2.5 text-[11px] text-[#354851] outline-none focus:border-[#4e9690]" data-testid={`select-webhook-mode-${provider}`}><option value="overlap">Overlap old secret</option><option value="cutover">Cut over immediately</option></select></label>
+      {form.mode === 'overlap' && <label className="block text-[10px] font-bold tracking-[.08em] text-[#71858a]">MINUTES<input type="number" min="1" max="1440" step="1" value={form.overlapMinutes} onChange={(event) => onChange({ overlapMinutes: event.target.value })} className="mt-2 block w-full border border-[#d8e1de] bg-white px-3 py-2.5 text-[11px] text-[#354851] outline-none focus:border-[#4e9690]" data-testid={`input-webhook-overlap-${provider}`} /></label>}
+    </div>
+    <button type="button" onClick={onSave} disabled={disabled} className="mt-4 w-full bg-[#39736e] px-3 py-2.5 text-[10px] font-bold tracking-[.1em] text-white disabled:opacity-50" data-testid={`button-save-webhook-${provider}`}>{disabled ? 'SAVING' : 'SAVE WEBHOOK SECRET'}</button>
+  </div>;
 }
 function SettingsGroup({ name, icon: Icon, fields, form, update }: { name: string; icon: typeof SlidersHorizontal; fields: string[]; form: Partial<AppSettings>; update: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => void }) {
   const [open, setOpen] = useState(fields.length > 0); const slug = name.toLowerCase().replace(/\s/g, '-');

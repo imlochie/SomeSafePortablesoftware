@@ -373,6 +373,44 @@ export const GetIntegrationStatusesResponse = zod.object({
 
 
 /**
+ * @summary Get provider webhook secret status without credentials
+ */
+export const GetWebhookSecretStatusesResponse = zod.object({
+  "providers": zod.array(zod.object({
+  "provider": zod.enum(['sonarr', 'radarr']),
+  "configured": zod.boolean(),
+  "overlapUntil": zod.coerce.date().nullable()
+}))
+})
+
+
+/**
+ * @summary Replace a provider webhook secret
+ */
+export const ReplaceWebhookSecretParams = zod.object({
+  "provider": zod.enum(['sonarr', 'radarr'])
+})
+
+export const replaceWebhookSecretBodySecretMin = 16;
+
+export const replaceWebhookSecretBodyOverlapMinutesMax = 1440;
+
+
+
+export const ReplaceWebhookSecretBody = zod.object({
+  "secret": zod.string().min(replaceWebhookSecretBodySecretMin),
+  "mode": zod.enum(['overlap', 'cutover']),
+  "overlapMinutes": zod.number().min(1).max(replaceWebhookSecretBodyOverlapMinutesMax).optional().describe('Required for overlap mode; old deliveries are accepted for this many minutes.')
+})
+
+export const ReplaceWebhookSecretResponse = zod.object({
+  "provider": zod.enum(['sonarr', 'radarr']),
+  "configured": zod.boolean(),
+  "overlapUntil": zod.coerce.date().nullable()
+})
+
+
+/**
  * @summary List owner-scoped acquisition jobs
  */
 export const GetAcquisitionJobsQueryParams = zod.object({

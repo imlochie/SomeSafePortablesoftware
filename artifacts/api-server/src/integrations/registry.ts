@@ -5,6 +5,7 @@ import { createProwlarrAdapter } from "./prowlarr-adapter";
 import { createQBittorrentAdapter } from "./qbittorrent-adapter";
 import { createRadarrAdapter } from "./radarr-adapter";
 import { createSonarrAdapter } from "./sonarr-adapter";
+import { readWebhookSecretCandidates } from "../services/settings";
 import {
   IntegrationUnavailableError,
   type AcquisitionWebhookEvent,
@@ -156,8 +157,14 @@ export function createDefaultIntegrationRegistry(
   const configuration = resolveExternalIntegrationConfiguration(env);
   return new IntegrationRegistry([
     createPlexAdapter(),
-    createSonarrAdapter(configuration.sonarr),
-    createRadarrAdapter(configuration.radarr),
+    createSonarrAdapter({
+      ...configuration.sonarr,
+      webhookSecrets: () => readWebhookSecretCandidates("sonarr", env),
+    }),
+    createRadarrAdapter({
+      ...configuration.radarr,
+      webhookSecrets: () => readWebhookSecretCandidates("radarr", env),
+    }),
     createProwlarrAdapter(configuration.prowlarr),
     createQBittorrentAdapter(configuration.qbittorrent),
     createDisconnectedAdapter("mpilot", configuration.mpilot),

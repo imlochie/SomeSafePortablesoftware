@@ -186,6 +186,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IntegrationStatusResponse"
+  /integrations/webhooks:
+    get:
+      operationId: getWebhookSecretStatuses
+      tags: [integrations]
+      summary: Get provider webhook secret status without credentials
+      responses:
+        "200":
+          description: Provider webhook configuration and active overlap windows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretStatusesResponse"
+  /integrations/webhooks/{provider}:
+    put:
+      operationId: replaceWebhookSecret
+      tags: [integrations]
+      summary: Replace a provider webhook secret
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [sonarr, radarr]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateWebhookSecretBody"
+      responses:
+        "200":
+          description: Updated provider webhook status without the secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretStatus"
+        "400":
+          description: Invalid webhook secret or rotation request
+        "404":
+          description: Unsupported provider
   /acquisition-jobs:
     get:
       operationId: getAcquisitionJobs
@@ -1117,6 +1158,43 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/IntegrationStatus"
+    WebhookProvider:
+      type: string
+      enum: [sonarr, radarr]
+    WebhookSecretStatus:
+      type: object
+      required: [provider, configured, overlapUntil]
+      properties:
+        provider:
+          $ref: "#/components/schemas/WebhookProvider"
+        configured:
+          type: boolean
+        overlapUntil:
+          type: [string, "null"]
+          format: date-time
+    WebhookSecretStatusesResponse:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookSecretStatus"
+    RotateWebhookSecretBody:
+      type: object
+      required: [secret, mode]
+      properties:
+        secret:
+          type: string
+          minLength: 16
+        mode:
+          type: string
+          enum: [overlap, cutover]
+        overlapMinutes:
+          type: number
+          minimum: 1
+          maximum: 1440
+          description: Required for overlap mode; old deliveries are accepted for this many minutes.
     IntegrationStatus:
       type: object
       required: [id, name, state, configured, reachable, operational, capabilities, detail, lastCheckedAt]

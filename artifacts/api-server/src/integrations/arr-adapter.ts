@@ -112,9 +112,25 @@ function verifyWebhookSignature(
 function parseWebhookEvent(
   kind: ArrKind,
   input: AcquisitionWebhookInput,
-  secret: string | null | undefined,
+  secrets: readonly (string | null | undefined)[],
 ): AcquisitionWebhookEvent | null {
-  verifyWebhookSignature(input, kind, secret);
+  let authenticated = false;
+  let hasSecret = false;
+  for (const secret of secrets) {
+    if (!secret) continue;
+    hasSecret = true;
+    try {
+      verifyWebhookSignature(input, kind, secret);
+      authenticated = true;
+      break;
+    } catch (error) {
+      if (!(error instanceof IntegrationWebhookAuthenticationError)) throw error;
+    }
+  }
+  if (!authenticated) {
+    if (!hasSecret) verifyWebhookSignature(input, kind, null);
+    throw new IntegrationWebhookAuthenticationError();
+  }
   let payload: unknown;
   try {
     payload = JSON.parse(input.rawBody);
@@ -454,7 +470,11 @@ export function createArrAdapter(
       return handlers[capability] as typeof handlers[typeof capability];
     },
     parseAcquisitionWebhook(input) {
-      return parseWebhookEvent(kind, input, config.webhookSecret);
+      return parseWebhookEvent(
+        kind,
+        input,
+        config.webhookSecrets?.() ?? [config.webhookSecret],
+      );
     },
   };
 }
