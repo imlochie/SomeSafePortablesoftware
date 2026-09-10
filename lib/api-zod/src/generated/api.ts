@@ -365,7 +365,7 @@ export const GetIntegrationStatusesResponse = zod.object({
   "configured": zod.boolean(),
   "reachable": zod.boolean(),
   "operational": zod.boolean(),
-  "capabilities": zod.array(zod.enum(['archive_search', 'host_lookup', 'missing_media_discovery', 'source_inspection', 'acquisition_job_creation', 'media_inspection', 'media_verification', 'rename_move', 'library_scan'])),
+  "capabilities": zod.array(zod.enum(['archive_search', 'media_lookup', 'host_lookup', 'missing_media_discovery', 'source_inspection', 'acquisition_job_creation', 'acquisition_job_status', 'media_inspection', 'media_verification', 'rename_move', 'library_scan'])),
   "detail": zod.string(),
   "lastCheckedAt": zod.string().nullable()
 }))

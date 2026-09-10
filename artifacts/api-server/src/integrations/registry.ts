@@ -1,6 +1,10 @@
 import { resolveExternalIntegrationConfiguration } from "./config";
 import { createDisconnectedAdapter } from "./disconnected-adapter";
 import { createPlexAdapter } from "./plex-adapter";
+import { createProwlarrAdapter } from "./prowlarr-adapter";
+import { createQBittorrentAdapter } from "./qbittorrent-adapter";
+import { createRadarrAdapter } from "./radarr-adapter";
+import { createSonarrAdapter } from "./sonarr-adapter";
 import {
   IntegrationUnavailableError,
   integrationIds,
@@ -136,10 +140,10 @@ export function createDefaultIntegrationRegistry(
   const configuration = resolveExternalIntegrationConfiguration(env);
   return new IntegrationRegistry([
     createPlexAdapter(),
-    createDisconnectedAdapter("sonarr", configuration.sonarr),
-    createDisconnectedAdapter("radarr", configuration.radarr),
-    createDisconnectedAdapter("prowlarr", configuration.prowlarr),
-    createDisconnectedAdapter("qbittorrent", configuration.qbittorrent),
+    createSonarrAdapter(configuration.sonarr),
+    createRadarrAdapter(configuration.radarr),
+    createProwlarrAdapter(configuration.prowlarr),
+    createQBittorrentAdapter(configuration.qbittorrent),
     createDisconnectedAdapter("mpilot", configuration.mpilot),
     createDisconnectedAdapter("telegram", configuration.telegram),
   ]);

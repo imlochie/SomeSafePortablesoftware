@@ -8,7 +8,7 @@ import { build } from "esbuild";
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 const testDir = await mkdtemp(path.join(tmpdir(), "archive-assistant-tests-"));
-const testFiles = ["ownership.test.ts", "integrations.test.ts"];
+const testFiles = ["ownership.test.ts", "integrations.test.ts", "integration-http.test.ts"];
 const outputFiles = testFiles.map((file) => path.join(testDir, file.replace(/\.ts$/, ".mjs")));
 const databaseFile = path.join(testDir, "ownership.sqlite");
 

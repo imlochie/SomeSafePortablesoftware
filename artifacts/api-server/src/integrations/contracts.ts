@@ -12,10 +12,12 @@ export type IntegrationId = (typeof integrationIds)[number];
 
 export type IntegrationCapability =
   | "archive_search"
+  | "media_lookup"
   | "host_lookup"
   | "missing_media_discovery"
   | "source_inspection"
   | "acquisition_job_creation"
+  | "acquisition_job_status"
   | "media_inspection"
   | "media_verification"
   | "rename_move"
@@ -23,10 +25,12 @@ export type IntegrationCapability =
 
 export const integrationCapabilities: readonly IntegrationCapability[] = [
   "archive_search",
+  "media_lookup",
   "host_lookup",
   "missing_media_discovery",
   "source_inspection",
   "acquisition_job_creation",
+  "acquisition_job_status",
   "media_inspection",
   "media_verification",
   "rename_move",
@@ -72,6 +76,16 @@ export interface ArchiveSearchRecord {
 }
 
 export interface ArchiveSearchResult {
+  records: ArchiveSearchRecord[];
+}
+
+export interface MediaLookupRequest {
+  query?: string;
+  externalId?: string;
+  mediaType?: string;
+}
+
+export interface MediaLookupResult {
   records: ArchiveSearchRecord[];
 }
 
@@ -132,6 +146,25 @@ export interface AcquisitionJobResult {
   detail: string;
 }
 
+export interface AcquisitionJobStatusRequest {
+  jobId?: string;
+  externalId?: string;
+}
+
+export interface AcquisitionJobStatus {
+  jobId: string;
+  status: string;
+  progress: number | null;
+  title: string | null;
+  mediaType: string | null;
+  detail: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AcquisitionJobStatusResult {
+  jobs: AcquisitionJobStatus[];
+}
+
 export interface MediaInspectionRequest {
   externalId?: string;
   path?: string;
@@ -181,10 +214,12 @@ export interface LibraryScanResult {
 
 export interface CapabilityInputByName {
   archive_search: ArchiveSearchRequest;
+  media_lookup: MediaLookupRequest;
   host_lookup: HostLookupRequest;
   missing_media_discovery: MissingMediaDiscoveryRequest;
   source_inspection: SourceInspectionRequest;
   acquisition_job_creation: AcquisitionJobRequest;
+  acquisition_job_status: AcquisitionJobStatusRequest;
   media_inspection: MediaInspectionRequest;
   media_verification: MediaVerificationRequest;
   rename_move: RenameMoveRequest;
@@ -193,10 +228,12 @@ export interface CapabilityInputByName {
 
 export interface CapabilityResultByName {
   archive_search: ArchiveSearchResult;
+  media_lookup: MediaLookupResult;
   host_lookup: HostLookupResult;
   missing_media_discovery: MissingMediaDiscoveryResult;
   source_inspection: SourceInspectionResult;
   acquisition_job_creation: AcquisitionJobResult;
+  acquisition_job_status: AcquisitionJobStatusResult;
   media_inspection: MediaInspectionResult;
   media_verification: MediaVerificationResult;
   rename_move: RenameMoveResult;

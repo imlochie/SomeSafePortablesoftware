@@ -11,10 +11,12 @@ export type IntegrationStatusCapabilitiesItem = typeof IntegrationStatusCapabili
 
 export const IntegrationStatusCapabilitiesItem = {
   archive_search: 'archive_search',
+  media_lookup: 'media_lookup',
   host_lookup: 'host_lookup',
   missing_media_discovery: 'missing_media_discovery',
   source_inspection: 'source_inspection',
   acquisition_job_creation: 'acquisition_job_creation',
+  acquisition_job_status: 'acquisition_job_status',
   media_inspection: 'media_inspection',
   media_verification: 'media_verification',
   rename_move: 'rename_move',

@@ -66,16 +66,15 @@ describe("integration adapter foundation", () => {
     assert.equal(adapter.getCapability("rename_move"), undefined);
   });
 
-  test("configured but unavailable future integrations remain disconnected", async () => {
+  test("incompletely configured integrations remain disconnected", async () => {
     const registry = createDefaultIntegrationRegistry({
       SONARR_URL: "http://sonarr.local",
-      SONARR_API_KEY: "present-but-not-used",
     });
     const sonarr = (await registry.getStatuses("__local__")).find((status) => status.id === "sonarr");
     assert.ok(sonarr);
-    assert.equal(sonarr.configured, true);
+    assert.equal(sonarr.configured, false);
     assert.equal(sonarr.state, "disconnected");
     assert.equal(sonarr.operational, false);
-    assert.match(sonarr.detail, /not available yet/i);
+    assert.match(sonarr.detail, /API key is required/i);
   });
 });

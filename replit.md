@@ -35,6 +35,7 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 - SQLite is initialized through Node's embedded `node:sqlite` runtime so a separate database service is not required for the Windows-first product.
 - The API never returns Plex tokens; configuration endpoints expose only safe status fields.
 - Intelligence/control-plane code must use abstract integration capabilities through the registry; adapters may report disconnected and must not return mocked external data.
+- Sonarr, Radarr, Prowlarr, and qBittorrent use environment configuration only; API keys, passwords, and session cookies stay server-side and are never included in status responses or logs.
 - Phase 1 uses real persistence for settings and events while future external services remain explicit placeholders.
 - Optional dependency detection uses direct process execution without a shell and never accepts arbitrary commands from the UI.
 
@@ -52,6 +53,7 @@ The app gives a personal media archivist a calm control room for local archive s
 - Node.js 22+ is required for the embedded `node:sqlite` runtime.
 - The local launcher starts the API on port 8080 and the Vite UI on port 3000.
 - `YT_DLP_PATH`, `FFMPEG_PATH`, and `FFPROBE_PATH` can provide Windows executable defaults; the same paths are editable in System Settings.
+- External integration configuration uses `SONARR_URL`/`SONARR_API_KEY`, `RADARR_URL`/`RADARR_API_KEY`, `PROWLARR_URL`/`PROWLARR_API_KEY`, and `QBITTORRENT_URL`/`QBITTORRENT_USERNAME`/`QBITTORRENT_PASSWORD`. Sonarr/Radarr requests may also use their `*_ROOT_FOLDER` and `*_QUALITY_PROFILE_ID` defaults.
 
 ## Pointers
 
