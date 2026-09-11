@@ -669,16 +669,15 @@ function ArchiveQualityIntelligence({ recordId }: { recordId: number }) {
       : null;
   if (!comparison) return null;
 
-  const markReviewed = () => {
-    if (!finding) return;
+  const markReviewed = (target: NonNullable<typeof finding>) => {
     setQualityNotice('');
     reviewFinding.mutate({
       data: {
-        fileRecordId: finding.fileRecordId,
-        kind: finding.kind,
-        evidenceKey: finding.evidenceKey,
+        fileRecordId: target.fileRecordId,
+        kind: target.kind,
+        evidenceKey: target.evidenceKey,
         status: 'reviewed',
-        note: `Reviewed from the archive panel: ${finding.headline}.`,
+        note: `Reviewed from the archive panel: ${target.headline}.`,
       },
     }, {
       onSuccess: () => {
@@ -758,14 +757,35 @@ function ArchiveQualityIntelligence({ recordId }: { recordId: number }) {
           </span>
         </div>
         {report.findings.length > 1 && (
-          <div className="archive-mono text-[9px] text-[#97a3a4]">
-            SHOWING THE HIGHEST-PRIORITY OF {report.findings.length} QUALITY FINDINGS ON THIS RECORD.
+          <div className="space-y-2 border-t border-[#eef2f0] pt-3">
+            <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">
+              OTHER FINDINGS ON THIS RECORD ({report.findings.length - 1})
+            </div>
+            {report.findings.slice(1).map((other) => (
+              <div key={other.key} className="flex items-start justify-between gap-2">
+                <span className="min-w-0 flex-1 break-words text-[10px] text-[#5f7178]">
+                  {other.kind.replace(/_/g, ' ')}
+                  {other.confidence ? ` / ${other.confidence}` : ''} / {other.reviewStatus.replace(/_/g, ' ')}
+                </span>
+                {other.reviewStatus !== 'reviewed' && (
+                  <button
+                    type="button"
+                    onClick={() => markReviewed(other)}
+                    disabled={reviewFinding.isPending}
+                    className="archive-mono shrink-0 border border-[#cbe0d9] bg-[#f4faf7] px-1.5 py-1 text-[8px] font-bold tracking-[.06em] text-[#39736e] disabled:opacity-50"
+                    data-testid={`button-quality-review-${other.key.slice(0, 8)}`}
+                  >
+                    REVIEW
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         )}
         {finding && finding.reviewStatus !== 'reviewed' && (
           <button
             type="button"
-            onClick={markReviewed}
+            onClick={() => markReviewed(finding)}
             disabled={reviewFinding.isPending}
             className="inline-flex items-center justify-center gap-1.5 border border-[#cbe0d9] bg-[#f4faf7] px-2 py-2 text-[9px] font-bold tracking-[.06em] text-[#39736e] disabled:opacity-50"
             data-testid="button-quality-review-reviewed"
