@@ -790,6 +790,131 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /acquisition/findings:
+    get:
+      operationId: getAcquisitionFindings
+      tags: [acquisition]
+      summary: List owner-scoped acquisition intelligence findings
+      parameters:
+        - name: mediaType
+          in: query
+          schema:
+            type: string
+            enum: [movie, tv]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [recommended, not_recommended]
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [high, normal, low]
+        - name: reviewStatus
+          in: query
+          schema:
+            type: string
+            enum: [unreviewed, reviewed, deferred, dismissed]
+        - name: page
+          in: query
+          schema:
+            type: number
+            minimum: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Acquisition findings and normalized recommendations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionFindingResponse"
+  /acquisition/findings/{id}:
+    get:
+      operationId: getAcquisitionFinding
+      tags: [acquisition]
+      summary: Inspect one acquisition recommendation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      responses:
+        "200":
+          description: Acquisition recommendation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionFinding"
+        "404":
+          description: Finding not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /acquisition/findings/{id}/review:
+    patch:
+      operationId: updateAcquisitionFindingReview
+      tags: [acquisition]
+      summary: Save a non-destructive acquisition finding review decision
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcquisitionReviewUpdate"
+      responses:
+        "200":
+          description: Updated acquisition finding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionFinding"
+  /acquisition/refresh:
+    post:
+      operationId: refreshAcquisitionIntelligence
+      tags: [acquisition]
+      summary: Recompute acquisition findings from normalized local capabilities
+      responses:
+        "200":
+          description: Recompute summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionRefreshResponse"
+  /acquisition/candidates:
+    post:
+      operationId: upsertAcquisitionCandidate
+      tags: [acquisition]
+      summary: Register a normalized source option from a future adapter
+      description: This stores an abstract candidate only. It does not contact a provider or create a download job.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcquisitionCandidateInput"
+      responses:
+        "201":
+          description: Candidate stored without acquisition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionSourceOption"
   /media/inspect:
     post:
       operationId: inspectMediaSource
@@ -995,6 +1120,323 @@ components:
       schema:
         type: number
   schemas:
+    AcquisitionTechnicalQuality:
+      type: object
+      required: [height, hdr, videoCodec, bitrate, audioCodec, audioChannels, container]
+      properties:
+        height:
+          type: [number, "null"]
+        hdr:
+          type: boolean
+        videoCodec:
+          type: [string, "null"]
+        bitrate:
+          type: [number, "null"]
+        audioCodec:
+          type: [string, "null"]
+        audioChannels:
+          type: [number, "null"]
+        container:
+          type: [string, "null"]
+    AcquisitionAvailability:
+      type: object
+      required: [state, provider, discoveredTitle, discoveredId, sourceConfidence, checkedAt]
+      properties:
+        state:
+          type: string
+          enum: [unavailable, available, unknown]
+        provider:
+          type: string
+        discoveredTitle:
+          type: [string, "null"]
+        discoveredId:
+          type: [string, "null"]
+        sourceConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        checkedAt:
+          type: [string, "null"]
+    AcquisitionIdentity:
+      type: object
+      required: [key, title, mediaType, year, show, season, episode, confidence]
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        mediaType:
+          type: string
+          enum: [movie, tv]
+        year:
+          type: [number, "null"]
+        show:
+          type: [string, "null"]
+        season:
+          type: [number, "null"]
+        episode:
+          type: [number, "null"]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+    AcquisitionNeed:
+      type: object
+      required: [identity, scope, archiveState, presentCount, expectedCount, observedCount, archiveQuality, archiveSizeBytes, preferredQuality]
+      properties:
+        identity:
+          $ref: "#/components/schemas/AcquisitionIdentity"
+        scope:
+          type: string
+          enum: [movie, episode, season]
+        archiveState:
+          type: string
+          enum: [fully_present, partially_present, missing, present_lower_quality, uncertain]
+        presentCount:
+          type: number
+          minimum: 0
+        expectedCount:
+          type: number
+          minimum: 1
+        observedCount:
+          type: number
+          minimum: 0
+        archiveQuality:
+          oneOf:
+            - $ref: "#/components/schemas/AcquisitionTechnicalQuality"
+            - type: "null"
+        archiveSizeBytes:
+          type: number
+          minimum: 0
+        preferredQuality:
+          oneOf:
+            - $ref: "#/components/schemas/AcquisitionTechnicalQuality"
+            - type: "null"
+    AcquisitionSourceOption:
+      type: object
+      required: [id, provider, title, mediaType, scope, season, episode, quality, estimatedSizeBytes, availability, confidence]
+      properties:
+        id:
+          oneOf:
+            - type: number
+            - type: string
+        provider:
+          type: string
+        sourceKey:
+          type: string
+        title:
+          type: string
+        mediaType:
+          type: string
+          enum: [movie, tv]
+        scope:
+          type: string
+          enum: [movie, episode, season]
+        season:
+          type: [number, "null"]
+        episode:
+          type: [number, "null"]
+        quality:
+          oneOf:
+            - $ref: "#/components/schemas/AcquisitionTechnicalQuality"
+            - type: "null"
+        estimatedSizeBytes:
+          type: [number, "null"]
+        availability:
+          $ref: "#/components/schemas/AcquisitionAvailability"
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+    AcquisitionStorageImpact:
+      type: object
+      required: [estimatedBytes, freeBytesBefore, freeBytesAfter, status, summary]
+      properties:
+        estimatedBytes:
+          type: [number, "null"]
+        freeBytesBefore:
+          type: [number, "null"]
+        freeBytesAfter:
+          type: [number, "null"]
+        status:
+          type: string
+          enum: [sufficient, insufficient, unknown]
+        summary:
+          type: string
+    AcquisitionRecommendation:
+      type: object
+      required: [status, priority, reason, candidateSources, expectedQuality, expectedStorageImpact, confidence, blockingReasons, archiveState]
+      properties:
+        status:
+          type: string
+          enum: [recommended, not_recommended]
+        priority:
+          type: string
+          enum: [high, normal, low]
+        reason:
+          type: string
+        candidateSources:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionSourceOption"
+        expectedQuality:
+          oneOf:
+            - $ref: "#/components/schemas/AcquisitionTechnicalQuality"
+            - type: "null"
+        expectedStorageImpact:
+          $ref: "#/components/schemas/AcquisitionStorageImpact"
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        blockingReasons:
+          type: array
+          items:
+            type: string
+        archiveState:
+          type: string
+          enum: [fully_present, partially_present, missing, present_lower_quality, uncertain]
+    AcquisitionReview:
+      type: object
+      required: [status, note, updatedAt]
+      properties:
+        status:
+          type: string
+          enum: [unreviewed, reviewed, deferred, dismissed]
+        note:
+          type: [string, "null"]
+        updatedAt:
+          type: string
+    AcquisitionFinding:
+      type: object
+      required: [id, need, recommendation, review, computedAt]
+      properties:
+        id:
+          type: number
+        need:
+          $ref: "#/components/schemas/AcquisitionNeed"
+        recommendation:
+          $ref: "#/components/schemas/AcquisitionRecommendation"
+        review:
+          $ref: "#/components/schemas/AcquisitionReview"
+        computedAt:
+          type: string
+    AcquisitionFindingSummary:
+      type: object
+      required: [total, recommended, blocked, highPriority]
+      properties:
+        total:
+          type: number
+          minimum: 0
+        recommended:
+          type: number
+          minimum: 0
+        blocked:
+          type: number
+          minimum: 0
+        highPriority:
+          type: number
+          minimum: 0
+    AcquisitionFindingPagination:
+      type: object
+      required: [page, pageSize, total, totalPages]
+      properties:
+        page:
+          type: number
+          minimum: 1
+        pageSize:
+          type: number
+          minimum: 1
+        total:
+          type: number
+          minimum: 0
+        totalPages:
+          type: number
+          minimum: 0
+    AcquisitionFindingResponse:
+      type: object
+      required: [summary, pagination, results]
+      properties:
+        summary:
+          $ref: "#/components/schemas/AcquisitionFindingSummary"
+        pagination:
+          $ref: "#/components/schemas/AcquisitionFindingPagination"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionFinding"
+    AcquisitionRefreshResponse:
+      type: object
+      required: [computedAt, findingCount, recommendedCount, blockedCount]
+      properties:
+        computedAt:
+          type: string
+        findingCount:
+          type: number
+          minimum: 0
+        recommendedCount:
+          type: number
+          minimum: 0
+        blockedCount:
+          type: number
+          minimum: 0
+    AcquisitionCandidateInput:
+      type: object
+      required: [identityKey, title, mediaType, scope, provider, availabilityState]
+      properties:
+        identityKey:
+          type: string
+        title:
+          type: string
+        mediaType:
+          type: string
+          enum: [movie, tv]
+        scope:
+          type: string
+          enum: [movie, episode, season]
+        year:
+          type: [number, "null"]
+        show:
+          type: [string, "null"]
+        season:
+          type: [number, "null"]
+        episode:
+          type: [number, "null"]
+        provider:
+          type: string
+        sourceKey:
+          type: string
+        discoveredId:
+          type: [string, "null"]
+        quality:
+          oneOf:
+            - $ref: "#/components/schemas/AcquisitionTechnicalQuality"
+            - type: "null"
+        estimatedSizeBytes:
+          type: [number, "null"]
+        availabilityState:
+          type: string
+          enum: [unavailable, available, unknown]
+        sourceConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        checkedAt:
+          type: [string, "null"]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+    AcquisitionReviewUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [unreviewed, reviewed, deferred, dismissed]
+        note:
+          type: [string, "null"]
+          maxLength: 500
     HealthStatus:
       type: object
       properties:
@@ -2784,3 +3226,4 @@ components:
           enum: [movie, show, episode, other]
         year:
           type: [number, "null"]
+

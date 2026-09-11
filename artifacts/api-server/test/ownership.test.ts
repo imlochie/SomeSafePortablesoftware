@@ -50,6 +50,12 @@ import {
   rollbackOperation,
   validateMutationPaths,
 } from "../src/services/archive-operations";
+import {
+  listAcquisitionFindings,
+  refreshAcquisitionIntelligence,
+  updateAcquisitionFindingReview,
+  upsertAcquisitionCandidate,
+} from "../src/services/acquisition-intelligence";
 import { getAuthenticatedUserId } from "../src/middlewares/requireAuth";
 import { resolveRuntimeConfig, runtimeConfig } from "../src/lib/runtime-config";
 
@@ -1057,4 +1063,42 @@ process.stdout.write(JSON.stringify({
     assert.deepEqual(readOperations(ownerB), [], "journal rows are owner-scoped");
   });
 
+  test("acquisition findings and reviews remain owner-isolated", () => {
+    const candidate = {
+      identityKey: "movie:isolated-title:2026",
+      title: "Isolated title",
+      mediaType: "movie" as const,
+      scope: "movie" as const,
+      provider: "test-adapter",
+      sourceKey: "test-adapter:owner-a",
+      availabilityState: "available" as const,
+      estimatedSizeBytes: 1024,
+      confidence: 0.9,
+      sourceConfidence: 0.9,
+      checkedAt: "2026-09-10T00:00:00.000Z",
+      quality: {
+        height: 1080,
+        hdr: false,
+        videoCodec: "h264",
+        bitrate: 5_000_000,
+        audioCodec: "aac",
+        audioChannels: 2,
+        container: "mkv",
+      },
+    };
+    upsertAcquisitionCandidate(ownerA, candidate);
+    upsertAcquisitionCandidate(ownerB, { ...candidate, sourceKey: "test-adapter:owner-b" });
+    const refreshedA = refreshAcquisitionIntelligence(ownerA);
+    const refreshedB = refreshAcquisitionIntelligence(ownerB);
+    assert.ok(refreshedA.findingCount > 0);
+    assert.ok(refreshedB.findingCount > 0);
+    const findingsA = listAcquisitionFindings(ownerA);
+    const findingsB = listAcquisitionFindings(ownerB);
+    assert.ok(findingsA.results.some((finding) => finding.need.identity.key === candidate.identityKey));
+    assert.ok(findingsB.results.some((finding) => finding.need.identity.key === candidate.identityKey));
+    const findingA = findingsA.results.find((finding) => finding.need.identity.key === candidate.identityKey);
+    if (!findingA) throw new Error("Expected owner A acquisition finding.");
+    assert.equal(updateAcquisitionFindingReview(ownerA, findingA.id, "reviewed", "Keep for later" )?.review.status, "reviewed");
+    assert.equal(listAcquisitionFindings(ownerB).results.find((finding) => finding.id === findingA.id), undefined);
+  });
 });

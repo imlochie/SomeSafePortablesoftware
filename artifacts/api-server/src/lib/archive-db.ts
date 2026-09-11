@@ -259,6 +259,73 @@ archiveDb.exec(`
   );
   CREATE INDEX IF NOT EXISTS archive_operation_owner_status_idx ON archive_operation(owner_id, status);
   CREATE INDEX IF NOT EXISTS naming_proposal_decision_owner_idx ON naming_proposal_decision(owner_id, status);
+  CREATE TABLE IF NOT EXISTS acquisition_need (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    identity_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    year INTEGER,
+    show_identity TEXT,
+    season_number INTEGER,
+    episode_number INTEGER,
+    archive_state TEXT NOT NULL,
+    present_count INTEGER NOT NULL DEFAULT 0,
+    expected_count INTEGER NOT NULL DEFAULT 1,
+    observed_count INTEGER NOT NULL DEFAULT 0,
+    archive_quality_json TEXT,
+    archive_size_bytes INTEGER NOT NULL DEFAULT 0,
+    preferred_quality_json TEXT,
+    identity_confidence REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, identity_key, scope)
+  );
+  CREATE TABLE IF NOT EXISTS acquisition_source_option (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    need_id INTEGER REFERENCES acquisition_need(id) ON DELETE CASCADE,
+    identity_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    season_number INTEGER,
+    episode_number INTEGER,
+    provider TEXT NOT NULL,
+    source_key TEXT NOT NULL,
+    discovered_id TEXT,
+    quality_json TEXT,
+    estimated_size_bytes INTEGER,
+    availability_state TEXT NOT NULL,
+    source_confidence REAL NOT NULL DEFAULT 0,
+    checked_at TEXT,
+    candidate_confidence REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, source_key)
+  );
+  CREATE INDEX IF NOT EXISTS acquisition_source_option_need_idx ON acquisition_source_option(owner_id, need_id);
+  CREATE TABLE IF NOT EXISTS acquisition_finding (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    need_id INTEGER NOT NULL REFERENCES acquisition_need(id) ON DELETE CASCADE,
+    recommendation_status TEXT NOT NULL,
+    priority TEXT NOT NULL,
+    archive_state TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+    expected_quality_json TEXT,
+    storage_impact_json TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0,
+    blocking_reasons_json TEXT NOT NULL DEFAULT '[]',
+    review_status TEXT NOT NULL DEFAULT 'unreviewed',
+    review_note TEXT,
+    computed_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, need_id)
+  );
   CREATE TABLE IF NOT EXISTS assistant_conversation (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New conversation',

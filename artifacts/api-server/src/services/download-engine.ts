@@ -257,7 +257,10 @@ async function runMockJob(id: number, ownerId: string) {
 }
 
 export function createJob(input: Parameters<typeof prepareDownload>[0], ownerId: string, settings = readSettings()) {
-  const spec = prepareDownload(input, settings);
+  const spec = prepareDownload({
+    ...input,
+    temporaryDirectory: input.temporaryDirectory ?? settings.temporaryDirectory,
+  }, settings);
   const result = archiveDb.prepare(`
     INSERT INTO download_job
       (source_id, url, source_url, source_site, title, selected_format_id, selected_video_format_id, selected_audio_format_id,

@@ -1,6 +1,7 @@
 import { setImmediate } from "node:timers/promises";
 import { archiveDb } from "../lib/archive-db";
-import { localEpisodeIdentity, normalizeTitle, titleYear } from "./archive";
+import { localEpisodeIdentity, normalizeTitle, qualityRank, titleYear } from "./archive";
+import type { TechnicalQuality, AcquisitionMediaType, AcquisitionScope, ArchiveNeedState } from "./acquisition-engine";
 
 export type ReconciliationClassification =
   | "matched"
@@ -408,4 +409,233 @@ export async function readReconciliationReport(
     },
     results: results.slice(offset, offset + normalizedPageSize),
   };
+}
+
+/**
+ * Normalized archive/host capability boundary for downstream intelligence.
+ * The acquisition layer consumes this projection instead of reimplementing
+ * filename parsing, Plex matching, or provider HTTP details.
+ */
+export type NormalizedMediaState = {
+  identity: {
+    key: string;
+    title: string;
+    mediaType: AcquisitionMediaType;
+    year: number | null;
+    show: string | null;
+    season: number | null;
+    episode: number | null;
+    confidence: number;
+  };
+  scope: AcquisitionScope;
+  expectedCount: number;
+  presentCount: number;
+  observedCount: number;
+  missingCount: number;
+  identityConfidence: number;
+  local: {
+    presentCount: number;
+    observedCount: number;
+    missingCount: number;
+    sizeBytes: number;
+    bestQuality: TechnicalQuality | null;
+  };
+  host: {
+    presentCount: number;
+    bestQuality: TechnicalQuality | null;
+  };
+  archiveState: ArchiveNeedState;
+};
+
+function normalizedIdentity(identity: Identity): NormalizedMediaState["identity"] {
+  const isTv = identity.kind === "tv";
+  const show = isTv ? String(identity.fields.show ?? "") : null;
+  const season = isTv && typeof identity.fields.season === "number" ? identity.fields.season : null;
+  const episode = isTv && typeof identity.fields.episode === "number" ? identity.fields.episode : null;
+  const title = isTv ? show ?? "Unknown show" : String(identity.fields.title ?? "Unknown title");
+  const year = !isTv && typeof identity.fields.year === "number" ? identity.fields.year : null;
+  return {
+    key: `${isTv ? "tv" : "movie"}:${identity.key}`,
+    title,
+    mediaType: isTv ? "tv" : "movie",
+    year,
+    show,
+    season,
+    episode,
+    confidence: identity.strategy === "fallback_title_year" ? 0.7 : 1,
+  };
+}
+
+function technicalQuality(value: Quality): TechnicalQuality {
+  return {
+    height: value.height,
+    hdr: value.hdr,
+    videoCodec: value.videoCodec,
+    bitrate: value.bitrate,
+    audioCodec: value.audioCodec,
+    audioChannels: value.audioChannels,
+    container: value.container,
+  };
+}
+
+function pickBetterQuality(current: TechnicalQuality | null, candidate: TechnicalQuality) {
+  return !current || qualityRank(candidate) > qualityRank(current) ? candidate : current;
+}
+
+/**
+ * Returns one semantic row for each movie/episode and one aggregate row per
+ * TV season. Season completeness is based on the normalized host episode
+ * inventory and the local identity records already reconciled above.
+ */
+export function readNormalizedMediaStates(ownerId: string): NormalizedMediaState[] {
+  const localRows = readLocalRows(ownerId);
+  const plexRows = readPlexRows(ownerId);
+  const states = new Map<string, NormalizedMediaState>();
+
+  const getOrCreate = (identity: Identity, scope: AcquisitionScope) => {
+    const normalized = normalizedIdentity(identity);
+    const existing = states.get(normalized.key);
+    if (existing) return existing;
+    const created: NormalizedMediaState = {
+      identity: normalized,
+      scope,
+      expectedCount: 1,
+      presentCount: 0,
+      observedCount: 0,
+      missingCount: 0,
+      identityConfidence: normalized.confidence,
+      local: { presentCount: 0, observedCount: 0, missingCount: 0, sizeBytes: 0, bestQuality: null },
+      host: { presentCount: 0, bestQuality: null },
+      archiveState: "missing",
+    };
+    states.set(normalized.key, created);
+    return created;
+  };
+
+  for (const row of localRows) {
+    const identity = localIdentity(row);
+    if (!identity) {
+      const unknownIdentity: Identity = {
+        kind: row.media_type === "tv" ? "tv" : "movie",
+        key: `uncertain:${row.id}`,
+        strategy: "fallback_title_year",
+        fields: row.media_type === "tv"
+          ? { show: row.filename, season: null, episode: null }
+          : { title: row.filename, year: null },
+      };
+      const uncertain = getOrCreate(unknownIdentity, unknownIdentity.kind === "tv" ? "episode" : "movie");
+      uncertain.identity = { ...uncertain.identity, confidence: 0.25 };
+      uncertain.identityConfidence = 0.25;
+      uncertain.archiveState = "uncertain";
+      uncertain.local.observedCount += 1;
+      uncertain.observedCount += 1;
+      continue;
+    }
+    const state = getOrCreate(identity, identity.kind === "tv" ? "episode" : "movie");
+    state.local.observedCount += 1;
+    state.observedCount += 1;
+    if (row.scan_status === "active") {
+      const qualityValue = technicalQuality(quality(row));
+      state.local.presentCount += 1;
+      state.presentCount += 1;
+      state.local.sizeBytes += row.size_bytes ?? 0;
+      state.local.bestQuality = pickBetterQuality(state.local.bestQuality, qualityValue);
+    } else if (row.scan_status === "missing") {
+      state.local.missingCount += 1;
+      state.missingCount += 1;
+    }
+  }
+
+  for (const row of plexRows) {
+    const identity = plexIdentity(row);
+    if (!identity) {
+      const unknownIdentity: Identity = {
+        kind: row.item_type === "episode" ? "tv" : "movie",
+        key: `uncertain:plex:${row.rating_key}`,
+        strategy: "fallback_title_year",
+        fields: row.item_type === "episode"
+          ? { show: row.title, season: null, episode: null }
+          : { title: row.title, year: row.year },
+      };
+      const uncertain = getOrCreate(unknownIdentity, unknownIdentity.kind === "tv" ? "episode" : "movie");
+      uncertain.identity = { ...uncertain.identity, confidence: 0.25 };
+      uncertain.identityConfidence = 0.25;
+      uncertain.archiveState = "uncertain";
+      uncertain.host.presentCount += 1;
+      continue;
+    }
+    const state = getOrCreate(identity, identity.kind === "tv" ? "episode" : "movie");
+    state.host.presentCount += 1;
+    state.expectedCount = Math.max(state.expectedCount, 1);
+    state.host.bestQuality = pickBetterQuality(state.host.bestQuality, technicalQuality(quality(row)));
+  }
+
+  for (const state of states.values()) {
+    state.archiveState = state.identity.confidence < 0.5
+      ? "uncertain"
+      : state.presentCount > 0
+        ? "fully_present"
+        : "missing";
+  }
+
+  const seasons = new Map<string, NormalizedMediaState[]>();
+  for (const state of states.values()) {
+    if (state.scope !== "episode" || !state.identity.show || state.identity.season === null) continue;
+    const key = `tv-season:${state.identity.show}:${state.identity.season}`;
+    const group = seasons.get(key) ?? [];
+    group.push(state);
+    seasons.set(key, group);
+  }
+  for (const [key, episodes] of seasons) {
+    const first = episodes[0];
+    if (!first) continue;
+    const expectedCount = Math.max(
+      episodes.reduce((total, episode) => total + episode.host.presentCount, 0),
+      episodes.length,
+    );
+    const presentCount = episodes.filter((episode) => episode.presentCount > 0).length;
+    const observedCount = episodes.length;
+    const bestQuality = episodes.reduce<TechnicalQuality | null>((best, episode) => {
+      const candidate = episode.local.bestQuality ?? episode.host.bestQuality;
+      return candidate ? pickBetterQuality(best, candidate) : best;
+    }, null);
+    const identity = {
+      key,
+      title: first.identity.show ?? first.identity.title,
+      mediaType: "tv" as const,
+      year: null,
+      show: first.identity.show,
+      season: first.identity.season,
+      episode: null,
+      confidence: Math.min(...episodes.map((episode) => episode.identity.confidence)),
+    };
+    const seasonState: NormalizedMediaState = {
+      identity,
+      scope: "season",
+      expectedCount,
+      presentCount,
+      observedCount,
+      missingCount: Math.max(0, expectedCount - presentCount),
+      identityConfidence: identity.confidence,
+      local: {
+        presentCount,
+        observedCount,
+        missingCount: episodes.filter((episode) => episode.presentCount === 0).length,
+        sizeBytes: episodes.reduce((total, episode) => total + episode.local.sizeBytes, 0),
+        bestQuality,
+      },
+      host: {
+        presentCount: episodes.reduce((total, episode) => total + episode.host.presentCount, 0),
+        bestQuality: episodes.reduce<TechnicalQuality | null>((best, episode) => episode.host.bestQuality ? pickBetterQuality(best, episode.host.bestQuality) : best, null),
+      },
+      archiveState: presentCount === 0
+        ? "missing"
+        : presentCount < expectedCount
+          ? "partially_present"
+          : "fully_present",
+    };
+    states.set(key, seasonState);
+  }
+
+  return [...states.values()].sort((left, right) => left.identity.key.localeCompare(right.identity.key));
 }
