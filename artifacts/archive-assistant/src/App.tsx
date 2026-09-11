@@ -29,9 +29,10 @@ import {
   useRefreshAcquisitionIntelligence,
   useCreateAcquisitionPlan, useApproveAcquisitionPlan, useRejectAcquisitionPlan, useExecuteAcquisitionPlan,
   useListAcquisitionPlans, getListAcquisitionPlansQueryKey, getGetAcquisitionPlanQueryKey, useGetAcquisitionPlan,
+  useGetArchiveIntake, usePlanArchiveIntakePromotion, useApplyArchiveIntakePromotion, getGetArchiveIntakeQueryKey,
   setBaseUrl,
 } from '@workspace/api-client-react';
-import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent, GetAcquisitionFindingsParams, AcquisitionPlan } from '@workspace/api-client-react';
+import type { AppSettings, AppSettingsUpdate, ArchiveIntakeItem, DownloadJob, MediaFormat, MediaInspection, SystemEvent, GetAcquisitionFindingsParams, AcquisitionPlan } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -253,8 +254,111 @@ function QueuePage() {
   const action = (job: DownloadJob, kind: 'start' | 'pause' | 'resume' | 'cancel' | 'retry' | 'delete') => { if (kind === 'delete') { if (window.confirm(`Delete job #${job.id}? This only removes the job record.`)) persist(remove, job.id, `Job #${job.id} deleted.`); return; } if (kind === 'start') persist(start, job.id, `Job #${job.id} started.`); if (kind === 'pause') persist(pause, job.id, `Job #${job.id} paused.`); if (kind === 'resume') persist(resume, job.id, `Job #${job.id} resumed.`); if (kind === 'cancel') persist(cancel, job.id, `Job #${job.id} cancelled.`); if (kind === 'retry') persist(retry, job.id, `Job #${job.id} queued for retry.`); };
   if (isLoading) return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="Reading durable jobs from the local node." /><div className="space-y-3"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div></>;
   if (isError) return <ErrorState title="Queue read failed" message="The persistent job list could not be read. No local queue state is being invented." onRetry={() => refetch()} testId="button-retry-queue" />;
-  return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="Jobs are durable records. Every status below is returned by the backend, not simulated in the browser." action={<button onClick={createDemo} disabled={inspect.isPending || create.isPending} className="inline-flex items-center gap-2 bg-[#f4b942] px-3.5 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#1d2b38] disabled:opacity-50" data-testid="button-create-mock-job"><Plus size={14} /> CREATE DEMO JOB</button>} />{notice && <div className="mb-4 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-3 text-[11px] text-[#39736e]" data-testid="status-queue-operation">{notice}</div>}<div className="mb-4 flex flex-wrap gap-2 archive-mono text-[9px] tracking-[.08em] text-[#7d8d90]"><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => ['downloading', 'processing', 'verifying', 'moving'].includes(job.status)).length ?? 0} ACTIVE</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => job.status === 'queued').length ?? 0} QUEUED</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.length ?? 0} TOTAL</span></div>{jobs?.length ? <div className="space-y-3">{jobs.map((job) => <QueueRow key={job.id} job={job} onAction={action} />)}</div> : <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center p-8 text-center"><Download size={28} className="mb-4 text-[#4e9690]" /><h2 className="archive-display text-2xl font-extrabold">Queue is clear</h2><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#7d8c8f]">No persistent jobs are waiting. Inspect a source or create a demo job to exercise the pipeline.</p></div>}</>;
+  return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="Jobs are durable records. Every status below is returned by the backend, not simulated in the browser." action={<button onClick={createDemo} disabled={inspect.isPending || create.isPending} className="inline-flex items-center gap-2 bg-[#f4b942] px-3.5 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#1d2b38] disabled:opacity-50" data-testid="button-create-mock-job"><Plus size={14} /> CREATE DEMO JOB</button>} />{notice && <div className="mb-4 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-3 text-[11px] text-[#39736e]" data-testid="status-queue-operation">{notice}</div>}<div className="mb-4 flex flex-wrap gap-2 archive-mono text-[9px] tracking-[.08em] text-[#7d8d90]"><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => ['downloading', 'processing', 'verifying', 'moving'].includes(job.status)).length ?? 0} ACTIVE</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => job.status === 'queued').length ?? 0} QUEUED</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.length ?? 0} TOTAL</span></div>{jobs?.length ? <div className="space-y-3">{jobs.map((job) => <QueueRow key={job.id} job={job} onAction={action} />)}</div> : <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center p-8 text-center"><Download size={28} className="mb-4 text-[#4e9690]" /><h2 className="archive-display text-2xl font-extrabold">Queue is clear</h2><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#7d8c8f]">No persistent jobs are waiting. Inspect a source or create a demo job to exercise the pipeline.</p></div>}<IntakePanel /></>;
 }
+const intakeTones: Record<ArchiveIntakeItem['disposition'], 'good' | 'warn' | 'neutral'> = {
+  promotable: 'good',
+  blocked: 'warn',
+  already_in_archive: 'neutral',
+  not_inventoried: 'warn',
+  file_missing: 'neutral',
+};
+
+/**
+ * The URL -> Archive hand-off. Nothing here decides anything about media: it
+ * renders what the archive's own services concluded about a finished download
+ * and offers the two actions that journal a promotion first. A blocked item says
+ * why it is blocked instead of being forced through.
+ */
+function IntakePanel() {
+  const queryClient = useQueryClient();
+  const [notice, setNotice] = useState('');
+  const [planned, setPlanned] = useState<Record<number, number>>({});
+  const { data: intake, isLoading, isError, refetch } = useGetArchiveIntake();
+  const plan = usePlanArchiveIntakePromotion();
+  const apply = useApplyArchiveIntakePromotion();
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: getGetArchiveIntakeQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetArchiveOperationsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() });
+  };
+
+  const planPromotion = (jobId: number) => plan.mutate({ jobId }, {
+    onSuccess: (data) => {
+      const operationId = data.operation?.id ?? null;
+      // Remember the journal entry this plan created, so Apply can only ever
+      // execute the exact plan the operator just read.
+      setPlanned((current) => (operationId === null ? current : { ...current, [jobId]: operationId }));
+      setNotice(
+        data.planError
+          ? `The dry run refused job #${jobId}: ${data.planError}`
+          : `Planned promotion for job #${jobId}. Applying moves the file as a reversible archive operation.`,
+      );
+      refresh();
+    },
+    onError: (error) => setNotice(errorText(error)),
+  });
+
+  const applyPromotion = (jobId: number, operationId: number) => apply.mutate({ jobId, data: { operationId } }, {
+    onSuccess: () => {
+      setPlanned((current) => {
+        const next = { ...current };
+        delete next[jobId];
+        return next;
+      });
+      setNotice(`Promotion applied for job #${jobId}; the archive record followed the file.`);
+      refresh();
+    },
+    onError: (error) => setNotice(errorText(error)),
+  });
+
+  if (isLoading) return <div className="archive-panel p-5"><Skeleton className="h-24" /></div>;
+  if (isError) return <ErrorState title="Intake status unavailable" message="The archive could not report on finished downloads. Nothing is assumed about the staged files." onRetry={() => refetch()} testId="button-retry-intake" />;
+
+  const items = intake?.items ?? [];
+  const summary = intake?.summary;
+  return <section className="archive-panel overflow-hidden" data-testid="panel-archive-intake">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2e8e6] px-4 py-3 md:px-5">
+      <div>
+        <div className="archive-mono text-[9px] tracking-[.16em] text-[#829298]">INGEST / ARCHIVE INTAKE</div>
+        <h2 className="archive-display mt-1 text-[17px] font-extrabold text-[#2b3d46]">Finished downloads awaiting the archive</h2>
+        <p className="mt-1 max-w-2xl text-[11px] leading-5 text-[#7c8a8d]">Promotion is a journaled archive operation: it re-checks the staged file&rsquo;s size and modification evidence, refuses to overwrite anything, and can be rolled back from the operations journal.</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 archive-mono text-[9px] text-[#799094]">
+        <span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{summary?.promotable ?? 0} PROMOTABLE</span>
+        <span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{summary?.blocked ?? 0} BLOCKED</span>
+        <span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{summary?.withFindings ?? 0} WITH FINDINGS</span>
+      </div>
+    </div>
+    {notice && <div className="border-b border-[#e2e8e6] bg-[#f7f4ea] px-4 py-2 text-[11px] text-[#6c5a25] md:px-5" data-testid="text-intake-notice">{notice}</div>}
+    {items.length === 0 ? <div className="flex min-h-[130px] flex-col items-center justify-center p-6 text-center"><p className="text-[12px] text-[#829095]">No download has finished and waited for intake.</p></div> : (
+      <div className="divide-y divide-[#e3e8e7]">
+        {items.map((item) => (
+          <div key={item.jobId} className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:px-5" data-testid={`row-intake-${item.jobId}`}>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="truncate text-[12px] font-semibold text-[#43545b]">{item.title}</span>
+                <StatusPill status={item.disposition} label={item.disposition.replace(/_/g, ' ')} />
+                {item.duplicates.length > 0 && <span className="archive-mono text-[9px] tracking-[.08em] text-[#a34d45]">{item.duplicates.length} IDENTICAL {item.duplicates.length === 1 ? 'COPY' : 'COPIES'}</span>}
+                {item.qualityFindings.length > 0 && <span className="archive-mono text-[9px] tracking-[.08em] text-[#8a7433]">{item.qualityFindings.length} QUALITY {item.qualityFindings.length === 1 ? 'FINDING' : 'FINDINGS'}</span>}
+              </div>
+              <div className="mt-1 truncate archive-mono text-[9px] text-[#8b999c]" title={item.stagedPath}>{item.stagedPath}</div>
+              <div className="mt-1 text-[11px] text-[#61757b]">{item.qualitySummary ?? 'No quality readout yet for the staged file.'}</div>
+              <div className={`mt-1 text-[11px] leading-5 ${intakeTones[item.disposition] === 'warn' ? 'text-[#8a7433]' : 'text-[#7c8a8d]'}`}>{item.nextAction}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => planPromotion(item.jobId)} disabled={plan.isPending || item.disposition !== 'promotable'} className="inline-flex items-center gap-1.5 border border-[#d7e1de] bg-white/70 px-2.5 py-2 archive-mono text-[9px] font-bold tracking-[.08em] text-[#607379] hover:border-[#8fb3ac] hover:text-[#39736e] disabled:cursor-not-allowed disabled:opacity-40" data-testid={`button-intake-plan-${item.jobId}`}><ShieldCheck size={13} />PLAN</button>
+              <button onClick={() => { const operationId = planned[item.jobId]; if (operationId === undefined) { setNotice(`Plan the promotion for job #${item.jobId} first, so the dry run and evidence snapshot exist before anything moves.`); return; } applyPromotion(item.jobId, operationId); }} disabled={apply.isPending || planned[item.jobId] === undefined} className="inline-flex items-center gap-1.5 bg-[#1d2b38] px-2.5 py-2 archive-mono text-[9px] font-bold tracking-[.08em] text-[#f5f6f3] disabled:cursor-not-allowed disabled:opacity-40" data-testid={`button-intake-apply-${item.jobId}`}><ArrowDownToLine size={13} />APPLY</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </section>;
+}
+
 function QueueRow({ job, onAction }: { job: DownloadJob; onAction: (job: DownloadJob, kind: 'start' | 'pause' | 'resume' | 'cancel' | 'retry' | 'delete') => void }) {
   const active = ['downloading', 'processing', 'verifying', 'moving', 'inspecting'].includes(job.status); const canStart = job.status === 'queued'; const canPause = ['downloading', 'processing'].includes(job.status); const canResume = job.status === 'paused'; const canCancel = ['queued', 'inspecting', 'downloading', 'processing', 'verifying', 'moving', 'paused'].includes(job.status); const canRetry = ['failed', 'recovery_required'].includes(job.status);
   return <article className="archive-panel p-4 md:p-5" data-testid={`row-download-${job.id}`}><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><StatusPill status={job.status} /><span className="archive-mono text-[9px] text-[#9aa6a7]">JOB {job.id}</span>{job.verification === 'passed' && <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-[.08em] text-[#39736e]"><ShieldCheck size={12} /> VERIFIED</span>}</div><h2 className="mt-2 truncate text-[15px] font-bold text-[#344851]" title={job.title} data-testid={`text-download-title-${job.id}`}>{job.title}</h2><div className="mt-1 truncate text-[10px] text-[#8a989a]" title={job.sourceUrl}>{job.sourceSite ?? 'source'} / {job.finalFilename}</div></div><div className="flex flex-wrap gap-2">{canStart && <JobButton icon={Play} label="START" onClick={() => onAction(job, 'start')} testId={`button-start-download-${job.id}`} />}{canPause && <JobButton icon={Pause} label="PAUSE" onClick={() => onAction(job, 'pause')} testId={`button-pause-download-${job.id}`} />}{canResume && <JobButton icon={Play} label="RESUME" onClick={() => onAction(job, 'resume')} testId={`button-resume-download-${job.id}`} />}{canCancel && <JobButton icon={Square} label="CANCEL" onClick={() => onAction(job, 'cancel')} testId={`button-cancel-download-${job.id}`} />}{canRetry && <JobButton icon={RotateCcw} label="RETRY" onClick={() => onAction(job, 'retry')} testId={`button-retry-download-${job.id}`} />}{!active && <JobButton icon={Trash2} label="DELETE" onClick={() => onAction(job, 'delete')} testId={`button-delete-download-${job.id}`} danger />}</div></div><div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end"><div><div className="mb-2 flex justify-between text-[10px] text-[#7f8e91]"><span>{job.currentPhase || statusText(job.status)}</span><span className="archive-mono text-[#4e9690]">{Math.round(job.progress)}%</span></div><div className="h-2 bg-[#e5ece9]"><div className={`h-full origin-left transition-transform duration-500 ${active ? 'bg-[#f4b942]' : job.status === 'complete' ? 'bg-[#4e9690]' : job.status === 'failed' ? 'bg-[#c85b51]' : 'bg-[#9eadae]'}`} style={{ transform: `scaleX(${Math.min(1, Math.max(0, job.progress / 100))})` }} /></div></div><div className="grid grid-cols-2 gap-x-6 gap-y-1 text-right text-[10px] text-[#879598]"><span>{formatBytes(job.downloadedBytes)} / {formatBytes(job.totalBytes)}</span><span>{job.downloadSpeed ? `${formatBytes(job.downloadSpeed)}/s` : 'speed —'}</span><span>{job.etaSeconds ? `${job.etaSeconds}s remaining` : 'ETA —'}</span><span>{formatTime(job.createdAt)}</span></div></div>{job.errorMessage && <div className="mt-4 border-l-2 border-[#c85b51] bg-[#fcedea] p-3 text-[11px] leading-5 text-[#994b43]" data-testid={`text-download-error-${job.id}`}>{job.errorMessage}</div>}</article>;
@@ -1368,7 +1472,7 @@ function AcquisitionPlannerPanel() {
         {plan.items.map((item) => (
           <div key={item.identityKey} className="grid grid-cols-[1fr_auto] items-center gap-2 border-b border-[#eef1ef] px-3 py-2 last:border-0">
             <div className="text-[11px] font-bold text-[#43545b]">{item.title}<div className="archive-mono mt-0.5 text-[9px] text-[#9aa7a7]">{item.destinationPath ?? item.identityKey}</div>{item.error && <div className="archive-mono mt-0.5 text-[9px] text-[#994b43]">{item.error}</div>}</div>
-            <span className={`archive-mono px-2 py-1 text-[9px] font-bold tracking-[.06em] ${item.state === 'complete' || item.state === 'placed' ? 'bg-[#eaf3ef] text-[#39736e]' : item.state === 'failed' ? 'bg-[#f9e5e1] text-[#994b43]' : 'bg-[#eef1ef] text-[#53656b]'}`}>{item.state.replace(/_/g, ' ').toUpperCase()}</span>
+            <span className={`archive-mono px-2 py-1 text-[9px] font-bold tracking-[.06em] ${item.state === 'promoted' ? 'bg-[#eaf3ef] text-[#39736e]' : item.state === 'staged' ? 'bg-[#f1e6d8] text-[#8d681d]' : item.state === 'failed' ? 'bg-[#f9e5e1] text-[#994b43]' : 'bg-[#eef1ef] text-[#53656b]'}`}>{item.state.replace(/_/g, ' ').toUpperCase()}</span>
           </div>
         ))}
       </div>}

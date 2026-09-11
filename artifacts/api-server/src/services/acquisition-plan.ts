@@ -23,8 +23,10 @@ import {
 } from "./archive";
 import { chooseArchiveVolume } from "./storage";
 import { qualityRank, storageImpact, type TechnicalQuality } from "./acquisition-engine";
+import { join } from "node:path";
 import { integrations } from "../integrations";
 import { createJob, readJob, startJob } from "./download-engine";
+import { readOperation } from "./archive-operations";
 import { addEvent } from "../lib/archive-db";
 
 export const SOURCE_TRUST_STATES = ["trusted", "user_approved", "untrusted", "unsupported", "blocked"] as const;
@@ -35,7 +37,7 @@ export type PlanApprovalState = (typeof PLAN_APPROVAL_STATES)[number];
 
 export const PLAN_ITEM_STATES = [
   "planned", "queued", "downloading", "processing", "verifying",
-  "downloading_more", "complete", "placed", "failed", "already_present", "skipped",
+  "downloading_more", "staged", "promoted", "failed", "already_present", "skipped",
 ] as const;
 export type PlanItemState = (typeof PLAN_ITEM_STATES)[number];
 
@@ -287,15 +289,29 @@ function archiveStatesFor(ownerId: string): Map<string, PlanArchiveState> {
   return states;
 }
 
-function plexSafeFilename(candidate: PlanCandidate, container: string): string {
-  const show = candidate.title.replace(/[:<>"/\\|?*]/g, "-").trim();
-  const base = candidate.season !== null && candidate.episode !== null
-    ? `${show} S${String(candidate.season).padStart(2, "0")}E${String(candidate.episode).padStart(2, "0")}`
-    : candidate.year
-      ? `${show} (${candidate.year})`
-      : show;
-  const safe = base.replace(/\s+/g, " ").trim().slice(0, 180) || "acquisition";
-  return safe.toLowerCase().endsWith(`.${container}`) ? safe : `${safe}.${container}`;
+/**
+ * The Plex-safe destination a plan prepares for a candidate: TV episodes land
+ * in a show/season directory, movies at the volume root with a year-suffixed
+ * name. This is the acquisition plan's own destination — the naming pipeline
+ * stays the authority for restructuring media that is already archived, and
+ * intake shows its proposal alongside without letting it jump that queue.
+ */
+function plexSafeDestination(candidate: PlanCandidate, volumePath: string, container: string): { directory: string; filename: string } {
+  const sanitize = (value: string) => value.replace(/[:<>"\\/\\|?*]/g, "-").replace(/\s+/g, " ").trim();
+  if (candidate.mediaType === "tv" && candidate.season !== null) {
+    // "Show S01E02 Reunion" -> show "Show", episode file "Show S01E02".
+    const marker = /\bS(\d{1,2})E(\d{1,2})\b/i.exec(candidate.title);
+    const show = sanitize(marker ? candidate.title.slice(0, marker.index) : candidate.title) || "Unknown Show";
+    const episode = candidate.episode ?? (marker ? Number(marker[2]) : null);
+    const season = candidate.season;
+    const filename = episode !== null
+      ? `${show} S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}.${container}`
+      : `${show} S${String(season).padStart(2, "0")}.${container}`;
+    return { directory: join(volumePath, show, `Season ${String(season).padStart(2, "0")}`), filename };
+  }
+  const title = sanitize(candidate.title) || "acquisition";
+  const filename = candidate.year ? `${title} (${candidate.year}).${container}` : `${title}.${container}`;
+  return { directory: volumePath, filename };
 }
 
 export type BuildPlanInput = {
@@ -440,12 +456,13 @@ export async function buildAcquisitionPlan(ownerId: string, input: BuildPlanInpu
   const destinationPlan: PlanDestination[] = preferredCandidates.map((candidate) => {
     const volume = chooseArchiveVolume(settings, candidate.mediaType);
     const container = settings.outputContainer || "mkv";
+    const destination = plexSafeDestination(candidate, volume?.path ?? settings.archiveDirectory, container);
     return {
       identityKey: candidate.identityKey,
       volumeId: volume?.id ?? null as unknown as string,
       volumeLabel: volume?.label ?? "Unassigned volume",
-      destinationDirectory: volume?.path ?? settings.archiveDirectory,
-      finalFilename: plexSafeFilename(candidate, container),
+      destinationDirectory: destination.directory,
+      finalFilename: destination.filename,
       mediaType: candidate.mediaType,
     };
   });
@@ -543,8 +560,8 @@ function rowToPlan(ownerId: string, row: {
     "SELECT * FROM acquisition_plan_item WHERE owner_id = ? AND plan_id = ? ORDER BY id",
   ).all(ownerId, row.id) as Array<{
     id: number; identity_key: string; title: string; state: string;
-    download_job_id: number | null; error: string | null; destination_directory: string | null;
-    final_filename: string | null;
+    download_job_id: number | null; operation_id: number | null; error: string | null;
+    destination_directory: string | null; final_filename: string | null;
   }>;
 
   // Live execution state: the persisted snapshot is joined with current job
@@ -562,14 +579,21 @@ function rowToPlan(ownerId: string, row: {
         else if (job.status === "verifying") state = "verifying";
         else if (job.status === "moving") state = "downloading_more";
         else if (job.status === "complete") {
-          state = "complete";
-          destinationPath = job.finalPath ?? (item.destination_directory && item.final_filename
-            ? `${item.destination_directory}/${item.final_filename}` : null);
+          // The verified file is on disk; only the intake promotion (a
+          // journaled archive operation) makes it a permanent archive member.
+          const promotion = item.operation_id !== null ? readOperation(ownerId, item.operation_id) : null;
+          if (promotion && promotion.status === "succeeded") {
+            state = "promoted";
+            destinationPath = promotion.targetPath;
+          } else {
+            state = "staged";
+            destinationPath = job.finalPath ?? null;
+          }
         } else if (job.status === "failed" || job.status === "cancelled" || job.status === "recovery_required") {
           state = "failed";
           error = job.errorMessage ?? "The download did not complete.";
         }
-        if (state !== "failed" && !destinationPath && job.finalPath) destinationPath = job.finalPath;
+        if (state !== "promoted" && state !== "failed" && !destinationPath && job.finalPath) destinationPath = job.finalPath;
       }
     }
     return {
@@ -582,6 +606,24 @@ function rowToPlan(ownerId: string, row: {
     };
   });
 
+  // Final results are derived, not stored: once every item reached a terminal
+  // state (promoted, failed, or already present), the plan reports its outcome.
+  const terminal = items.length > 0 && items.every((item) => item.state === "promoted" || item.state === "failed" || item.state === "already_present");
+  const finalResults = terminal
+    ? {
+        placedCount: items.filter((item) => item.state === "promoted").length,
+        failedCount: items.filter((item) => item.state === "failed").length,
+        alreadyPresentCount: items.filter((item) => item.state === "already_present").length,
+        perItem: items.map((item) => ({
+          identityKey: item.identityKey,
+          title: item.title,
+          state: item.state,
+          destinationPath: item.destinationPath,
+          error: item.error,
+        })),
+      }
+    : null;
+
   return {
     id: row.id,
     ...core,
@@ -589,7 +631,7 @@ function rowToPlan(ownerId: string, row: {
     approvalState: row.approval_state,
     approvalNote: row.approval_note,
     items,
-    finalResults: core.finalResults ?? null,
+    finalResults,
   };
 }
 
@@ -673,13 +715,16 @@ export function executeAcquisitionPlan(ownerId: string, planId: number, settings
 
   for (const item of itemRows) {
     // The real engine handles: temporary-directory fallback, format selection,
-    // yt-dlp download, FFmpeg processing, FFprobe verification, and moving
-    // into the destination volume. The archive scan re-resolves identity.
+    // yt-dlp download, FFmpeg processing, FFprobe verification, and its own
+    // safe move of the verified file into the archive volume. The final
+    // destination is deliberately NOT handed over: the plan's destination is
+    // what the intake promotion moves the file to through the mutation
+    // journal, so nothing reaches its permanent archive path except via a
+    // journaled, rollbackable operation.
     const job = createJob({
       sourceUrl: item.entry_url,
       title: item.title,
       selectedFormatId: item.selected_format_id ?? "best",
-      destinationDirectory: item.destination_directory ?? undefined,
     }, ownerId, settings);
     if (!job) throw new Error(`The download engine could not create a job for '${item.title}'.`);
     archiveDb.prepare(`

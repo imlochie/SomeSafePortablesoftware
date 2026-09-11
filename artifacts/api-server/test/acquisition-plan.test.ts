@@ -24,6 +24,12 @@ import { startArchiveScan, readArchiveScan, readArchiveInventory } from "../src/
 import { readNamingProposals } from "../src/services/naming-intelligence";
 import { readJobs } from "../src/services/download-engine";
 import { readQualityFindings } from "../src/services/archive-quality";
+import {
+  applyIntakePromotion,
+  planIntakePromotion,
+  readIntakeItems,
+} from "../src/services/archive-intake";
+import { readReconciliationReport } from "../src/services/reconciliation";
 
 const testRoot = process.env.ARCHIVE_TEST_ROOT;
 assert.ok(testRoot, "ARCHIVE_TEST_ROOT must be set by the test runner");
@@ -192,7 +198,7 @@ process.stdout.write(JSON.stringify({
     assert.throws(() => executeAcquisitionPlan(ownerA, plan.id), /not approved/i);
   });
 
-  test("approval → bounded execution → verify → identity re-resolution", async () => {
+  test("approval → execution → intake → journaled promotion → archive → reconciliation", async () => {
     // A fresh plan from the same source (the previous one was rejected).
     const plan = await buildAcquisitionPlan(ownerA, {
       sourceUrl: "https://stub.invalid/season",
@@ -206,7 +212,7 @@ process.stdout.write(JSON.stringify({
     assert.equal(approved.approvalState, "approved");
     assert.equal(approved.sourceTrust.state, "user_approved");
 
-    // 15–18: bounded batch through the REAL engine (stub binaries).
+    // 6: bounded batch through the REAL engine (stub binaries).
     const executing = executeAcquisitionPlan(ownerA, plan.id);
     assert.equal(executing.items.length, 2);
     assert.ok(executing.items.every((item) => item.downloadJobId !== null), "each item links to a real download job");
@@ -215,36 +221,106 @@ process.stdout.write(JSON.stringify({
     // Re-execution has nothing more to queue: every item already has a job.
     assert.throws(() => executeAcquisitionPlan(ownerA, plan.id), /Nothing left to execute/i);
 
-    // The real pipeline runs: yt-dlp download → FFmpeg remux → FFprobe verify → move.
+    // The real pipeline runs: yt-dlp download → FFmpeg remux → FFprobe verify →
+    // the engine's own safe move into the archive volume (at the volume root —
+    // the plan's destination is deliberately NOT handed to the engine).
     await waitFor(
       async () => (await readJobs(ownerA)).filter((job) => job.status === "complete").length >= 2,
       "both downloads to complete",
     );
 
-    const afterExecute = readAcquisitionPlan(ownerA, plan.id);
-    assert.ok(afterExecute);
-    assert.ok(afterExecute.items.every((item) => item.state === "complete"), `items: ${JSON.stringify(afterExecute.items)}`);
-    for (const item of afterExecute.items) {
-      assert.ok(item.destinationPath?.startsWith(tvVolume), `placed under the TV volume: ${item.destinationPath}`);
-      const placed = await stat(item.destinationPath);
-      assert.ok(placed.size > 0, "the placed file has content");
+    // A finished download is STAGED, not promoted: the plan's own state machine
+    // reports that the verified file waits for the intake gate.
+    const staged = readAcquisitionPlan(ownerA, plan.id);
+    assert.ok(staged);
+    assert.ok(staged.items.every((item) => item.state === "staged"), `items: ${JSON.stringify(staged.items)}`);
+    for (const item of staged.items) {
+      assert.ok(item.destinationPath?.startsWith(tvVolume), `staged under the TV volume: ${item.destinationPath}`);
+      const stagedFile = await stat(item.destinationPath);
+      assert.ok(stagedFile.size > 0, "the staged file has content");
     }
 
-    // 19–22: archive re-scan re-resolves identity and reports per-episode state.
+    // 7: the completed files pass through intake. The scanner inventories them
+    // first, so every judgement intake carries comes from a real subsystem.
+    assert.equal((await waitForScan(ownerA)).status, "completed");
+    const intake = await readIntakeItems(ownerA);
+    const planItems = staged.items;
+    const intakeFor = (identityKey: string) => intake.items.find(
+      (candidate) => candidate.title === planItems.find((item) => item.identityKey === identityKey)?.title,
+    );
+
+    for (const item of planItems) {
+      const entry = intakeFor(item.identityKey);
+      assert.ok(entry, `intake item exists for ${item.identityKey}`);
+      // 8: identity, quality, and naming are verified by their own subsystems.
+      assert.ok(entry.fileRecordId, "the staged file is inventoried");
+      assert.equal(entry.checksumStatus, "computed");
+      assert.equal(entry.verification, "passed");
+      assert.ok(entry.checksum && entry.checksum.length === 64);
+      assert.match(entry.qualitySummary ?? "", /1080p|2160p/, "quality verdict from the findings layer");
+      // The promotion target is the plan's destination, never the naming
+      // proposal: intake must not jump the naming queue.
+      const expectedTarget = plan.destinationPlan.find((d) => d.identityKey === item.identityKey);
+      assert.ok(expectedTarget);
+      assert.equal(entry.proposedTargetPath, join(expectedTarget.destinationDirectory, expectedTarget.finalFilename));
+      assert.equal(entry.disposition, "promotable");
+      assert.equal(entry.gate.legal, true);
+
+      // 9: promotion goes through the safe mutation journal — plan first.
+      const plannedPromotion = await planIntakePromotion(ownerA, entry.jobId);
+      assert.equal(plannedPromotion.operation?.status, "proposed", "planning must not execute anything");
+      assert.equal(plannedPromotion.plan?.ok, true, `dry run: ${plannedPromotion.planError}`);
+      const beforeApply = await stat(entry.stagedPath);
+      assert.ok(beforeApply.size > 0, "the file stays put until the promotion is applied");
+
+      const applied = await applyIntakePromotion(ownerA, entry.jobId, plannedPromotion.operation?.id ?? -1);
+      assert.equal(applied.operation?.status, "succeeded");
+      assert.ok(applied.operation?.rollbackAvailable, "promotion is a rollbackable journal operation");
+      assert.equal(applied.item?.disposition, "already_in_archive", "the promoted item reports its new home");
+      const finalPath = applied.operation?.targetPath as string;
+      const finalFile = await stat(finalPath);
+      assert.ok(finalFile.size > 0, "the file now lives at its permanent archive path");
+      assert.ok(finalPath.startsWith(tvVolume), "the final path is inside the TV volume");
+    }
+
+    // The plan's own state machine followed the promotion through the journal.
+    const promoted = readAcquisitionPlan(ownerA, plan.id);
+    assert.ok(promoted);
+    assert.ok(promoted.items.every((item) => item.state === "promoted"), `items: ${JSON.stringify(promoted.items)}`);
+    for (const item of promoted.items) {
+      const destination = plan.destinationPlan.find((d) => d.identityKey === item.identityKey);
+      assert.ok(destination);
+      assert.equal(item.destinationPath, join(destination.destinationDirectory, destination.finalFilename));
+    }
+    // Final results are derived and auditable once every item is terminal.
+    assert.ok(promoted.finalResults);
+    assert.equal(promoted.finalResults.placedCount, 2);
+    assert.equal(promoted.finalResults.failedCount, 0);
+
+    // 10: the archive re-scan re-resolves identity at the final paths.
     assert.equal((await waitForScan(ownerA)).status, "completed");
     const inventory = readArchiveInventory(ownerA);
     const kirraRecords = inventory.records.filter((record) => /kirra/i.test(record.filename));
-    assert.equal(kirraRecords.length, 3, "all three episodes are now inventoried");
-    assert.ok(kirraRecords.every((record) => record.checksum), "checksums are persisted for the new files");
-    assert.ok(kirraRecords.some((record) => record.qualityStatus !== "local_only" || true));
+    assert.equal(kirraRecords.length, 3, "all three episodes are inventoried");
+    assert.ok(kirraRecords.every((record) => record.checksum), "checksums persisted for the final files");
+    for (const item of promoted.items) {
+      assert.ok(inventory.records.some((record) => record.path === item.destinationPath), `inventory holds ${item.destinationPath}`);
+    }
 
-    // 21: the safe mutation engine remains the placement authority — the new
-    // files enter the same naming-proposal workflow as everything else.
-    const naming = await readNamingProposals(ownerA);
-    assert.ok(naming.results.length > 0, "naming intelligence sees the newly placed files");
-
-    // Quality intelligence sees the archive too (E).
-    assert.ok(readQualityFindings(ownerA, {}).results !== null);
+    // 11: the final state is exposed to Plex reconciliation with identity.
+    const reconciliation = await readReconciliationReport(ownerA);
+    const reconciliationRows = reconciliation.results as Array<{
+      classification: string;
+      local: { path: string; identity: { key?: string; show?: string; season?: number; episode?: number } | null } | null;
+    }>;
+    for (const item of promoted.items) {
+      const row = reconciliationRows.find((candidate) => candidate.local?.path === item.destinationPath);
+      assert.ok(row, `reconciliation exposes the promoted file ${item.destinationPath}`);
+      assert.ok(
+        row.local?.identity && (row.local.identity.key === item.identityKey || row.local.identity.show !== undefined),
+        `reconciliation carries the identity for ${item.identityKey}`,
+      );
+    }
 
     // The plan list is owner-scoped and newest-first.
     const plans = listAcquisitionPlans(ownerA);

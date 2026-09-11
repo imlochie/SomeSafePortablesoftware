@@ -354,6 +354,7 @@ archiveDb.exec(`
     final_filename TEXT,
     state TEXT NOT NULL DEFAULT 'planned',
     download_job_id INTEGER,
+    operation_id INTEGER,
     error TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

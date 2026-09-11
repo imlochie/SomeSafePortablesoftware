@@ -1091,6 +1091,101 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /archive/intake:
+    get:
+      operationId: getArchiveIntake
+      tags: [archive]
+      summary: List finished downloads awaiting archive intake review
+      description: |
+        Read-only projection that joins download jobs to the archive inventory.
+        Each item carries what the archive already knows about the staged file -
+        checksum evidence, encode verdicts, byte-identical copies, normalized
+        reconciliation state, the matching acquisition need, and the naming
+        proposal - plus whether the journaled mutation machinery would allow
+        promoting it. Intake never moves or deletes media.
+      responses:
+        "200":
+          description: Intake queue with one item per finished or stalled download
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveIntakeResponse"
+  /archive/intake/{jobId}/plan:
+    post:
+      operationId: planArchiveIntakePromotion
+      tags: [archive]
+      summary: Journal a proposed promotion for one staged download
+      description: |
+        Creates an archive operation in status `proposed` and returns a full dry
+        run of it. Nothing is written to the filesystem by this call. It fails
+        with 400 when the item is missing, unverified, already present, or when
+        the staged path is outside the configured archive volumes, so a blocked
+        promotion stays visible instead of being worked around.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      responses:
+        "200":
+          description: The proposed operation and its dry-run plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveIntakePlanResponse"
+        "400":
+          description: Promotion is not allowed for this item right now
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+  /archive/intake/{jobId}/apply:
+    post:
+      operationId: applyArchiveIntakePromotion
+      tags: [archive]
+      summary: Apply a planned intake promotion
+      description: |
+        Executes the planned operation through the archive journal: it revalidates
+        paths against current settings, rechecks the expected size and
+        modification evidence, refuses to overwrite anything, relocates the
+        archive record, and leaves a rollback entry behind. Applying an operation
+        whose staged file or proposed destination changed is refused.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveIntakeApplyBody"
+      responses:
+        "200":
+          description: The executed operation plus the refreshed intake item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveIntakeApplyResponse"
+        "400":
+          description: The operation could not be applied
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
   /media/inspect:
     post:
       operationId: inspectMediaSource
@@ -1749,7 +1844,7 @@ components:
           type: string
         state:
           type: string
-          enum: [planned, queued, downloading, processing, verifying, downloading_more, complete, placed, failed, already_present, skipped]
+          enum: [planned, queued, downloading, processing, verifying, downloading_more, staged, promoted, failed, already_present, skipped]
         downloadJobId:
           type: [number, "null"]
         error:
@@ -1877,6 +1972,240 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AcquisitionPlan"
+    ArchiveIntakeGate:
+      type: object
+      required: [legal, code, reason]
+      properties:
+        legal:
+          type: boolean
+        code:
+          type: [string, "null"]
+        reason:
+          type: [string, "null"]
+    ArchiveIntakeDuplicate:
+      type: object
+      required: [fileRecordId, path, filename, exact]
+      properties:
+        fileRecordId:
+          type: number
+        path:
+          type: string
+        filename:
+          type: string
+        exact:
+          type: boolean
+    ArchiveIntakeFinding:
+      type: object
+      required: [key, kind, severity, headline, reviewStatus, counterpartFileRecordId]
+      properties:
+        key:
+          type: string
+        kind:
+          type: string
+        severity:
+          type: string
+        headline:
+          type: string
+        reviewStatus:
+          type: string
+        counterpartFileRecordId:
+          type: [number, "null"]
+    ArchiveIntakeReconciliation:
+      type: object
+      required: [archiveState, presentCount, expectedCount, identityKey]
+      properties:
+        archiveState:
+          type: string
+        presentCount:
+          type: number
+        expectedCount:
+          type: number
+        identityKey:
+          type: [string, "null"]
+    ArchiveIntakeAcquisition:
+      type: object
+      required: [findingId, recommendationStatus, priority, reviewStatus]
+      properties:
+        findingId:
+          type: number
+        recommendationStatus:
+          type: string
+        priority:
+          type: string
+        reviewStatus:
+          type: string
+    ArchiveIntakeNaming:
+      type: object
+      required: [fileRecordId, proposedPath, patternId, confidence, operation, decisionStatus, collision]
+      properties:
+        fileRecordId:
+          type: number
+        proposedPath:
+          type: [string, "null"]
+        patternId:
+          type: string
+        confidence:
+          type: string
+        operation:
+          type: string
+        decisionStatus:
+          type: [string, "null"]
+        collision:
+          type: boolean
+    ArchiveIntakeItem:
+      type: object
+      required:
+        - jobId
+        - jobStatus
+        - verification
+        - title
+        - sourceUrl
+        - sourceSite
+        - completedAt
+        - errorMessage
+        - stagedPath
+        - fileExists
+        - fileRecordId
+        - sizeBytes
+        - modifiedAtMs
+        - checksum
+        - checksumStatus
+        - insideArchiveVolume
+        - qualitySummary
+        - qualityFindings
+        - duplicates
+        - reconciliation
+        - acquisition
+        - namingProposal
+        - proposedTargetPath
+        - gate
+        - disposition
+        - nextAction
+      properties:
+        jobId:
+          type: number
+        jobStatus:
+          type: string
+        verification:
+          type: string
+        title:
+          type: string
+        sourceUrl:
+          type: string
+        sourceSite:
+          type: [string, "null"]
+        completedAt:
+          type: [string, "null"]
+        errorMessage:
+          type: [string, "null"]
+        stagedPath:
+          type: string
+        fileExists:
+          type: boolean
+        fileRecordId:
+          type: [number, "null"]
+        sizeBytes:
+          type: [number, "null"]
+        modifiedAtMs:
+          type: [number, "null"]
+        checksum:
+          type: [string, "null"]
+        checksumStatus:
+          type: [string, "null"]
+        insideArchiveVolume:
+          type: boolean
+        qualitySummary:
+          type: [string, "null"]
+        qualityFindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveIntakeFinding"
+        duplicates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveIntakeDuplicate"
+        reconciliation:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveIntakeReconciliation"
+            - type: "null"
+        acquisition:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveIntakeAcquisition"
+            - type: "null"
+        namingProposal:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveIntakeNaming"
+            - type: "null"
+        proposedTargetPath:
+          type: [string, "null"]
+        gate:
+          $ref: "#/components/schemas/ArchiveIntakeGate"
+        disposition:
+          type: string
+          enum: [file_missing, not_inventoried, already_in_archive, blocked, promotable]
+        nextAction:
+          type: string
+    ArchiveIntakeSummary:
+      type: object
+      required: [total, promotable, blocked, alreadyInArchive, awaitingInventory, fileMissing, withFindings]
+      properties:
+        total:
+          type: number
+        promotable:
+          type: number
+        blocked:
+          type: number
+        alreadyInArchive:
+          type: number
+        awaitingInventory:
+          type: number
+        fileMissing:
+          type: number
+        withFindings:
+          type: number
+    ArchiveIntakeResponse:
+      type: object
+      required: [items, summary]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveIntakeItem"
+        summary:
+          $ref: "#/components/schemas/ArchiveIntakeSummary"
+    ArchiveIntakePlanResponse:
+      type: object
+      required: [item, operation, plan, planError]
+      properties:
+        item:
+          $ref: "#/components/schemas/ArchiveIntakeItem"
+        operation:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveOperation"
+            - type: "null"
+        plan:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveOperationPlan"
+            - type: "null"
+        planError:
+          type: [string, "null"]
+    ArchiveIntakeApplyBody:
+      type: object
+      required: [operationId]
+      properties:
+        operationId:
+          type: number
+          minimum: 1
+    ArchiveIntakeApplyResponse:
+      type: object
+      required: [operation, item]
+      properties:
+        operation:
+          $ref: "#/components/schemas/ArchiveOperation"
+        item:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveIntakeItem"
+            - type: "null"
     HealthStatus:
       type: object
       properties:
@@ -3670,5 +3999,6 @@ components:
           enum: [movie, show, episode, other]
         year:
           type: [number, "null"]
+
 
 

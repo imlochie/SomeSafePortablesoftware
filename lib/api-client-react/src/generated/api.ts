@@ -32,8 +32,13 @@ import type {
   AcquisitionSourceOption,
   AppSettings,
   AppSettingsUpdate,
+  ApplyArchiveIntakePromotion400,
   ArchiveBulkReviewResponse,
   ArchiveBulkReviewUpdate,
+  ArchiveIntakeApplyBody,
+  ArchiveIntakeApplyResponse,
+  ArchiveIntakePlanResponse,
+  ArchiveIntakeResponse,
   ArchiveInventory,
   ArchiveInventoryRecord,
   ArchiveNamingProposalApplyBody,
@@ -67,6 +72,7 @@ import type {
   LocalMediaInspection,
   MediaInspectInput,
   MediaInspection,
+  PlanArchiveIntakePromotion400,
   PlexConfig,
   PlexConfigUpdate,
   PlexInventory,
@@ -3140,6 +3146,242 @@ export const useExecuteAcquisitionPlan = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getExecuteAcquisitionPlanMutationOptions(options));
+    }
+
+export const getGetArchiveIntakeUrl = () => {
+
+
+
+
+  return `/api/archive/intake`
+}
+
+/**
+ * Read-only projection that joins download jobs to the archive inventory.
+ * Each item carries what the archive already knows about the staged file -
+ * checksum evidence, encode verdicts, byte-identical copies, normalized
+ * reconciliation state, the matching acquisition need, and the naming
+ * proposal - plus whether the journaled mutation machinery would allow
+ * promoting it. Intake never moves or deletes media.
+ * @summary List finished downloads awaiting archive intake review
+ */
+export const getArchiveIntake = async ( options?: Parameters<typeof customFetch>[1]): Promise<ArchiveIntakeResponse> => {
+
+  return customFetch<ArchiveIntakeResponse>(getGetArchiveIntakeUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveIntakeQueryKey = () => {
+    return [
+    `/api/archive/intake`
+    ] as const;
+    }
+
+
+export const getGetArchiveIntakeQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveIntake>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveIntake>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveIntakeQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveIntake>>> = ({ signal }) => getArchiveIntake({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveIntake>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveIntakeQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveIntake>>>
+export type GetArchiveIntakeQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List finished downloads awaiting archive intake review
+ */
+
+export function useGetArchiveIntake<TData = Awaited<ReturnType<typeof getArchiveIntake>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveIntake>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveIntakeQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPlanArchiveIntakePromotionUrl = (jobId: number,) => {
+
+
+
+
+  return `/api/archive/intake/${jobId}/plan`
+}
+
+/**
+ * Creates an archive operation in status `proposed` and returns a full dry
+ * run of it. Nothing is written to the filesystem by this call. It fails
+ * with 400 when the item is missing, unverified, already present, or when
+ * the staged path is outside the configured archive volumes, so a blocked
+ * promotion stays visible instead of being worked around.
+ * @summary Journal a proposed promotion for one staged download
+ */
+export const planArchiveIntakePromotion = async (jobId: number, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveIntakePlanResponse> => {
+
+  return customFetch<ArchiveIntakePlanResponse>(getPlanArchiveIntakePromotionUrl(jobId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPlanArchiveIntakePromotionMutationOptions = <TError = ErrorType<PlanArchiveIntakePromotion400>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planArchiveIntakePromotion>>, TError,{jobId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof planArchiveIntakePromotion>>, TError,{jobId: number}, TContext> => {
+
+const mutationKey = ['planArchiveIntakePromotion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof planArchiveIntakePromotion>>, {jobId: number}> = (props) => {
+          const {jobId} = props ?? {};
+
+          return  planArchiveIntakePromotion(jobId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PlanArchiveIntakePromotionMutationResult = NonNullable<Awaited<ReturnType<typeof planArchiveIntakePromotion>>>
+
+    export type PlanArchiveIntakePromotionMutationError = ErrorType<PlanArchiveIntakePromotion400>
+
+    /**
+ * @summary Journal a proposed promotion for one staged download
+ */
+export const usePlanArchiveIntakePromotion = <TError = ErrorType<PlanArchiveIntakePromotion400>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planArchiveIntakePromotion>>, TError,{jobId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof planArchiveIntakePromotion>>,
+        TError,
+        {jobId: number},
+        TContext
+      > => {
+      return useMutation(getPlanArchiveIntakePromotionMutationOptions(options));
+    }
+
+export const getApplyArchiveIntakePromotionUrl = (jobId: number,) => {
+
+
+
+
+  return `/api/archive/intake/${jobId}/apply`
+}
+
+/**
+ * Executes the planned operation through the archive journal: it revalidates
+ * paths against current settings, rechecks the expected size and
+ * modification evidence, refuses to overwrite anything, relocates the
+ * archive record, and leaves a rollback entry behind. Applying an operation
+ * whose staged file or proposed destination changed is refused.
+ * @summary Apply a planned intake promotion
+ */
+export const applyArchiveIntakePromotion = async (jobId: number,
+    archiveIntakeApplyBody: ArchiveIntakeApplyBody, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveIntakeApplyResponse> => {
+
+  return customFetch<ArchiveIntakeApplyResponse>(getApplyArchiveIntakePromotionUrl(jobId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(archiveIntakeApplyBody)
+  }
+);}
+
+
+
+
+
+export const getApplyArchiveIntakePromotionMutationOptions = <TError = ErrorType<ApplyArchiveIntakePromotion400>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyArchiveIntakePromotion>>, TError,{jobId: number;data: BodyType<ArchiveIntakeApplyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyArchiveIntakePromotion>>, TError,{jobId: number;data: BodyType<ArchiveIntakeApplyBody>}, TContext> => {
+
+const mutationKey = ['applyArchiveIntakePromotion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyArchiveIntakePromotion>>, {jobId: number;data: BodyType<ArchiveIntakeApplyBody>}> = (props) => {
+          const {jobId,data} = props ?? {};
+
+          return  applyArchiveIntakePromotion(jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyArchiveIntakePromotionMutationResult = NonNullable<Awaited<ReturnType<typeof applyArchiveIntakePromotion>>>
+    export type ApplyArchiveIntakePromotionMutationBody = BodyType<ArchiveIntakeApplyBody>
+    export type ApplyArchiveIntakePromotionMutationError = ErrorType<ApplyArchiveIntakePromotion400>
+
+    /**
+ * @summary Apply a planned intake promotion
+ */
+export const useApplyArchiveIntakePromotion = <TError = ErrorType<ApplyArchiveIntakePromotion400>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyArchiveIntakePromotion>>, TError,{jobId: number;data: BodyType<ArchiveIntakeApplyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof applyArchiveIntakePromotion>>,
+        TError,
+        {jobId: number;data: BodyType<ArchiveIntakeApplyBody>},
+        TContext
+      > => {
+      return useMutation(getApplyArchiveIntakePromotionMutationOptions(options));
     }
 
 export const getInspectMediaSourceUrl = () => {

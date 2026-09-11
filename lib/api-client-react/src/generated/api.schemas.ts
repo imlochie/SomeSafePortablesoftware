@@ -519,8 +519,8 @@ export const AcquisitionPlanItemState = {
   processing: 'processing',
   verifying: 'verifying',
   downloading_more: 'downloading_more',
-  complete: 'complete',
-  placed: 'placed',
+  staged: 'staged',
+  promoted: 'promoted',
   failed: 'failed',
   already_present: 'already_present',
   skipped: 'skipped',
@@ -639,6 +639,224 @@ export interface AcquisitionPlan {
 
 export interface AcquisitionPlanListResponse {
   results: AcquisitionPlan[];
+}
+
+export interface ArchiveIntakeGate {
+  legal: boolean;
+  /** @nullable */
+  code: string | null;
+  /** @nullable */
+  reason: string | null;
+}
+
+export interface ArchiveIntakeDuplicate {
+  fileRecordId: number;
+  path: string;
+  filename: string;
+  exact: boolean;
+}
+
+export interface ArchiveIntakeFinding {
+  key: string;
+  kind: string;
+  severity: string;
+  headline: string;
+  reviewStatus: string;
+  /** @nullable */
+  counterpartFileRecordId: number | null;
+}
+
+export interface ArchiveIntakeReconciliation {
+  archiveState: string;
+  presentCount: number;
+  expectedCount: number;
+  /** @nullable */
+  identityKey: string | null;
+}
+
+export interface ArchiveIntakeAcquisition {
+  findingId: number;
+  recommendationStatus: string;
+  priority: string;
+  reviewStatus: string;
+}
+
+export interface ArchiveIntakeNaming {
+  fileRecordId: number;
+  /** @nullable */
+  proposedPath: string | null;
+  patternId: string;
+  confidence: string;
+  operation: string;
+  /** @nullable */
+  decisionStatus: string | null;
+  collision: boolean;
+}
+
+export type ArchiveIntakeItemDisposition = typeof ArchiveIntakeItemDisposition[keyof typeof ArchiveIntakeItemDisposition];
+
+
+export const ArchiveIntakeItemDisposition = {
+  file_missing: 'file_missing',
+  not_inventoried: 'not_inventoried',
+  already_in_archive: 'already_in_archive',
+  blocked: 'blocked',
+  promotable: 'promotable',
+} as const;
+
+export interface ArchiveIntakeItem {
+  jobId: number;
+  jobStatus: string;
+  verification: string;
+  title: string;
+  sourceUrl: string;
+  /** @nullable */
+  sourceSite: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  errorMessage: string | null;
+  stagedPath: string;
+  fileExists: boolean;
+  /** @nullable */
+  fileRecordId: number | null;
+  /** @nullable */
+  sizeBytes: number | null;
+  /** @nullable */
+  modifiedAtMs: number | null;
+  /** @nullable */
+  checksum: string | null;
+  /** @nullable */
+  checksumStatus: string | null;
+  insideArchiveVolume: boolean;
+  /** @nullable */
+  qualitySummary: string | null;
+  qualityFindings: ArchiveIntakeFinding[];
+  duplicates: ArchiveIntakeDuplicate[];
+  reconciliation: ArchiveIntakeReconciliation | null;
+  acquisition: ArchiveIntakeAcquisition | null;
+  namingProposal: ArchiveIntakeNaming | null;
+  /** @nullable */
+  proposedTargetPath: string | null;
+  gate: ArchiveIntakeGate;
+  disposition: ArchiveIntakeItemDisposition;
+  nextAction: string;
+}
+
+export interface ArchiveIntakeSummary {
+  total: number;
+  promotable: number;
+  blocked: number;
+  alreadyInArchive: number;
+  awaitingInventory: number;
+  fileMissing: number;
+  withFindings: number;
+}
+
+export interface ArchiveIntakeResponse {
+  items: ArchiveIntakeItem[];
+  summary: ArchiveIntakeSummary;
+}
+
+export type ArchiveOperationKind = typeof ArchiveOperationKind[keyof typeof ArchiveOperationKind];
+
+
+export const ArchiveOperationKind = {
+  rename: 'rename',
+  move: 'move',
+  restructure: 'restructure',
+} as const;
+
+export type ArchiveOperationStatus = typeof ArchiveOperationStatus[keyof typeof ArchiveOperationStatus];
+
+
+export const ArchiveOperationStatus = {
+  proposed: 'proposed',
+  approved: 'approved',
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'succeeded',
+  failed: 'failed',
+  rolled_back: 'rolled_back',
+} as const;
+
+export type ArchiveOperationProposalEvidence = { [key: string]: unknown };
+
+/**
+ * Durable, owner-scoped journal entry for one filesystem mutation.
+ * Source and target are confined to configured archive volumes; the
+ * evidence snapshot plus expected size/mtime make the change auditable,
+ * and successful entries carry enough information to roll the mutation
+ * back.
+ */
+export interface ArchiveOperation {
+  id: number;
+  kind: ArchiveOperationKind;
+  status: ArchiveOperationStatus;
+  sourcePath: string;
+  targetPath: string;
+  /** @nullable */
+  fileRecordId: number | null;
+  /** @nullable */
+  sourceEvidenceKey: string | null;
+  proposalEvidence: ArchiveOperationProposalEvidence;
+  /** @nullable */
+  expectedSizeBytes: number | null;
+  /** @nullable */
+  expectedModifiedAtMs: number | null;
+  createdDirectories: string[];
+  /** @nullable */
+  error: string | null;
+  /** @nullable */
+  appliedAt: string | null;
+  /** @nullable */
+  rolledBackAt: string | null;
+  rollbackAvailable: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ArchiveOperationPlanKind = typeof ArchiveOperationPlanKind[keyof typeof ArchiveOperationPlanKind];
+
+
+export const ArchiveOperationPlanKind = {
+  rename: 'rename',
+  move: 'move',
+  restructure: 'restructure',
+} as const;
+
+export interface ArchiveOperationCheck {
+  step: string;
+  ok: boolean;
+  message: string;
+}
+
+export interface ArchiveOperationPlan {
+  ok: boolean;
+  kind: ArchiveOperationPlanKind;
+  /** @nullable */
+  sourcePath: string | null;
+  /** @nullable */
+  targetPath: string | null;
+  checks: ArchiveOperationCheck[];
+}
+
+export interface ArchiveIntakePlanResponse {
+  item: ArchiveIntakeItem;
+  operation: ArchiveOperation | null;
+  plan: ArchiveOperationPlan | null;
+  /** @nullable */
+  planError: string | null;
+}
+
+export interface ArchiveIntakeApplyBody {
+  /** @minimum 1 */
+  operationId: number;
+}
+
+export interface ArchiveIntakeApplyResponse {
+  operation: ArchiveOperation;
+  item: ArchiveIntakeItem | null;
 }
 
 export interface HealthStatus {
@@ -857,89 +1075,6 @@ export interface ArchiveNamingProposalApplyBody {
      * filesystem or journal write happens.
      */
   dryRun?: boolean;
-}
-
-export type ArchiveOperationKind = typeof ArchiveOperationKind[keyof typeof ArchiveOperationKind];
-
-
-export const ArchiveOperationKind = {
-  rename: 'rename',
-  move: 'move',
-  restructure: 'restructure',
-} as const;
-
-export type ArchiveOperationStatus = typeof ArchiveOperationStatus[keyof typeof ArchiveOperationStatus];
-
-
-export const ArchiveOperationStatus = {
-  proposed: 'proposed',
-  approved: 'approved',
-  queued: 'queued',
-  running: 'running',
-  succeeded: 'succeeded',
-  failed: 'failed',
-  rolled_back: 'rolled_back',
-} as const;
-
-export type ArchiveOperationProposalEvidence = { [key: string]: unknown };
-
-/**
- * Durable, owner-scoped journal entry for one filesystem mutation.
- * Source and target are confined to configured archive volumes; the
- * evidence snapshot plus expected size/mtime make the change auditable,
- * and successful entries carry enough information to roll the mutation
- * back.
- */
-export interface ArchiveOperation {
-  id: number;
-  kind: ArchiveOperationKind;
-  status: ArchiveOperationStatus;
-  sourcePath: string;
-  targetPath: string;
-  /** @nullable */
-  fileRecordId: number | null;
-  /** @nullable */
-  sourceEvidenceKey: string | null;
-  proposalEvidence: ArchiveOperationProposalEvidence;
-  /** @nullable */
-  expectedSizeBytes: number | null;
-  /** @nullable */
-  expectedModifiedAtMs: number | null;
-  createdDirectories: string[];
-  /** @nullable */
-  error: string | null;
-  /** @nullable */
-  appliedAt: string | null;
-  /** @nullable */
-  rolledBackAt: string | null;
-  rollbackAvailable: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ArchiveOperationCheck {
-  step: string;
-  ok: boolean;
-  message: string;
-}
-
-export type ArchiveOperationPlanKind = typeof ArchiveOperationPlanKind[keyof typeof ArchiveOperationPlanKind];
-
-
-export const ArchiveOperationPlanKind = {
-  rename: 'rename',
-  move: 'move',
-  restructure: 'restructure',
-} as const;
-
-export interface ArchiveOperationPlan {
-  ok: boolean;
-  kind: ArchiveOperationPlanKind;
-  /** @nullable */
-  sourcePath: string | null;
-  /** @nullable */
-  targetPath: string | null;
-  checks: ArchiveOperationCheck[];
 }
 
 export interface ArchiveNamingProposalApplyResult {
@@ -2627,4 +2762,12 @@ export const GetAcquisitionFindingsReviewStatus = {
   deferred: 'deferred',
   dismissed: 'dismissed',
 } as const;
+
+export type PlanArchiveIntakePromotion400 = {
+  error: string;
+};
+
+export type ApplyArchiveIntakePromotion400 = {
+  error: string;
+};
 

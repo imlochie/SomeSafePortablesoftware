@@ -137,3 +137,65 @@ The previously known `temporaryDirectory` failure is **resolved**: the mutation 
 - Automatic placement of downloaded media via the mutation engine (current placement is the download engine's verified move; naming proposals + journaled mutation remain the operator-driven path)
 - Season/show-level planning beyond what playlist entries expose (season completeness across sources)
 - Approval workflow UI polish (bulk approve, audit trail view)
+
+---
+
+# Addendum — Synthesis: Canonical Acquisition-to-Archive Architecture
+
+**Commits on top of `868eea8`:** `2a66b98` port (quality fixes) + intake composition (this branch; `main` still untouched).
+
+## What changed
+
+The two validated vertical-slice concepts are now **one canonical flow**:
+
+```
+USER REQUEST (URL + natural-language note)
+  → ACQUISITION PLAN (inspect, archive state, quality, storage, destination)
+  → APPROVAL (recorded trust boundary for untrusted sources)
+  → DOWNLOAD (real yt-dlp → FFmpeg → FFprobe verify; engine lands the
+              verified file at the archive volume root)
+  → INTAKE (post-acquisition gate: identity, checksum, quality verdict,
+            duplicate findings, naming proposal — all read from the
+            subsystems that own them)
+  → SAFE PROMOTION (journaled archive operation: plan → dry run → apply,
+            rollbackable; moves the file to the plan's Plex-safe
+            destination: Show/Season NN/… )
+  → ARCHIVE (re-scan re-resolves identity at the final paths)
+  → PLEX RECONCILIATION (final state exposed with identity)
+```
+
+**AcquisitionPlan is the acquisition brain. Intake is the post-acquisition gate. The mutation engine is the only physical executor.** Intake owns no intelligence and no rename path; every field it reports is projected from the scanner, quality, naming, reconciliation, and acquisition services, and every move goes through `archive_operations` (validate → journal → dry-run → apply → rollback).
+
+## How the two slices were composed (and what was deliberately not done)
+
+- **Ported from the later Quality branch (`6704ed0`), extracted not merged:** `services/archive-intake.ts`, `routes/intake.ts`, `test/intake.test.ts` (6 tests, pass unmodified), the queue-page IntakePanel UI, and the intake OpenAPI paths/schemas (exact textual port, verified structurally: 49 paths, 106 schemas, all `$ref`s resolve). The competing branch's own integration merges were NOT merged.
+- **Ported the post-`5f4e402` quality fixes (`2a66b98`) by cherry-pick:** `duration_mismatch` finding kind (ambiguous groups, refused-verdict dominated pairs, and the local-vs-Plex `different_media` path), the unified `context.plexQualityFor` counterpart shape, evidence-driven peer selection (most informative peer, never `peers[0]`), and the 3 associated tests (quality suite: 20 → 23).
+- **Composition changes (this branch's own work):**
+  1. Plan execution no longer hands the final destination to the download engine. The engine's own verified move lands the file at the volume root; the plan's destination is what intake promotes it to. Nothing reaches its permanent archive path except through a journaled operation.
+  2. Intake's promotion target for a plan-driven job is the plan item's stored destination (`acquisition_plan_item.destination_directory/final_filename`); for any other job it is the job's own prepared destination (upstream behavior). The naming proposal is still shown alongside and still never used as the destination — intake does not jump the naming queue.
+  3. The plan's destination is now genuinely Plex-structured: TV episodes → `<volume>/<Show>/Season NN/<Show> SxxEyy.<ext>`, movies → `<volume>/<Title> (<Year>).<ext>`. A double-episode-marker bug in the filename derivation was fixed.
+  4. Plan item states extended with `staged` and `promoted` (replacing `complete`/`placed`): a finished download reports `staged` until a journaled promotion delivers it; a rolled-back promotion re-opens it. `applyIntakePromotion` records the journal link (`acquisition_plan_item.operation_id`).
+  5. `finalResults` is now derived and auditable: once every item is terminal, the plan reports placed/failed/already-present counts with per-item outcomes.
+  6. A file already sitting exactly at its prepared destination (a manual job the engine moved itself, or a plan destination equal to the engine's landing) reports `already_in_archive` with `gate.code = same_path` instead of a confusing `blocked`.
+
+## Acceptance test (the 11 required steps)
+
+`test/acquisition-plan.test.ts` test 2 runs the whole flow with stub binaries against temporary fixtures: playlist URL inspection → 1 present / 2 missing → untrusted → approval → bounded execution → real yt-dlp/FFmpeg/FFprobe → items `staged` at the volume root → scanner inventory → intake items with computed checksums, quality verdicts, and the plan destination as target (naming proposal shown, not used) → `planIntakePromotion` (proposed + dry run, nothing moves) → `applyIntakePromotion` (journaled, rollbackable) → plan items `promoted` with final paths → archive re-scan → reconciliation exposes the promoted identities. Every intermediate state is observable through the plan, the intake queue, the operation journal, and the plan's derived `finalResults`.
+
+## Validation (after synthesis)
+
+| Gate | Result |
+|---|---|
+| `pnpm run typecheck` | **PASS** |
+| `pnpm --filter @workspace/api-server run test` | **58/58 PASS** — plan 4, acquisition 8, intake 6, integrations 6, ownership 11, quality 23 |
+| `pnpm --filter @workspace/archive-assistant run build` | **PASS** |
+| `pnpm --filter @workspace/api-server run build` | **PASS** |
+| Temporary-environment smoke (A–N) | **6/6 PASS** |
+
+## Updated limitations / deferrals
+
+- The later Quality branch's own integration commits (`ec107af`, `ccc0639`, `79d7a18`) and any behavior in `6704ed0` beyond the extracted intake slice were not merged; if that branch holds further fixes, they should be ported the same way (extract, don't merge).
+- `integrationAlternatives` still reports capability facts only; no adapter implements `search_source` yet.
+- Plan snapshots are not re-validated per item at queue time (the engine's destination and collision checks still run).
+- Archive re-scan after promotion is operator/supervisor-triggered, not automatic on job completion.
+- No LLM/assistant behavior; request notes are stored, not parsed.
