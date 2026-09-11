@@ -15,8 +15,8 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
+- DB: embedded SQLite (`node:sqlite`)
+- Validation: Zod (`zod/v4`)
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
 - Frontend: React + Vite + Wouter + TanStack Query
@@ -31,6 +31,7 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 - `artifacts/api-server/src/services/media-acquisition.ts` — owner-scoped registry orchestration for media lookup, missing-media discovery, and archive-context acquisition requests.
 - `lib/api-spec/openapi.yaml` — API contract source of truth.
 - `install.ps1`, `start.ps1`, `start.bat`, `README.md` — Windows local setup and launch.
+- `docs/archive-goals-freeze-review.md` — original-goal classifications, accepted freeze boundaries, and bounded remaining work.
 
 ## Architecture decisions
 

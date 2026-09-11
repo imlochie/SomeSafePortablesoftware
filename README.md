@@ -2,7 +2,7 @@
 
 ARCHIVE ASSISTANT is a Windows-first, local-first personal media archive control system. It uses a React/Vite interface and an Express/Node local engine with SQLite persistence.
 
-## Phase 1 status
+## Product status
 
 ### Implemented
 
@@ -15,15 +15,18 @@ ARCHIVE ASSISTANT is a Windows-first, local-first personal media archive control
 - Mock mode, local logging, and server-side secret handling.
 - Windows launch files: `install.ps1`, `start.ps1`, and `start.bat`.
 
-### Placeholder / not yet implemented
+### Intentionally deferred
 
-- AI assistant responses and provider connections.
-- Plex synchronization or library browsing.
-- Media extraction or downloading through yt-dlp.
-- FFmpeg processing and hardware-accelerated transcodes.
-- Filesystem monitoring, duplicate detection, archive actions, and real job execution.
+- Production AI assistant responses and local-model integration.
+- Autonomous archive actions.
+- Self-contained Windows desktop packaging.
 
 The UI reports unconfigured providers as disconnected and surfaces real provider errors instead of fabricating availability.
+
+Plex synchronization, archive scanning and review, controlled archive
+operations, provider-backed acquisitions, and durable operational history are
+implemented. See [`docs/archive-goals-freeze-review.md`](docs/archive-goals-freeze-review.md)
+for the original-goal classification and remaining release work.
 
 ## Run on Windows
 
@@ -51,6 +54,6 @@ Production local mode binds to `127.0.0.1` by default. Development and Replit wo
 
 ## Architecture
 
-The application is split into a React/Vite interface and an Express API. The API owns SQLite access, dependency checks, settings, Plex secrets, media extraction, downloads, FFmpeg processing, and archive management. The planned desktop architecture is Tauri with this existing Node engine as a managed sidecar; Tauri is not part of the project yet.
+The application is split into a React/Vite interface and an Express API. The API owns SQLite access, dependency checks, settings, Plex secrets, media extraction, downloads, FFmpeg processing, and archive management. A Tauri shell starts this existing Node engine as a managed sidecar. The source boundary is implemented, but a self-contained Windows package is intentionally deferred.
 
 All user-configured filesystem paths should be validated against configured directories before future file operations are enabled. Tokens and API keys must stay server-side.
