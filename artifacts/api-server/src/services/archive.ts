@@ -441,7 +441,23 @@ function upsertArchiveRecord(
 }
 
 async function inspectFile(filePath: string, root: string, existing: FileRow | undefined, settings: SettingsRecord, archiveScanRoots: string[]) {
-  const fileStats = await stat(filePath);
+  let fileStats;
+  try {
+    fileStats = await stat(filePath);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "The file could not be inspected.";
+    return {
+      filePath,
+      root,
+      modifiedAtMs: 0,
+      inspected: null,
+      fileChecksum: null,
+      errorMessage,
+      integrityClassification: assessMediaIntegrityFailure(errorMessage, "operational").classification,
+      unchangedRecordId: null,
+      warningMessage: undefined,
+    };
+  }
   const unchanged = existing
     && existing.scan_status === "active"
     && existing.size_bytes === fileStats.size
