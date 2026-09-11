@@ -715,7 +715,18 @@ for (const root of roots) {
       "SELECT id, path FROM file_record WHERE owner_id = ?",
     ).all(ownerId) as Array<{ id: number; path: string }>;
     for (const row of existing) {
-      if (roots.some((root) => row.path === root || row.path.startsWith(`${root}${sep}`)) && !found.has(row.path)) {
+      // Platform-aware comparison: on Windows the same volume can be recorded
+      // with different drive-letter or path case between settings changes, and
+      // a case-sensitive match here would mass-mark healthy records missing.
+      const samePath = (a: string, b: string) =>
+        process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+      const withinRoot = (path: string, root: string) =>
+        samePath(path, root) || path.startsWith(`${root}${sep}`) ||
+        (process.platform === "win32" && path.toLowerCase().startsWith(`${root.toLowerCase()}${sep}`));
+      const foundKeys = process.platform === "win32"
+        ? new Set([...found].map((path) => path.toLowerCase()))
+        : found;
+      if (roots.some((root) => withinRoot(row.path, root)) && !foundKeys.has(process.platform === "win32" ? row.path.toLowerCase() : row.path)) {
         archiveDb.prepare(
           "UPDATE file_record SET scan_status = 'missing', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
         ).run(row.id, ownerId);

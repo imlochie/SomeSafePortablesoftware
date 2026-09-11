@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess, execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
+import { moveFile } from "../lib/fs-move";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
@@ -103,10 +104,19 @@ function parseBytes(value: string | undefined) {
 }
 
 function handleProgress(id: number, ownerId: string, text: string) {
-  const percentage = text.match(/(\d+(?:\.\d+)?)%/);
-  const downloaded = parseBytes(text.match(/of\s+([\d.]+\s*(?:KiB|MiB|GiB|B))/i)?.[1]);
-  const speed = text.match(/at\s+([\d.]+\s*(?:KiB|MiB|GiB|B)\/s)/i)?.[1];
-  const eta = text.match(/ETA\s+(\d+:\d+)/i)?.[1];
+  // yt-dlp emits one progress line per --newline chunk, but a chunk can carry
+  // several lines and, on Windows, CRLF endings. Parse per line and let the
+  // LAST occurrence win so progress never lags behind within a chunk.
+  let percentage: RegExpMatchArray | null = null;
+  let downloaded: number | null = null;
+  let speed: string | undefined;
+  let eta: string | undefined;
+  for (const line of text.split(/\r?\n/)) {
+    percentage = line.match(/(\d+(?:\.\d+)?)%/) ?? percentage;
+    downloaded = parseBytes(line.match(/of\s+([\d.]+\s*(?:KiB|MiB|GiB|B))/i)?.[1]) ?? downloaded;
+    speed = line.match(/at\s+([\d.]+\s*(?:KiB|MiB|GiB|B)\/s)/i)?.[1] ?? speed;
+    eta = line.match(/ETA\s+(\d+:\d+)/i)?.[1] ?? eta;
+  }
   const etaSeconds = eta ? eta.split(":").reduce((total, part) => total * 60 + Number(part), 0) : null;
   updateJob(id, ownerId, {
     ...(percentage ? { progress: Math.min(99, Number(percentage[1])) } : {}),
@@ -132,7 +142,7 @@ async function verifyAndMove(id: number, ownerId: string, inputPath: string, job
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  await fs.rename(inputPath, finalPath);
+  await moveFile(inputPath, finalPath);
   setStatus(id, ownerId, "complete", {
     progress: 100,
     final_path: finalPath,

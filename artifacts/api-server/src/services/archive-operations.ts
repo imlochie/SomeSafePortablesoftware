@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { moveFile } from "../lib/fs-move";
 import { basename, dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import {
@@ -509,7 +510,7 @@ export async function executeOperation(ownerId: string, operationId: number, set
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
 
-    await fs.rename(validated.sourcePath, validated.targetPath);
+    await moveFile(validated.sourcePath, validated.targetPath);
     relocateArchiveRecord(ownerId, validated.sourcePath, validated.targetPath);
     invalidateArchiveInventoryCache(ownerId);
 
@@ -563,7 +564,7 @@ export async function rollbackOperation(ownerId: string, operationId: number, se
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
 
-    await fs.rename(validated.sourcePath, validated.targetPath);
+    await moveFile(validated.sourcePath, validated.targetPath);
     relocateArchiveRecord(ownerId, validated.sourcePath, validated.targetPath);
     await removeEmptyDirectories(parseJsonArray(row.created_directories));
     invalidateArchiveInventoryCache(ownerId);

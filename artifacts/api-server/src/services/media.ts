@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { homedir } from "node:os";
 import { promises as fs } from "node:fs";
 import { basename, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -291,7 +292,7 @@ function validateSourceUrl(sourceUrl: string) {
 }
 
 function expandPath(value: string) {
-  return value.startsWith("~/") ? join(process.env.HOME ?? process.cwd(), value.slice(2)) : value;
+  return value.startsWith("~/") ? join(homedir() || process.cwd(), value.slice(2)) : value;
 }
 
 export function isPathWithin(candidate: string, root: string) {
@@ -384,12 +385,25 @@ export function validateSafeDirectory(
   return target;
 }
 
+/**
+ * Windows reserved device names: CON, PRN, AUX, NUL, COM1-9, LPT1-9. Any of
+ * these as the first dot-delimited stem of a filename (with or without an
+ * extension) addresses the device namespace on Windows, so such names are
+ * prefixed instead of being created.
+ */
+const WINDOWS_RESERVED_STEM = /^(con|prn|aux|nul|com\d|lpt\d)$/i;
+
+export function windowsSafeStem(value: string) {
+  return WINDOWS_RESERVED_STEM.test(value.split(".")[0] ?? "") ? `_${value}` : value;
+}
+
 export function sanitizeFilename(value: string, extension: string) {
-  const base = basename(value)
+  const cleaned = basename(value)
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
     .replace(/[. ]+$/g, "")
     .trim()
     .slice(0, 180) || "download";
+  const base = windowsSafeStem(cleaned);
   const suffix = `.${extension.replace(/^\./, "")}`;
   return base.toLowerCase().endsWith(suffix.toLowerCase()) ? base : `${base}${suffix}`;
 }

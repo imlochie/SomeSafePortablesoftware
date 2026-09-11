@@ -14,7 +14,7 @@
  * capabilities, not hard-coded providers.
  */
 import { archiveDb, readSettings, type SettingsRecord } from "../lib/archive-db";
-import { inspectMediaSourceEntries } from "./media";
+import { inspectMediaSourceEntries, windowsSafeStem } from "./media";
 import {
   localEpisodeIdentity,
   normalizeTitle,
@@ -296,8 +296,17 @@ function archiveStatesFor(ownerId: string): Map<string, PlanArchiveState> {
  * stays the authority for restructuring media that is already archived, and
  * intake shows its proposal alongside without letting it jump that queue.
  */
-function plexSafeDestination(candidate: PlanCandidate, volumePath: string, container: string): { directory: string; filename: string } {
-  const sanitize = (value: string) => value.replace(/[:<>"\\/\\|?*]/g, "-").replace(/\s+/g, " ").trim();
+export function plexSafeDestination(candidate: PlanCandidate, volumePath: string, container: string): { directory: string; filename: string } {
+  // Windows-safe sanitizing: forbidden characters, control characters,
+  // collapsed whitespace, and no trailing dots or spaces (which Windows
+  // strips, silently changing the name the archive just recorded).
+  const sanitize = (value: string) => windowsSafeStem(
+    value
+      .replace(/[:<>"\\/\\|?*\u0000-\u001f]/g, "-")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/[. ]+$/g, ""),
+  );
   if (candidate.mediaType === "tv" && candidate.season !== null) {
     // "Show S01E02 Reunion" -> show "Show", episode file "Show S01E02".
     const marker = /\bS(\d{1,2})E(\d{1,2})\b/i.exec(candidate.title);
