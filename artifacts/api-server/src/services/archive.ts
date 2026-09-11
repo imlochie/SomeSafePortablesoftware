@@ -4,7 +4,7 @@ import { access, readdir, stat } from "node:fs/promises";
 import { basename, extname, relative, resolve, sep } from "node:path";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia } from "./media";
-import { getArchiveScanRoots, isArchivePathWithin } from "./storage";
+import { expandUserPath, getArchiveScanRoots, isArchivePathWithin } from "./storage";
 import {
   coarseQualityScore,
   compareEncodes,
@@ -154,12 +154,6 @@ export function qualityRank(shape: LegacyQualityShape) {
   const bitrate = Math.min(100, Math.round((shape.bitrate ?? 0) / 1_000_000));
   const audio = shape.audioChannels ?? 0;
   return height + hdr + codec + bitrate + audio;
-}
-
-function expandPath(value: string) {
-  return value.startsWith("~/")
-    ? resolve(process.env.HOME ?? process.cwd(), value.slice(2))
-    : resolve(value);
 }
 
 function parseJsonArray(value: string | null | undefined) {
@@ -383,7 +377,7 @@ function scanRoots(settings: SettingsRecord) {
   // roots are skipped to avoid double-walking the same tree.
   const downloadRoot = settings.downloadDirectory?.trim();
   if (downloadRoot) {
-    const expanded = expandPath(downloadRoot);
+    const expanded = expandUserPath(downloadRoot);
     const alreadyCovered = volumeRoots.some(
       (root) => isArchivePathWithin(expanded, root) || isArchivePathWithin(root, expanded),
     );

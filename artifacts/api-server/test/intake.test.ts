@@ -321,6 +321,42 @@ describe("archive intake for finished downloads", { concurrency: false }, () => 
     assert.match(refusal?.error ?? "", /size/i);
   });
 
+  test("a file the engine already placed in the archive is not reported as blocked", async () => {
+    const root = join(testRoot, "already-placed");
+    const library = join(root, "library");
+    const staging = join(root, "staging");
+    const destination = join(library, "Movies", "Placed Directly (2024)");
+    await mkdir(destination, { recursive: true });
+    await mkdir(staging, { recursive: true });
+
+    // This is what the download engine leaves behind: final_path *is* the
+    // destination, so there is no move left to journal.
+    const placedPath = join(destination, "Placed Directly (2024).mkv");
+    await writeFile(placedPath, "already-in-place-bytes");
+    const jobId = insertJob({
+      owner: ownerA,
+      title: "Placed Directly",
+      stagedPath: placedPath,
+      destinationDirectory: destination,
+      finalFilename: "Placed Directly (2024).mkv",
+      temporaryDirectory: staging,
+    });
+    writeSettings({ archiveDirectory: library, downloadDirectory: staging, ffprobePath: probe });
+    await waitForScan(ownerA);
+
+    const { items } = await readIntakeItems(ownerA);
+    const item = items.find((candidate) => candidate.jobId === jobId);
+    assert.ok(item);
+    assert.equal(item.disposition, "already_in_archive");
+    assert.match(item.nextAction, /Already at its archive destination/);
+    await assert.rejects(
+      () => planIntakePromotion(ownerA, jobId),
+      /destination/i,
+      "a no-op promotion must be refused rather than journaled",
+    );
+    assert.equal(await readFile(placedPath, "utf8"), "already-in-place-bytes");
+  });
+
   test("mock jobs and other owners never appear as promotable intake", async () => {
     const root = join(testRoot, "missing-and-isolation");
     const library = join(root, "library");

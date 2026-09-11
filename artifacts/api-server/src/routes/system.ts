@@ -29,7 +29,10 @@ function detectDependency(dependency: (typeof dependencyDefinitions)[number], se
   try {
     const versionOutput = execFileSync(command, dependency.args, {
       encoding: "utf8",
-      timeout: 1200,
+      // A cold Windows start resolves the executable through PATH and Defender
+      // scans it on first use; a 1.2s budget reported an installed yt-dlp as
+      // missing, which is worse than slow because the UI then lies.
+      timeout: 8000,
       stdio: ["ignore", "pipe", "pipe"],
     });
     const version = versionOutput.trim().split(/\r?\n/)[0] ?? null;

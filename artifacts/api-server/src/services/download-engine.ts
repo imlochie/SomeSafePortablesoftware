@@ -1,10 +1,11 @@
 import { spawn, type ChildProcess, execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { promisify } from "node:util";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia, prepareDownload, validateFormatId } from "./media";
 import { getLocalToolPaths } from "./local-tools";
+import { moveFileIntoPlace } from "./storage";
 
 const execFileAsync = promisify(execFile);
 type JobStatus =
@@ -144,6 +145,53 @@ async function verifyAndMove(id: number, ownerId: string, inputPath: string, job
   emit("job.completed", id, ownerId);
 }
 
+/**
+ * Which file in the staging directory is the finished download.
+ *
+ * The expected name is authoritative. If it is missing, the fallback used to be
+ * "the first file that starts like the title and is not a `.part`", which on a
+ * real yt-dlp run can pick up a per-format fragment (`Title.f140.mkv` is an
+ * audio-only stream, and `Title.mp4.ytdl` is merge bookkeeping) and promote it as
+ * if it were the finished encode. So only a file with the same stem *and* the
+ * same container is accepted, ambiguous results are refused, and the operator is
+ * told what was actually found.
+ */
+export async function findFinishedDownloadFile(directory: string, finalFilename: string) {
+  const expected = join(directory, finalFilename);
+  try {
+    await fs.access(expected);
+    return expected;
+  } catch {
+    // Fall through to the tolerant lookup below.
+  }
+
+  const stem = basename(finalFilename).replace(/\.[^.]+$/, "");
+  const extension = extname(finalFilename).toLowerCase();
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  const matches = entries
+    .filter((entry) => entry.isFile())
+    .filter((entry) => {
+      const name = basename(entry.name);
+      const nameExtension = extname(name).toLowerCase();
+      return (
+        nameExtension === extension &&
+        name.slice(0, -extension.length) === stem &&
+        !/\.f\d{2,4}\./.test(name)
+      );
+    })
+    .map((entry) => join(directory, entry.name));
+
+  if (matches.length === 1) return matches[0] as string;
+  if (matches.length > 1) {
+    throw new Error(
+      `yt-dlp finished but left ${matches.length} candidates for "${finalFilename}"; refusing to guess which one is the real file. Staging directory: ${directory}`,
+    );
+  }
+  throw new Error(
+    `yt-dlp completed but no finished "${finalFilename}" was found in the temporary directory. Fragments and part files are ignored on purpose.`,
+  );
+}
+
 async function processWithFfmpeg(id: number, ownerId: string, inputPath: string, job: ReturnType<typeof readJob>) {
   if (!job) throw new Error("Download job disappeared before processing.");
   setStatus(id, ownerId, "processing", { progress: 76 });
@@ -202,16 +250,7 @@ async function runRealJob(id: number, ownerId: string, settings: SettingsRecord)
     if (managed.cancelled) return;
     if (exitCode !== 0) throw new Error(`yt-dlp exited with code ${exitCode}. Check the event log for source details.`);
     setStatus(id, ownerId, "downloaded", { progress: 72, process_id: null });
-    const expected = join(job.temporaryDirectory, job.finalFilename);
-    let inputPath = expected;
-    try {
-      await fs.access(inputPath);
-    } catch {
-      const files = await fs.readdir(job.temporaryDirectory);
-      const candidate = files.find((file) => file.startsWith(basename(job.finalFilename).replace(/\.[^.]+$/, "")) && !file.endsWith(".part"));
-      if (!candidate) throw new Error("yt-dlp completed but no finished media file was found in the temporary directory.");
-      inputPath = join(job.temporaryDirectory, candidate);
-    }
+    const inputPath = await findFinishedDownloadFile(job.temporaryDirectory, job.finalFilename);
     const processedPath = await processWithFfmpeg(id, ownerId, inputPath, readJob(id, ownerId));
     await verifyAndMove(id, ownerId, processedPath, readJob(id, ownerId), settings);
   } catch (error) {

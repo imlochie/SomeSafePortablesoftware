@@ -8,6 +8,7 @@ import { technicalQualityFromProbe } from "./media-quality";
 import {
   chooseArchiveVolume,
   ensureArchiveVolume,
+  expandUserPath,
   findArchiveVolumeForPath,
   getArchiveScanRoots,
   type ArchiveMediaType,
@@ -290,13 +291,9 @@ function validateSourceUrl(sourceUrl: string) {
   return parsed;
 }
 
-function expandPath(value: string) {
-  return value.startsWith("~/") ? join(process.env.HOME ?? process.cwd(), value.slice(2)) : value;
-}
-
 export function isPathWithin(candidate: string, root: string) {
-  const candidatePath = resolve(expandPath(candidate));
-  const rootPath = resolve(expandPath(root));
+  const candidatePath = resolve(expandUserPath(candidate));
+  const rootPath = resolve(expandUserPath(root));
   const insensitive = process.platform === "win32";
   const left = insensitive ? candidatePath.toLowerCase() : candidatePath;
   const right = insensitive ? rootPath.toLowerCase() : rootPath;
@@ -388,6 +385,13 @@ export function sanitizeFilename(value: string, extension: string) {
   const base = basename(value)
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
     .replace(/[. ]+$/g, "")
+    // Windows refuses to create any file whose name is a reserved device name,
+    // with or without an extension, and a title of "Con" or "Null" is entirely
+    // plausible for real media. A trailing underscore keeps the name readable
+    // and unambiguous instead of silently renaming to "download".
+    // The extension has not been appended yet, so a bare reserved stem has to be
+    // matched as well as a dotted one.
+    .replace(/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?=$|\.)/i, "$1_")
     .trim()
     .slice(0, 180) || "download";
   const suffix = `.${extension.replace(/^\./, "")}`;
@@ -473,7 +477,7 @@ export async function inspectMediaSource(url: string, settings: SettingsRecord, 
 }
 
 export async function inspectLocalMedia(filePath: string, settings: SettingsRecord, archiveScanRoots = getArchiveScanRoots(settings)) {
-  const candidate = resolve(expandPath(filePath));
+  const candidate = resolve(expandUserPath(filePath));
   const allowed = [settings.dataDirectory, settings.downloadDirectory, ...archiveScanRoots, settings.temporaryDirectory];
   if (!allowed.some((root) => isPathWithin(candidate, root))) {
     throw new Error("Local inspection is limited to configured Archive Assistant directories.");

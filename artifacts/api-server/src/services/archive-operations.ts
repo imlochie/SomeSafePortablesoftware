@@ -7,7 +7,7 @@ import {
   upsertLocalIdentity,
   invalidateArchiveInventoryCache,
 } from "./archive";
-import { getArchiveVolumes, isArchivePathWithin, type ArchiveVolume } from "./storage";
+import { getArchiveVolumes, isArchivePathWithin, moveFileIntoPlace, type ArchiveVolume } from "./storage";
 import { buildNamingProposals } from "./naming-intelligence";
 
 export const ARCHIVE_OPERATION_KINDS = ["rename", "move", "restructure"] as const;
@@ -509,7 +509,9 @@ export async function executeOperation(ownerId: string, operationId: number, set
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
 
-    await fs.rename(validated.sourcePath, validated.targetPath);
+    // A rename cannot cross a volume, and a staged file promoted onto a second
+    // drive is exactly that case; the helper keeps the atomic path when it can.
+    await moveFileIntoPlace(validated.sourcePath, validated.targetPath);
     relocateArchiveRecord(ownerId, validated.sourcePath, validated.targetPath);
     invalidateArchiveInventoryCache(ownerId);
 
@@ -563,7 +565,7 @@ export async function rollbackOperation(ownerId: string, operationId: number, se
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
 
-    await fs.rename(validated.sourcePath, validated.targetPath);
+    await moveFileIntoPlace(validated.sourcePath, validated.targetPath);
     relocateArchiveRecord(ownerId, validated.sourcePath, validated.targetPath);
     await removeEmptyDirectories(parseJsonArray(row.created_directories));
     invalidateArchiveInventoryCache(ownerId);

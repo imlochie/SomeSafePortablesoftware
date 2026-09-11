@@ -27,7 +27,7 @@
 
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { archiveDb, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { getArchiveVolumes, isArchivePathWithin } from "./storage";
 import { readArchiveInventory } from "./archive";
@@ -274,6 +274,12 @@ export async function readIntakeItems(ownerId: string, settings: SettingsRecord 
     } else if (duplicates.length > 0) {
       disposition = "already_in_archive";
       nextAction = "A byte-identical copy is already recorded in the archive. Resolve the duplicate finding first; intake never replaces media.";
+    } else if (targetPath && resolve(targetPath) === resolve(stagedPath)) {
+      // The download engine moves a verified file straight to its destination
+      // today, so the "promotion" it would need is a no-op. Reporting that as a
+      // blocked same-path mutation would read like a defect.
+      disposition = "already_in_archive";
+      nextAction = `Already at its archive destination (${stagedPath}); nothing needs to be promoted.`;
     } else if (!gate.legal) {
       disposition = "blocked";
       // The volume hint is only useful for the one rejection intake cannot fix:
