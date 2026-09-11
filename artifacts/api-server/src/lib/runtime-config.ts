@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 export type AuthMode = "local" | "clerk";
 
@@ -11,7 +12,7 @@ function parseAuthMode(value: string | undefined): AuthMode {
 function parsePort(value: string | undefined) {
   const normalized = value?.trim() || "8080";
   const port = Number(normalized);
-  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new Error(`Invalid PORT value: "${value}".`);
   }
   return port;
@@ -30,6 +31,7 @@ function configured(value: string | undefined, fallback: string) {
 
 export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
   const authMode = parseAuthMode(env.AUTH_MODE);
+  const archiveRoot = join(homedir(), "ARCHIVE");
   const developmentHostRequired =
     env.NODE_ENV !== "production" || env.REPL_ID !== undefined;
 
@@ -53,10 +55,10 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
       join(process.cwd(), "data", "archive-assistant.sqlite"),
     ),
     paths: {
-      data: configured(env.ARCHIVE_DATA_PATH, "~/ARCHIVE/data"),
-      downloads: configured(env.ARCHIVE_DOWNLOAD_PATH, "~/ARCHIVE/downloads"),
-      archive: configured(env.ARCHIVE_LIBRARY_PATH, "~/ARCHIVE/library"),
-      temporary: configured(env.ARCHIVE_TEMP_PATH, "~/ARCHIVE/tmp"),
+      data: configured(env.ARCHIVE_DATA_PATH, join(archiveRoot, "data")),
+      downloads: configured(env.ARCHIVE_DOWNLOAD_PATH, join(archiveRoot, "downloads")),
+      archive: configured(env.ARCHIVE_LIBRARY_PATH, join(archiveRoot, "library")),
+      temporary: configured(env.ARCHIVE_TEMP_PATH, join(archiveRoot, "tmp")),
     },
     tools: {
       ytDlp: configured(env.YT_DLP_PATH, "yt-dlp"),

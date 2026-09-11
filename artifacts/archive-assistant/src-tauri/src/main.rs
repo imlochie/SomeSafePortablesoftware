@@ -1,12 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
+    collections::VecDeque,
     env,
-    io::{Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    io::{BufRead, BufReader, Read, Write},
+    net::{SocketAddr, TcpStream},
     path::PathBuf,
-    process::{Child, Command, Stdio},
-    sync::Mutex,
+    process::{Child, ChildStderr, ChildStdout, Command, Stdio},
+    sync::{mpsc, Mutex},
     thread,
     time::{Duration, Instant},
 };
@@ -14,6 +15,8 @@ use std::{
 use tauri::{AppHandle, Manager, RunEvent, WebviewWindow};
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
+const READY_PREFIX: &str = "ARCHIVE_ASSISTANT_READY ";
+const DIAGNOSTIC_LINES: usize = 20;
 
 struct SidecarState {
     child: Mutex<Option<Child>>,
@@ -42,15 +45,6 @@ fn workspace_root() -> PathBuf {
         .join("../../..")
         .canonicalize()
         .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."))
-}
-
-fn choose_loopback_port() -> Result<u16, String> {
-    let listener = TcpListener::bind(("127.0.0.1", 0))
-        .map_err(|error| format!("Could not reserve a local API port: {error}"))?;
-    listener
-        .local_addr()
-        .map(|address| address.port())
-        .map_err(|error| format!("Could not read the reserved local API port: {error}"))
 }
 
 fn configured_path(name: &str, fallback: impl FnOnce() -> PathBuf) -> String {
@@ -84,23 +78,44 @@ fn api_entry_path(app: &AppHandle) -> PathBuf {
         .join("index.mjs")
 }
 
-fn node_command() -> String {
+fn node_command(app: &AppHandle) -> PathBuf {
+    if let Some(configured) = env::var_os("ARCHIVE_NODE_PATH").filter(|value| !value.is_empty()) {
+        return configured.into();
+    }
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let bundled = resource_dir.join("runtime").join("node.exe");
+        if bundled.exists() {
+            return bundled;
+        }
+    }
+
     env::var("ARCHIVE_NODE_PATH")
         .ok()
         .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
         .unwrap_or_else(|| {
             if cfg!(windows) {
-                "node.exe".to_string()
+                PathBuf::from("node.exe")
             } else {
-                "node".to_string()
+                PathBuf::from("node")
             }
         })
 }
 
-fn sidecar_command(app: &AppHandle, port: u16) -> Result<Command, String> {
+fn sidecar_command(app: &AppHandle) -> Result<Command, String> {
     let root = workspace_root();
+    let app_data = app
+        .path()
+        .app_local_data_dir()
+        .unwrap_or_else(|_| root.join("data"));
+    let archive_root = app
+        .path()
+        .home_dir()
+        .unwrap_or_else(|_| app_data.clone())
+        .join("ARCHIVE");
     let database_path = configured_path("ARCHIVE_DB_PATH", || {
-        root.join("data").join("archive-assistant.sqlite")
+        app_data.join("archive-assistant.sqlite")
     });
     let api_entry = api_entry_path(app);
     if !api_entry.exists() {
@@ -110,34 +125,30 @@ fn sidecar_command(app: &AppHandle, port: u16) -> Result<Command, String> {
         ));
     }
 
-    let mut command = Command::new(node_command());
+    let mut command = Command::new(node_command(app));
     command
         .arg("--enable-source-maps")
         .arg(api_entry)
         .env("NODE_ENV", "production")
         .env("AUTH_MODE", "local")
         .env("API_HOST", "127.0.0.1")
-        .env("PORT", port.to_string())
+        .env("PORT", "0")
         .env("ARCHIVE_DB_PATH", database_path)
         .env(
             "ARCHIVE_DATA_PATH",
-            configured_path("ARCHIVE_DATA_PATH", || PathBuf::from("~/ARCHIVE/data")),
+            configured_path("ARCHIVE_DATA_PATH", || archive_root.join("data")),
         )
         .env(
             "ARCHIVE_DOWNLOAD_PATH",
-            configured_path("ARCHIVE_DOWNLOAD_PATH", || {
-                PathBuf::from("~/ARCHIVE/downloads")
-            }),
+            configured_path("ARCHIVE_DOWNLOAD_PATH", || archive_root.join("downloads")),
         )
         .env(
             "ARCHIVE_LIBRARY_PATH",
-            configured_path("ARCHIVE_LIBRARY_PATH", || {
-                PathBuf::from("~/ARCHIVE/library")
-            }),
+            configured_path("ARCHIVE_LIBRARY_PATH", || archive_root.join("library")),
         )
         .env(
             "ARCHIVE_TEMP_PATH",
-            configured_path("ARCHIVE_TEMP_PATH", || PathBuf::from("~/ARCHIVE/tmp")),
+            configured_path("ARCHIVE_TEMP_PATH", || archive_root.join("tmp")),
         )
         .env(
             "YT_DLP_PATH",
@@ -156,8 +167,8 @@ fn sidecar_command(app: &AppHandle, port: u16) -> Result<Command, String> {
             configured_path("ARCHIVE_MOCK_MODE", || PathBuf::from("false")),
         )
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     #[cfg(windows)]
     {
@@ -213,6 +224,98 @@ fn wait_for_health(port: u16) -> Result<(), String> {
     ))
 }
 
+fn redact_diagnostic(line: &str) -> String {
+    let mut redacted = line.to_string();
+    for marker in [
+        "authorization",
+        "cookie",
+        "token",
+        "secret",
+        "password",
+        "api_key",
+        "apikey",
+    ] {
+        if let Some(index) = redacted.to_lowercase().find(marker) {
+            redacted.truncate(index + marker.len());
+            redacted.push_str("=[REDACTED]");
+            break;
+        }
+    }
+    if redacted.len() > 500 {
+        redacted.truncate(500);
+        redacted.push('…');
+    }
+    redacted
+}
+
+fn pipe_lines(
+    reader: impl Read + Send + 'static,
+    source: &'static str,
+    sender: mpsc::Sender<(String, String)>,
+) {
+    thread::spawn(move || {
+        for line in BufReader::new(reader).lines().map_while(Result::ok) {
+            let _ = sender.send((source.to_string(), line));
+        }
+    });
+}
+
+fn wait_for_ready(
+    child: &mut Child,
+    stdout: ChildStdout,
+    stderr: ChildStderr,
+) -> Result<(u16, String), String> {
+    let (sender, receiver) = mpsc::channel();
+    pipe_lines(stdout, "stdout", sender.clone());
+    pipe_lines(stderr, "stderr", sender);
+    let started = Instant::now();
+    let mut diagnostics = VecDeque::with_capacity(DIAGNOSTIC_LINES);
+
+    while started.elapsed() < HEALTH_TIMEOUT {
+        if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+            let detail = diagnostics.into_iter().collect::<Vec<_>>().join("\n");
+            return Err(format!(
+                "The local API exited before it was ready ({status}).{}",
+                if detail.is_empty() {
+                    String::new()
+                } else {
+                    format!("\nRecent diagnostics:\n{detail}")
+                }
+            ));
+        }
+        if let Ok((source, line)) = receiver.recv_timeout(Duration::from_millis(100)) {
+            if let Some(payload) = line.strip_prefix(READY_PREFIX) {
+                let value: serde_json::Value = serde_json::from_str(payload).map_err(|_| {
+                    "The local API returned an invalid readiness message.".to_string()
+                })?;
+                let port = value["port"]
+                    .as_u64()
+                    .and_then(|port| u16::try_from(port).ok())
+                    .filter(|port| *port > 0)
+                    .ok_or_else(|| {
+                        "The local API did not report a valid loopback port.".to_string()
+                    })?;
+                return Ok((port, diagnostics.into_iter().collect::<Vec<_>>().join("\n")));
+            }
+            if diagnostics.len() == DIAGNOSTIC_LINES {
+                diagnostics.pop_front();
+            }
+            diagnostics.push_back(format!("[{source}] {}", redact_diagnostic(&line)));
+        }
+    }
+
+    let detail = diagnostics.into_iter().collect::<Vec<_>>().join("\n");
+    Err(format!(
+        "The local API did not report readiness within {} seconds.{}",
+        HEALTH_TIMEOUT.as_secs(),
+        if detail.is_empty() {
+            String::new()
+        } else {
+            format!("\nRecent diagnostics:\n{detail}")
+        }
+    ))
+}
+
 fn show_startup_error(window: &WebviewWindow, message: &str) {
     let escaped =
         serde_json::to_string(message).unwrap_or_else(|_| "\"Unknown startup error\"".into());
@@ -224,12 +327,27 @@ fn show_startup_error(window: &WebviewWindow, message: &str) {
 }
 
 fn start_sidecar(app: &AppHandle, window: &WebviewWindow) -> Result<SidecarState, String> {
-    let port = choose_loopback_port()?;
-    let child = sidecar_command(app, port)?.spawn().map_err(|error| {
+    let mut child = sidecar_command(app)?.spawn().map_err(|error| {
         format!(
-            "Could not start the local Node API. Check ARCHIVE_NODE_PATH and the Node runtime: {error}"
+            "Could not start the bundled local API runtime. ARCHIVE_NODE_PATH may override it for diagnostics: {error}"
         )
     })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Could not capture local API output.".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Could not capture local API diagnostics.".to_string())?;
+    let port = match wait_for_ready(&mut child, stdout, stderr) {
+        Ok((port, _)) => port,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+    };
     let state = SidecarState::new(child);
 
     if let Err(error) = wait_for_health(port) {

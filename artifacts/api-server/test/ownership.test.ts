@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { chmod, mkdir, unlink, writeFile } from "node:fs/promises";
 import { after, describe, test } from "node:test";
@@ -59,6 +60,15 @@ describe("user ownership", { concurrency: false }, () => {
     assert.equal(local.localOwnerId, "__local__");
     assert.equal(local.host, "127.0.0.1");
     assert.equal(local.port, 9123);
+    assert.equal(local.paths.data, join(homedir(), "ARCHIVE", "data"));
+    assert.equal(local.paths.downloads, join(homedir(), "ARCHIVE", "downloads"));
+
+    const automaticPort = resolveRuntimeConfig({
+      AUTH_MODE: "local",
+      NODE_ENV: "production",
+      PORT: "0",
+    });
+    assert.equal(automaticPort.port, 0);
 
     const clerk = resolveRuntimeConfig({
       AUTH_MODE: "clerk",
