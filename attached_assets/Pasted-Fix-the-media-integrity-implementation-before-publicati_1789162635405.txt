@@ -1,0 +1,40 @@
+Fix the media-integrity implementation before publication. Do not merge to main and do not rewrite unrelated history.
+
+P1-1: Persisted classification readback
+- Add file_record.integrity_classification to the inventory SELECT.
+- Ensure FileRow is populated from SQLite rather than relying on reclassification.
+- Add a regression test where persisted classification intentionally differs from what the current raw error classifier would infer, proving the stored value wins.
+
+P1-2: Safe legacy file_record rebuild
+- Audit the legacy/ownership rebuild path in archive-db.ts.
+- Copy every compatible existing file_record column explicitly.
+- For columns absent from a legacy schema, build the projection dynamically rather than dropping unrelated metadata.
+- Preserve archive_item_id, filename/relative path, scan status, timestamps, FFprobe metadata, fingerprints, identity IDs, volume/root data, raw error messages, checksum, owner, and integrity classification where present.
+- Add a populated legacy-database migration test that verifies representative metadata, raw error, identity linkage, and integrity classification survive the rebuild.
+
+P1-3: Checksum failure semantics
+- Separate FFprobe inspection from checksum calculation.
+- A checksum/read failure must not leave the record treated as successfully inspected/active.
+- Ensure failed checksum work contributes to the archive health failure path.
+- Add regression coverage for successful FFprobe followed by checksum failure.
+
+Classification robustness
+- Preserve FFprobe/process-stage information separately from the formatted error string where practical.
+- Keep signature matching as a high-confidence fallback.
+- Add negative tests for missing executable, EACCES, timeout, malformed JSON, unsupported codec, inaccessible file, and unknown operational failures.
+- Avoid classifying generic operational/tooling messages as corrupt media.
+
+API/UI
+- Normalize unknown persisted integrity values to null/reclassify instead of allowing an unexpected enum value to cause a 500.
+- Keep schema/generated clients coherent.
+- Use distinct UI headings for media integrity versus inspection/operational failure.
+- Use a single consistent source for scan-failure card counts/colour.
+
+Constraints:
+- Do not change discovery, concurrency, reconciliation, identity matching, acquisition, download behaviour, or start.ps1.
+- No repair or deletion.
+- Keep ownership isolation intact.
+- Add tests for each fix.
+- Run full API tests, workspace typecheck, both production builds, and relevant smoke tests.
+- Commit on the current feature branch, not main.
+- Report the exact commit SHA and changed files.
