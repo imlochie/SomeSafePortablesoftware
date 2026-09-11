@@ -1427,6 +1427,309 @@ export const UpdateArchiveQualityFindingReviewResponse = zod.object({
 
 
 /**
+ * Read-only projection that joins download jobs to the archive inventory.
+ * Each item carries what the archive already knows about the staged file -
+ * checksum evidence, encode verdicts, byte-identical copies, normalized
+ * reconciliation state, the matching acquisition need, and the naming
+ * proposal - plus whether the journaled mutation machinery would allow
+ * promoting it. Intake never moves or deletes media.
+ * @summary List finished downloads awaiting archive intake review
+ */
+export const GetArchiveIntakeResponse = zod.object({
+  "items": zod.array(zod.object({
+  "jobId": zod.number(),
+  "jobStatus": zod.string(),
+  "verification": zod.string(),
+  "title": zod.string(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "completedAt": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "stagedPath": zod.string(),
+  "fileExists": zod.boolean(),
+  "fileRecordId": zod.number().nullable(),
+  "sizeBytes": zod.number().nullable(),
+  "modifiedAtMs": zod.number().nullable(),
+  "checksum": zod.string().nullable(),
+  "checksumStatus": zod.string().nullable(),
+  "insideArchiveVolume": zod.boolean(),
+  "qualitySummary": zod.string().nullable(),
+  "qualityFindings": zod.array(zod.object({
+  "key": zod.string(),
+  "kind": zod.string(),
+  "severity": zod.string(),
+  "headline": zod.string(),
+  "reviewStatus": zod.string(),
+  "counterpartFileRecordId": zod.number().nullable()
+})),
+  "duplicates": zod.array(zod.object({
+  "fileRecordId": zod.number(),
+  "path": zod.string(),
+  "filename": zod.string(),
+  "exact": zod.boolean()
+})),
+  "reconciliation": zod.union([zod.object({
+  "archiveState": zod.string(),
+  "presentCount": zod.number(),
+  "expectedCount": zod.number(),
+  "identityKey": zod.string().nullable()
+}),zod.null()]),
+  "acquisition": zod.union([zod.object({
+  "findingId": zod.number(),
+  "recommendationStatus": zod.string(),
+  "priority": zod.string(),
+  "reviewStatus": zod.string()
+}),zod.null()]),
+  "namingProposal": zod.union([zod.object({
+  "fileRecordId": zod.number(),
+  "proposedPath": zod.string().nullable(),
+  "patternId": zod.string(),
+  "confidence": zod.string(),
+  "operation": zod.string(),
+  "decisionStatus": zod.string().nullable(),
+  "collision": zod.boolean()
+}),zod.null()]),
+  "proposedTargetPath": zod.string().nullable(),
+  "gate": zod.object({
+  "legal": zod.boolean(),
+  "code": zod.string().nullable(),
+  "reason": zod.string().nullable()
+}),
+  "disposition": zod.enum(['file_missing', 'not_inventoried', 'already_in_archive', 'blocked', 'promotable']),
+  "nextAction": zod.string()
+})),
+  "summary": zod.object({
+  "total": zod.number(),
+  "promotable": zod.number(),
+  "blocked": zod.number(),
+  "alreadyInArchive": zod.number(),
+  "awaitingInventory": zod.number(),
+  "fileMissing": zod.number(),
+  "withFindings": zod.number()
+})
+})
+
+
+/**
+ * Creates an archive operation in status `proposed` and returns a full dry
+ * run of it. Nothing is written to the filesystem by this call. It fails
+ * with 400 when the item is missing, unverified, already present, or when
+ * the staged path is outside the configured archive volumes, so a blocked
+ * promotion stays visible instead of being worked around.
+ * @summary Journal a proposed promotion for one staged download
+ */
+
+
+
+export const PlanArchiveIntakePromotionParams = zod.object({
+  "jobId": zod.coerce.number().min(1)
+})
+
+export const PlanArchiveIntakePromotionResponse = zod.object({
+  "item": zod.object({
+  "jobId": zod.number(),
+  "jobStatus": zod.string(),
+  "verification": zod.string(),
+  "title": zod.string(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "completedAt": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "stagedPath": zod.string(),
+  "fileExists": zod.boolean(),
+  "fileRecordId": zod.number().nullable(),
+  "sizeBytes": zod.number().nullable(),
+  "modifiedAtMs": zod.number().nullable(),
+  "checksum": zod.string().nullable(),
+  "checksumStatus": zod.string().nullable(),
+  "insideArchiveVolume": zod.boolean(),
+  "qualitySummary": zod.string().nullable(),
+  "qualityFindings": zod.array(zod.object({
+  "key": zod.string(),
+  "kind": zod.string(),
+  "severity": zod.string(),
+  "headline": zod.string(),
+  "reviewStatus": zod.string(),
+  "counterpartFileRecordId": zod.number().nullable()
+})),
+  "duplicates": zod.array(zod.object({
+  "fileRecordId": zod.number(),
+  "path": zod.string(),
+  "filename": zod.string(),
+  "exact": zod.boolean()
+})),
+  "reconciliation": zod.union([zod.object({
+  "archiveState": zod.string(),
+  "presentCount": zod.number(),
+  "expectedCount": zod.number(),
+  "identityKey": zod.string().nullable()
+}),zod.null()]),
+  "acquisition": zod.union([zod.object({
+  "findingId": zod.number(),
+  "recommendationStatus": zod.string(),
+  "priority": zod.string(),
+  "reviewStatus": zod.string()
+}),zod.null()]),
+  "namingProposal": zod.union([zod.object({
+  "fileRecordId": zod.number(),
+  "proposedPath": zod.string().nullable(),
+  "patternId": zod.string(),
+  "confidence": zod.string(),
+  "operation": zod.string(),
+  "decisionStatus": zod.string().nullable(),
+  "collision": zod.boolean()
+}),zod.null()]),
+  "proposedTargetPath": zod.string().nullable(),
+  "gate": zod.object({
+  "legal": zod.boolean(),
+  "code": zod.string().nullable(),
+  "reason": zod.string().nullable()
+}),
+  "disposition": zod.enum(['file_missing', 'not_inventoried', 'already_in_archive', 'blocked', 'promotable']),
+  "nextAction": zod.string()
+}),
+  "operation": zod.union([zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['rename', 'move', 'restructure']),
+  "status": zod.enum(['proposed', 'approved', 'queued', 'running', 'succeeded', 'failed', 'rolled_back']),
+  "sourcePath": zod.string(),
+  "targetPath": zod.string(),
+  "fileRecordId": zod.number().nullable(),
+  "sourceEvidenceKey": zod.string().nullable(),
+  "proposalEvidence": zod.record(zod.string(), zod.unknown()),
+  "expectedSizeBytes": zod.number().nullable(),
+  "expectedModifiedAtMs": zod.number().nullable(),
+  "createdDirectories": zod.array(zod.string()),
+  "error": zod.string().nullable(),
+  "appliedAt": zod.string().nullable(),
+  "rolledBackAt": zod.string().nullable(),
+  "rollbackAvailable": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).describe('Durable, owner-scoped journal entry for one filesystem mutation.\nSource and target are confined to configured archive volumes; the\nevidence snapshot plus expected size\/mtime make the change auditable,\nand successful entries carry enough information to roll the mutation\nback.\n'),zod.null()]),
+  "plan": zod.union([zod.object({
+  "ok": zod.boolean(),
+  "kind": zod.enum(['rename', 'move', 'restructure']),
+  "sourcePath": zod.string().nullable(),
+  "targetPath": zod.string().nullable(),
+  "checks": zod.array(zod.object({
+  "step": zod.string(),
+  "ok": zod.boolean(),
+  "message": zod.string()
+}))
+}),zod.null()]),
+  "planError": zod.string().nullable()
+})
+
+
+/**
+ * Executes the planned operation through the archive journal: it revalidates
+ * paths against current settings, rechecks the expected size and
+ * modification evidence, refuses to overwrite anything, relocates the
+ * archive record, and leaves a rollback entry behind. Applying an operation
+ * whose staged file or proposed destination changed is refused.
+ * @summary Apply a planned intake promotion
+ */
+
+
+
+export const ApplyArchiveIntakePromotionParams = zod.object({
+  "jobId": zod.coerce.number().min(1)
+})
+
+
+
+
+export const ApplyArchiveIntakePromotionBody = zod.object({
+  "operationId": zod.number().min(1)
+})
+
+export const ApplyArchiveIntakePromotionResponse = zod.object({
+  "operation": zod.object({
+  "id": zod.number(),
+  "kind": zod.enum(['rename', 'move', 'restructure']),
+  "status": zod.enum(['proposed', 'approved', 'queued', 'running', 'succeeded', 'failed', 'rolled_back']),
+  "sourcePath": zod.string(),
+  "targetPath": zod.string(),
+  "fileRecordId": zod.number().nullable(),
+  "sourceEvidenceKey": zod.string().nullable(),
+  "proposalEvidence": zod.record(zod.string(), zod.unknown()),
+  "expectedSizeBytes": zod.number().nullable(),
+  "expectedModifiedAtMs": zod.number().nullable(),
+  "createdDirectories": zod.array(zod.string()),
+  "error": zod.string().nullable(),
+  "appliedAt": zod.string().nullable(),
+  "rolledBackAt": zod.string().nullable(),
+  "rollbackAvailable": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).describe('Durable, owner-scoped journal entry for one filesystem mutation.\nSource and target are confined to configured archive volumes; the\nevidence snapshot plus expected size\/mtime make the change auditable,\nand successful entries carry enough information to roll the mutation\nback.\n'),
+  "item": zod.union([zod.object({
+  "jobId": zod.number(),
+  "jobStatus": zod.string(),
+  "verification": zod.string(),
+  "title": zod.string(),
+  "sourceUrl": zod.string(),
+  "sourceSite": zod.string().nullable(),
+  "completedAt": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "stagedPath": zod.string(),
+  "fileExists": zod.boolean(),
+  "fileRecordId": zod.number().nullable(),
+  "sizeBytes": zod.number().nullable(),
+  "modifiedAtMs": zod.number().nullable(),
+  "checksum": zod.string().nullable(),
+  "checksumStatus": zod.string().nullable(),
+  "insideArchiveVolume": zod.boolean(),
+  "qualitySummary": zod.string().nullable(),
+  "qualityFindings": zod.array(zod.object({
+  "key": zod.string(),
+  "kind": zod.string(),
+  "severity": zod.string(),
+  "headline": zod.string(),
+  "reviewStatus": zod.string(),
+  "counterpartFileRecordId": zod.number().nullable()
+})),
+  "duplicates": zod.array(zod.object({
+  "fileRecordId": zod.number(),
+  "path": zod.string(),
+  "filename": zod.string(),
+  "exact": zod.boolean()
+})),
+  "reconciliation": zod.union([zod.object({
+  "archiveState": zod.string(),
+  "presentCount": zod.number(),
+  "expectedCount": zod.number(),
+  "identityKey": zod.string().nullable()
+}),zod.null()]),
+  "acquisition": zod.union([zod.object({
+  "findingId": zod.number(),
+  "recommendationStatus": zod.string(),
+  "priority": zod.string(),
+  "reviewStatus": zod.string()
+}),zod.null()]),
+  "namingProposal": zod.union([zod.object({
+  "fileRecordId": zod.number(),
+  "proposedPath": zod.string().nullable(),
+  "patternId": zod.string(),
+  "confidence": zod.string(),
+  "operation": zod.string(),
+  "decisionStatus": zod.string().nullable(),
+  "collision": zod.boolean()
+}),zod.null()]),
+  "proposedTargetPath": zod.string().nullable(),
+  "gate": zod.object({
+  "legal": zod.boolean(),
+  "code": zod.string().nullable(),
+  "reason": zod.string().nullable()
+}),
+  "disposition": zod.enum(['file_missing', 'not_inventoried', 'already_in_archive', 'blocked', 'promotable']),
+  "nextAction": zod.string()
+}),zod.null()])
+})
+
+
+/**
  * @summary Inspect a media URL without downloading it
  */
 export const inspectMediaSourceBodyUrlMin = 8;

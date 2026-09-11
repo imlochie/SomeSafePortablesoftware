@@ -7,6 +7,7 @@ import mediaRouter from "./media";
 import downloadsRouter from "./downloads";
 import archiveRouter from "./archive";
 import acquisitionRouter from "./acquisition";
+import intakeRouter from "./intake";
 
 import integrationsRouter from "./integrations";
 
@@ -21,5 +22,6 @@ router.use(mediaRouter);
 router.use(downloadsRouter);
 router.use(archiveRouter);
 router.use(acquisitionRouter);
+router.use(intakeRouter);
 
 export default router;
