@@ -698,7 +698,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [exact_duplicate, probable_duplicate, lower_quality_duplicate, superior_encode, materially_different_encode, conflicting_quality_metadata, missing_technical_metadata]
+            enum: [exact_duplicate, probable_duplicate, lower_quality_duplicate, superior_encode, materially_different_encode, duration_mismatch, conflicting_quality_metadata, missing_technical_metadata]
         - name: confidence
           in: query
           schema:
@@ -3054,7 +3054,7 @@ components:
           type: [string, "null"]
         kind:
           type: string
-          enum: [exact_duplicate, probable_duplicate, lower_quality_duplicate, superior_encode, materially_different_encode, conflicting_quality_metadata, missing_technical_metadata]
+          enum: [exact_duplicate, probable_duplicate, lower_quality_duplicate, superior_encode, materially_different_encode, duration_mismatch, conflicting_quality_metadata, missing_technical_metadata]
         relationship:
           type: string
           enum: [exact_duplicate, probable_duplicate, equivalent, superior_encode, inferior_encode, materially_different_encode, different_media, insufficient_metadata]
@@ -3112,7 +3112,7 @@ components:
           description: Fixed value; the quality layer never proposes a destructive action.
     ArchiveQualityFindingSummary:
       type: object
-      required: [total, exactDuplicateCount, probableDuplicateCount, lowerQualityCount, superiorCount, materialDifferenceCount, conflictingMetadataCount, missingMetadataCount, unreviewedCount, reviewedCount, affectedFiles]
+      required: [total, exactDuplicateCount, probableDuplicateCount, lowerQualityCount, superiorCount, materialDifferenceCount, durationMismatchCount, conflictingMetadataCount, missingMetadataCount, unreviewedCount, reviewedCount, affectedFiles]
       properties:
         total:
           type: number
@@ -3132,6 +3132,10 @@ components:
         materialDifferenceCount:
           type: number
           minimum: 0
+        durationMismatchCount:
+          type: number
+          minimum: 0
+          description: Pairs grouped as one item whose runtimes differ beyond the re-encode tolerance; questions the identity match, not the encode.
         conflictingMetadataCount:
           type: number
           minimum: 0
@@ -3211,7 +3215,7 @@ components:
           minimum: 1
         kind:
           type: string
-          enum: [exact_duplicate, probable_duplicate, lower_quality_duplicate, superior_encode, materially_different_encode, conflicting_quality_metadata, missing_technical_metadata]
+          enum: [exact_duplicate, probable_duplicate, lower_quality_duplicate, superior_encode, materially_different_encode, duration_mismatch, conflicting_quality_metadata, missing_technical_metadata]
         evidenceKey:
           type: string
           minLength: 8

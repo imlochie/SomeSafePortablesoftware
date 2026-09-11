@@ -19,6 +19,11 @@ export interface ArchiveQualityFindingSummary {
   superiorCount: number;
   /** @minimum 0 */
   materialDifferenceCount: number;
+  /**
+     * Pairs grouped as one item whose runtimes differ beyond the re-encode tolerance; questions the identity match, not the encode.
+     * @minimum 0
+     */
+  durationMismatchCount: number;
   /** @minimum 0 */
   conflictingMetadataCount: number;
   /** @minimum 0 */

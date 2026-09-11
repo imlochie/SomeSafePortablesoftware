@@ -1839,6 +1839,7 @@ export const ArchiveQualityFindingKind = {
   lower_quality_duplicate: 'lower_quality_duplicate',
   superior_encode: 'superior_encode',
   materially_different_encode: 'materially_different_encode',
+  duration_mismatch: 'duration_mismatch',
   conflicting_quality_metadata: 'conflicting_quality_metadata',
   missing_technical_metadata: 'missing_technical_metadata',
 } as const;
@@ -1965,6 +1966,11 @@ export interface ArchiveQualityFindingSummary {
   superiorCount: number;
   /** @minimum 0 */
   materialDifferenceCount: number;
+  /**
+     * Pairs grouped as one item whose runtimes differ beyond the re-encode tolerance; questions the identity match, not the encode.
+     * @minimum 0
+     */
+  durationMismatchCount: number;
   /** @minimum 0 */
   conflictingMetadataCount: number;
   /** @minimum 0 */
@@ -2023,6 +2029,7 @@ export const ArchiveQualityFindingReviewUpdateKind = {
   lower_quality_duplicate: 'lower_quality_duplicate',
   superior_encode: 'superior_encode',
   materially_different_encode: 'materially_different_encode',
+  duration_mismatch: 'duration_mismatch',
   conflicting_quality_metadata: 'conflicting_quality_metadata',
   missing_technical_metadata: 'missing_technical_metadata',
 } as const;
@@ -2546,6 +2553,7 @@ export const GetArchiveQualityFindingsKind = {
   lower_quality_duplicate: 'lower_quality_duplicate',
   superior_encode: 'superior_encode',
   materially_different_encode: 'materially_different_encode',
+  duration_mismatch: 'duration_mismatch',
   conflicting_quality_metadata: 'conflicting_quality_metadata',
   missing_technical_metadata: 'missing_technical_metadata',
 } as const;
