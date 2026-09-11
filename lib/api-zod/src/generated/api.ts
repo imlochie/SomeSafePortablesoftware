@@ -9,6 +9,86 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary List owner-scoped status and implemented, planned, and available capabilities
+ */
+export const ListIntegrationsResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "enabled": zod.boolean(),
+  "configured": zod.boolean(),
+  "state": zod.enum(['not_configured', 'configured', 'connected', 'disconnected', 'unavailable']),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "capabilities": zod.array(zod.enum(['media_host_inventory', 'search_source', 'availability_lookup', 'acquisition_request', 'download_status', 'completed_item_notification', 'request_ingestion'])),
+  "plannedCapabilities": zod.array(zod.enum(['media_host_inventory', 'search_source', 'availability_lookup', 'acquisition_request', 'download_status', 'completed_item_notification', 'request_ingestion'])),
+  "availableCapabilities": zod.array(zod.enum(['media_host_inventory', 'search_source', 'availability_lookup', 'acquisition_request', 'download_status', 'completed_item_notification', 'request_ingestion']))
+})
+export const ListIntegrationsResponse = zod.array(ListIntegrationsResponseItem)
+
+
+/**
+ * @summary Set owner-scoped enablement; provider credentials remain on existing provider configuration endpoints
+ */
+export const UpdateIntegrationConfigParams = zod.object({
+  "integrationId": zod.coerce.string()
+})
+
+export const UpdateIntegrationConfigBody = zod.object({
+  "enabled": zod.boolean()
+})
+
+export const UpdateIntegrationConfigResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "enabled": zod.boolean(),
+  "configured": zod.boolean(),
+  "state": zod.enum(['not_configured', 'configured', 'connected', 'disconnected', 'unavailable']),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "capabilities": zod.array(zod.enum(['media_host_inventory', 'search_source', 'availability_lookup', 'acquisition_request', 'download_status', 'completed_item_notification', 'request_ingestion'])),
+  "plannedCapabilities": zod.array(zod.enum(['media_host_inventory', 'search_source', 'availability_lookup', 'acquisition_request', 'download_status', 'completed_item_notification', 'request_ingestion'])),
+  "availableCapabilities": zod.array(zod.enum(['media_host_inventory', 'search_source', 'availability_lookup', 'acquisition_request', 'download_status', 'completed_item_notification', 'request_ingestion']))
+})
+
+
+/**
+ * @summary Explicitly check connection; disabled and unconfigured providers perform no network work
+ */
+export const TestIntegrationConnectionParams = zod.object({
+  "integrationId": zod.coerce.string()
+})
+
+export const TestIntegrationConnectionResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "enabled": zod.boolean(),
+  "configured": zod.boolean(),
+  "state": zod.enum(['not_configured', 'configured', 'connected', 'disconnected', 'unavailable']),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "capabilities": zod.array(zod.enum(['media_host_inventory', 'search_source', 'availability_lookup', 'acquisition_request', 'download_status', 'completed_item_notification', 'request_ingestion'])),
+  "plannedCapabilities": zod.array(zod.enum(['media_host_inventory', 'search_source', 'availability_lookup', 'acquisition_request', 'download_status', 'completed_item_notification', 'request_ingestion'])),
+  "availableCapabilities": zod.array(zod.enum(['media_host_inventory', 'search_source', 'availability_lookup', 'acquisition_request', 'download_status', 'completed_item_notification', 'request_ingestion']))
+})
+
+
+/**
+ * @summary Read normalized cached inventory without contacting external services
+ */
+export const GetIntegrationInventoryParams = zod.object({
+  "integrationId": zod.coerce.string()
+})
+
+export const GetIntegrationInventoryResponse = zod.object({
+  "cached": zod.literal(true),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "items": zod.array(zod.object({
+  "id": zod.string().describe('Opaque integration-local reference'),
+  "title": zod.string(),
+  "kind": zod.enum(['movie', 'show', 'episode', 'other']),
+  "year": zod.number().nullable()
+}))
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

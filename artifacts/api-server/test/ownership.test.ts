@@ -1,3 +1,6 @@
+import "./integrations.test";
+import { integrations } from "../src/integrations";
+import { GetIntegrationInventoryResponse } from "@workspace/api-zod";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
@@ -299,6 +302,16 @@ describe("user ownership", { concurrency: false }, () => {
       assert.ok(firstConfig.lastAttemptedAt);
       assert.ok(firstConfig.lastSuccessfulSyncAt);
 
+      // Exercise the real Plex transport through the generic adapter against the test-only server.
+      assert.equal((await integrations.testConnection(ownerA, "plex")).state, "connected");
+      const normalized = GetIntegrationInventoryResponse.parse(await integrations.execute(ownerA, "plex", "media_host_inventory"));
+      assert.equal(normalized.items.length, 2);
+      assert.equal(normalized.cached, true);
+      assert.ok(normalized.lastSuccessfulSyncAt);
+      assert.deepEqual(Object.keys(normalized.items[0]).sort(), ["id", "kind", "title", "year"]);
+      assert.doesNotMatch(JSON.stringify(normalized), /ratingKey|serverUrl|valid-token|MediaContainer/);
+      assert.deepEqual((await integrations.execute(ownerB, "plex", "media_host_inventory")).items, []);
+
       const firstInventory = readPlexInventory(ownerA);
       assert.equal(firstInventory.libraries.length, 1);
       assert.equal(firstInventory.items.length, 2);
@@ -314,6 +327,8 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(connectionAfterSync.status, "connection_failed");
       assert.equal(connectionAfterSync.connectionStatus, "connection_failed");
       assert.equal(connectionAfterSync.syncStatus, "synced");
+      assert.equal(integrations.describe(ownerA, "plex").state, "disconnected");
+      assert.equal((await integrations.execute(ownerA, "plex", "media_host_inventory")).items.length, 2);
       failIdentity = false;
       assert.equal((await testPlexConnection(ownerA)).connectionStatus, "connected");
 

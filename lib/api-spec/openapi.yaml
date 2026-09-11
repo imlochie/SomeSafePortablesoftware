@@ -23,6 +23,200 @@ tags:
   - name: archive
     description: Local archive inventory and media intelligence
 paths:
+  /integrations:
+    get:
+      operationId: listIntegrations
+      tags: [integrations]
+      summary: List owner-scoped status and implemented, planned, and available capabilities
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationDescriptor"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "404":
+          description: Unknown integration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "409":
+          description: Capability disabled, unsupported, or not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "503":
+          description: Integration unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+  /integrations/{integrationId}/config:
+    patch:
+      operationId: updateIntegrationConfig
+      tags: [integrations]
+      summary: Set owner-scoped enablement; provider credentials remain on existing provider configuration endpoints
+      parameters:
+        - in: path
+          name: integrationId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationConfigUpdate"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationDescriptor"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "404":
+          description: Unknown integration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "409":
+          description: Capability disabled, unsupported, or not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "503":
+          description: Integration unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+  /integrations/{integrationId}/test-connection:
+    post:
+      operationId: testIntegrationConnection
+      tags: [integrations]
+      summary: Explicitly check connection; disabled and unconfigured providers perform no network work
+      parameters:
+        - in: path
+          name: integrationId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationDescriptor"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "404":
+          description: Unknown integration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "409":
+          description: Capability disabled, unsupported, or not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "503":
+          description: Integration unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+  /integrations/{integrationId}/inventory:
+    get:
+      operationId: getIntegrationInventory
+      tags: [integrations]
+      summary: Read normalized cached inventory without contacting external services
+      parameters:
+        - in: path
+          name: integrationId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationInventory"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "404":
+          description: Unknown integration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "409":
+          description: Capability disabled, unsupported, or not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
+        "503":
+          description: Integration unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationErrorResponse"
   /healthz:
     get:
       operationId: healthCheck
@@ -2013,3 +2207,76 @@ components:
           type: string
 
 
+
+    IntegrationCapability:
+      type: string
+      enum: [media_host_inventory, search_source, availability_lookup, acquisition_request, download_status, completed_item_notification, request_ingestion]
+    IntegrationConfigUpdate:
+      type: object
+      additionalProperties: false
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+    IntegrationErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    IntegrationDescriptor:
+      type: object
+      required: [id, name, enabled, state, configured, lastSuccessfulSyncAt, capabilities, plannedCapabilities, availableCapabilities]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        configured:
+          type: boolean
+        state:
+          type: string
+          enum: [not_configured, configured, connected, disconnected, unavailable]
+        lastSuccessfulSyncAt:
+          type: [string, "null"]
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationCapability"
+        plannedCapabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationCapability"
+        availableCapabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationCapability"
+    IntegrationInventory:
+      type: object
+      required: [items, cached, lastSuccessfulSyncAt]
+      properties:
+        cached:
+          type: boolean
+          enum: [true]
+        lastSuccessfulSyncAt:
+          type: [string, "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationMediaItem"
+    IntegrationMediaItem:
+      type: object
+      required: [id, title, kind, year]
+      properties:
+        id:
+          type: string
+          description: Opaque integration-local reference
+        title:
+          type: string
+        kind:
+          type: string
+          enum: [movie, show, episode, other]
+        year:
+          type: [number, "null"]

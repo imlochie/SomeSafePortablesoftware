@@ -122,6 +122,8 @@ try {
     platform: "node",
     target: "node22",
     outfile: outputFile,
+    // Express route tests bundle CommonJS dependencies into ESM, like the server build.
+    banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
     sourcemap: "inline",
     logLevel: "warning",
   });
@@ -134,6 +136,7 @@ try {
         stdio: "inherit",
         env: {
           ...process.env,
+          AUTH_MODE: "local",
           ARCHIVE_DB_PATH: databaseFile,
           ARCHIVE_TEST_ROOT: testDir,
         },
