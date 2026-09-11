@@ -453,8 +453,15 @@ export async function inspectMediaSource(url: string, settings: SettingsRecord, 
     cacheKey,
   ], { timeout: 60_000, maxBuffer: 25 * 1024 * 1024 });
   const rawInfo = JSON.parse(stdout) as Record<string, unknown>;
+  const value = rawInfoToInspection(cacheKey, rawInfo);
+  inspectionCache.set(cacheKey, { expiresAt: Date.now() + settings.inspectionCacheMinutes * 60_000, value });
+  return value;
+}
+
+/** Shared normalization for one yt-dlp info object (single video or playlist entry). */
+function rawInfoToInspection(url: string, rawInfo: Record<string, unknown>): MediaInspection {
   const rawFormats = Array.isArray(rawInfo.formats) ? rawInfo.formats as RawFormat[] : [];
-  const value = buildInspection(cacheKey, rawFormats, {
+  return buildInspection(url, rawFormats, {
     title: stringOrNull(rawInfo.title) ?? "Untitled media",
     uploader: stringOrNull(rawInfo.uploader),
     channel: stringOrNull(rawInfo.channel),
@@ -462,12 +469,64 @@ export async function inspectMediaSource(url: string, settings: SettingsRecord, 
     durationSeconds: numberOrNull(rawInfo.duration),
     uploadDate: stringOrNull(rawInfo.upload_date),
     thumbnailUrl: stringOrNull(rawInfo.thumbnail),
-    webpageUrl: stringOrNull(rawInfo.webpage_url) ?? cacheKey,
+    webpageUrl: stringOrNull(rawInfo.webpage_url) ?? url,
     extractor: stringOrNull(rawInfo.extractor_key ?? rawInfo.extractor),
     sourceId: stringOrNull(rawInfo.id),
     playlistTitle: stringOrNull(rawInfo.playlist_title),
     playlistIndex: numberOrNull(rawInfo.playlist_index),
   }, false);
+}
+
+/**
+ * Playlist-aware variant of the same yt-dlp inspection path: without
+ * `--no-playlist`, yt-dlp reports the containing playlist with one info object
+ * per entry. Each entry is normalized through the identical pipeline, so media
+ * candidates and the /media/inspect endpoint can never disagree about what a
+ * source contains. Entries are capped to keep planning bounded.
+ */
+export const PLAYLIST_ENTRY_LIMIT = 50;
+
+export type MediaSourceInspection = MediaInspection & {
+  entries: Array<MediaInspection & { entryUrl: string }>;
+};
+
+export async function inspectMediaSourceEntries(url: string, settings: SettingsRecord, forceRefresh = false): Promise<MediaSourceInspection> {
+  const parsedUrl = validateSourceUrl(url);
+  const cacheKey = `entries:${parsedUrl.toString()}`;
+  const cached = inspectionCache.get(cacheKey);
+  if (!forceRefresh && cached && cached.expiresAt > Date.now()) return cached.value as MediaSourceInspection;
+
+  const { ytDlp } = getLocalToolPaths(settings);
+  const { stdout } = await execFileAsync(ytDlp, [
+    "--dump-single-json",
+    "--skip-download",
+    "--no-warnings",
+    parsedUrl.toString(),
+  ], { timeout: 120_000, maxBuffer: 25 * 1024 * 1024 });
+  const rawInfo = JSON.parse(stdout) as Record<string, unknown>;
+
+  const rawEntries = Array.isArray(rawInfo.entries) ? rawInfo.entries as Array<Record<string, unknown>> : [];
+  if (!rawEntries.length) {
+    // A plain video URL: the payload itself is the single entry.
+    const value = { ...rawInfoToInspection(parsedUrl.toString(), rawInfo), entries: [] };
+    const single: MediaSourceInspection = {
+      ...value,
+      entries: [{ ...value, entryUrl: stringOrNull(rawInfo.webpage_url) ?? parsedUrl.toString() }],
+    };
+    inspectionCache.set(cacheKey, { expiresAt: Date.now() + settings.inspectionCacheMinutes * 60_000, value: single });
+    return single;
+  }
+
+  const container = rawInfoToInspection(parsedUrl.toString(), { ...rawInfo, formats: [] });
+  const entries = rawEntries.slice(0, PLAYLIST_ENTRY_LIMIT).map((entry, index) => {
+    const entryUrl = stringOrNull(entry.webpage_url ?? entry.url) ?? `${parsedUrl.toString()}#entry=${index + 1}`;
+    return { ...rawInfoToInspection(entryUrl, entry), entryUrl };
+  });
+  const value: MediaSourceInspection = {
+    ...container,
+    metadata: { ...container.metadata, title: container.metadata.title ?? "Untitled playlist" },
+    entries,
+  };
   inspectionCache.set(cacheKey, { expiresAt: Date.now() + settings.inspectionCacheMinutes * 60_000, value });
   return value;
 }

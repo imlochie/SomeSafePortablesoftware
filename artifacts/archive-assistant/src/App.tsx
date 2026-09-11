@@ -27,9 +27,11 @@ import {
   getGetAcquisitionFindingsQueryKey,
   useGetAcquisitionFindings,
   useRefreshAcquisitionIntelligence,
+  useCreateAcquisitionPlan, useApproveAcquisitionPlan, useRejectAcquisitionPlan, useExecuteAcquisitionPlan,
+  useListAcquisitionPlans, getListAcquisitionPlansQueryKey, getGetAcquisitionPlanQueryKey, useGetAcquisitionPlan,
   setBaseUrl,
 } from '@workspace/api-client-react';
-import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent, GetAcquisitionFindingsParams } from '@workspace/api-client-react';
+import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent, GetAcquisitionFindingsParams, AcquisitionPlan } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -1267,6 +1269,120 @@ function acquisitionQualityLabel(quality: { height: number | null; hdr: boolean;
   return `${resolution}${hdr}${codecs ? ` / ${codecs}` : ''}`;
 }
 
+function planTrustTone(state: string) {
+  if (state === 'trusted' || state === 'user_approved') return 'bg-[#eaf3ef] text-[#39736e]';
+  if (state === 'blocked') return 'bg-[#f9e5e1] text-[#994b43]';
+  if (state === 'unsupported') return 'bg-[#fff0c9] text-[#8d681d]';
+  return 'bg-[#f1e6d8] text-[#8d681d]';
+}
+
+/** URL → Archive planner: deterministic, API-driven vertical slice. */
+function AcquisitionPlannerPanel() {
+  const queryClient = useQueryClient();
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [note, setNote] = useState('');
+  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null);
+  const [planNotice, setPlanNotice] = useState('');
+
+  const plansQuery = useListAcquisitionPlans();
+  const planQuery = useGetAcquisitionPlan(selectedPlanId ?? 0, {
+    query: {
+      queryKey: getGetAcquisitionPlanQueryKey(selectedPlanId ?? 0),
+      enabled: selectedPlanId !== null,
+      refetchInterval: 3000,
+    },
+  });
+  const createPlan = useCreateAcquisitionPlan();
+  const approvePlan = useApproveAcquisitionPlan();
+  const rejectPlan = useRejectAcquisitionPlan();
+  const executePlan = useExecuteAcquisitionPlan();
+
+  const plans = plansQuery.data?.results ?? [];
+  const plan: AcquisitionPlan | undefined = selectedPlanId !== null ? planQuery.data : undefined;
+  const refreshPlans = () => queryClient.invalidateQueries({ queryKey: getListAcquisitionPlansQueryKey() });
+  const refreshPlan = (id: number) => queryClient.invalidateQueries({ queryKey: getGetAcquisitionPlanQueryKey(id) });
+
+  const handleCreate = () => {
+    setPlanNotice('');
+    createPlan.mutate({ data: { sourceUrl: sourceUrl.trim(), note: note.trim() || null } }, {
+      onSuccess: (created) => {
+        setSelectedPlanId(created.id);
+        setNote('');
+        refreshPlans();
+      },
+      onError: (error) => setPlanNotice(error.message || 'The source could not be planned.'),
+    });
+  };
+  const planAction = (
+    mutation: { mutate: (variables: { id: number }, options?: { onSuccess?: () => void; onError?: (error: Error) => void }) => void },
+    id: number,
+  ) => mutation.mutate({ id }, {
+    onSuccess: () => { refreshPlan(id); refreshPlans(); },
+    onError: (error) => setPlanNotice(error.message || 'The plan action failed.'),
+  });
+
+  return <section className="archive-panel mb-6 p-5 md:p-6" data-testid="panel-acquisition-planner">
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">URL → ARCHIVE PLANNER</div>
+        <h2 className="archive-display mt-1 text-xl font-extrabold text-[#263844]">Plan an acquisition from a source URL</h2>
+        <p className="mt-1 max-w-2xl text-[11px] leading-5 text-[#7f9194]">Supply a URL (yt-dlp handles the inspection, including playlists). The plan is read-only: discovered items are resolved against the archive, and an untrusted source is never executed without an explicit approval.</p>
+      </div>
+    </div>
+    <div className="mt-4 grid gap-2 md:grid-cols-[2fr_2fr_auto]">
+      <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://example.com/playlist" className="border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2.5 text-[12px] text-[#43545b]" data-testid="input-planner-url" />
+      <input value={note} onChange={(event) => setNote(event.target.value)} placeholder='Request note, e.g. "Kirra wants all three seasons…"' className="border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2.5 text-[12px] text-[#43545b]" data-testid="input-planner-note" />
+      <button onClick={handleCreate} disabled={!sourceUrl.trim() || createPlan.isPending} className="bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-planner-build">{createPlan.isPending ? 'PLANNING…' : 'BUILD PLAN'}</button>
+    </div>
+    {planNotice && <div className="mt-2 archive-mono text-[10px] tracking-[.08em] text-[#994b43]" data-testid="planner-notice">{planNotice}</div>}
+
+    {plans.length > 0 && <div className="mt-4 flex flex-wrap gap-2" data-testid="planner-plan-list">
+      {plans.slice(0, 6).map((entry) => (
+        <button key={entry.id} onClick={() => setSelectedPlanId(entry.id)} className={`archive-mono px-2.5 py-1.5 text-[9px] font-bold tracking-[.08em] ${selectedPlanId === entry.id ? 'bg-[#1d2b38] text-[#f5f6f3]' : 'bg-[#eef1ef] text-[#53656b]'}`} data-testid={`button-planner-plan-${entry.id}`}>
+          PLAN #{entry.id} / {entry.approvalState.replace('_', ' ').toUpperCase()} / {entry.sourceTrust.state.replace('_', ' ').toUpperCase()}
+        </button>
+      ))}
+    </div>}
+
+    {plan && <div className="mt-5 border-t border-[#e3e8e7] pt-4" data-testid={`planner-plan-${plan.id}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#829197]">SUPPLIED SOURCE</div>
+          <div className="mt-1 text-[12px] font-bold text-[#43545b]">{plan.suppliedSource.title}</div>
+          <div className="archive-mono mt-1 text-[9px] text-[#9aa7a7]">{plan.suppliedSource.url}</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`archive-mono px-2 py-1 text-[9px] font-bold tracking-[.08em] ${planTrustTone(plan.sourceTrust.state)}`} data-testid="planner-trust">{plan.sourceTrust.state.replace('_', ' ').toUpperCase()}</span>
+          <span className="archive-mono px-2 py-1 text-[9px] font-bold tracking-[.08em] bg-[#eef1ef] text-[#53656b]" data-testid="planner-approval">{plan.approvalState.toUpperCase()}</span>
+        </div>
+      </div>
+      <p className="mt-3 text-[11px] leading-5 text-[#7f9194]">{plan.sourceTrust.reason}</p>
+      <div className="mt-4 grid gap-x-5 gap-y-3 sm:grid-cols-4">
+        <div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">DISCOVERED</div><div className="mt-1 text-[12px] font-bold text-[#43545b]">{plan.discoveredCandidates.length}</div></div>
+        <div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">MISSING</div><div className="mt-1 text-[12px] font-bold text-[#43545b]">{plan.missingItems.length}</div></div>
+        <div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">ALREADY PRESENT</div><div className="mt-1 text-[12px] font-bold text-[#43545b]">{plan.alreadyPresentItems.length}</div></div>
+        <div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">STORAGE</div><div className="mt-1 text-[12px] font-bold text-[#43545b]">{plan.storageImpact.status.toUpperCase()}</div></div>
+      </div>
+      {plan.items.length > 0 && <div className="mt-4 border border-[#e3e8e7]" data-testid="planner-items">
+        <div className="grid grid-cols-[1fr_auto] gap-2 border-b border-[#e3e8e7] bg-[#f6f8f6] px-3 py-2 archive-mono text-[9px] tracking-[.1em] text-[#829197]"><span>ITEM</span><span>STATE</span></div>
+        {plan.items.map((item) => (
+          <div key={item.identityKey} className="grid grid-cols-[1fr_auto] items-center gap-2 border-b border-[#eef1ef] px-3 py-2 last:border-0">
+            <div className="text-[11px] font-bold text-[#43545b]">{item.title}<div className="archive-mono mt-0.5 text-[9px] text-[#9aa7a7]">{item.destinationPath ?? item.identityKey}</div>{item.error && <div className="archive-mono mt-0.5 text-[9px] text-[#994b43]">{item.error}</div>}</div>
+            <span className={`archive-mono px-2 py-1 text-[9px] font-bold tracking-[.06em] ${item.state === 'complete' || item.state === 'placed' ? 'bg-[#eaf3ef] text-[#39736e]' : item.state === 'failed' ? 'bg-[#f9e5e1] text-[#994b43]' : 'bg-[#eef1ef] text-[#53656b]'}`}>{item.state.replace(/_/g, ' ').toUpperCase()}</span>
+          </div>
+        ))}
+      </div>}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {plan.approvalState === 'pending' && plan.sourceTrust.state !== 'blocked' && plan.sourceTrust.state !== 'unsupported' && <>
+          <button onClick={() => planAction(approvePlan, plan.id)} disabled={approvePlan.isPending} className="bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-planner-approve">APPROVE SOURCE</button>
+          <button onClick={() => planAction(rejectPlan, plan.id)} disabled={rejectPlan.isPending} className="border border-[#d6dfdc] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#53656b] disabled:opacity-50" data-testid="button-planner-reject">REJECT</button>
+        </>}
+        {plan.approvalState === 'approved' && <button onClick={() => planAction(executePlan, plan.id)} disabled={executePlan.isPending || plan.items.every((item) => item.state !== 'planned')} className="bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-planner-execute">EXECUTE PLAN</button>}
+      </div>
+    </div>}
+  </section>;
+}
+
 function DiscoveryPage() {
   const queryClient = useQueryClient();
   const [mediaType, setMediaType] = useState<'all' | 'movie' | 'tv'>('all');
@@ -1293,6 +1409,7 @@ function DiscoveryPage() {
       description="A provider-neutral, reviewable readout of missing media, candidate sources, quality tradeoffs, and storage implications. Nothing is downloaded from this surface."
       action={<button onClick={handleRefresh} disabled={refresh.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-refresh-discovery"><RefreshCw size={14} className={refresh.isPending ? 'animate-spin' : ''} /> {refresh.isPending ? 'RECOMPUTING' : 'REFRESH INTELLIGENCE'}</button>}
     />
+    <AcquisitionPlannerPanel />
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border border-[#e3e8e7] bg-white/60 p-3" data-testid="panel-discovery-filters">
       <div className="archive-mono text-[10px] tracking-[.12em] text-[#7f9194]">{findingsQuery.data?.summary.recommended ?? 0} RECOMMENDED / {findingsQuery.data?.summary.blocked ?? 0} BLOCKED</div>
       <div className="flex flex-wrap gap-2">

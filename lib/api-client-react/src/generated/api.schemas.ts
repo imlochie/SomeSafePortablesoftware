@@ -355,6 +355,292 @@ export interface AcquisitionReviewUpdate {
   note?: string | null;
 }
 
+/**
+ * @nullable
+ */
+export type AcquisitionPlanRequestMediaType = typeof AcquisitionPlanRequestMediaType[keyof typeof AcquisitionPlanRequestMediaType] | null;
+
+
+export const AcquisitionPlanRequestMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export interface AcquisitionPlanRequest {
+  /** @minLength 1 */
+  sourceUrl: string;
+  /**
+     * The natural-language request that motivated this plan.
+     * @maxLength 2000
+     * @nullable
+     */
+  note?: string | null;
+  /** @nullable */
+  mediaType?: AcquisitionPlanRequestMediaType;
+  /**
+     * @minimum 1
+     * @maximum 50
+     * @nullable
+     */
+  maxItems?: number | null;
+}
+
+export interface AcquisitionPlanApprovalInput {
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  note?: string | null;
+}
+
+export type AcquisitionSourceTrustState = typeof AcquisitionSourceTrustState[keyof typeof AcquisitionSourceTrustState];
+
+
+export const AcquisitionSourceTrustState = {
+  trusted: 'trusted',
+  user_approved: 'user_approved',
+  untrusted: 'untrusted',
+  unsupported: 'unsupported',
+  blocked: 'blocked',
+} as const;
+
+export interface AcquisitionSourceTrust {
+  state: AcquisitionSourceTrustState;
+  reason: string;
+  requiresApproval: boolean;
+}
+
+export type AcquisitionPlanCandidateMediaType = typeof AcquisitionPlanCandidateMediaType[keyof typeof AcquisitionPlanCandidateMediaType];
+
+
+export const AcquisitionPlanCandidateMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export type AcquisitionPlanCandidateScope = typeof AcquisitionPlanCandidateScope[keyof typeof AcquisitionPlanCandidateScope];
+
+
+export const AcquisitionPlanCandidateScope = {
+  movie: 'movie',
+  episode: 'episode',
+  season: 'season',
+} as const;
+
+export interface AcquisitionPlanCandidate {
+  entryUrl: string;
+  title: string;
+  identityKey: string;
+  mediaType: AcquisitionPlanCandidateMediaType;
+  scope: AcquisitionPlanCandidateScope;
+  /** @nullable */
+  season?: number | null;
+  /** @nullable */
+  episode?: number | null;
+  /** @nullable */
+  year?: number | null;
+  /** @nullable */
+  selectedFormatId?: string | null;
+  quality?: null | AcquisitionTechnicalQuality;
+  /** @nullable */
+  estimatedSizeBytes?: number | null;
+}
+
+export interface AcquisitionPlanArchiveState {
+  identityKey: string;
+  presentCount: number;
+  archiveQuality?: null | AcquisitionTechnicalQuality;
+  archiveSizeBytes: number;
+}
+
+export type AcquisitionPlanQualityComparisonVerdict = typeof AcquisitionPlanQualityComparisonVerdict[keyof typeof AcquisitionPlanQualityComparisonVerdict];
+
+
+export const AcquisitionPlanQualityComparisonVerdict = {
+  new_item: 'new_item',
+  upgrade: 'upgrade',
+  lateral_or_worse: 'lateral_or_worse',
+} as const;
+
+export interface AcquisitionPlanQualityComparison {
+  identityKey: string;
+  candidateRank: number;
+  /** @nullable */
+  archiveRank?: number | null;
+  verdict: AcquisitionPlanQualityComparisonVerdict;
+  summary: string;
+}
+
+export type AcquisitionPlanDestinationMediaType = typeof AcquisitionPlanDestinationMediaType[keyof typeof AcquisitionPlanDestinationMediaType];
+
+
+export const AcquisitionPlanDestinationMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export interface AcquisitionPlanDestination {
+  identityKey: string;
+  /** @nullable */
+  volumeId?: string | null;
+  volumeLabel: string;
+  destinationDirectory: string;
+  finalFilename: string;
+  mediaType: AcquisitionPlanDestinationMediaType;
+}
+
+export type AcquisitionPlanStorageImpactStatus = typeof AcquisitionPlanStorageImpactStatus[keyof typeof AcquisitionPlanStorageImpactStatus];
+
+
+export const AcquisitionPlanStorageImpactStatus = {
+  ok: 'ok',
+  insufficient: 'insufficient',
+  unknown: 'unknown',
+} as const;
+
+export interface AcquisitionPlanStorageImpact {
+  /** @nullable */
+  estimatedBytes?: number | null;
+  /** @nullable */
+  freeBytesBefore?: number | null;
+  /** @nullable */
+  freeBytesAfter?: number | null;
+  status: AcquisitionPlanStorageImpactStatus;
+  summary: string;
+}
+
+export type AcquisitionPlanItemState = typeof AcquisitionPlanItemState[keyof typeof AcquisitionPlanItemState];
+
+
+export const AcquisitionPlanItemState = {
+  planned: 'planned',
+  queued: 'queued',
+  downloading: 'downloading',
+  processing: 'processing',
+  verifying: 'verifying',
+  downloading_more: 'downloading_more',
+  complete: 'complete',
+  placed: 'placed',
+  failed: 'failed',
+  already_present: 'already_present',
+  skipped: 'skipped',
+} as const;
+
+export interface AcquisitionPlanItem {
+  identityKey: string;
+  title: string;
+  state: AcquisitionPlanItemState;
+  /** @nullable */
+  downloadJobId?: number | null;
+  /** @nullable */
+  error?: string | null;
+  /** @nullable */
+  destinationPath?: string | null;
+}
+
+/**
+ * @nullable
+ */
+export type AcquisitionPlanRequestPropertyMediaType = typeof AcquisitionPlanRequestPropertyMediaType[keyof typeof AcquisitionPlanRequestPropertyMediaType] | null;
+
+
+export const AcquisitionPlanRequestPropertyMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export type AcquisitionPlanRequestProperty = {
+  sourceUrl: string;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  mediaType?: AcquisitionPlanRequestPropertyMediaType;
+  requestedAt: string;
+};
+
+export type AcquisitionPlanSuppliedSourceKind = typeof AcquisitionPlanSuppliedSourceKind[keyof typeof AcquisitionPlanSuppliedSourceKind];
+
+
+export const AcquisitionPlanSuppliedSourceKind = {
+  url: 'url',
+} as const;
+
+export type AcquisitionPlanSuppliedSource = {
+  url: string;
+  /** @nullable */
+  extractor?: string | null;
+  title: string;
+  kind: AcquisitionPlanSuppliedSourceKind;
+};
+
+export type AcquisitionPlanApprovalState = typeof AcquisitionPlanApprovalState[keyof typeof AcquisitionPlanApprovalState];
+
+
+export const AcquisitionPlanApprovalState = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export type AcquisitionPlanExecutionStrategyMode = typeof AcquisitionPlanExecutionStrategyMode[keyof typeof AcquisitionPlanExecutionStrategyMode];
+
+
+export const AcquisitionPlanExecutionStrategyMode = {
+  staged_download: 'staged_download',
+} as const;
+
+export type AcquisitionPlanExecutionStrategyPerItem = typeof AcquisitionPlanExecutionStrategyPerItem[keyof typeof AcquisitionPlanExecutionStrategyPerItem];
+
+
+export const AcquisitionPlanExecutionStrategyPerItem = {
+  download_then_ffmpeg_then_ffprobe_verify: 'download_then_ffmpeg_then_ffprobe_verify',
+} as const;
+
+export type AcquisitionPlanExecutionStrategy = {
+  mode: AcquisitionPlanExecutionStrategyMode;
+  batchLimit: number;
+  perItem: AcquisitionPlanExecutionStrategyPerItem;
+};
+
+export type AcquisitionPlanIntegrationAlternativesItem = {
+  provider: string;
+  capability: string;
+  available: boolean;
+};
+
+export type AcquisitionPlanFinalResults = {
+  placedCount: number;
+  failedCount: number;
+  alreadyPresentCount: number;
+  perItem: AcquisitionPlanItem[];
+} | null;
+
+export interface AcquisitionPlan {
+  id: number;
+  request: AcquisitionPlanRequestProperty;
+  suppliedSource: AcquisitionPlanSuppliedSource;
+  sourceTrust: AcquisitionSourceTrust;
+  discoveredCandidates: AcquisitionPlanCandidate[];
+  existingArchiveState: AcquisitionPlanArchiveState[];
+  missingItems: AcquisitionPlanCandidate[];
+  alreadyPresentItems: AcquisitionPlanCandidate[];
+  preferredCandidates: AcquisitionPlanCandidate[];
+  qualityComparison: AcquisitionPlanQualityComparison[];
+  storageImpact: AcquisitionPlanStorageImpact;
+  approvalState: AcquisitionPlanApprovalState;
+  /** @nullable */
+  approvalNote?: string | null;
+  executionStrategy: AcquisitionPlanExecutionStrategy;
+  destinationPlan: AcquisitionPlanDestination[];
+  integrationAlternatives: AcquisitionPlanIntegrationAlternativesItem[];
+  items: AcquisitionPlanItem[];
+  finalResults?: AcquisitionPlanFinalResults;
+}
+
+export interface AcquisitionPlanListResponse {
+  results: AcquisitionPlan[];
+}
+
 export interface HealthStatus {
   status: string;
 }

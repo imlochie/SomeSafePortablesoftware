@@ -915,6 +915,182 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AcquisitionSourceOption"
+  /acquisition/plans:
+    post:
+      operationId: createAcquisitionPlan
+      tags: [acquisition]
+      summary: Build a provider-neutral acquisition plan from a supplied source URL
+      description: |
+        Inspects the supplied URL through the yt-dlp inspection path (including
+        playlist entries), normalizes discovered media into candidates, resolves
+        them against the local archive identity, and produces a canonical
+        AcquisitionPlan with trust, quality, storage, and destination facts.
+        Nothing is downloaded: an untrusted source stays untrusted until it is
+        explicitly approved through the approval endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcquisitionPlanRequest"
+      responses:
+        "201":
+          description: The built acquisition plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionPlan"
+        "400":
+          description: The request or source URL is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: listAcquisitionPlans
+      tags: [acquisition]
+      summary: List owner-scoped acquisition plans
+      responses:
+        "200":
+          description: Acquisition plans, newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionPlanListResponse"
+  /acquisition/plans/{id}:
+    get:
+      operationId: getAcquisitionPlan
+      tags: [acquisition]
+      summary: Read one acquisition plan with live per-item execution state
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      responses:
+        "200":
+          description: The acquisition plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionPlan"
+        "404":
+          description: Plan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /acquisition/plans/{id}/approve:
+    post:
+      operationId: approveAcquisitionPlan
+      tags: [acquisition]
+      summary: Approve an acquisition plan (the trust boundary for untrusted sources)
+      description: |
+        An untrusted, explicitly user-supplied source is never executed
+        silently. Approval is an explicit, recorded decision that transitions
+        the source trust to user_approved. Blocked and unsupported sources
+        cannot be approved.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcquisitionPlanApprovalInput"
+      responses:
+        "200":
+          description: The approved plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionPlan"
+        "404":
+          description: Plan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The source is blocked, unsupported, or the plan was rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /acquisition/plans/{id}/reject:
+    post:
+      operationId: rejectAcquisitionPlan
+      tags: [acquisition]
+      summary: Reject an acquisition plan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcquisitionPlanApprovalInput"
+      responses:
+        "200":
+          description: The rejected plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionPlan"
+        "404":
+          description: Plan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /acquisition/plans/{id}/execute:
+    post:
+      operationId: executeAcquisitionPlan
+      tags: [acquisition]
+      summary: Execute an approved plan as a bounded batch through the real download engine
+      description: |
+        Requires an approved plan. Queues at most a bounded batch of items
+        through the real yt-dlp download engine (FFmpeg processing and FFprobe
+        verification included). Never executes untrusted, blocked, or
+        unsupported sources.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      responses:
+        "200":
+          description: The plan with per-item execution state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionPlan"
+        "404":
+          description: Plan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The plan is not approved, or nothing is left to execute
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /media/inspect:
     post:
       operationId: inspectMediaSource
@@ -1437,6 +1613,270 @@ components:
         note:
           type: [string, "null"]
           maxLength: 500
+    AcquisitionPlanRequest:
+      type: object
+      required: [sourceUrl]
+      properties:
+        sourceUrl:
+          type: string
+          minLength: 1
+        note:
+          type: [string, "null"]
+          maxLength: 2000
+          description: The natural-language request that motivated this plan.
+        mediaType:
+          type: [string, "null"]
+          enum: [movie, tv]
+        maxItems:
+          type: [number, "null"]
+          minimum: 1
+          maximum: 50
+    AcquisitionPlanApprovalInput:
+      type: object
+      properties:
+        note:
+          type: [string, "null"]
+          maxLength: 500
+    AcquisitionSourceTrust:
+      type: object
+      required: [state, reason, requiresApproval]
+      properties:
+        state:
+          type: string
+          enum: [trusted, user_approved, untrusted, unsupported, blocked]
+        reason:
+          type: string
+        requiresApproval:
+          type: boolean
+    AcquisitionPlanCandidate:
+      type: object
+      required: [entryUrl, title, identityKey, mediaType, scope]
+      properties:
+        entryUrl:
+          type: string
+        title:
+          type: string
+        identityKey:
+          type: string
+        mediaType:
+          type: string
+          enum: [movie, tv]
+        scope:
+          type: string
+          enum: [movie, episode, season]
+        season:
+          type: [number, "null"]
+        episode:
+          type: [number, "null"]
+        year:
+          type: [number, "null"]
+        selectedFormatId:
+          type: [string, "null"]
+        quality:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/AcquisitionTechnicalQuality"
+        estimatedSizeBytes:
+          type: [number, "null"]
+    AcquisitionPlanArchiveState:
+      type: object
+      required: [identityKey, presentCount, archiveSizeBytes]
+      properties:
+        identityKey:
+          type: string
+        presentCount:
+          type: number
+        archiveQuality:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/AcquisitionTechnicalQuality"
+        archiveSizeBytes:
+          type: number
+    AcquisitionPlanQualityComparison:
+      type: object
+      required: [identityKey, candidateRank, verdict, summary]
+      properties:
+        identityKey:
+          type: string
+        candidateRank:
+          type: number
+        archiveRank:
+          type: [number, "null"]
+        verdict:
+          type: string
+          enum: [new_item, upgrade, lateral_or_worse]
+        summary:
+          type: string
+    AcquisitionPlanDestination:
+      type: object
+      required: [identityKey, volumeLabel, destinationDirectory, finalFilename, mediaType]
+      properties:
+        identityKey:
+          type: string
+        volumeId:
+          type: [string, "null"]
+        volumeLabel:
+          type: string
+        destinationDirectory:
+          type: string
+        finalFilename:
+          type: string
+        mediaType:
+          type: string
+          enum: [movie, tv]
+    AcquisitionPlanStorageImpact:
+      type: object
+      required: [status, summary]
+      properties:
+        estimatedBytes:
+          type: [number, "null"]
+        freeBytesBefore:
+          type: [number, "null"]
+        freeBytesAfter:
+          type: [number, "null"]
+        status:
+          type: string
+          enum: [ok, insufficient, unknown]
+        summary:
+          type: string
+    AcquisitionPlanItem:
+      type: object
+      required: [identityKey, title, state]
+      properties:
+        identityKey:
+          type: string
+        title:
+          type: string
+        state:
+          type: string
+          enum: [planned, queued, downloading, processing, verifying, downloading_more, complete, placed, failed, already_present, skipped]
+        downloadJobId:
+          type: [number, "null"]
+        error:
+          type: [string, "null"]
+        destinationPath:
+          type: [string, "null"]
+    AcquisitionPlan:
+      type: object
+      required: [id, request, suppliedSource, sourceTrust, discoveredCandidates, existingArchiveState, missingItems, alreadyPresentItems, preferredCandidates, qualityComparison, storageImpact, approvalState, executionStrategy, destinationPlan, integrationAlternatives, items]
+      properties:
+        id:
+          type: number
+        request:
+          type: object
+          required: [sourceUrl, requestedAt]
+          properties:
+            sourceUrl:
+              type: string
+            note:
+              type: [string, "null"]
+            mediaType:
+              type: [string, "null"]
+              enum: [movie, tv]
+            requestedAt:
+              type: string
+        suppliedSource:
+          type: object
+          required: [url, title, kind]
+          properties:
+            url:
+              type: string
+            extractor:
+              type: [string, "null"]
+            title:
+              type: string
+            kind:
+              type: string
+              enum: [url]
+        sourceTrust:
+          $ref: "#/components/schemas/AcquisitionSourceTrust"
+        discoveredCandidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionPlanCandidate"
+        existingArchiveState:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionPlanArchiveState"
+        missingItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionPlanCandidate"
+        alreadyPresentItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionPlanCandidate"
+        preferredCandidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionPlanCandidate"
+        qualityComparison:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionPlanQualityComparison"
+        storageImpact:
+          $ref: "#/components/schemas/AcquisitionPlanStorageImpact"
+        approvalState:
+          type: string
+          enum: [pending, approved, rejected]
+        approvalNote:
+          type: [string, "null"]
+        executionStrategy:
+          type: object
+          required: [mode, batchLimit, perItem]
+          properties:
+            mode:
+              type: string
+              enum: [staged_download]
+            batchLimit:
+              type: number
+            perItem:
+              type: string
+              enum: [download_then_ffmpeg_then_ffprobe_verify]
+        destinationPlan:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionPlanDestination"
+        integrationAlternatives:
+          type: array
+          items:
+            type: object
+            required: [provider, capability, available]
+            properties:
+              provider:
+                type: string
+              capability:
+                type: string
+              available:
+                type: boolean
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionPlanItem"
+        finalResults:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [placedCount, failedCount, alreadyPresentCount, perItem]
+              properties:
+                placedCount:
+                  type: number
+                failedCount:
+                  type: number
+                alreadyPresentCount:
+                  type: number
+                perItem:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/AcquisitionPlanItem"
+    AcquisitionPlanListResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/AcquisitionPlan"
     HealthStatus:
       type: object
       properties:
@@ -3226,4 +3666,5 @@ components:
           enum: [movie, show, episode, other]
         year:
           type: [number, "null"]
+
 

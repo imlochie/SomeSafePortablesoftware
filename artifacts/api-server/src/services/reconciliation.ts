@@ -1,7 +1,12 @@
 import { setImmediate } from "node:timers/promises";
 import { archiveDb } from "../lib/archive-db";
-import { localEpisodeIdentity, normalizeTitle, qualityRank, titleYear } from "./archive";
+// qualityRank now lives in the acquisition engine: the quality milestone
+// replaced archive.ts's internal QualityShape scoring with the richer
+// TechnicalQuality model, while acquisition keeps its own flat candidate
+// scoring boundary (identical algorithm to the historical archive rank).
+import { localEpisodeIdentity, normalizeTitle, titleYear } from "./archive";
 import type { TechnicalQuality, AcquisitionMediaType, AcquisitionScope, ArchiveNeedState } from "./acquisition-engine";
+import { qualityRank } from "./acquisition-engine";
 
 export type ReconciliationClassification =
   | "matched"

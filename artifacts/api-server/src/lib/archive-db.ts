@@ -326,6 +326,40 @@ archiveDb.exec(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (owner_id, need_id)
   );
+  CREATE TABLE IF NOT EXISTS acquisition_plan (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    request_note TEXT,
+    source_trust TEXT NOT NULL,
+    trust_reason TEXT NOT NULL,
+    approval_state TEXT NOT NULL DEFAULT 'pending',
+    approval_note TEXT,
+    plan_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS acquisition_plan_owner_created_idx ON acquisition_plan(owner_id, created_at);
+  CREATE TABLE IF NOT EXISTS acquisition_plan_item (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    plan_id INTEGER NOT NULL REFERENCES acquisition_plan(id) ON DELETE CASCADE,
+    identity_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    entry_url TEXT NOT NULL,
+    selected_format_id TEXT,
+    destination_directory TEXT,
+    final_filename TEXT,
+    state TEXT NOT NULL DEFAULT 'planned',
+    download_job_id INTEGER,
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, plan_id, identity_key)
+  );
+  CREATE INDEX IF NOT EXISTS acquisition_plan_item_plan_idx ON acquisition_plan_item(owner_id, plan_id);
   CREATE TABLE IF NOT EXISTS assistant_conversation (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New conversation',

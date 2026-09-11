@@ -23,6 +23,10 @@ import type {
   AcquisitionCandidateInput,
   AcquisitionFinding,
   AcquisitionFindingResponse,
+  AcquisitionPlan,
+  AcquisitionPlanApprovalInput,
+  AcquisitionPlanListResponse,
+  AcquisitionPlanRequest,
   AcquisitionRefreshResponse,
   AcquisitionReviewUpdate,
   AcquisitionSourceOption,
@@ -2682,6 +2686,460 @@ export const useUpsertAcquisitionCandidate = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpsertAcquisitionCandidateMutationOptions(options));
+    }
+
+export const getCreateAcquisitionPlanUrl = () => {
+
+
+
+
+  return `/api/acquisition/plans`
+}
+
+/**
+ * Inspects the supplied URL through the yt-dlp inspection path (including
+ * playlist entries), normalizes discovered media into candidates, resolves
+ * them against the local archive identity, and produces a canonical
+ * AcquisitionPlan with trust, quality, storage, and destination facts.
+ * Nothing is downloaded: an untrusted source stays untrusted until it is
+ * explicitly approved through the approval endpoint.
+ * @summary Build a provider-neutral acquisition plan from a supplied source URL
+ */
+export const createAcquisitionPlan = async (acquisitionPlanRequest: AcquisitionPlanRequest, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionPlan> => {
+
+  return customFetch<AcquisitionPlan>(getCreateAcquisitionPlanUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(acquisitionPlanRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateAcquisitionPlanMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAcquisitionPlan>>, TError,{data: BodyType<AcquisitionPlanRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAcquisitionPlan>>, TError,{data: BodyType<AcquisitionPlanRequest>}, TContext> => {
+
+const mutationKey = ['createAcquisitionPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAcquisitionPlan>>, {data: BodyType<AcquisitionPlanRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAcquisitionPlan(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAcquisitionPlanMutationResult = NonNullable<Awaited<ReturnType<typeof createAcquisitionPlan>>>
+    export type CreateAcquisitionPlanMutationBody = BodyType<AcquisitionPlanRequest>
+    export type CreateAcquisitionPlanMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Build a provider-neutral acquisition plan from a supplied source URL
+ */
+export const useCreateAcquisitionPlan = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAcquisitionPlan>>, TError,{data: BodyType<AcquisitionPlanRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAcquisitionPlan>>,
+        TError,
+        {data: BodyType<AcquisitionPlanRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateAcquisitionPlanMutationOptions(options));
+    }
+
+export const getListAcquisitionPlansUrl = () => {
+
+
+
+
+  return `/api/acquisition/plans`
+}
+
+/**
+ * @summary List owner-scoped acquisition plans
+ */
+export const listAcquisitionPlans = async ( options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionPlanListResponse> => {
+
+  return customFetch<AcquisitionPlanListResponse>(getListAcquisitionPlansUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAcquisitionPlansQueryKey = () => {
+    return [
+    `/api/acquisition/plans`
+    ] as const;
+    }
+
+
+export const getListAcquisitionPlansQueryOptions = <TData = Awaited<ReturnType<typeof listAcquisitionPlans>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcquisitionPlans>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAcquisitionPlansQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAcquisitionPlans>>> = ({ signal }) => listAcquisitionPlans({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAcquisitionPlans>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAcquisitionPlansQueryResult = NonNullable<Awaited<ReturnType<typeof listAcquisitionPlans>>>
+export type ListAcquisitionPlansQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List owner-scoped acquisition plans
+ */
+
+export function useListAcquisitionPlans<TData = Awaited<ReturnType<typeof listAcquisitionPlans>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAcquisitionPlans>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAcquisitionPlansQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAcquisitionPlanUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition/plans/${id}`
+}
+
+/**
+ * @summary Read one acquisition plan with live per-item execution state
+ */
+export const getAcquisitionPlan = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionPlan> => {
+
+  return customFetch<AcquisitionPlan>(getGetAcquisitionPlanUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcquisitionPlanQueryKey = (id: number,) => {
+    return [
+    `/api/acquisition/plans/${id}`
+    ] as const;
+    }
+
+
+export const getGetAcquisitionPlanQueryOptions = <TData = Awaited<ReturnType<typeof getAcquisitionPlan>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionPlan>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcquisitionPlanQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcquisitionPlan>>> = ({ signal }) => getAcquisitionPlan(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionPlan>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcquisitionPlanQueryResult = NonNullable<Awaited<ReturnType<typeof getAcquisitionPlan>>>
+export type GetAcquisitionPlanQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read one acquisition plan with live per-item execution state
+ */
+
+export function useGetAcquisitionPlan<TData = Awaited<ReturnType<typeof getAcquisitionPlan>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionPlan>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcquisitionPlanQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getApproveAcquisitionPlanUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition/plans/${id}/approve`
+}
+
+/**
+ * An untrusted, explicitly user-supplied source is never executed
+ * silently. Approval is an explicit, recorded decision that transitions
+ * the source trust to user_approved. Blocked and unsupported sources
+ * cannot be approved.
+ * @summary Approve an acquisition plan (the trust boundary for untrusted sources)
+ */
+export const approveAcquisitionPlan = async (id: number,
+    acquisitionPlanApprovalInput?: AcquisitionPlanApprovalInput, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionPlan> => {
+
+  return customFetch<AcquisitionPlan>(getApproveAcquisitionPlanUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(acquisitionPlanApprovalInput)
+  }
+);}
+
+
+
+
+
+export const getApproveAcquisitionPlanMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveAcquisitionPlan>>, TError,{id: number;data?: BodyType<AcquisitionPlanApprovalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveAcquisitionPlan>>, TError,{id: number;data?: BodyType<AcquisitionPlanApprovalInput>}, TContext> => {
+
+const mutationKey = ['approveAcquisitionPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveAcquisitionPlan>>, {id: number;data?: BodyType<AcquisitionPlanApprovalInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  approveAcquisitionPlan(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveAcquisitionPlanMutationResult = NonNullable<Awaited<ReturnType<typeof approveAcquisitionPlan>>>
+    export type ApproveAcquisitionPlanMutationBody = BodyType<AcquisitionPlanApprovalInput> | undefined
+    export type ApproveAcquisitionPlanMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Approve an acquisition plan (the trust boundary for untrusted sources)
+ */
+export const useApproveAcquisitionPlan = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveAcquisitionPlan>>, TError,{id: number;data?: BodyType<AcquisitionPlanApprovalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveAcquisitionPlan>>,
+        TError,
+        {id: number;data?: BodyType<AcquisitionPlanApprovalInput>},
+        TContext
+      > => {
+      return useMutation(getApproveAcquisitionPlanMutationOptions(options));
+    }
+
+export const getRejectAcquisitionPlanUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition/plans/${id}/reject`
+}
+
+/**
+ * @summary Reject an acquisition plan
+ */
+export const rejectAcquisitionPlan = async (id: number,
+    acquisitionPlanApprovalInput?: AcquisitionPlanApprovalInput, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionPlan> => {
+
+  return customFetch<AcquisitionPlan>(getRejectAcquisitionPlanUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(acquisitionPlanApprovalInput)
+  }
+);}
+
+
+
+
+
+export const getRejectAcquisitionPlanMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectAcquisitionPlan>>, TError,{id: number;data?: BodyType<AcquisitionPlanApprovalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rejectAcquisitionPlan>>, TError,{id: number;data?: BodyType<AcquisitionPlanApprovalInput>}, TContext> => {
+
+const mutationKey = ['rejectAcquisitionPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rejectAcquisitionPlan>>, {id: number;data?: BodyType<AcquisitionPlanApprovalInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  rejectAcquisitionPlan(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RejectAcquisitionPlanMutationResult = NonNullable<Awaited<ReturnType<typeof rejectAcquisitionPlan>>>
+    export type RejectAcquisitionPlanMutationBody = BodyType<AcquisitionPlanApprovalInput> | undefined
+    export type RejectAcquisitionPlanMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Reject an acquisition plan
+ */
+export const useRejectAcquisitionPlan = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectAcquisitionPlan>>, TError,{id: number;data?: BodyType<AcquisitionPlanApprovalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rejectAcquisitionPlan>>,
+        TError,
+        {id: number;data?: BodyType<AcquisitionPlanApprovalInput>},
+        TContext
+      > => {
+      return useMutation(getRejectAcquisitionPlanMutationOptions(options));
+    }
+
+export const getExecuteAcquisitionPlanUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition/plans/${id}/execute`
+}
+
+/**
+ * Requires an approved plan. Queues at most a bounded batch of items
+ * through the real yt-dlp download engine (FFmpeg processing and FFprobe
+ * verification included). Never executes untrusted, blocked, or
+ * unsupported sources.
+ * @summary Execute an approved plan as a bounded batch through the real download engine
+ */
+export const executeAcquisitionPlan = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionPlan> => {
+
+  return customFetch<AcquisitionPlan>(getExecuteAcquisitionPlanUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getExecuteAcquisitionPlanMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof executeAcquisitionPlan>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof executeAcquisitionPlan>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['executeAcquisitionPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof executeAcquisitionPlan>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  executeAcquisitionPlan(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExecuteAcquisitionPlanMutationResult = NonNullable<Awaited<ReturnType<typeof executeAcquisitionPlan>>>
+
+    export type ExecuteAcquisitionPlanMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Execute an approved plan as a bounded batch through the real download engine
+ */
+export const useExecuteAcquisitionPlan = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof executeAcquisitionPlan>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof executeAcquisitionPlan>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getExecuteAcquisitionPlanMutationOptions(options));
     }
 
 export const getInspectMediaSourceUrl = () => {

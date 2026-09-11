@@ -31,7 +31,7 @@ function emit(type: string, jobId: number, ownerId: string) {
   }
 }
 
-function readJob(id: number, ownerId: string) {
+export function readJob(id: number, ownerId: string) {
   const row = archiveDb.prepare("SELECT * FROM download_job WHERE id = ? AND owner_id = ?").get(id, ownerId) as Record<string, unknown> | undefined;
   return row ? toJob(row) : null;
 }

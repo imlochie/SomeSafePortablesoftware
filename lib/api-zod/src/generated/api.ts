@@ -1959,6 +1959,1148 @@ export const UpsertAcquisitionCandidateResponse = zod.object({
 
 
 /**
+ * Inspects the supplied URL through the yt-dlp inspection path (including
+ * playlist entries), normalizes discovered media into candidates, resolves
+ * them against the local archive identity, and produces a canonical
+ * AcquisitionPlan with trust, quality, storage, and destination facts.
+ * Nothing is downloaded: an untrusted source stays untrusted until it is
+ * explicitly approved through the approval endpoint.
+ * @summary Build a provider-neutral acquisition plan from a supplied source URL
+ */
+
+export const createAcquisitionPlanBodyNoteMax = 2000;
+
+export const createAcquisitionPlanBodyMaxItemsMax = 50;
+
+
+
+export const CreateAcquisitionPlanBody = zod.object({
+  "sourceUrl": zod.string().min(1),
+  "note": zod.string().max(createAcquisitionPlanBodyNoteMax).nullish().describe('The natural-language request that motivated this plan.'),
+  "mediaType": zod.enum(['movie', 'tv']).nullish(),
+  "maxItems": zod.number().min(1).max(createAcquisitionPlanBodyMaxItemsMax).nullish()
+})
+
+export const CreateAcquisitionPlanResponse = zod.object({
+  "id": zod.number(),
+  "request": zod.object({
+  "sourceUrl": zod.string(),
+  "note": zod.string().nullish(),
+  "mediaType": zod.enum(['movie', 'tv']).nullish(),
+  "requestedAt": zod.string()
+}),
+  "suppliedSource": zod.object({
+  "url": zod.string(),
+  "extractor": zod.string().nullish(),
+  "title": zod.string(),
+  "kind": zod.enum(['url'])
+}),
+  "sourceTrust": zod.object({
+  "state": zod.enum(['trusted', 'user_approved', 'untrusted', 'unsupported', 'blocked']),
+  "reason": zod.string(),
+  "requiresApproval": zod.boolean()
+}),
+  "discoveredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "existingArchiveState": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "presentCount": zod.number(),
+  "archiveQuality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "archiveSizeBytes": zod.number()
+})),
+  "missingItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "alreadyPresentItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "preferredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "qualityComparison": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "candidateRank": zod.number(),
+  "archiveRank": zod.number().nullish(),
+  "verdict": zod.enum(['new_item', 'upgrade', 'lateral_or_worse']),
+  "summary": zod.string()
+})),
+  "storageImpact": zod.object({
+  "estimatedBytes": zod.number().nullish(),
+  "freeBytesBefore": zod.number().nullish(),
+  "freeBytesAfter": zod.number().nullish(),
+  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "summary": zod.string()
+}),
+  "approvalState": zod.enum(['pending', 'approved', 'rejected']),
+  "approvalNote": zod.string().nullish(),
+  "executionStrategy": zod.object({
+  "mode": zod.enum(['staged_download']),
+  "batchLimit": zod.number(),
+  "perItem": zod.enum(['download_then_ffmpeg_then_ffprobe_verify'])
+}),
+  "destinationPlan": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "volumeId": zod.string().nullish(),
+  "volumeLabel": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv'])
+})),
+  "integrationAlternatives": zod.array(zod.object({
+  "provider": zod.string(),
+  "capability": zod.string(),
+  "available": zod.boolean()
+})),
+  "items": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+})),
+  "finalResults": zod.union([zod.null(),zod.object({
+  "placedCount": zod.number(),
+  "failedCount": zod.number(),
+  "alreadyPresentCount": zod.number(),
+  "perItem": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+}))
+})]).optional()
+})
+
+
+/**
+ * @summary List owner-scoped acquisition plans
+ */
+export const ListAcquisitionPlansResponse = zod.object({
+  "results": zod.array(zod.object({
+  "id": zod.number(),
+  "request": zod.object({
+  "sourceUrl": zod.string(),
+  "note": zod.string().nullish(),
+  "mediaType": zod.enum(['movie', 'tv']).nullish(),
+  "requestedAt": zod.string()
+}),
+  "suppliedSource": zod.object({
+  "url": zod.string(),
+  "extractor": zod.string().nullish(),
+  "title": zod.string(),
+  "kind": zod.enum(['url'])
+}),
+  "sourceTrust": zod.object({
+  "state": zod.enum(['trusted', 'user_approved', 'untrusted', 'unsupported', 'blocked']),
+  "reason": zod.string(),
+  "requiresApproval": zod.boolean()
+}),
+  "discoveredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "existingArchiveState": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "presentCount": zod.number(),
+  "archiveQuality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "archiveSizeBytes": zod.number()
+})),
+  "missingItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "alreadyPresentItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "preferredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "qualityComparison": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "candidateRank": zod.number(),
+  "archiveRank": zod.number().nullish(),
+  "verdict": zod.enum(['new_item', 'upgrade', 'lateral_or_worse']),
+  "summary": zod.string()
+})),
+  "storageImpact": zod.object({
+  "estimatedBytes": zod.number().nullish(),
+  "freeBytesBefore": zod.number().nullish(),
+  "freeBytesAfter": zod.number().nullish(),
+  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "summary": zod.string()
+}),
+  "approvalState": zod.enum(['pending', 'approved', 'rejected']),
+  "approvalNote": zod.string().nullish(),
+  "executionStrategy": zod.object({
+  "mode": zod.enum(['staged_download']),
+  "batchLimit": zod.number(),
+  "perItem": zod.enum(['download_then_ffmpeg_then_ffprobe_verify'])
+}),
+  "destinationPlan": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "volumeId": zod.string().nullish(),
+  "volumeLabel": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv'])
+})),
+  "integrationAlternatives": zod.array(zod.object({
+  "provider": zod.string(),
+  "capability": zod.string(),
+  "available": zod.boolean()
+})),
+  "items": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+})),
+  "finalResults": zod.union([zod.null(),zod.object({
+  "placedCount": zod.number(),
+  "failedCount": zod.number(),
+  "alreadyPresentCount": zod.number(),
+  "perItem": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+}))
+})]).optional()
+}))
+})
+
+
+/**
+ * @summary Read one acquisition plan with live per-item execution state
+ */
+
+
+
+export const GetAcquisitionPlanParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const GetAcquisitionPlanResponse = zod.object({
+  "id": zod.number(),
+  "request": zod.object({
+  "sourceUrl": zod.string(),
+  "note": zod.string().nullish(),
+  "mediaType": zod.enum(['movie', 'tv']).nullish(),
+  "requestedAt": zod.string()
+}),
+  "suppliedSource": zod.object({
+  "url": zod.string(),
+  "extractor": zod.string().nullish(),
+  "title": zod.string(),
+  "kind": zod.enum(['url'])
+}),
+  "sourceTrust": zod.object({
+  "state": zod.enum(['trusted', 'user_approved', 'untrusted', 'unsupported', 'blocked']),
+  "reason": zod.string(),
+  "requiresApproval": zod.boolean()
+}),
+  "discoveredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "existingArchiveState": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "presentCount": zod.number(),
+  "archiveQuality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "archiveSizeBytes": zod.number()
+})),
+  "missingItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "alreadyPresentItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "preferredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "qualityComparison": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "candidateRank": zod.number(),
+  "archiveRank": zod.number().nullish(),
+  "verdict": zod.enum(['new_item', 'upgrade', 'lateral_or_worse']),
+  "summary": zod.string()
+})),
+  "storageImpact": zod.object({
+  "estimatedBytes": zod.number().nullish(),
+  "freeBytesBefore": zod.number().nullish(),
+  "freeBytesAfter": zod.number().nullish(),
+  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "summary": zod.string()
+}),
+  "approvalState": zod.enum(['pending', 'approved', 'rejected']),
+  "approvalNote": zod.string().nullish(),
+  "executionStrategy": zod.object({
+  "mode": zod.enum(['staged_download']),
+  "batchLimit": zod.number(),
+  "perItem": zod.enum(['download_then_ffmpeg_then_ffprobe_verify'])
+}),
+  "destinationPlan": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "volumeId": zod.string().nullish(),
+  "volumeLabel": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv'])
+})),
+  "integrationAlternatives": zod.array(zod.object({
+  "provider": zod.string(),
+  "capability": zod.string(),
+  "available": zod.boolean()
+})),
+  "items": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+})),
+  "finalResults": zod.union([zod.null(),zod.object({
+  "placedCount": zod.number(),
+  "failedCount": zod.number(),
+  "alreadyPresentCount": zod.number(),
+  "perItem": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+}))
+})]).optional()
+})
+
+
+/**
+ * An untrusted, explicitly user-supplied source is never executed
+ * silently. Approval is an explicit, recorded decision that transitions
+ * the source trust to user_approved. Blocked and unsupported sources
+ * cannot be approved.
+ * @summary Approve an acquisition plan (the trust boundary for untrusted sources)
+ */
+
+
+
+export const ApproveAcquisitionPlanParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const approveAcquisitionPlanBodyNoteMax = 500;
+
+
+
+export const ApproveAcquisitionPlanBody = zod.object({
+  "note": zod.string().max(approveAcquisitionPlanBodyNoteMax).nullish()
+})
+
+export const ApproveAcquisitionPlanResponse = zod.object({
+  "id": zod.number(),
+  "request": zod.object({
+  "sourceUrl": zod.string(),
+  "note": zod.string().nullish(),
+  "mediaType": zod.enum(['movie', 'tv']).nullish(),
+  "requestedAt": zod.string()
+}),
+  "suppliedSource": zod.object({
+  "url": zod.string(),
+  "extractor": zod.string().nullish(),
+  "title": zod.string(),
+  "kind": zod.enum(['url'])
+}),
+  "sourceTrust": zod.object({
+  "state": zod.enum(['trusted', 'user_approved', 'untrusted', 'unsupported', 'blocked']),
+  "reason": zod.string(),
+  "requiresApproval": zod.boolean()
+}),
+  "discoveredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "existingArchiveState": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "presentCount": zod.number(),
+  "archiveQuality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "archiveSizeBytes": zod.number()
+})),
+  "missingItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "alreadyPresentItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "preferredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "qualityComparison": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "candidateRank": zod.number(),
+  "archiveRank": zod.number().nullish(),
+  "verdict": zod.enum(['new_item', 'upgrade', 'lateral_or_worse']),
+  "summary": zod.string()
+})),
+  "storageImpact": zod.object({
+  "estimatedBytes": zod.number().nullish(),
+  "freeBytesBefore": zod.number().nullish(),
+  "freeBytesAfter": zod.number().nullish(),
+  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "summary": zod.string()
+}),
+  "approvalState": zod.enum(['pending', 'approved', 'rejected']),
+  "approvalNote": zod.string().nullish(),
+  "executionStrategy": zod.object({
+  "mode": zod.enum(['staged_download']),
+  "batchLimit": zod.number(),
+  "perItem": zod.enum(['download_then_ffmpeg_then_ffprobe_verify'])
+}),
+  "destinationPlan": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "volumeId": zod.string().nullish(),
+  "volumeLabel": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv'])
+})),
+  "integrationAlternatives": zod.array(zod.object({
+  "provider": zod.string(),
+  "capability": zod.string(),
+  "available": zod.boolean()
+})),
+  "items": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+})),
+  "finalResults": zod.union([zod.null(),zod.object({
+  "placedCount": zod.number(),
+  "failedCount": zod.number(),
+  "alreadyPresentCount": zod.number(),
+  "perItem": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+}))
+})]).optional()
+})
+
+
+/**
+ * @summary Reject an acquisition plan
+ */
+
+
+
+export const RejectAcquisitionPlanParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const rejectAcquisitionPlanBodyNoteMax = 500;
+
+
+
+export const RejectAcquisitionPlanBody = zod.object({
+  "note": zod.string().max(rejectAcquisitionPlanBodyNoteMax).nullish()
+})
+
+export const RejectAcquisitionPlanResponse = zod.object({
+  "id": zod.number(),
+  "request": zod.object({
+  "sourceUrl": zod.string(),
+  "note": zod.string().nullish(),
+  "mediaType": zod.enum(['movie', 'tv']).nullish(),
+  "requestedAt": zod.string()
+}),
+  "suppliedSource": zod.object({
+  "url": zod.string(),
+  "extractor": zod.string().nullish(),
+  "title": zod.string(),
+  "kind": zod.enum(['url'])
+}),
+  "sourceTrust": zod.object({
+  "state": zod.enum(['trusted', 'user_approved', 'untrusted', 'unsupported', 'blocked']),
+  "reason": zod.string(),
+  "requiresApproval": zod.boolean()
+}),
+  "discoveredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "existingArchiveState": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "presentCount": zod.number(),
+  "archiveQuality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "archiveSizeBytes": zod.number()
+})),
+  "missingItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "alreadyPresentItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "preferredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "qualityComparison": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "candidateRank": zod.number(),
+  "archiveRank": zod.number().nullish(),
+  "verdict": zod.enum(['new_item', 'upgrade', 'lateral_or_worse']),
+  "summary": zod.string()
+})),
+  "storageImpact": zod.object({
+  "estimatedBytes": zod.number().nullish(),
+  "freeBytesBefore": zod.number().nullish(),
+  "freeBytesAfter": zod.number().nullish(),
+  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "summary": zod.string()
+}),
+  "approvalState": zod.enum(['pending', 'approved', 'rejected']),
+  "approvalNote": zod.string().nullish(),
+  "executionStrategy": zod.object({
+  "mode": zod.enum(['staged_download']),
+  "batchLimit": zod.number(),
+  "perItem": zod.enum(['download_then_ffmpeg_then_ffprobe_verify'])
+}),
+  "destinationPlan": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "volumeId": zod.string().nullish(),
+  "volumeLabel": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv'])
+})),
+  "integrationAlternatives": zod.array(zod.object({
+  "provider": zod.string(),
+  "capability": zod.string(),
+  "available": zod.boolean()
+})),
+  "items": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+})),
+  "finalResults": zod.union([zod.null(),zod.object({
+  "placedCount": zod.number(),
+  "failedCount": zod.number(),
+  "alreadyPresentCount": zod.number(),
+  "perItem": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+}))
+})]).optional()
+})
+
+
+/**
+ * Requires an approved plan. Queues at most a bounded batch of items
+ * through the real yt-dlp download engine (FFmpeg processing and FFprobe
+ * verification included). Never executes untrusted, blocked, or
+ * unsupported sources.
+ * @summary Execute an approved plan as a bounded batch through the real download engine
+ */
+
+
+
+export const ExecuteAcquisitionPlanParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const ExecuteAcquisitionPlanResponse = zod.object({
+  "id": zod.number(),
+  "request": zod.object({
+  "sourceUrl": zod.string(),
+  "note": zod.string().nullish(),
+  "mediaType": zod.enum(['movie', 'tv']).nullish(),
+  "requestedAt": zod.string()
+}),
+  "suppliedSource": zod.object({
+  "url": zod.string(),
+  "extractor": zod.string().nullish(),
+  "title": zod.string(),
+  "kind": zod.enum(['url'])
+}),
+  "sourceTrust": zod.object({
+  "state": zod.enum(['trusted', 'user_approved', 'untrusted', 'unsupported', 'blocked']),
+  "reason": zod.string(),
+  "requiresApproval": zod.boolean()
+}),
+  "discoveredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "existingArchiveState": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "presentCount": zod.number(),
+  "archiveQuality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "archiveSizeBytes": zod.number()
+})),
+  "missingItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "alreadyPresentItems": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "preferredCandidates": zod.array(zod.object({
+  "entryUrl": zod.string(),
+  "title": zod.string(),
+  "identityKey": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "year": zod.number().nullish(),
+  "selectedFormatId": zod.string().nullish(),
+  "quality": zod.union([zod.null(),zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+})]).optional(),
+  "estimatedSizeBytes": zod.number().nullish()
+})),
+  "qualityComparison": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "candidateRank": zod.number(),
+  "archiveRank": zod.number().nullish(),
+  "verdict": zod.enum(['new_item', 'upgrade', 'lateral_or_worse']),
+  "summary": zod.string()
+})),
+  "storageImpact": zod.object({
+  "estimatedBytes": zod.number().nullish(),
+  "freeBytesBefore": zod.number().nullish(),
+  "freeBytesAfter": zod.number().nullish(),
+  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "summary": zod.string()
+}),
+  "approvalState": zod.enum(['pending', 'approved', 'rejected']),
+  "approvalNote": zod.string().nullish(),
+  "executionStrategy": zod.object({
+  "mode": zod.enum(['staged_download']),
+  "batchLimit": zod.number(),
+  "perItem": zod.enum(['download_then_ffmpeg_then_ffprobe_verify'])
+}),
+  "destinationPlan": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "volumeId": zod.string().nullish(),
+  "volumeLabel": zod.string(),
+  "destinationDirectory": zod.string(),
+  "finalFilename": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv'])
+})),
+  "integrationAlternatives": zod.array(zod.object({
+  "provider": zod.string(),
+  "capability": zod.string(),
+  "available": zod.boolean()
+})),
+  "items": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+})),
+  "finalResults": zod.union([zod.null(),zod.object({
+  "placedCount": zod.number(),
+  "failedCount": zod.number(),
+  "alreadyPresentCount": zod.number(),
+  "perItem": zod.array(zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "state": zod.enum(['planned', 'queued', 'downloading', 'processing', 'verifying', 'downloading_more', 'complete', 'placed', 'failed', 'already_present', 'skipped']),
+  "downloadJobId": zod.number().nullish(),
+  "error": zod.string().nullish(),
+  "destinationPath": zod.string().nullish()
+}))
+})]).optional()
+})
+
+
+/**
  * @summary Inspect a media URL without downloading it
  */
 export const inspectMediaSourceBodyUrlMin = 8;
