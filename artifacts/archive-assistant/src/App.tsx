@@ -613,6 +613,26 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
   );
 }
 
+type LiveScanItem = {
+  path: string;
+  title: string;
+  mediaType: 'movie' | 'tv';
+  stage: 'discovering' | 'inspecting' | 'inspected' | 'registering' | 'completed' | 'failed';
+  status: 'active' | 'completed' | 'failed';
+  error?: string;
+};
+type LiveScanState = {
+  scanId: string | null;
+  status: 'not_scanned' | 'scanning' | 'completed' | 'failed';
+  startedAt: string | null;
+  completedAt: string | null;
+  scannedCount: number;
+  discoveredCount: number;
+  totalCount: number | null;
+  currentItem: LiveScanItem | null;
+  recentItems: LiveScanItem[];
+};
+
 function ArchivePage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState('');
@@ -624,12 +644,41 @@ function ArchivePage() {
   const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
 
   const [isScanning, setIsScanning] = useState(false);
+  const [liveScan, setLiveScan] = useState<LiveScanState | null>(null);
   const { data: scan, isLoading: scanLoading, refetch: refetchScan } = useGetArchiveScan({
-    query: {
-      refetchInterval: isScanning ? 2000 : false,
-      queryKey: getGetArchiveScanQueryKey()
-    }
+    query: { queryKey: getGetArchiveScanQueryKey() }
   });
+
+  useEffect(() => {
+    const apiRoot = (import.meta.env.VITE_API_BASE_URL?.trim() || desktopApiBaseUrl || '').replace(/\/$/, '');
+    const stream = new EventSource(`${apiRoot}/api/archive/scan/events`, { withCredentials: true });
+    const eventTypes = ['scan.snapshot', 'scan.started', 'scan.file.discovered', 'scan.file.started', 'scan.file.stage', 'scan.file.completed', 'scan.file.failed', 'scan.progress', 'scan.completed'];
+    const receive = (message: MessageEvent<string>) => {
+      const event = JSON.parse(message.data) as Partial<LiveScanState> & { type: string; item?: LiveScanItem; status?: LiveScanState['status'] };
+      setLiveScan(current => {
+        if (event.type === 'scan.snapshot') return event as LiveScanState;
+        const base = current ?? {
+          scanId: event.scanId ?? null, status: 'scanning', startedAt: new Date().toISOString(), completedAt: null,
+          scannedCount: 0, discoveredCount: 0, totalCount: null, currentItem: null, recentItems: []
+        };
+        const finishedItem = (event.type === 'scan.file.completed' || event.type === 'scan.file.failed') && event.item;
+        return {
+          ...base, ...event,
+          status: event.type === 'scan.completed' ? (event.status ?? 'completed') : base.status,
+          currentItem: event.type === 'scan.completed' ? null : (event.item ?? base.currentItem),
+          recentItems: finishedItem ? [finishedItem, ...base.recentItems.filter(item => item.path !== finishedItem.path)].slice(0, 20) : base.recentItems,
+        };
+      });
+      if (event.type === 'scan.started') setIsScanning(true);
+      if (event.type === 'scan.completed') {
+        setIsScanning(false);
+        queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+      }
+    };
+    eventTypes.forEach(type => stream.addEventListener(type, receive as EventListener));
+    return () => stream.close();
+  }, [queryClient]);
 
   useEffect(() => {
     const wasScanning = isScanning;
@@ -642,10 +691,7 @@ function ArchivePage() {
   }, [scan?.status, isScanning, queryClient]);
 
   const { data: inventory, isLoading: invLoading, isError: invError, refetch: refetchInv } = useGetArchiveInventory({
-    query: {
-      refetchInterval: isScanning ? 3000 : false,
-      queryKey: getGetArchiveInventoryQueryKey()
-    }
+    query: { queryKey: getGetArchiveInventoryQueryKey() }
   });
 
   const { data: namingProposals, isLoading: namingLoading, isError: namingError, refetch: refetchNaming } = useGetArchiveNamingProposals();
@@ -753,6 +799,46 @@ function ArchivePage() {
         <div className={`mb-5 border-l-2 p-3 text-[11px] leading-5 ${notice.includes('failed') || notice.includes('could not') ? 'border-[#c85b51] bg-[#fcedea] text-[#994b43]' : 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]'}`} data-testid="status-archive-scan">
           {notice}
         </div>
+      )}
+
+      {liveScan && liveScan.status !== 'not_scanned' && (
+        <section className="mb-7 border border-[#dce5e2] bg-white p-5 shadow-sm" data-testid="panel-live-archive-scan">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="archive-mono text-[10px] font-bold tracking-[.16em] text-[#52686d]">ARCHIVE SCAN</div>
+            <div className="archive-mono text-[10px] text-[#7f9194]">
+              {liveScan.scannedCount.toLocaleString()} / {(liveScan.totalCount ?? liveScan.discoveredCount).toLocaleString()}
+              {liveScan.startedAt && ` • ${Math.max(0, Math.floor((Date.now() - Date.parse(liveScan.startedAt)) / 1000))}s elapsed`}
+            </div>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden bg-[#e9efed]">
+            <div className="h-full bg-[#4e9690] transition-all duration-300" style={{ width: `${Math.min(100, liveScan.scannedCount / Math.max(1, liveScan.totalCount ?? liveScan.discoveredCount) * 100)}%` }} />
+          </div>
+          <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(240px,1fr)]">
+            <div>
+              <div className="archive-mono text-[9px] tracking-[.14em] text-[#8b9a9c]">{liveScan.currentItem ? 'CURRENT' : liveScan.status.toUpperCase()}</div>
+              {liveScan.currentItem ? <>
+                <div className="mt-2 text-[15px] font-bold text-[#344851]">{liveScan.currentItem.title}</div>
+                <div className="mt-1 break-all archive-mono text-[9px] text-[#839397]">{liveScan.currentItem.path}</div>
+                <div className="mt-4 flex items-center gap-2 text-[11px] font-semibold text-[#39736e]">
+                  {liveScan.currentItem.status === 'active' && <RefreshCw size={12} className="animate-spin" />}
+                  {liveScan.currentItem.stage.replaceAll('_', ' ').toUpperCase()}
+                </div>
+              </> : <div className="mt-2 text-[12px] text-[#61747a]">Scan {liveScan.status}.</div>}
+            </div>
+            <div>
+              <div className="archive-mono text-[9px] tracking-[.14em] text-[#8b9a9c]">RECENT</div>
+              <div className="mt-2 space-y-2">
+                {liveScan.recentItems.slice(0, 20).map((item, index) => (
+                  <div key={`${item.path}-${index}`} className="flex min-w-0 items-center gap-2 text-[11px]">
+                    <span className={item.status === 'failed' ? 'text-[#c85b51]' : 'text-[#4e9690]'}>{item.status === 'failed' ? '✕' : '✓'}</span>
+                    <span className="truncate font-semibold text-[#526168]" title={item.error ?? item.path}>{item.title}</span>
+                  </div>
+                ))}
+                {!liveScan.recentItems.length && <div className="text-[10px] text-[#9aa7a8]">Waiting for the first item…</div>}
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
       {scan && (

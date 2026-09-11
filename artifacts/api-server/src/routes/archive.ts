@@ -23,6 +23,11 @@ import {
 import { readReconciliationReport } from "../services/reconciliation";
 import { readNamingProposals } from "../services/naming-intelligence";
 import { readIdentityAudit } from "../services/identity-audit";
+import {
+  formatArchiveScanSse,
+  readArchiveScanEventSnapshot,
+  subscribeArchiveScanEvents,
+} from "../services/archive-scan-events";
 
 const router: IRouter = Router();
 
@@ -33,6 +38,28 @@ router.get("/archive/scan", (req, res) => {
 router.post("/archive/scan", (req, res) => {
   const result = startArchiveScan(getAuthenticatedUserId(req));
   res.status(202).json(StartArchiveScanResponse.parse(result));
+});
+
+router.get("/archive/scan/events", (req, res) => {
+  const ownerId = getAuthenticatedUserId(req);
+  res.status(200);
+  res.set({
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.flushHeaders();
+  const send = (event: { id?: string; type: string }) => res.write(formatArchiveScanSse(event));
+  send(readArchiveScanEventSnapshot(ownerId, readArchiveScan(ownerId)));
+  const unsubscribe = subscribeArchiveScanEvents(ownerId, send);
+  const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 15_000);
+  heartbeat.unref();
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+    if (!res.writableEnded) res.end();
+  });
 });
 
 router.get("/archive/inventory", (req, res) => {

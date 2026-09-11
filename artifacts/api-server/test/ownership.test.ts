@@ -37,6 +37,14 @@ import {
 } from "../src/services/archive";
 import { getAuthenticatedUserId } from "../src/middlewares/requireAuth";
 import { resolveRuntimeConfig, runtimeConfig } from "../src/lib/runtime-config";
+import {
+  beginArchiveScanEvents,
+  formatArchiveScanSse,
+  publishArchiveScanEvent,
+  readArchiveScanEventSnapshot,
+  scanItem,
+  subscribeArchiveScanEvents,
+} from "../src/services/archive-scan-events";
 
 const ownerA = runtimeConfig.localOwnerId;
 const ownerB = "user-b";
@@ -354,6 +362,34 @@ describe("user ownership", { concurrency: false }, () => {
     } finally {
       await new Promise<void>((resolve, reject) => plexServer.close((error) => error ? reject(error) : resolve()));
     }
+  });
+
+  test("archive scan events expose lifecycle, bounded recents, current state, and an SSE snapshot", async () => {
+    const owner = "scan-events-owner";
+    const received: string[] = [];
+    const unsubscribe = subscribeArchiveScanEvents(owner, event => received.push(event.type));
+    const scanId = beginArchiveScanEvents(owner);
+    publishArchiveScanEvent(owner, "scan.file.started", { item: scanItem("D:\\Movies\\Current.mkv", "inspecting", "active") });
+    for (let index = 0; index < 25; index += 1) {
+      const path = `D:\\Movies\\Movie.${index}.mkv`;
+      publishArchiveScanEvent(owner, index === 7 ? "scan.file.failed" : "scan.file.completed", {
+        scannedCount: index + 1,
+        item: scanItem(path, index === 7 ? "failed" : "completed", index === 7 ? "failed" : "completed", index === 7 ? "bad media" : undefined),
+      });
+    }
+    await new Promise(resolve => setImmediate(resolve));
+    unsubscribe();
+    const snapshot = readArchiveScanEventSnapshot(owner);
+    assert.equal(snapshot.scanId, scanId);
+    assert.equal(snapshot.scannedCount, 25);
+    assert.equal(snapshot.recentItems.length, 20);
+    assert.equal(snapshot.recentItems[0].title, "Movie.24");
+    assert.ok(received.includes("scan.started"));
+    assert.ok(received.includes("scan.file.failed"));
+
+    const initialSseFrame = formatArchiveScanSse(snapshot);
+    assert.match(initialSseFrame, /^event: scan\.snapshot\ndata: /);
+    assert.match(initialSseFrame, /"recentItems"/);
   });
 
   test("archive scans persist FFprobe metadata, evidence, missing files, Plex comparisons, and owner isolation", async () => {

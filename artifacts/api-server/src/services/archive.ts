@@ -5,6 +5,11 @@ import { basename, extname, relative, resolve, sep } from "node:path";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia } from "./media";
 import { getArchiveScanRoots } from "./storage";
+import {
+  beginArchiveScanEvents,
+  publishArchiveScanEvent,
+  scanItem,
+} from "./archive-scan-events";
 
 const supportedExtensions = new Set([
   ".avi", ".flac", ".m4a", ".m4v", ".mkv", ".mov", ".mp3", ".mp4",
@@ -461,6 +466,7 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
 
 async function scanArchive(ownerId: string) {
   invalidateArchiveInventoryCache(ownerId);
+  beginArchiveScanEvents(ownerId);
   const settings = readSettings();
   const roots = scanRoots(settings);
   const found = new Set<string>();
@@ -500,11 +506,20 @@ for (const root of roots) {
       const results = await Promise.all(
         files.map(async (filePath) => {
           found.add(filePath);
+          publishArchiveScanEvent(ownerId, "scan.file.started", {
+            item: scanItem(filePath, "inspecting", "active"),
+            stage: "inspecting",
+          });
 
           try {
+            const result = await inspectFile(filePath, root, existingByPath.get(filePath), settings, roots);
+            publishArchiveScanEvent(ownerId, "scan.file.stage", {
+              item: scanItem(filePath, "inspected", "active"),
+              stage: "inspected",
+            });
             return {
               filePath,
-              result: await inspectFile(filePath, root, existingByPath.get(filePath), settings, roots),
+              result,
             };
           } catch (error) {
             return {
@@ -530,7 +545,13 @@ for (const root of roots) {
       archiveDb.exec("BEGIN IMMEDIATE");
       try {
         for (const { result } of results) {
+          publishArchiveScanEvent(ownerId, "scan.file.stage", {
+            item: scanItem(result.filePath, "registering", "active"),
+            stage: "registering",
+          });
+          let fileError: string | undefined;
           if (result.warningMessage) {
+            fileError = result.warningMessage;
             failedFiles += 1;
             warnings.push(result.warningMessage);
           } else {
@@ -549,16 +570,27 @@ for (const root of roots) {
                   result.fileChecksum,
                   result.errorMessage,
                 );
-                if (result.inspected === null) failedFiles += 1;
+                if (result.inspected === null) {
+                  failedFiles += 1;
+                  fileError = result.errorMessage ?? "The file could not be inspected.";
+                }
               }
             } catch (error) {
               failedFiles += 1;
-              warnings.push(`Archive scan could not inspect ${basename(result.filePath)}: ${
+              fileError = `Archive scan could not inspect ${basename(result.filePath)}: ${
                 error instanceof Error ? error.message : "unknown error"
-              }`);
+              }`;
+              warnings.push(fileError);
             }
           }
           scannedFiles += 1;
+          publishArchiveScanEvent(ownerId, fileError ? "scan.file.failed" : "scan.file.completed", {
+            scannedCount: scannedFiles,
+            item: scanItem(result.filePath, fileError ? "failed" : "completed", fileError ? "failed" : "completed", fileError),
+            stage: fileError ? "failed" : "completed",
+            ...(fileError ? { error: fileError } : {}),
+          });
+          publishArchiveScanEvent(ownerId, "scan.progress", { scannedCount: scannedFiles });
         }
         updateScan(ownerId, {
           scanned_files: scannedFiles,
@@ -576,6 +608,11 @@ for (const root of roots) {
 
     for await (const filePath of walk(root, (message) => traversalWarnings.push(message))) {
       batch.push(filePath);
+      publishArchiveScanEvent(ownerId, "scan.file.discovered", {
+        discoveredCount: found.size + batch.length,
+        item: scanItem(filePath, "discovering", "active"),
+        stage: "discovering",
+      });
 
       if (batch.length >= concurrency) {
         await processBatch();
@@ -628,6 +665,13 @@ for (const root of roots) {
     plex_only_count: final.summary.plexOnlyCount,
     local_only_count: final.summary.localOnlyCount,
   });
+  publishArchiveScanEvent(ownerId, "scan.completed", {
+    scannedCount: scannedFiles,
+    discoveredCount: found.size,
+    totalCount: found.size,
+    status: rootError ? "failed" : "completed",
+    ...(error ? { error } : {}),
+  });
 }
 
 export function startArchiveScan(ownerId: string) {
@@ -643,6 +687,10 @@ export function startArchiveScan(ownerId: string) {
         last_error: error instanceof Error ? error.message : "Archive scan failed unexpectedly.",
       });
       addEvent("error", "Archive scan failed unexpectedly.", "archive", ownerId);
+      publishArchiveScanEvent(ownerId, "scan.completed", {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Archive scan failed unexpectedly.",
+      });
     })
     .finally(() => {
       if (scans.get(ownerId) === promise) scans.delete(ownerId);
