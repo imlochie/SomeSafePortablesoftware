@@ -692,7 +692,11 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
 
       {record.integrityClassification && (
         <div className={`mt-6 border-l-2 p-4 text-[11px] leading-5 ${record.integrityClassification === 'corrupt_or_malformed_container' ? 'border-[#c85b51] bg-[#fcedea] text-[#994b43]' : 'border-[#d9bd77] bg-[#fff8e7] text-[#80652e]'}`} data-testid="panel-media-integrity">
-          <div className="archive-mono mb-3 text-[10px] tracking-[.14em]">ARCHIVE HEALTH / MEDIA INTEGRITY</div>
+          <div className="archive-mono mb-3 text-[10px] tracking-[.14em]">
+            {record.integrityClassification === 'corrupt_or_malformed_container'
+              ? 'ARCHIVE HEALTH / MEDIA INTEGRITY'
+              : 'ARCHIVE HEALTH / INSPECTION'}
+          </div>
           <div className="font-bold">{record.integritySummary}</div>
           {record.path && <div className="mt-2 break-all"><span className="font-bold">PATH / </span>{record.path}</div>}
           {record.errorMessage && <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words border-t border-current/20 pt-3 font-mono text-[10px]">{record.errorMessage}</pre>}
@@ -896,7 +900,7 @@ export function ArchivePage() {
       {scan && (
         <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <MetricCard icon={FileCheck2} label="ACTIVE FILES" value={String(scan.activeFiles)} note="Verified local media" status={isScanning ? 'processing' : 'ready'} />
-           <MetricCard icon={Activity} label="SCAN FAILURES" value={String(inventory?.summary?.failedFiles ?? scan.failedFiles)} note={`${inventory?.summary?.integrityFailureCount ?? 0} integrity / ${inventory?.summary?.inspectionFailureCount ?? 0} operational`} accent={scan.failedFiles ? 'red' : 'teal'} status={scan.failedFiles ? 'error' : 'idle'} />
+            <MetricCard icon={Activity} label="SCAN FAILURES" value={String(scan.failedFiles)} note={`${inventory?.summary?.integrityFailureCount ?? 0} integrity / ${inventory?.summary?.inspectionFailureCount ?? 0} operational`} accent={scan.failedFiles ? 'red' : 'teal'} status={scan.failedFiles ? 'error' : 'idle'} />
            <MetricCard icon={ShieldCheck} label="ARCHIVE HEALTH" value={(inventory?.summary?.healthStatus ?? 'healthy').replace('_', ' ').toUpperCase()} note="Pre-existing media findings stay visible" accent={inventory?.summary?.healthStatus === 'attention_required' ? 'amber' : 'teal'} status={inventory?.summary?.healthStatus === 'attention_required' ? 'error' : 'ready'} />
           <MetricCard icon={Archive} label="MISSING FILES" value={String(scan.missingCount)} note="Known but missing" accent={scan.missingCount ? 'red' : 'teal'} status={scan.missingCount ? 'error' : 'idle'} />
           <MetricCard icon={Library} label="DUPLICATES" value={String(scan.duplicateCount)} note="Identical files found" accent={scan.duplicateCount ? 'amber' : 'teal'} />

@@ -32,6 +32,7 @@ import {
 import {
   readArchiveInventory,
   readArchiveScan,
+  invalidateArchiveInventoryCache,
   startArchiveScan,
   updateArchiveRecordReview,
   updateArchiveRecordReviews,
@@ -121,6 +122,36 @@ describe("user ownership", { concurrency: false }, () => {
         "SELECT COUNT(*) AS count FROM plex_part WHERE file_path = '/legacy/movie.mkv'",
       ).get() as { count: number }).count,
       1,
+    );
+    const migratedFile = archiveDb.prepare(
+      `SELECT archive_item_id, filename, relative_path, scan_status, modified_at_ms,
+              duration_seconds, video_codec, audio_codec, width, height, fingerprint,
+              error_message, integrity_classification, local_identity_id, volume_id, archive_root
+       FROM file_record WHERE path = '/legacy/archive.mkv' AND owner_id = ?`,
+    ).get(ownerA) as Record<string, unknown>;
+    assert.deepEqual({ ...migratedFile }, {
+      archive_item_id: 1,
+      filename: "Legacy.Movie.2024.mkv",
+      relative_path: "Legacy.Movie.2024.mkv",
+      scan_status: "error",
+      modified_at_ms: 1700000000000,
+      duration_seconds: 3600.5,
+      video_codec: "h264",
+      audio_codec: "aac",
+      width: 1920,
+      height: 1080,
+      fingerprint: "legacy-fingerprint",
+      error_message: "Invalid Matroska EBML header",
+      integrity_classification: "corrupt_or_malformed_container",
+      local_identity_id: 1,
+      volume_id: "legacy-volume",
+      archive_root: "/legacy",
+    });
+    assert.equal(
+      (archiveDb.prepare(
+        "SELECT owner_id FROM local_media_identity WHERE id = 1",
+      ).get() as { owner_id: string }).owner_id,
+      ownerA,
     );
     assert.equal(
       (archiveDb.prepare(
@@ -386,9 +417,13 @@ describe("user ownership", { concurrency: false }, () => {
     await mkdir(downloadDirectory, { recursive: true });
     await writeFile(ffprobePath, `#!/usr/bin/env node
 const file = process.argv.at(-1) ?? "";
+import { unlinkSync } from "node:fs";
 if (file.includes("Corrupt")) {
   process.stderr.write("Invalid Matroska EBML header");
   process.exit(1);
+}
+if (file.includes("ChecksumFailure")) {
+  unlinkSync(file);
 }
 const is2160 = file.includes("2160") || file.includes("Alpha");
 process.stdout.write(JSON.stringify({
@@ -428,6 +463,7 @@ process.stdout.write(JSON.stringify({
       copyOne: join(downloadDirectory, "Copy.One.mkv"),
       copyTwo: join(downloadDirectory, "Copy.Two.mkv"),
       corrupt: join(downloadDirectory, "Corrupt.mp4"),
+      checksumFailure: join(downloadDirectory, "ChecksumFailure.mkv"),
     };
     await Promise.all([
       writeFile(files.alpha, "alpha-media"),
@@ -436,6 +472,7 @@ process.stdout.write(JSON.stringify({
       writeFile(files.copyOne, "identical-media"),
       writeFile(files.copyTwo, "identical-media"),
       writeFile(files.corrupt, "corrupt"),
+      writeFile(files.checksumFailure, "checksum-failure"),
     ]);
     writeSettings({
       archiveDirectory: JSON.stringify([archiveDirectory, downloadDirectory]),
@@ -455,11 +492,11 @@ process.stdout.write(JSON.stringify({
 
     const firstScan = await waitForScan(ownerA);
     assert.equal(firstScan.status, "completed");
-    assert.equal(firstScan.scannedFiles, 6);
-    assert.equal(firstScan.failedFiles, 1, JSON.stringify(readEvents(ownerA, 20)));
+    assert.equal(firstScan.scannedFiles, 7);
+    assert.equal(firstScan.failedFiles, 2, JSON.stringify(readEvents(ownerA, 20)));
 
     const inventory = readArchiveInventory(ownerA);
-    assert.equal(inventory.records.length, 7);
+    assert.equal(inventory.records.length, 8);
     const alpha = inventory.records.find((record) => record.filename === "Alpha.2024.mkv");
     assert.equal(alpha?.height, 2160);
     assert.equal(alpha?.audioChannels, 6);
@@ -489,18 +526,35 @@ process.stdout.write(JSON.stringify({
     assert.equal(corrupt?.integrityClassification, "corrupt_or_malformed_container");
     assert.match(corrupt?.integritySummary ?? "", /corrupt or malformed/i);
     assert.match(corrupt?.errorMessage ?? "", /Invalid Matroska EBML header/i);
-    assert.equal(inventory.summary.integrityFailureCount, 1);
-    assert.equal(inventory.summary.inspectionFailureCount, 0);
+    assert.equal(inventory.summary.integrityFailureCount, 2);
     assert.equal(inventory.summary.healthStatus, "attention_required");
+    const checksumFailure = inventory.records.find((record) => record.filename === "ChecksumFailure.mkv");
+    assert.equal(checksumFailure?.scanStatus, "error");
+    assert.equal(checksumFailure?.integrityClassification, "inspection_unavailable");
+    assert.match(checksumFailure?.errorMessage ?? "", /ENOENT|no such file/i);
+    assert.equal(inventory.summary.inspectionFailureCount, 1);
     assert.ok(inventory.plexOnly.some((record) => record.title === "Beta"));
     assert.deepEqual(readArchiveInventory(ownerB).records, []);
 
+    if (!corrupt) throw new Error("Expected the corrupt archive record.");
+    archiveDb.prepare(
+      "UPDATE file_record SET integrity_classification = ?, error_message = ? WHERE id = ? AND owner_id = ?",
+    ).run(
+      "corrupt_or_malformed_container",
+      "spawn C:\\tools\\ffprobe.exe EACCES",
+      corrupt.id,
+      ownerA,
+    );
+    invalidateArchiveInventoryCache(ownerA);
+    const storedClassification = readArchiveInventory(ownerA).records.find((record) => record.id === corrupt.id);
+    assert.equal(storedClassification?.integrityClassification, "corrupt_or_malformed_container");
+
     await waitForScan(ownerA);
-    assert.equal(readArchiveInventory(ownerA).records.length, 7);
+    assert.equal(readArchiveInventory(ownerA).records.length, 8);
     assert.equal(readArchiveInventory(ownerA).records.find((record) => record.id === low.id)?.reviewStatus, "reviewed");
     assert.equal(
       (archiveDb.prepare("SELECT COUNT(*) AS count FROM file_record WHERE owner_id = ?").get(ownerA) as { count: number }).count,
-      7,
+      8,
     );
 
     await writeFile(files.low, "movie-low-with-changed-evidence");
@@ -541,7 +595,7 @@ process.stdout.write(JSON.stringify({
     const missingScan = await waitForScan(ownerA);
     assert.equal(missingScan.status, "completed");
     const afterMissing = readArchiveInventory(ownerA);
-    assert.equal(afterMissing.summary.missingCount, 1);
+    assert.equal(afterMissing.summary.missingCount, 2);
     assert.equal(afterMissing.records.find((record) => record.filename === "Copy.Two.mkv")?.qualityStatus, "file_missing");
 
     archiveDb.exec("PRAGMA wal_checkpoint(FULL)");
@@ -549,7 +603,7 @@ process.stdout.write(JSON.stringify({
     try {
       assert.equal(
         (reopened.prepare("SELECT COUNT(*) AS count FROM file_record WHERE owner_id = ?").get(ownerA) as { count: number }).count,
-        7,
+        8,
       );
       assert.equal(
         (reopened.prepare("SELECT status FROM archive_scan WHERE owner_id = ?").get(ownerA) as { status: string }).status,

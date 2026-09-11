@@ -548,13 +548,50 @@ const fileRecordColumns = archiveDb
   .prepare("PRAGMA table_info(file_record)")
   .all() as Array<{ name: string }>;
 const fileRecordHasOwner = fileRecordColumns.some((column) => column.name === "owner_id");
+const fileRecordRebuildColumns = [
+  "id",
+  "path",
+  "size_bytes",
+  "checksum",
+  "media_type",
+  "discovered_at",
+  "owner_id",
+  "archive_item_id",
+  "filename",
+  "relative_path",
+  "scan_status",
+  "last_seen_at",
+  "modified_at_ms",
+  "extension",
+  "duration_seconds",
+  "video_codec",
+  "audio_codec",
+  "width",
+  "height",
+  "fps",
+  "bitrate",
+  "container",
+  "dynamic_range",
+  "audio_channels",
+  "audio_languages",
+  "subtitle_languages",
+  "fingerprint",
+  "error_message",
+  "integrity_classification",
+  "local_identity_id",
+  "volume_id",
+  "archive_root",
+  "updated_at",
+] as const;
 if (!fileRecordHasOwner || hasSingleColumnUniqueIndex("file_record", "path")) {
   const ownerExpression = fileRecordHasOwner ? "owner_id" : `'${LEGACY_OWNER_ID}'`;
-  const integrityClassificationExpression = fileRecordColumns.some(
-    (column) => column.name === "integrity_classification",
-  )
-    ? "integrity_classification"
-    : "NULL";
+  const existingFileRecordColumns = new Set(fileRecordColumns.map((column) => column.name));
+  const preservedFileRecordColumns = fileRecordRebuildColumns.filter(
+    (column) => column === "owner_id" || existingFileRecordColumns.has(column),
+  );
+  const fileRecordSelectExpressions = preservedFileRecordColumns.map(
+    (column) => column === "owner_id" ? ownerExpression : column,
+  );
   archiveDb.exec(`
     PRAGMA foreign_keys = OFF;
     BEGIN IMMEDIATE;
@@ -588,12 +625,15 @@ if (!fileRecordHasOwner || hasSingleColumnUniqueIndex("file_record", "path")) {
       fingerprint TEXT,
       error_message TEXT,
       integrity_classification TEXT,
+      local_identity_id INTEGER REFERENCES local_media_identity(id),
+      volume_id TEXT,
+      archive_root TEXT,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (owner_id, path)
     );
     INSERT INTO file_record_owned
-      (id, path, size_bytes, checksum, media_type, discovered_at, owner_id, integrity_classification)
-    SELECT id, path, size_bytes, checksum, media_type, discovered_at, ${ownerExpression}, ${integrityClassificationExpression}
+      (${preservedFileRecordColumns.join(", ")})
+    SELECT ${fileRecordSelectExpressions.join(", ")}
     FROM file_record;
     DROP TABLE file_record;
     ALTER TABLE file_record_owned RENAME TO file_record;
@@ -732,6 +772,7 @@ const legacyOwnedTables = [
   "system_event",
   "plex_library",
   "plex_item",
+  "local_media_identity",
   "file_record",
 ] as const;
 

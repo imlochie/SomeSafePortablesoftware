@@ -87,6 +87,23 @@ try {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE local_media_identity (
+      id INTEGER PRIMARY KEY,
+      owner_id TEXT NOT NULL DEFAULT '__legacy__',
+      identity_key TEXT NOT NULL,
+      media_type TEXT NOT NULL,
+      normalized_title TEXT NOT NULL,
+      year INTEGER,
+      show_identity TEXT,
+      season_number INTEGER,
+      episode_number INTEGER,
+      size_bytes INTEGER,
+      fingerprint TEXT,
+      checksum TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (owner_id, identity_key)
+    );
     CREATE TABLE system_event (
       id TEXT PRIMARY KEY,
       level TEXT NOT NULL,
@@ -100,7 +117,33 @@ try {
       size_bytes INTEGER,
       checksum TEXT,
       media_type TEXT,
-      discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      archive_item_id INTEGER,
+      filename TEXT NOT NULL DEFAULT '',
+      relative_path TEXT NOT NULL DEFAULT '',
+      scan_status TEXT NOT NULL DEFAULT 'active',
+      last_seen_at TEXT,
+      modified_at_ms INTEGER,
+      extension TEXT NOT NULL DEFAULT '',
+      duration_seconds REAL,
+      video_codec TEXT,
+      audio_codec TEXT,
+      width INTEGER,
+      height INTEGER,
+      fps REAL,
+      bitrate INTEGER,
+      container TEXT,
+      dynamic_range TEXT,
+      audio_channels INTEGER,
+      audio_languages TEXT NOT NULL DEFAULT '[]',
+      subtitle_languages TEXT NOT NULL DEFAULT '[]',
+      fingerprint TEXT,
+      error_message TEXT,
+      integrity_classification TEXT,
+      local_identity_id INTEGER,
+      volume_id TEXT,
+      archive_root TEXT,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE setting (
       key TEXT PRIMARY KEY,
@@ -108,6 +151,11 @@ try {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     INSERT INTO archive_item (title) VALUES ('Legacy archive item');
+    INSERT INTO local_media_identity (
+      id, identity_key, media_type, normalized_title, year, size_bytes, fingerprint, checksum
+    ) VALUES (
+      1, 'movie:2024', 'movie', 'legacy movie', 2024, 2048, 'legacy-fingerprint', 'legacy-checksum'
+    );
     INSERT INTO plex_library (id, name, server_url) VALUES (1, 'Legacy Plex Library', 'http://legacy-plex');
     INSERT INTO plex_item (id, library_id, rating_key, title, item_type) VALUES (1, 1, 'legacy-rating', 'Legacy Plex Item', 'movie');
     INSERT INTO plex_media (id, item_id, video_resolution, video_codec) VALUES (1, 1, '1080', 'h264');
@@ -118,8 +166,19 @@ try {
     INSERT INTO assistant_conversation (title) VALUES ('Legacy conversation');
     INSERT INTO system_event (id, level, message, source, timestamp)
       VALUES ('legacy-event', 'info', 'Legacy event', 'legacy', CURRENT_TIMESTAMP);
-    INSERT INTO file_record (path, size_bytes, checksum, media_type)
-      VALUES ('/legacy/archive.mkv', 2048, 'legacy-checksum', 'matroska');
+    INSERT INTO file_record (
+      path, size_bytes, checksum, media_type, archive_item_id, filename, relative_path,
+      scan_status, last_seen_at, modified_at_ms, extension, duration_seconds, video_codec,
+      audio_codec, width, height, fps, bitrate, container, dynamic_range, audio_channels,
+      audio_languages, subtitle_languages, fingerprint, error_message, integrity_classification,
+      local_identity_id, volume_id, archive_root
+    ) VALUES (
+      '/legacy/archive.mkv', 2048, 'legacy-checksum', 'matroska', 1, 'Legacy.Movie.2024.mkv',
+      'Legacy.Movie.2024.mkv', 'error', CURRENT_TIMESTAMP, 1700000000000, 'mkv', 3600.5,
+      'h264', 'aac', 1920, 1080, 24, 8000000, 'matroska', 'bt709', 2, '[\"eng\"]',
+      '[\"spa\"]', 'legacy-fingerprint', 'Invalid Matroska EBML header',
+      'corrupt_or_malformed_container', 1, 'legacy-volume', '/legacy'
+    );
     INSERT INTO setting (key, value) VALUES ('plexServerUrl', '"http://legacy-plex"');
     INSERT INTO setting (key, value) VALUES ('plexToken', '"legacy-token"');
   `);

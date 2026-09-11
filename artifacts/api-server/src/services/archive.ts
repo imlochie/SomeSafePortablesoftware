@@ -466,10 +466,18 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
   let integrityClassification: MediaIntegrityClassification | null = null;
   try {
     inspected = await inspectLocalMedia(filePath, settings, archiveScanRoots);
-    fileChecksum = await checksum(filePath);
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : "The file could not be inspected.";
     integrityClassification = assessMediaIntegrityFailure(errorMessage).classification;
+  }
+  if (inspected) {
+    try {
+      fileChecksum = await checksum(filePath);
+    } catch (error) {
+      inspected = null;
+      errorMessage = error instanceof Error ? error.message : "The file could not be checksummed.";
+      integrityClassification = assessMediaIntegrityFailure(errorMessage, "operational").classification;
+    }
   }
   return {
     filePath,
@@ -795,7 +803,12 @@ function plexTitleIndexes(plexRows: PlexRow[]): PlexTitleIndexes {
 }
 
 function integrityClassificationFor(row: Pick<FileRow, "integrity_classification" | "error_message">) {
-  if (row.integrity_classification) return row.integrity_classification;
+  if (
+    row.integrity_classification === "corrupt_or_malformed_container"
+    || row.integrity_classification === "inspection_unavailable"
+  ) {
+    return row.integrity_classification;
+  }
   return row.error_message ? assessMediaIntegrityFailure(row.error_message).classification : null;
 }
 
@@ -976,7 +989,7 @@ type InventoryIndexes = {
 
 function buildArchiveInventory(ownerId: string) {
   const rows = archiveDb.prepare(
-    "SELECT id, archive_item_id, local_identity_id, filename, path, relative_path, size_bytes, checksum, media_type, scan_status, error_message, duration_seconds, video_codec, audio_codec, width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages, subtitle_languages, fingerprint, modified_at_ms, last_seen_at FROM file_record WHERE owner_id = ? ORDER BY filename COLLATE NOCASE, path",
+    "SELECT id, archive_item_id, local_identity_id, filename, path, relative_path, size_bytes, checksum, media_type, scan_status, error_message, integrity_classification, duration_seconds, video_codec, audio_codec, width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages, subtitle_languages, fingerprint, modified_at_ms, last_seen_at FROM file_record WHERE owner_id = ? ORDER BY filename COLLATE NOCASE, path",
   ).all(ownerId) as FileRow[];
   const identityRows = archiveDb.prepare(
     `SELECT id, identity_key, media_type, normalized_title, year, show_identity,

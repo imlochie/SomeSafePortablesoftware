@@ -27,12 +27,30 @@ describe("media integrity classification", () => {
     }
   });
 
-  test("keeps operational inspection failures separate from media damage", () => {
-    const assessment = assessMediaIntegrityFailure(
+  test("keeps operational, tool, and unsupported-media failures separate from media damage", () => {
+    const examples = [
+      "spawn C:\\tools\\ffprobe.exe ENOENT",
       "spawn C:\\tools\\ffprobe.exe EACCES",
+      "Command timed out after 20000 milliseconds",
+      "Unexpected token '<' in JSON at position 0",
+      "Unsupported codec with id 123",
+      "EACCES: permission denied, open C:\\Archive\\movie.mkv",
+      "The configured media tool is unavailable",
+      "EBML parser process could not be started",
+    ];
+
+    for (const message of examples) {
+      const assessment = assessMediaIntegrityFailure(message);
+      assert.equal(assessment.classification, "inspection_unavailable", message);
+      assert.match(assessment.summary, /operational error/i);
+    }
+  });
+
+  test("never classifies a non-FFprobe failure as damaged media", () => {
+    assert.equal(
+      assessMediaIntegrityFailure("Invalid Matroska EBML header", "operational").classification,
+      "inspection_unavailable",
     );
-    assert.equal(assessment.classification, "inspection_unavailable");
-    assert.match(assessment.summary, /operational error/i);
   });
 
   test("provides stable human-readable summaries", () => {
