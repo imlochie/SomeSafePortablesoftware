@@ -22,9 +22,11 @@ import {
   getGetArchiveRecordQueryKey,
   useUpdateArchiveNamingProposalDecisions, useApplyArchiveNamingProposals, useGetArchiveOperations,
   useRollbackArchiveOperation, getGetArchiveNamingProposalsQueryKey, getGetArchiveOperationsQueryKey,
+  useGetArchiveQualityRecord, useUpdateArchiveQualityFindingReview,
+  getGetArchiveQualityRecordQueryKey, getGetArchiveQualityFindingsQueryKey, useGetArchiveQualityFindings,
   setBaseUrl,
 } from '@workspace/api-client-react';
-import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent } from '@workspace/api-client-react';
+import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent, GetAcquisitionFindingsParams } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -35,6 +37,7 @@ const queryClient = new QueryClient();
 const navItems = [
   { label: 'HOME', href: '/user-portal', icon: Activity }, { label: 'ASSISTANT', href: '/assistant', icon: Bot },
   { label: 'QUEUE', href: '/queue', icon: Download }, { label: 'ARCHIVE', href: '/archive', icon: Archive },
+  { label: 'DISCOVERY', href: '/discovery', icon: Search },
   { label: 'PLEX', href: '/plex', icon: PlaySquare }, { label: 'SOURCES', href: '/sources', icon: FolderOpen },
   { label: 'HISTORY', href: '/history', icon: History }, { label: 'SETTINGS', href: '/settings', icon: SettingsIcon },
 ];
@@ -564,6 +567,8 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
         </div>
       )}
 
+      <ArchiveQualityIntelligence recordId={id} />
+
       {record.reviewStatus !== 'not_applicable' && (
         <div className="mt-6 border-t border-[#e3e8e7] pt-5" data-testid="panel-archive-review">
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -615,6 +620,193 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
   );
 }
 
+const qualityRelationshipCopy: Record<string, string> = {
+  exact_duplicate: 'Byte-identical copies',
+  probable_duplicate: 'Probable duplicate',
+  equivalent: 'Equivalent encodes',
+  superior_encode: 'This copy dominates the others',
+  inferior_encode: 'A better copy exists',
+  materially_different_encode: 'Materially different encodes',
+  different_media: 'Different cut or runtime',
+  insufficient_metadata: 'Not enough metadata to compare',
+};
+
+const qualityConfidenceTone: Record<string, string> = {
+  high: 'bg-[#eaf3ef] text-[#39736e]',
+  medium: 'bg-[#fff0c9] text-[#8d681d]',
+  low: 'bg-[#fcedea] text-[#994b43]',
+};
+
+/**
+ * Read-only quality intelligence for one record: the normalized technical
+ * model, the comparison that produced the finding, the reason, the confidence,
+ * and the review state. Nothing here touches media; findings are reviewable.
+ */
+function ArchiveQualityIntelligence({ recordId }: { recordId: number }) {
+  const queryClient = useQueryClient();
+  const { data: report } = useGetArchiveQualityRecord(recordId);
+  const reviewFinding = useUpdateArchiveQualityFindingReview();
+  const [qualityNotice, setQualityNotice] = useState('');
+
+  if (!report) return null;
+  const finding = report.findings[0];
+  const comparison = finding
+    ? {
+      counterpartLine: finding.counterpartLine ?? null,
+      relationship: finding.relationship,
+      winner: finding.winner,
+      confidence: finding.confidence,
+      reasons: finding.reasons,
+      uncertainty: finding.uncertainty,
+      axes: finding.axes,
+    }
+    : report.comparisons[0]
+      ? {
+        counterpartLine: `${report.comparisons[0].counterpart.label} - ${report.comparisons[0].counterpart.resolution}`,
+        relationship: report.comparisons[0].relationship,
+        winner: report.comparisons[0].winner,
+        confidence: report.comparisons[0].confidence,
+        reasons: report.comparisons[0].reasons,
+        uncertainty: report.comparisons[0].uncertainty,
+        axes: report.comparisons[0].axes,
+      }
+      : null;
+  if (!comparison) return null;
+
+  const markReviewed = (target: NonNullable<typeof finding>) => {
+    setQualityNotice('');
+    reviewFinding.mutate({
+      data: {
+        fileRecordId: target.fileRecordId,
+        kind: target.kind,
+        evidenceKey: target.evidenceKey,
+        status: 'reviewed',
+        note: `Reviewed from the archive panel: ${target.headline}.`,
+      },
+    }, {
+      onSuccess: () => {
+        setQualityNotice('Quality finding marked reviewed. Media was not changed.');
+        queryClient.invalidateQueries({ queryKey: getGetArchiveQualityRecordQueryKey(recordId) });
+        queryClient.invalidateQueries({ queryKey: getGetArchiveQualityFindingsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+      },
+      onError: (error) => setQualityNotice(`Review could not be saved: ${errorText(error)}`),
+    });
+  };
+
+  const notableAxes = comparison.axes.filter((axis) => axis.status !== 'equal');
+
+  return (
+    <div className="mt-6 border-t border-[#e3e8e7] pt-5" data-testid="panel-archive-quality">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">QUALITY INTELLIGENCE</div>
+        {finding?.severity && (
+          <span className={`archive-mono px-2 py-1 text-[9px] tracking-[.08em] ${qualityConfidenceTone[finding.severity] ?? 'bg-[#f1f4f3] text-[#5f7178]'}`}>
+            {finding.kind.replace(/_/g, ' ').toUpperCase()}
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-3 text-[11px] leading-5">
+        <div>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">CURRENT QUALITY</div>
+          <div className="mt-0.5 text-[#344851]">{report.currentQualityLine}</div>
+        </div>
+        <div>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">COMPARISON</div>
+          <div className="mt-0.5 text-[#344851]">
+            {qualityRelationshipCopy[comparison.relationship] ?? comparison.relationship.replace(/_/g, ' ')}
+            {comparison.counterpartLine ? <span className="text-[#859296]"> / {comparison.counterpartLine}</span> : null}
+          </div>
+          {comparison.winner && (
+            <div className="mt-1 text-[10px] text-[#43545b]">
+              Preferred: <span className="font-bold text-[#39736e]">{comparison.winner === 'left' ? 'this record' : comparison.counterpartLine?.split(' - ')[0] ?? 'the other copy'}</span>
+            </div>
+          )}
+        </div>
+        <div>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">REASON</div>
+          <ul className="mt-0.5 space-y-1.5">
+            {comparison.reasons.slice(0, 4).map((reason, index) => (
+              <li key={index} className="flex items-start gap-2 text-[#43545b]">
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[#4e9690]" />
+                <span className="min-w-0 flex-1 break-words">{reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {notableAxes.length > 0 && (
+          <div className="space-y-1">
+            {notableAxes.slice(0, 6).map((axis, index) => (
+              <div key={`${axis.axis}-${index}`} className="archive-mono text-[9px] leading-4 text-[#859296]">
+                {axis.materiality.toUpperCase()} / {axis.text}
+                {axis.note ? <span className="text-[#a0aaaa]"> - {axis.note}</span> : null}
+              </div>
+            ))}
+          </div>
+        )}
+        {comparison.uncertainty.length > 0 && (
+          <div className="border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[10px] leading-4 text-[#80652e]">
+            {comparison.uncertainty[0]}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">CONFIDENCE</div>
+          <span className={`archive-mono px-2 py-1 text-[9px] tracking-[.08em] ${qualityConfidenceTone[comparison.confidence ?? ''] ?? 'bg-[#f1f4f3] text-[#5f7178]'}`}>
+            {(comparison.confidence ?? 'not scored').replace(/ /g, '_').toUpperCase()}
+          </span>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">REVIEW STATUS</div>
+          <span className={`archive-mono px-2 py-1 text-[9px] tracking-[.08em] ${finding?.reviewStatus === 'reviewed' ? 'bg-[#eaf3ef] text-[#39736e]' : 'bg-[#fff0c9] text-[#8d681d]'}`}>
+            {(finding?.reviewStatus ?? 'unreviewed').replace(/_/g, ' ').toUpperCase()}
+          </span>
+        </div>
+        {report.findings.length > 1 && (
+          <div className="space-y-2 border-t border-[#eef2f0] pt-3">
+            <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">
+              OTHER FINDINGS ON THIS RECORD ({report.findings.length - 1})
+            </div>
+            {report.findings.slice(1).map((other) => (
+              <div key={other.key} className="flex items-start justify-between gap-2">
+                <span className="min-w-0 flex-1 break-words text-[10px] text-[#5f7178]">
+                  {other.kind.replace(/_/g, ' ')}
+                  {other.confidence ? ` / ${other.confidence}` : ''} / {other.reviewStatus.replace(/_/g, ' ')}
+                </span>
+                {other.reviewStatus !== 'reviewed' && (
+                  <button
+                    type="button"
+                    onClick={() => markReviewed(other)}
+                    disabled={reviewFinding.isPending}
+                    className="archive-mono shrink-0 border border-[#cbe0d9] bg-[#f4faf7] px-1.5 py-1 text-[8px] font-bold tracking-[.06em] text-[#39736e] disabled:opacity-50"
+                    data-testid={`button-quality-review-${other.key.slice(0, 8)}`}
+                  >
+                    REVIEW
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {finding && finding.reviewStatus !== 'reviewed' && (
+          <button
+            type="button"
+            onClick={() => markReviewed(finding)}
+            disabled={reviewFinding.isPending}
+            className="inline-flex items-center justify-center gap-1.5 border border-[#cbe0d9] bg-[#f4faf7] px-2 py-2 text-[9px] font-bold tracking-[.06em] text-[#39736e] disabled:opacity-50"
+            data-testid="button-quality-review-reviewed"
+          >
+            <Check size={12} /> MARK FINDING REVIEWED
+          </button>
+        )}
+        {qualityNotice && (
+          <div className={`text-[10px] ${qualityNotice.includes('could not') ? 'text-[#994b43]' : 'text-[#39736e]'}`} data-testid="status-quality-review">
+            {qualityNotice}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ArchivePage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState('');
@@ -624,6 +816,7 @@ function ArchivePage() {
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
   const [namingNotice, setNamingNotice] = useState('');
   const [namingFailures, setNamingFailures] = useState<Array<{ id: number; error: string }>>([]);
+  const { data: qualityFindings } = useGetArchiveQualityFindings({ pageSize: 1 });
   const [view, setView] = useState<'local' | 'naming_proposals' | 'plex_only'>('local');
   const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
 
@@ -821,11 +1014,12 @@ function ArchivePage() {
       )}
 
       {scan && (
-        <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
           <MetricCard icon={FileCheck2} label="ACTIVE FILES" value={String(scan.activeFiles)} note="Verified local media" status={isScanning ? 'processing' : 'ready'} />
           <MetricCard icon={Archive} label="MISSING FILES" value={String(scan.missingCount)} note="Known but missing" accent={scan.missingCount ? 'red' : 'teal'} status={scan.missingCount ? 'error' : 'idle'} />
           <MetricCard icon={Library} label="DUPLICATES" value={String(scan.duplicateCount)} note="Identical files found" accent={scan.duplicateCount ? 'amber' : 'teal'} />
           <MetricCard icon={Activity} label="QUALITY CONFLICTS" value={String(scan.qualityConflictCount)} note="Multiple versions exist" accent={scan.qualityConflictCount ? 'amber' : 'teal'} />
+          <MetricCard icon={ShieldCheck} label="QUALITY FINDINGS" value={String(qualityFindings?.summary.unreviewedCount ?? 0)} note={qualityFindings ? `${qualityFindings.summary.exactDuplicateCount} exact / ${qualityFindings.summary.probableDuplicateCount} probable / ${qualityFindings.summary.lowerQualityCount} lower quality` : 'Compare on: resolution, HDR, codec, bitrate, audio'} accent={qualityFindings?.summary.exactDuplicateCount ? 'amber' : 'teal'} />
         </div>
       )}
 
@@ -1062,6 +1256,60 @@ function ArchivePage() {
   );
 }
 
+function acquisitionQualityLabel(quality: { height: number | null; hdr: boolean; videoCodec: string | null; audioCodec: string | null } | null) {
+  if (!quality) return 'UNKNOWN QUALITY';
+  const resolution = quality.height ? `${quality.height}P` : 'RESOLUTION UNKNOWN';
+  const hdr = quality.hdr ? ' / HDR' : '';
+  const codecs = [quality.videoCodec, quality.audioCodec].filter(Boolean).join(' / ');
+  return `${resolution}${hdr}${codecs ? ` / ${codecs}` : ''}`;
+}
+
+function DiscoveryPage() {
+  const queryClient = useQueryClient();
+  const [mediaType, setMediaType] = useState<'all' | 'movie' | 'tv'>('all');
+  const [status, setStatus] = useState<'all' | 'recommended' | 'not_recommended'>('all');
+  const params: GetAcquisitionFindingsParams = {
+    mediaType: mediaType === 'all' ? undefined : mediaType,
+    status: status === 'all' ? undefined : status,
+    page: 1,
+    pageSize: 100,
+  };
+  const findingsQuery = useGetAcquisitionFindings(params);
+  const refresh = useRefreshAcquisitionIntelligence();
+  const findings = (findingsQuery.data?.results ?? []).filter((finding) => finding.need.archiveState !== 'fully_present');
+  const handleRefresh = () => {
+    refresh.mutate(undefined, {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetAcquisitionFindingsQueryKey(params) }),
+    });
+  };
+
+  return <>
+    <PageIntro
+      eyebrow="DISCOVERY / ACQUISITION INTELLIGENCE"
+      title="What should be acquired?"
+      description="A provider-neutral, reviewable readout of missing media, candidate sources, quality tradeoffs, and storage implications. Nothing is downloaded from this surface."
+      action={<button onClick={handleRefresh} disabled={refresh.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-refresh-discovery"><RefreshCw size={14} className={refresh.isPending ? 'animate-spin' : ''} /> {refresh.isPending ? 'RECOMPUTING' : 'REFRESH INTELLIGENCE'}</button>}
+    />
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border border-[#e3e8e7] bg-white/60 p-3" data-testid="panel-discovery-filters">
+      <div className="archive-mono text-[10px] tracking-[.12em] text-[#7f9194]">{findingsQuery.data?.summary.recommended ?? 0} RECOMMENDED / {findingsQuery.data?.summary.blocked ?? 0} BLOCKED</div>
+      <div className="flex flex-wrap gap-2">
+        <select value={mediaType} onChange={(event) => setMediaType(event.target.value as typeof mediaType)} className="border border-[#d6dfdc] bg-[#fbfcfa] px-2.5 py-2 text-[10px] font-bold tracking-[.08em] text-[#53656b]" data-testid="select-discovery-media-type"><option value="all">ALL MEDIA</option><option value="movie">MOVIES</option><option value="tv">TV</option></select>
+        <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className="border border-[#d6dfdc] bg-[#fbfcfa] px-2.5 py-2 text-[10px] font-bold tracking-[.08em] text-[#53656b]" data-testid="select-discovery-status"><option value="all">ALL FINDINGS</option><option value="recommended">RECOMMENDED</option><option value="not_recommended">BLOCKED / REVIEW</option></select>
+      </div>
+    </div>
+    {findingsQuery.isLoading ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-[260px]" /><Skeleton className="h-[260px]" /></div> : findingsQuery.isError ? <ErrorState title="Discovery unavailable" message="Acquisition findings could not be read from the local node." onRetry={() => findingsQuery.refetch()} testId="button-retry-discovery" /> : findings.length === 0 ? <EmptyState icon={Search} title="Nothing needs acquisition review" description="The local intelligence layer has no missing or lower-quality findings for this filter. Add normalized adapter candidates or refresh after archive/Plex state changes." /> : <div className="grid gap-4 xl:grid-cols-2" data-testid="panel-discovery-findings">{findings.map((finding) => {
+      const option = finding.recommendation.candidateSources.find((candidate) => candidate.availability.state === 'available') ?? finding.recommendation.candidateSources[0];
+      const storage = finding.recommendation.expectedStorageImpact;
+      return <article key={finding.id} className="archive-panel p-5 md:p-6" data-testid={`card-discovery-finding-${finding.id}`}>
+        <div className="flex items-start justify-between gap-4"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">WHAT'S MISSING / {finding.need.identity.mediaType.toUpperCase()}</div><h2 className="archive-display mt-1 text-xl font-extrabold text-[#263844]">{finding.need.identity.title}{finding.need.identity.year ? ` (${finding.need.identity.year})` : ''}{finding.need.scope === 'season' && finding.need.identity.season !== null ? ` / SEASON ${finding.need.identity.season}` : ''}</h2></div><span className={`archive-mono shrink-0 px-2 py-1 text-[9px] font-bold tracking-[.08em] ${finding.recommendation.status === 'recommended' ? 'bg-[#eaf3ef] text-[#39736e]' : 'bg-[#fff0c9] text-[#8d681d]'}`}>{finding.recommendation.priority.toUpperCase()} PRIORITY</span></div>
+        <div className="mt-5 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-4 text-[11px] leading-5 text-[#43545b]"><div className="archive-mono mb-1 text-[9px] tracking-[.12em] text-[#39736e]">WHY IT MATTERS</div>{finding.recommendation.reason}</div>
+        <div className="mt-5 grid gap-x-5 gap-y-4 sm:grid-cols-2"><div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">BEST CURRENT OPTION</div><div className="mt-1 text-[12px] font-bold text-[#43545b]">{option ? `${option.provider} / ${option.title}` : 'No candidate source'}</div><div className="mt-1 text-[10px] text-[#879599]">{option?.availability.state.toUpperCase() ?? 'UNAVAILABLE'}</div></div><div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">QUALITY</div><div className="mt-1 text-[12px] font-bold text-[#43545b]">{acquisitionQualityLabel(finding.recommendation.expectedQuality)}</div></div><div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">STORAGE IMPACT</div><div className={`mt-1 text-[12px] font-bold ${storage.status === 'sufficient' ? 'text-[#39736e]' : storage.status === 'insufficient' ? 'text-[#994b43]' : 'text-[#8d681d]'}`}>{storage.status.toUpperCase()}</div><div className="mt-1 text-[10px] text-[#879599]">{storage.summary}</div></div><div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">CONFIDENCE</div><div className="mt-1 text-[12px] font-bold text-[#43545b]">{Math.round(finding.recommendation.confidence * 100)}%</div><div className="mt-1 text-[10px] text-[#879599]">Identity {Math.round(finding.need.identity.confidence * 100)}% / source evidence {option ? Math.round(option.confidence * 100) : 0}%</div></div></div>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#e3e8e7] pt-4"><div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">REVIEW STATE</div><div className="mt-1 text-[11px] font-bold tracking-[.06em] text-[#53656b]">{finding.review.status.replace(/_/g, ' ').toUpperCase()}</div></div><div className="text-right">{finding.recommendation.blockingReasons.length > 0 && <div className="archive-mono text-[9px] text-[#994b43]">BLOCKED / {finding.recommendation.blockingReasons.join(', ')}</div>}<div className="archive-mono mt-1 text-[9px] text-[#9aa7a7]">COMPUTED / {formatTime(finding.computedAt)}</div></div></div>
+      </article>;
+    })}</div>}
+  </>;
+}
+
 const settingsGroups = [{ name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel'] }, { name: 'Downloads', icon: Download, fields: ['downloadDirectory', 'temporaryDirectory', 'concurrentDownloads', 'maxRetries', 'bandwidthLimit'] }, { name: 'Archive', icon: Archive, fields: ['archiveDirectory', 'outputContainer', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'] }, { name: 'Plex', icon: PlaySquare, fields: [] }, { name: 'AI', icon: Sparkles, fields: [] }, { name: 'Local Model', icon: Cpu, fields: [] }, { name: 'OpenAI', icon: Zap, fields: [] }, { name: 'Local Engine', icon: Terminal, fields: ['ytDlpPath', 'ffmpegPath', 'ffprobePath'] }, { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration', 'hardwareAccelerationMode'] }, { name: 'Network', icon: Network, fields: ['networkMode'] }, { name: 'Security', icon: ShieldCheck, fields: [] }, { name: 'Logging', icon: Terminal, fields: [] }];
 function SettingsPage() {
   const queryClient = useQueryClient(); const { data, isLoading, isError, refetch } = useGetSettings(); const { data: dependencies } = useGetSystemDependencies(); const mutation = useUpdateSettings(); const [form, setForm] = useState<Partial<AppSettings>>({}); const [notice, setNotice] = useState('');
@@ -1125,7 +1373,7 @@ function Workspace() {
   const { isLoaded, isSignedIn } = useAppAuth();
   if (!isLoaded) return <AuthLoading />;
   if (!isSignedIn) return <Redirect to="/" />;
-  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
+  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/discovery" component={DiscoveryPage} /><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
 }
 
 function Router() {

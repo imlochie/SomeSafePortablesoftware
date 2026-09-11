@@ -1,4 +1,3 @@
-import "./integrations.test";
 import { integrations } from "../src/integrations";
 import { GetIntegrationInventoryResponse } from "@workspace/api-zod";
 import assert from "node:assert/strict";
@@ -6,6 +5,7 @@ import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { access, chmod, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { after, describe, test } from "node:test";
 import {
@@ -130,6 +130,12 @@ describe("user ownership", { concurrency: false }, () => {
   });
 
   test("download reads, mutations, queue positions, and subscriptions are owner-isolated", () => {
+    // A configured archive volume has to exist on disk to be selectable, which
+    // mirrors Settings storing a directory the operator picked. Everything the
+    // test asserts about isolation is unchanged by this fixture step.
+    mkdirSync(join(testRoot, "tmp"), { recursive: true });
+    mkdirSync(join(testRoot, "library"), { recursive: true });
+
     const settings = {
       ...readSettings(),
       temporaryDirectory: join(testRoot, "tmp"),
@@ -153,6 +159,19 @@ describe("user ownership", { concurrency: false }, () => {
     unsubscribeB();
 
     assert.ok(firstA && firstB && secondA);
+
+    // A job that omits temporaryDirectory inherits the configured directory,
+    // while one that names a directory outside it is still refused.
+    assert.equal(firstA.temporaryDirectory, resolve(join(testRoot, "tmp")));
+    assert.throws(
+      () =>
+        createJob(
+          { ...input("Escape A"), temporaryDirectory: join(testRoot, "..", "outside-tmp") },
+          ownerA,
+          settings,
+        ),
+      /limited to configured Archive Assistant directories/i,
+    );
     assert.deepEqual(
       readJobs(ownerA).filter((job) => job.sourceUrl !== "https://example.com/legacy").map((job) => job.id).sort(),
       [firstA.id, secondA.id].sort(),
@@ -443,7 +462,7 @@ process.stdout.write(JSON.stringify({
       writeFile(files.corrupt, "corrupt"),
     ]);
     writeSettings({
-      archiveDirectory,
+      archiveDirectory: testRoot,
       downloadDirectory,
       ffprobePath,
     });
@@ -475,6 +494,7 @@ process.stdout.write(JSON.stringify({
 
     const low = inventory.records.find((record) => record.filename.includes("1080p"));
     const high = inventory.records.find((record) => record.filename.includes("2160p"));
+
     assert.equal(low?.qualityStatus, "lower_quality_version");
     assert.equal(high?.qualityStatus, "best_local_version");
     assert.ok(low?.qualityDifferences.some((difference) => difference.includes("resolution")));
@@ -1036,4 +1056,5 @@ process.stdout.write(JSON.stringify({
     assert.match(crossOwnerApply.results[0]?.error ?? "", /No current naming proposal/);
     assert.deepEqual(readOperations(ownerB), [], "journal rows are owner-scoped");
   });
+
 });

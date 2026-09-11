@@ -4,6 +4,7 @@ import { basename, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { SettingsRecord } from "../lib/archive-db";
 import { getLocalToolPaths } from "./local-tools";
+import { technicalQualityFromProbe } from "./media-quality";
 import {
   chooseArchiveVolume,
   ensureArchiveVolume,
@@ -141,8 +142,19 @@ const mockFormats: NormalizedMediaFormat[] = [
   }),
 ];
 
+/**
+ * FFprobe reports `duration` and `bit_rate` as decimal strings, so numeric
+ * strings are accepted here. Strict `typeof === "number"` parsing silently
+ * dropped the duration and bitrate of every probed file, which starved the
+ * quality model of the two axes duplicates are judged on.
+ */
 function numberOrNull(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function stringOrNull(value: unknown) {
@@ -291,17 +303,12 @@ export function isPathWithin(candidate: string, root: string) {
   return left === right || left.startsWith(`${right}${sep}`);
 }
 
-export function validateSafeDirectory(
-  candidate: string | undefined,
-  configuredRoot: string,
-  label: string,
-) {
-  const value = candidate?.trim();
-
-  if (!value) {
-    throw new Error(`${label} is required.`);
-  }
-
+/**
+ * Directories an operator configured, in preference order. Settings accept a
+ * JSON array, newline-separated, or semicolon-separated list; the first entry
+ * is the default when a request does not name one itself.
+ */
+export function configuredDirectoryRoots(configuredRoot: string): string[] {
   const roots: string[] = [];
 
   try {
@@ -327,8 +334,24 @@ export function validateSafeDirectory(
     );
   }
 
+  return roots;
+}
+
+export function validateSafeDirectory(
+  candidate: string | undefined,
+  configuredRoot: string,
+  label: string,
+) {
+  const roots = configuredDirectoryRoots(configuredRoot);
+
   if (!roots.length) {
     throw new Error(`${label} is not configured.`);
+  }
+
+  const value = candidate?.trim();
+
+  if (!value) {
+    throw new Error(`${label} is required.`);
   }
 
   const target = resolve(value);
@@ -479,6 +502,15 @@ export async function inspectLocalMedia(filePath: string, settings: SettingsReco
     : null;
   const fpsValue = stringOrNull(video?.r_frame_rate);
   const [fpsN, fpsD] = fpsValue?.split("/").map(Number) ?? [];
+  // The normalized quality model is derived from the same probe output, so the
+  // scanner and the inspection endpoint never disagree about what a file is.
+  const quality = technicalQualityFromProbe(probe, {
+    reference: `probe:${candidate}`,
+    label: basename(candidate),
+    filename: basename(candidate),
+    sizeBytes: stat.size,
+    archiveRoot: archiveScanRoots.find((root) => isPathWithin(candidate, root)) ?? null,
+  });
   return {
     filename: basename(candidate),
     path: candidate,
@@ -500,6 +532,17 @@ export async function inspectLocalMedia(filePath: string, settings: SettingsReco
     container: stringOrNull(probe.format?.format_name),
     dynamicRange: stringOrNull(video?.color_transfer) ?? sideData,
     verification: "passed" as const,
+    videoProfile: quality.videoProfile,
+    videoPixFmt: quality.pixelFormat,
+    videoBitDepth: quality.bitDepth,
+    colorPrimaries: quality.colorPrimaries,
+    dynamicRangeFormat: quality.dynamicRange,
+    audioProfile: quality.audioProfile,
+    audioChannelLayout: quality.audioChannelLayout,
+    videoBitrate: quality.videoBitrate,
+    audioBitrate: quality.audioBitrate,
+    audioTracks: quality.audioTracks,
+    subtitleTracks: quality.subtitleTracks,
   };
 }
 
@@ -517,16 +560,21 @@ export function prepareDownload(input: {
 }, settings: SettingsRecord) {
   validateSourceUrl(input.sourceUrl);
   const outputContainer = input.outputContainer === "mkv" || input.outputContainer === "webm" ? input.outputContainer : settings.outputContainer;
-  // The API contract allows clients to omit temporaryDirectory; the persisted
-  // setting is the fallback. An explicit client value is still validated
-  // against the configured safe-directory roots, so omitting never weakens
-  // path confinement.
-  const configuredTemporaryDirectory = settings.temporaryDirectory?.trim() ?? "";
-  const temporaryDirectoryCandidate = input.temporaryDirectory?.trim() || configuredTemporaryDirectory;
-  if (!temporaryDirectoryCandidate) {
+  // The per-job temporary directory is optional in the API contract: a client
+  // that does not name one downloads under the configured directory, which is
+  // itself contained in that root by construction. An explicit client value is
+  // still validated against the configured safe-directory roots, so omitting
+  // never weakens path confinement.
+  const requestedTemporaryDirectory = input.temporaryDirectory?.trim();
+  const configuredTemporaryRoots = configuredDirectoryRoots(settings.temporaryDirectory);
+  if (!requestedTemporaryDirectory && !configuredTemporaryRoots.length) {
     throw new Error("Temporary directory is required. Configure one in System Settings or pass it explicitly.");
   }
-  const temporaryDirectory = validateSafeDirectory(temporaryDirectoryCandidate, configuredTemporaryDirectory, "Temporary directory");
+  const temporaryDirectory = validateSafeDirectory(
+    requestedTemporaryDirectory || configuredTemporaryRoots[0],
+    settings.temporaryDirectory,
+    "Temporary directory",
+  );
  const mediaType: ArchiveMediaType =
   /\bS\d{1,2}(?:E\d{1,2})?\b|\bSeason\s+\d+\b|\bEpisode\s+\d+\b|\bEp(?:isode)?\.?\s*\d+\b|\bSeries\s+\d+\b/i.test(input.title)
     ? "tv"

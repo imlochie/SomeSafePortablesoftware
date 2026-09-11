@@ -671,6 +671,125 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /archive/quality/findings:
+    get:
+      operationId: getArchiveQualityFindings
+      tags: [archive]
+      summary: Get derived technical quality findings for the local archive
+      description: |
+        Read-only findings produced by the quality intelligence layer: exact and
+        probable duplicates, lower-quality duplicates, superior encodes,
+        materially different encodes, and conflicting or missing technical
+        metadata. Nothing here deletes, moves, or replaces media; every finding
+        carries `action: review_only`.
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: number
+            minimum: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 500
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [exact_duplicate, probable_duplicate, lower_quality_duplicate, superior_encode, materially_different_encode, conflicting_quality_metadata, missing_technical_metadata]
+        - name: confidence
+          in: query
+          schema:
+            type: string
+            enum: [high, medium, low]
+        - name: reviewStatus
+          in: query
+          schema:
+            type: string
+            enum: [unreviewed, reviewed, deferred, unresolved]
+        - name: fileRecordId
+          in: query
+          schema:
+            type: number
+            minimum: 1
+        - name: volume
+          in: query
+          schema:
+            type: string
+        - name: includeReviewed
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Quality findings with summary counts and pagination
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveQualityFindingResponse"
+  /archive/quality/records/{id}:
+    get:
+      operationId: getArchiveQualityRecord
+      tags: [archive]
+      summary: Get the normalized quality model and comparisons for one archive record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      responses:
+        "200":
+          description: Quality report for the record, including comparisons against sibling encodes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveQualityRecordReport"
+        "404":
+          description: Archive record not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /archive/quality/findings/review:
+    post:
+      operationId: updateArchiveQualityFindingReview
+      tags: [archive]
+      summary: Save a non-destructive review decision for one quality finding
+      description: |
+        Reviews are keyed by owner, file record, finding kind, and the finding's
+        deterministic evidence key. Saving a decision writes only to
+        `archive_review`; media files and file records are never modified. If the
+        underlying evidence changes later, the evidence key changes and the
+        finding reopens while the previous decision remains as history.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveQualityFindingReviewUpdate"
+      responses:
+        "200":
+          description: Persisted review decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveReview"
+        "400":
+          description: The finding locator is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No such finding for the current evidence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /media/inspect:
     post:
       operationId: inspectMediaSource
@@ -1896,6 +2015,330 @@ components:
           type: [string, "null"]
         reviewUpdatedAt:
           type: [string, "null"]
+        reviewEvidenceKey:
+          type: [string, "null"]
+          description: Deterministic evidence identity behind the legacy quality finding review.
+        checksumStatus:
+          type: [string, "null"]
+          enum: [computed, failed, not_computed]
+        duplicateKind:
+          type: [string, "null"]
+          enum: [exact, probable, "null"]
+          description: Whether a duplicate finding rests on checksums or on the coarse fingerprint.
+        identityKey:
+          type: [string, "null"]
+        dynamicRangeFormat:
+          type: [string, "null"]
+          enum: [sdr, hdr10, hdr10_plus, hlg, dolby_vision, unknown]
+    ArchiveQualitySnapshot:
+      type: object
+      required: [reference, label, resolution, dynamicRange, audioLanguages, subtitleLanguages, provenance, storageScope, technicalMetadataMissing]
+      properties:
+        reference:
+          type: string
+          description: Origin pointer, for example `file_record:12` or `plex_item:4`.
+        fileRecordId:
+          type: [number, "null"]
+        label:
+          type: string
+        resolution:
+          type: string
+          description: Normalized resolution label such as `2160p`, `1080p`, `audio only`, or `unknown`.
+        width:
+          type: [number, "null"]
+        height:
+          type: [number, "null"]
+        dynamicRange:
+          type: string
+          enum: [sdr, hdr10, hdr10_plus, hlg, dolby_vision, unknown]
+        videoCodec:
+          type: [string, "null"]
+        videoProfile:
+          type: [string, "null"]
+        bitDepth:
+          type: [number, "null"]
+        framerate:
+          type: [number, "null"]
+        bitrate:
+          type: [number, "null"]
+          description: Container-level bitrate in bits per second.
+        audio:
+          type: [string, "null"]
+          description: Compact audio summary, for example `EAC3 5.1`.
+        audioLanguages:
+          type: array
+          items:
+            type: string
+        subtitleLanguages:
+          type: array
+          items:
+            type: string
+        container:
+          type: [string, "null"]
+        durationSeconds:
+          type: [number, "null"]
+        sizeBytes:
+          type: [number, "null"]
+        checksum:
+          type: [string, "null"]
+        checksumStatus:
+          type: [string, "null"]
+          enum: [computed, failed, not_computed]
+        provenance:
+          type: string
+          enum: [remux, disc_encode, web_dl, web_rip, tv_capture, camera_or_capture, unknown]
+        storageScope:
+          type: string
+          enum: [library, staging, plex, unknown]
+        volumeId:
+          type: [string, "null"]
+        relativePath:
+          type: [string, "null"]
+        technicalMetadataMissing:
+          type: boolean
+    ArchiveQualityAxis:
+      type: object
+      required: [axis, status, materiality, text]
+      properties:
+        axis:
+          type: string
+          enum: [resolution, dynamic_range, video_codec, video_profile, bit_depth, framerate, bitrate, video_bitrate, audio_codec, audio_channels, audio_bitrate, audio_languages, subtitle_languages, container, duration, file_size, checksum, source_provenance, location]
+        status:
+          type: string
+          enum: [left_better, right_better, equal, different, unknown]
+        materiality:
+          type: string
+          enum: [ranked, escalating, informational]
+          description: |
+            `ranked` axes participate in Pareto dominance. `escalating` axes are
+            real differences that are never ordered. `informational` axes are
+            recorded for the operator and never change a verdict.
+        leftValue:
+          type: [string, "null"]
+        rightValue:
+          type: [string, "null"]
+        text:
+          type: string
+        note:
+          type: [string, "null"]
+    ArchiveQualityComparison:
+      type: object
+      required: [counterpart, relationship, reasons, uncertainty, axes]
+      properties:
+        counterpart:
+          $ref: "#/components/schemas/ArchiveQualitySnapshot"
+        counterpartFileRecordId:
+          type: [number, "null"]
+        counterpartRatingKey:
+          type: [string, "null"]
+        relationship:
+          type: string
+          enum: [exact_duplicate, probable_duplicate, equivalent, superior_encode, inferior_encode, materially_different_encode, different_media, insufficient_metadata]
+        winner:
+          type: [string, "null"]
+          enum: [left, right]
+          description: Which side is preferred, or null when the evidence does not support a winner.
+        confidence:
+          type: [string, "null"]
+          enum: [high, medium, low]
+        reasons:
+          type: array
+          items:
+            type: string
+        uncertainty:
+          type: array
+          items:
+            type: string
+        axes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveQualityAxis"
+    ArchiveQualityFinding:
+      type: object
+      required: [key, evidenceKey, fileRecordId, filename, kind, relationship, severity, headline, reason, reasons, uncertainty, currentQuality, currentQualityLine, axes, reviewStatus, action]
+      properties:
+        key:
+          type: string
+        evidenceKey:
+          type: string
+          description: Deterministic evidence identity; a changed key reopens the finding.
+        fileRecordId:
+          type: number
+        filename:
+          type: string
+        relativePath:
+          type: [string, "null"]
+        volumeId:
+          type: [string, "null"]
+        kind:
+          type: string
+          enum: [exact_duplicate, probable_duplicate, lower_quality_duplicate, superior_encode, materially_different_encode, conflicting_quality_metadata, missing_technical_metadata]
+        relationship:
+          type: string
+          enum: [exact_duplicate, probable_duplicate, equivalent, superior_encode, inferior_encode, materially_different_encode, different_media, insufficient_metadata]
+        severity:
+          type: string
+          enum: [high, medium, low, info]
+        confidence:
+          type: [string, "null"]
+          enum: [high, medium, low]
+        headline:
+          type: string
+        reason:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        uncertainty:
+          type: array
+          items:
+            type: string
+        currentQuality:
+          $ref: "#/components/schemas/ArchiveQualitySnapshot"
+        currentQualityLine:
+          type: string
+        counterpart:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveQualitySnapshot"
+            - type: "null"
+        counterpartFileRecordId:
+          type: [number, "null"]
+        counterpartRatingKey:
+          type: [string, "null"]
+        counterpartLine:
+          type: [string, "null"]
+        winner:
+          type: [string, "null"]
+          enum: [left, right]
+        preferredFilename:
+          type: [string, "null"]
+        axes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveQualityAxis"
+        reviewStatus:
+          type: string
+          enum: [unreviewed, reviewed, deferred, unresolved]
+        reviewNote:
+          type: [string, "null"]
+        reviewUpdatedAt:
+          type: [string, "null"]
+        action:
+          type: string
+          enum: [review_only]
+          description: Fixed value; the quality layer never proposes a destructive action.
+    ArchiveQualityFindingSummary:
+      type: object
+      required: [total, exactDuplicateCount, probableDuplicateCount, lowerQualityCount, superiorCount, materialDifferenceCount, conflictingMetadataCount, missingMetadataCount, unreviewedCount, reviewedCount, affectedFiles]
+      properties:
+        total:
+          type: number
+          minimum: 0
+        exactDuplicateCount:
+          type: number
+          minimum: 0
+        probableDuplicateCount:
+          type: number
+          minimum: 0
+        lowerQualityCount:
+          type: number
+          minimum: 0
+        superiorCount:
+          type: number
+          minimum: 0
+        materialDifferenceCount:
+          type: number
+          minimum: 0
+        conflictingMetadataCount:
+          type: number
+          minimum: 0
+        missingMetadataCount:
+          type: number
+          minimum: 0
+        unreviewedCount:
+          type: number
+          minimum: 0
+        reviewedCount:
+          type: number
+          minimum: 0
+        affectedFiles:
+          type: number
+          minimum: 0
+    ArchiveQualityFindingPagination:
+      type: object
+      required: [page, pageSize, total, totalPages]
+      properties:
+        page:
+          type: number
+          minimum: 1
+        pageSize:
+          type: number
+          minimum: 1
+        total:
+          type: number
+          minimum: 0
+        totalPages:
+          type: number
+          minimum: 0
+    ArchiveQualityFindingResponse:
+      type: object
+      required: [summary, pagination, results]
+      properties:
+        summary:
+          $ref: "#/components/schemas/ArchiveQualityFindingSummary"
+        pagination:
+          $ref: "#/components/schemas/ArchiveQualityFindingPagination"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveQualityFinding"
+    ArchiveQualityRecordReport:
+      type: object
+      required: [fileRecordId, filename, identityKey, currentQuality, currentQualityLine, comparisons, findings, action]
+      properties:
+        fileRecordId:
+          type: number
+        filename:
+          type: string
+        relativePath:
+          type: [string, "null"]
+        identityKey:
+          type: string
+        currentQuality:
+          $ref: "#/components/schemas/ArchiveQualitySnapshot"
+        currentQualityLine:
+          type: string
+        comparisons:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveQualityComparison"
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveQualityFinding"
+        action:
+          type: string
+          enum: [review_only]
+    ArchiveQualityFindingReviewUpdate:
+      type: object
+      required: [fileRecordId, kind, evidenceKey, status]
+      properties:
+        fileRecordId:
+          type: number
+          minimum: 1
+        kind:
+          type: string
+          enum: [exact_duplicate, probable_duplicate, lower_quality_duplicate, superior_encode, materially_different_encode, conflicting_quality_metadata, missing_technical_metadata]
+        evidenceKey:
+          type: string
+          minLength: 8
+        status:
+          type: string
+          enum: [reviewed, deferred, unresolved]
+        note:
+          type: [string, "null"]
+          maxLength: 500
     ArchiveInventory:
       type: object
       required: [scan, summary, records, plexOnly]
@@ -2082,6 +2525,67 @@ components:
         verification:
           type: string
           enum: [passed, failed]
+        videoProfile:
+          type: [string, "null"]
+        videoPixFmt:
+          type: [string, "null"]
+        videoBitDepth:
+          type: [number, "null"]
+        colorPrimaries:
+          type: [string, "null"]
+        dynamicRangeFormat:
+          type: [string, "null"]
+          enum: [sdr, hdr10, hdr10_plus, hlg, dolby_vision, unknown]
+        audioProfile:
+          type: [string, "null"]
+        audioChannelLayout:
+          type: [string, "null"]
+        videoBitrate:
+          type: [number, "null"]
+        audioBitrate:
+          type: [number, "null"]
+        audioTracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaAudioTrack"
+        subtitleTracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/MediaSubtitleTrack"
+    MediaAudioTrack:
+      type: object
+      required: [index, default]
+      properties:
+        index:
+          type: number
+        codec:
+          type: [string, "null"]
+        profile:
+          type: [string, "null"]
+        channels:
+          type: [number, "null"]
+        channelLayout:
+          type: [string, "null"]
+        language:
+          type: [string, "null"]
+        bitrate:
+          type: [number, "null"]
+        default:
+          type: boolean
+    MediaSubtitleTrack:
+      type: object
+      required: [index, default, forced]
+      properties:
+        index:
+          type: number
+        codec:
+          type: [string, "null"]
+        language:
+          type: [string, "null"]
+        default:
+          type: boolean
+        forced:
+          type: boolean
     DownloadPreparationInput:
       type: object
       required: [sourceUrl, title, selectedFormatId]

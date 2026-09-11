@@ -5,3 +5,4 @@
 - [Archive review identity](archive-review-identity.md) — Review decisions follow owner-scoped evidence, not mutable file flags; changed evidence reopens the finding.
 - [Local and hosted auth modes](local-hosted-auth-modes.md) — Desktop-local use resolves a server-owned __local__ identity; Clerk remains an explicit hosted mode.
 - [Desktop sidecar boundary](desktop-sidecar-boundary.md) — Tauri is only a shell; Node owns the API, SQLite, media tools, and runtime paths.
+- [Archive quality intelligence](archive-quality-intelligence.md) — One normalized technical model, dominance-only comparisons, review-only findings keyed by evidence.

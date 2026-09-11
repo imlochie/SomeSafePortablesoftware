@@ -32,6 +32,9 @@ import type {
   ArchiveNamingProposalDecisionsResponse,
   ArchiveNamingProposalResponse,
   ArchiveOperation,
+  ArchiveQualityFindingResponse,
+  ArchiveQualityFindingReviewUpdate,
+  ArchiveQualityRecordReport,
   ArchiveReview,
   ArchiveReviewUpdate,
   ArchiveScan,
@@ -43,6 +46,7 @@ import type {
   ErrorResponse,
   GetArchiveNamingProposalsParams,
   GetArchiveOperationsParams,
+  GetArchiveQualityFindingsParams,
   HealthStatus,
   IntegrationConfigUpdate,
   IntegrationDescriptor,
@@ -2053,6 +2057,248 @@ export const useUpdateArchiveRecordReviews = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateArchiveRecordReviewsMutationOptions(options));
+    }
+
+export const getGetArchiveQualityFindingsUrl = (params?: GetArchiveQualityFindingsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive/quality/findings?${stringifiedParams}` : `/api/archive/quality/findings`
+}
+
+/**
+ * Read-only findings produced by the quality intelligence layer: exact and
+ * probable duplicates, lower-quality duplicates, superior encodes,
+ * materially different encodes, and conflicting or missing technical
+ * metadata. Nothing here deletes, moves, or replaces media; every finding
+ * carries `action: review_only`.
+ * @summary Get derived technical quality findings for the local archive
+ */
+export const getArchiveQualityFindings = async (params?: GetArchiveQualityFindingsParams, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveQualityFindingResponse> => {
+
+  return customFetch<ArchiveQualityFindingResponse>(getGetArchiveQualityFindingsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveQualityFindingsQueryKey = (params?: GetArchiveQualityFindingsParams,) => {
+    return [
+    `/api/archive/quality/findings`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetArchiveQualityFindingsQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveQualityFindings>>, TError = ErrorType<unknown>>(params?: GetArchiveQualityFindingsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveQualityFindings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveQualityFindingsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveQualityFindings>>> = ({ signal }) => getArchiveQualityFindings(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveQualityFindings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveQualityFindingsQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveQualityFindings>>>
+export type GetArchiveQualityFindingsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get derived technical quality findings for the local archive
+ */
+
+export function useGetArchiveQualityFindings<TData = Awaited<ReturnType<typeof getArchiveQualityFindings>>, TError = ErrorType<unknown>>(
+ params?: GetArchiveQualityFindingsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveQualityFindings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveQualityFindingsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetArchiveQualityRecordUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive/quality/records/${id}`
+}
+
+/**
+ * @summary Get the normalized quality model and comparisons for one archive record
+ */
+export const getArchiveQualityRecord = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveQualityRecordReport> => {
+
+  return customFetch<ArchiveQualityRecordReport>(getGetArchiveQualityRecordUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveQualityRecordQueryKey = (id: number,) => {
+    return [
+    `/api/archive/quality/records/${id}`
+    ] as const;
+    }
+
+
+export const getGetArchiveQualityRecordQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveQualityRecord>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveQualityRecord>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveQualityRecordQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveQualityRecord>>> = ({ signal }) => getArchiveQualityRecord(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveQualityRecord>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveQualityRecordQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveQualityRecord>>>
+export type GetArchiveQualityRecordQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get the normalized quality model and comparisons for one archive record
+ */
+
+export function useGetArchiveQualityRecord<TData = Awaited<ReturnType<typeof getArchiveQualityRecord>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveQualityRecord>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveQualityRecordQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateArchiveQualityFindingReviewUrl = () => {
+
+
+
+
+  return `/api/archive/quality/findings/review`
+}
+
+/**
+ * Reviews are keyed by owner, file record, finding kind, and the finding's
+ * deterministic evidence key. Saving a decision writes only to
+ * `archive_review`; media files and file records are never modified. If the
+ * underlying evidence changes later, the evidence key changes and the
+ * finding reopens while the previous decision remains as history.
+ * @summary Save a non-destructive review decision for one quality finding
+ */
+export const updateArchiveQualityFindingReview = async (archiveQualityFindingReviewUpdate: ArchiveQualityFindingReviewUpdate, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveReview> => {
+
+  return customFetch<ArchiveReview>(getUpdateArchiveQualityFindingReviewUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(archiveQualityFindingReviewUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateArchiveQualityFindingReviewMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArchiveQualityFindingReview>>, TError,{data: BodyType<ArchiveQualityFindingReviewUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateArchiveQualityFindingReview>>, TError,{data: BodyType<ArchiveQualityFindingReviewUpdate>}, TContext> => {
+
+const mutationKey = ['updateArchiveQualityFindingReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateArchiveQualityFindingReview>>, {data: BodyType<ArchiveQualityFindingReviewUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateArchiveQualityFindingReview(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateArchiveQualityFindingReviewMutationResult = NonNullable<Awaited<ReturnType<typeof updateArchiveQualityFindingReview>>>
+    export type UpdateArchiveQualityFindingReviewMutationBody = BodyType<ArchiveQualityFindingReviewUpdate>
+    export type UpdateArchiveQualityFindingReviewMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Save a non-destructive review decision for one quality finding
+ */
+export const useUpdateArchiveQualityFindingReview = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArchiveQualityFindingReview>>, TError,{data: BodyType<ArchiveQualityFindingReviewUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateArchiveQualityFindingReview>>,
+        TError,
+        {data: BodyType<ArchiveQualityFindingReviewUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateArchiveQualityFindingReviewMutationOptions(options));
     }
 
 export const getInspectMediaSourceUrl = () => {

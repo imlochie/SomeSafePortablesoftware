@@ -5,6 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ArchiveInventoryRecordChecksumStatus } from './archiveInventoryRecordChecksumStatus';
+import type { ArchiveInventoryRecordDuplicateKind } from './archiveInventoryRecordDuplicateKind';
+import type { ArchiveInventoryRecordDynamicRangeFormat } from './archiveInventoryRecordDynamicRangeFormat';
 import type { ArchiveInventoryRecordQualityStatus } from './archiveInventoryRecordQualityStatus';
 import type { ArchiveInventoryRecordReviewStatus } from './archiveInventoryRecordReviewStatus';
 import type { ArchiveInventoryRecordScanStatus } from './archiveInventoryRecordScanStatus';
@@ -61,4 +64,20 @@ export interface ArchiveInventoryRecord {
   reviewNote: string | null;
   /** @nullable */
   reviewUpdatedAt: string | null;
+  /**
+     * Deterministic evidence identity behind the legacy quality finding review.
+     * @nullable
+     */
+  reviewEvidenceKey?: string | null;
+  /** @nullable */
+  checksumStatus?: ArchiveInventoryRecordChecksumStatus;
+  /**
+     * Whether a duplicate finding rests on checksums or on the coarse fingerprint.
+     * @nullable
+     */
+  duplicateKind?: ArchiveInventoryRecordDuplicateKind;
+  /** @nullable */
+  identityKey?: string | null;
+  /** @nullable */
+  dynamicRangeFormat?: ArchiveInventoryRecordDynamicRangeFormat;
 }

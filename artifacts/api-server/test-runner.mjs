@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -7,11 +7,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
-const testDir = await mkdtemp(path.join(tmpdir(), "archive-assistant-tests-"));
-const outputFile = path.join(testDir, "ownership.test.mjs");
-const databaseFile = path.join(testDir, "ownership.sqlite");
+const testsSourceDir = path.join(artifactDir, "test");
 
-try {
+/**
+ * Legacy tables and rows that predate the current schema. Only the ownership
+ * suite depends on them (it proves additive migrations and cache invalidation
+ * against a half-upgraded database), so each suite gets its own database file
+ * and only that one is pre-seeded.
+ */
+function seedLegacyDatabase(databaseFile) {
   const legacyDb = new DatabaseSync(databaseFile);
   legacyDb.exec(`
     CREATE TABLE archive_item (
@@ -114,39 +118,69 @@ try {
     INSERT INTO setting (key, value) VALUES ('plexToken', '"legacy-token"');
   `);
   legacyDb.close();
+}
 
-  await build({
-    entryPoints: [path.join(artifactDir, "test", "ownership.test.ts")],
-    bundle: true,
-    format: "esm",
-    platform: "node",
-    target: "node22",
-    outfile: outputFile,
-    // Express route tests bundle CommonJS dependencies into ESM, like the server build.
-    banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
-    sourcemap: "inline",
-    logLevel: "warning",
-  });
+const testFiles = (await readdir(testsSourceDir))
+  .filter((entry) => entry.endsWith(".test.ts"))
+  .sort();
 
-  const exitCode = await new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ["--test", pathToFileURL(outputFile).pathname],
-      {
-        stdio: "inherit",
-        env: {
-          ...process.env,
-          AUTH_MODE: "local",
-          ARCHIVE_DB_PATH: databaseFile,
-          ARCHIVE_TEST_ROOT: testDir,
+if (!testFiles.length) {
+  console.error(`No test files found in ${testsSourceDir}`);
+  process.exit(1);
+}
+
+const failures = [];
+
+for (const testFile of testFiles) {
+  const suiteName = path.basename(testFile, ".test.ts");
+  const testDir = await mkdtemp(path.join(tmpdir(), `archive-assistant-${suiteName}-`));
+  const outputFile = path.join(testDir, `${suiteName}.test.mjs`);
+  const databaseFile = path.join(testDir, `${suiteName}.sqlite`);
+
+  try {
+    if (suiteName === "ownership") seedLegacyDatabase(databaseFile);
+
+    await build({
+      entryPoints: [path.join(testsSourceDir, testFile)],
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      target: "node22",
+      outfile: outputFile,
+      // Express route tests bundle CommonJS dependencies into ESM, like the server build.
+      banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
+      sourcemap: "inline",
+      logLevel: "warning",
+    });
+
+    const exitCode = await new Promise((resolve, reject) => {
+      const child = spawn(
+        process.execPath,
+        ["--test", pathToFileURL(outputFile).pathname],
+        {
+          stdio: "inherit",
+          env: {
+            ...process.env,
+            AUTH_MODE: "local",
+            ARCHIVE_DB_PATH: databaseFile,
+            ARCHIVE_TEST_ROOT: testDir,
+          },
         },
-      },
-    );
-    child.once("error", reject);
-    child.once("close", (code) => resolve(code ?? 1));
-  });
+      );
+      child.once("error", reject);
+      child.once("close", (code) => resolve(code ?? 1));
+    });
 
-  if (exitCode !== 0) process.exitCode = exitCode;
-} finally {
-  await rm(testDir, { recursive: true, force: true });
+    if (exitCode !== 0) failures.push(suiteName);
+  } catch (error) {
+    console.error(`Suite ${suiteName} could not run: ${error instanceof Error ? error.message : String(error)}`);
+    failures.push(suiteName);
+  } finally {
+    await rm(testDir, { recursive: true, force: true });
+  }
+}
+
+if (failures.length) {
+  console.error(`Failing suites: ${failures.join(", ")}`);
+  process.exitCode = 1;
 }

@@ -5,7 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { LocalMediaInspectionDynamicRangeFormat } from './localMediaInspectionDynamicRangeFormat';
 import type { LocalMediaInspectionVerification } from './localMediaInspectionVerification';
+import type { MediaAudioTrack } from './mediaAudioTrack';
+import type { MediaSubtitleTrack } from './mediaSubtitleTrack';
 
 export interface LocalMediaInspection {
   filename: string;
@@ -38,4 +41,24 @@ export interface LocalMediaInspection {
   /** @nullable */
   dynamicRange: string | null;
   verification: LocalMediaInspectionVerification;
+  /** @nullable */
+  videoProfile?: string | null;
+  /** @nullable */
+  videoPixFmt?: string | null;
+  /** @nullable */
+  videoBitDepth?: number | null;
+  /** @nullable */
+  colorPrimaries?: string | null;
+  /** @nullable */
+  dynamicRangeFormat?: LocalMediaInspectionDynamicRangeFormat;
+  /** @nullable */
+  audioProfile?: string | null;
+  /** @nullable */
+  audioChannelLayout?: string | null;
+  /** @nullable */
+  videoBitrate?: number | null;
+  /** @nullable */
+  audioBitrate?: number | null;
+  audioTracks?: MediaAudioTrack[];
+  subtitleTracks?: MediaSubtitleTrack[];
 }
