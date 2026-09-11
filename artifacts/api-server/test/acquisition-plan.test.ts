@@ -30,6 +30,7 @@ import {
   readIntakeItems,
 } from "../src/services/archive-intake";
 import { readReconciliationReport } from "../src/services/reconciliation";
+import { CreateAcquisitionPlanResponse } from "@workspace/api-zod";
 
 const testRoot = process.env.ARCHIVE_TEST_ROOT;
 assert.ok(testRoot, "ARCHIVE_TEST_ROOT must be set by the test runner");
@@ -352,5 +353,115 @@ process.stdout.write(JSON.stringify({
     assert.throws(() => approveAcquisitionPlan(ownerB, mine.id), /not found/i);
     assert.throws(() => executeAcquisitionPlan(ownerB, mine.id), /not found/i);
     assert.throws(() => rejectAcquisitionPlan(ownerB, mine.id), /not found/i);
+  });
+
+  test("storage impact contract: sufficient, insufficient, unknown — and the route response schema", async () => {
+    // Regression for the contract bug the real-Windows run exposed: the plan
+    // service passes the acquisition engine's storage status through verbatim
+    // ("sufficient" | "insufficient" | "unknown"), and the generated response
+    // schema must accept exactly that vocabulary. The route parses with
+    // CreateAcquisitionPlanResponse; this test parses the built plan with the
+    // very same schema, so any drift between service output and API contract
+    // fails here instead of in production.
+    //
+    // The earlier tests in this suite promoted the first season's episodes
+    // into the archive, so these cases use a second season the archive does
+    // not hold yet — otherwise every plan would have nothing missing and the
+    // impact would be trivially "unknown".
+    const ytDlp = join(binRoot, "plan-yt-dlp.mjs");
+    const ffmpeg = join(binRoot, "plan-ffmpeg.mjs");
+    const ffprobe = join(binRoot, "plan-ffprobe.mjs");
+    const standardSettings = {
+      archiveDirectory: [moviesVolume, tvVolume].join("\n"),
+      downloadDirectory: downloadsRoot,
+      temporaryDirectory: tmpRoot,
+      ytDlpPath: ytDlp,
+      ffmpegPath: ffmpeg,
+      ffprobePath: ffprobe,
+      mockMode: false,
+      concurrentDownloads: 4,
+    };
+
+    const writeSeasonStub = async (filename: string, webpageUrl: string, entryId: string, title: string, filesize: number) => {
+      const stubPath = join(binRoot, filename);
+      await writeFile(stubPath, `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+import path from "node:path";
+const args = process.argv.slice(2);
+if (args.includes("--dump-single-json")) {
+  process.stdout.write(JSON.stringify({
+    _type: "playlist",
+    title: "Kirra Show - season two",
+    webpage_url: "${webpageUrl}",
+    extractor_key: "stub",
+    entries: [
+      {
+        id: "${entryId}", title: ${JSON.stringify(title)}, webpage_url: "https://stub.invalid/entry/${entryId}",
+        duration: 1320, upload_date: "20260901", extractor_key: "stub",
+        formats: [
+          { format_id: "vid-1080", ext: "mp4", protocol: "https", width: 1920, height: 1080, vcodec: "avc1.640028", acodec: "none", tbr: 4500, filesize: ${filesize} },
+          { format_id: "aud-en", ext: "m4a", protocol: "https", vcodec: "none", acodec: "mp4a.40.2", tbr: 128, filesize: 20000000 },
+        ],
+      },
+    ],
+  }));
+  process.exit(0);
+}
+const pathsIndex = args.indexOf("--paths");
+const outputIndex = args.indexOf("--output");
+const target = path.join(args[pathsIndex + 1], args[outputIndex + 1]);
+writeFileSync(target, "downloaded-by-stub:" + args[outputIndex + 1]);
+`);
+      await chmod(stubPath, 0o755);
+      return stubPath;
+    };
+
+    // 1. sufficient: unseen episodes with a modest estimate against real,
+    //    queryable volumes.
+    const seasonTwoYtDlp = await writeSeasonStub("plan-yt-dlp-s2.mjs", "https://stub.invalid/season2", "s02e01", "Kirra Show S02E01 Return", 700000000);
+    writeSettings({ ...standardSettings, ytDlpPath: seasonTwoYtDlp });
+    const sufficientPlan = await buildAcquisitionPlan(ownerA, {
+      sourceUrl: "https://stub.invalid/season2",
+      note: "storage contract: sufficient",
+      mediaType: "tv",
+    });
+    assert.equal(sufficientPlan.missingItems.length, 1);
+    assert.equal(sufficientPlan.storageImpact.status, "sufficient");
+    assert.ok(sufficientPlan.storageImpact.freeBytesAfter !== null && sufficientPlan.storageImpact.freeBytesAfter >= 0);
+    CreateAcquisitionPlanResponse.parse(sufficientPlan);
+
+    // 2. insufficient: the same layout, but the only source estimates a size
+    //    far beyond the free space of the volume.
+    const hugeYtDlp = await writeSeasonStub("plan-yt-dlp-huge.mjs", "https://stub.invalid/huge", "s02e09", "Kirra Show S02E09 Whale", 9000000000000);
+    writeSettings({ ...standardSettings, ytDlpPath: hugeYtDlp });
+    const insufficientPlan = await buildAcquisitionPlan(ownerA, {
+      sourceUrl: "https://stub.invalid/huge",
+      note: "storage contract: insufficient",
+      mediaType: "tv",
+    });
+    assert.equal(insufficientPlan.missingItems.length, 1);
+    assert.equal(insufficientPlan.storageImpact.status, "insufficient");
+    assert.ok(insufficientPlan.storageImpact.freeBytesAfter !== null && insufficientPlan.storageImpact.freeBytesAfter < 0);
+    CreateAcquisitionPlanResponse.parse(insufficientPlan);
+
+    // 3. unknown: the archive volume is configured but does not exist yet, so
+    //    its capacity cannot be queried. (The season-two inspection is cached
+    //    from case 1, so the estimate is known — only the capacity is not.)
+    writeSettings({
+      ...standardSettings,
+      ytDlpPath: seasonTwoYtDlp,
+      archiveDirectory: join(testRoot, "plan-volume-not-created", "Tv Shows"),
+    });
+    const unknownPlan = await buildAcquisitionPlan(ownerA, {
+      sourceUrl: "https://stub.invalid/season2",
+      note: "storage contract: unknown",
+      mediaType: "tv",
+    });
+    assert.equal(unknownPlan.missingItems.length, 1);
+    assert.equal(unknownPlan.storageImpact.status, "unknown");
+    CreateAcquisitionPlanResponse.parse(unknownPlan);
+
+    // Restore the standard settings for any test that follows.
+    writeSettings(standardSettings);
   });
 });

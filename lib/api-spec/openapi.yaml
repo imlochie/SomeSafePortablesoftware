@@ -1831,7 +1831,7 @@ components:
           type: [number, "null"]
         status:
           type: string
-          enum: [ok, insufficient, unknown]
+          enum: [sufficient, insufficient, unknown]
         summary:
           type: string
     AcquisitionPlanItem:

@@ -95,7 +95,11 @@ export type PlanStorageImpact = {
   estimatedBytes: number | null;
   freeBytesBefore: number | null;
   freeBytesAfter: number | null;
-  status: "ok" | "insufficient" | "unknown";
+  // Canonical storage vocabulary, shared with the acquisition engine's
+  // StorageImpact and the /acquisition/findings contract: sufficient,
+  // insufficient, unknown. The plan passes the engine's status through
+  // verbatim; no value is converted at any boundary.
+  status: "sufficient" | "insufficient" | "unknown";
   summary: string;
 };
 

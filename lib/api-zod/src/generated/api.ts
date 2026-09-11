@@ -2112,7 +2112,7 @@ export const CreateAcquisitionPlanResponse = zod.object({
   "estimatedBytes": zod.number().nullish(),
   "freeBytesBefore": zod.number().nullish(),
   "freeBytesAfter": zod.number().nullish(),
-  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "status": zod.enum(['sufficient', 'insufficient', 'unknown']),
   "summary": zod.string()
 }),
   "approvalState": zod.enum(['pending', 'approved', 'rejected']),
@@ -2291,7 +2291,7 @@ export const ListAcquisitionPlansResponse = zod.object({
   "estimatedBytes": zod.number().nullish(),
   "freeBytesBefore": zod.number().nullish(),
   "freeBytesAfter": zod.number().nullish(),
-  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "status": zod.enum(['sufficient', 'insufficient', 'unknown']),
   "summary": zod.string()
 }),
   "approvalState": zod.enum(['pending', 'approved', 'rejected']),
@@ -2477,7 +2477,7 @@ export const GetAcquisitionPlanResponse = zod.object({
   "estimatedBytes": zod.number().nullish(),
   "freeBytesBefore": zod.number().nullish(),
   "freeBytesAfter": zod.number().nullish(),
-  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "status": zod.enum(['sufficient', 'insufficient', 'unknown']),
   "summary": zod.string()
 }),
   "approvalState": zod.enum(['pending', 'approved', 'rejected']),
@@ -2674,7 +2674,7 @@ export const ApproveAcquisitionPlanResponse = zod.object({
   "estimatedBytes": zod.number().nullish(),
   "freeBytesBefore": zod.number().nullish(),
   "freeBytesAfter": zod.number().nullish(),
-  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "status": zod.enum(['sufficient', 'insufficient', 'unknown']),
   "summary": zod.string()
 }),
   "approvalState": zod.enum(['pending', 'approved', 'rejected']),
@@ -2867,7 +2867,7 @@ export const RejectAcquisitionPlanResponse = zod.object({
   "estimatedBytes": zod.number().nullish(),
   "freeBytesBefore": zod.number().nullish(),
   "freeBytesAfter": zod.number().nullish(),
-  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "status": zod.enum(['sufficient', 'insufficient', 'unknown']),
   "summary": zod.string()
 }),
   "approvalState": zod.enum(['pending', 'approved', 'rejected']),
@@ -3056,7 +3056,7 @@ export const ExecuteAcquisitionPlanResponse = zod.object({
   "estimatedBytes": zod.number().nullish(),
   "freeBytesBefore": zod.number().nullish(),
   "freeBytesAfter": zod.number().nullish(),
-  "status": zod.enum(['ok', 'insufficient', 'unknown']),
+  "status": zod.enum(['sufficient', 'insufficient', 'unknown']),
   "summary": zod.string()
 }),
   "approvalState": zod.enum(['pending', 'approved', 'rejected']),

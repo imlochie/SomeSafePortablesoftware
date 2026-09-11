@@ -493,7 +493,7 @@ export type AcquisitionPlanStorageImpactStatus = typeof AcquisitionPlanStorageIm
 
 
 export const AcquisitionPlanStorageImpactStatus = {
-  ok: 'ok',
+  sufficient: 'sufficient',
   insufficient: 'insufficient',
   unknown: 'unknown',
 } as const;
