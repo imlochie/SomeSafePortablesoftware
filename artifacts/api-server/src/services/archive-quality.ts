@@ -41,6 +41,7 @@ export type QualityFindingKind =
   | "lower_quality_duplicate"
   | "superior_encode"
   | "materially_different_encode"
+  | "duration_mismatch"
   | "conflicting_quality_metadata"
   | "missing_technical_metadata";
 
@@ -54,6 +55,7 @@ export const qualityFindingKinds: QualityFindingKind[] = [
   "lower_quality_duplicate",
   "superior_encode",
   "materially_different_encode",
+  "duration_mismatch",
   "conflicting_quality_metadata",
   "missing_technical_metadata",
 ];
@@ -221,10 +223,39 @@ type QualityFindingContext = {
   recordById: Map<number, ArchiveInventoryRecord>;
   qualityFor: (fileRecordId: number) => TechnicalQuality | null;
   volumeFor: (fileRecordId: number) => string | null;
+  /**
+   * The matched Plex item as the quality model sees it. Built once from the
+   * stored media/part rows so the findings scan and the record report can
+   * never describe the same counterpart with two different shapes.
+   */
+  plexQualityFor: (itemId: number) => TechnicalQuality | null;
 };
 
 function inventoryContext(ownerId: string) {
   const inventory = readArchiveInventory(ownerId);
+  let plexQuality: Map<number, TechnicalQuality> | null = null;
+  const loadPlexQuality = () => {
+    if (plexQuality) return plexQuality;
+    plexQuality = new Map();
+    for (const mediaRow of readPlexMediaRows(ownerId)) {
+      if (plexQuality.has(mediaRow.item_id)) continue;
+      plexQuality.set(mediaRow.item_id, technicalQualityFromPlexMedia({
+        id: mediaRow.id,
+        ratingKey: mediaRow.rating_key,
+        label: mediaRow.title,
+        videoResolution: mediaRow.video_resolution,
+        videoCodec: mediaRow.video_codec,
+        audioCodec: mediaRow.audio_codec,
+        // Plex reports media bitrate in kbps; the model normalizes to bps.
+        bitrateKbps: mediaRow.bitrate,
+        durationMs: mediaRow.duration_ms,
+        part: mediaRow.file_path
+          ? { filePath: mediaRow.file_path, sizeBytes: mediaRow.size_bytes, hash: mediaRow.checksum }
+          : null,
+      }));
+    }
+    return plexQuality;
+  };
   const context: QualityFindingContext = {
     records: inventory.records,
     recordById: new Map(inventory.records.map((record) => [record.id, record])),
@@ -236,8 +267,20 @@ function inventoryContext(ownerId: string) {
     },
     volumeFor: (fileRecordId: number) =>
       inventory.context.indexes.rowsById.get(fileRecordId)?.volume_id ?? null,
+    plexQualityFor: (itemId: number) => loadPlexQuality().get(itemId) ?? null,
   };
   return { inventory, context };
+}
+
+/** Relationships that say something reviewable about this record versus that peer. */
+function rankComparable(relationship: EncodeRelationship) {
+  return (
+    relationship === "superior_encode"
+    || relationship === "inferior_encode"
+    || relationship === "materially_different_encode"
+    || relationship === "probable_duplicate"
+    || relationship === "different_media"
+  );
 }
 
 /** Duplicate and quality findings for one owner, from metadata already stored. */
@@ -246,7 +289,7 @@ function buildFindings(ownerId: string): QualityFindingRecord[] {
   const findings: QualityFindingRecord[] = [];
   const seen = new Set<string>();
   const active = context.records.filter((record) => record.scanStatus === "active");
-  const { qualityFor, volumeFor, recordById } = context;
+  const { qualityFor, volumeFor, recordById, plexQualityFor } = context;
 
   const makeFinding = (input: {
     record: ArchiveInventoryRecord;
@@ -465,33 +508,87 @@ function buildFindings(ownerId: string): QualityFindingRecord[] {
       if (!quality) continue;
       const peers = members.filter((member) => member.id !== record.id);
       if (group.ambiguous) {
-        const counterpart = peers[0];
-        const counterpartQuality = counterpart ? qualityFor(counterpart.id) : null;
-        if (!counterpart || !counterpartQuality) continue;
-        const comparison = compareEncodes(quality, counterpartQuality);
-        const relationship: EncodeRelationship =
-          comparison.relationship === "exact_duplicate" ? "materially_different_encode" : comparison.relationship;
+        // Peer choice must not depend on row order. Rank the peers by how much
+        // the stored metadata actually says about this record and pick the most
+        // informative comparison: a measured dominance outranks a tradeoff,
+        // a tradeoff outranks an unrelated runtime, and a peer that cannot be
+        // compared at all produces no finding.
+        const ranked = peers
+          .map((peer) => {
+            const peerQuality = qualityFor(peer.id);
+            return peerQuality ? { peer, peerQuality, comparison: compareEncodes(quality, peerQuality) } : null;
+          })
+          .filter((candidate): candidate is {
+            peer: ArchiveInventoryRecord;
+            peerQuality: TechnicalQuality;
+            comparison: ReturnType<typeof compareEncodes>;
+          } => candidate !== null)
+          .sort((left, right) => {
+            const rank = (relationship: EncodeRelationship) =>
+              relationship === "superior_encode" || relationship === "inferior_encode" ? 0
+                : relationship === "materially_different_encode" || relationship === "probable_duplicate" ? 1
+                  : relationship === "different_media" ? 2
+                    : 3;
+            return rank(left.comparison.relationship) - rank(right.comparison.relationship)
+              || left.peer.id - right.peer.id;
+          });
+        const best = ranked.find((candidate) => rankComparable(candidate.comparison.relationship));
+        if (!best) continue;
+        const { peer: counterpart, peerQuality: counterpartQuality, comparison } = best;
+        // An ambiguous group has no champion overall, which is not the same
+        // statement as "this pair cannot be ranked": the relationship measured
+        // against this specific counterpart decides the kind, so a dominance
+        // result is reported as dominance instead of being flattened into a
+        // stalemate that its own reasons contradict.
+        if (comparison.relationship === "exact_duplicate") continue;
+        const differentCut = comparison.relationship === "different_media";
+        const decided = comparison.relationship === "superior_encode" || comparison.relationship === "inferior_encode";
+        const kind: QualityFindingKind = differentCut
+          ? "duration_mismatch"
+          : comparison.relationship === "superior_encode"
+            ? "superior_encode"
+            : comparison.relationship === "inferior_encode"
+              ? "lower_quality_duplicate"
+              : "materially_different_encode";
         push(makeFinding({
           record,
-          kind: "materially_different_encode",
-          relationship,
-          severity: "medium",
+          kind,
+          relationship: comparison.relationship,
+          severity: kind === "superior_encode" ? "low" : "medium",
           confidence: comparison.confidence ?? "low",
-          headline: "Versions of the same title trade off against each other; no encode is defensibly better.",
+          headline: differentCut
+            ? "Stored under one identity, but the runtimes differ by more than a re-encode explains: these are different cuts, not competing versions."
+            : comparison.relationship === "superior_encode"
+              ? `Dominates ${counterpart.filename} on every comparable measured axis, although this identity group has no single best version overall.`
+              : comparison.relationship === "inferior_encode"
+                ? `Dominated by ${counterpart.filename}, which is at least as good everywhere measured and better somewhere.`
+                : "Versions of the same title trade off against each other; no encode is defensibly better.",
           reasons: [
-            `${identityKey} has ${members.length} active local versions and no single version dominates the others.`,
+            differentCut
+              ? `${identityKey} groups ${members.length} active local versions whose durations disagree beyond the re-encode tolerance.`
+              : `${identityKey} has ${members.length} active local versions and no single version dominates the others.`,
             ...comparison.reasons,
           ],
-          uncertainty: [
-            "This is a preference decision: each candidate leads somewhere in the stored metadata, so a 'best copy' label would be invented rather than measured.",
-            ...comparison.uncertainty,
-          ],
+          uncertainty: differentCut
+            ? [
+              "Nothing is said about which encode is better: first confirm whether these files are meant to be the same item at all, since runtime gaps usually mean separate cuts, editions, or a truncated file.",
+              ...comparison.uncertainty,
+            ]
+            : decided
+              ? [
+                "This pair has a measured winner; the group as a whole does not, because another member is not comparable to it.",
+                ...comparison.uncertainty,
+              ]
+              : [
+                "This is a preference decision: each candidate leads somewhere in the stored metadata, so a 'best copy' label would be invented rather than measured.",
+                ...comparison.uncertainty,
+              ],
           axes: comparison.axes,
           ownQuality: quality,
           counterpartQuality,
           counterpartFileRecordId: counterpart.id,
           counterpartRatingKey: null,
-          winner: null,
+          winner: decided ? comparison.winner : null,
         }));
         continue;
       }
@@ -503,10 +600,35 @@ function buildFindings(ownerId: string): QualityFindingRecord[] {
       const counterpartQuality = counterpart ? qualityFor(counterpart.id) : null;
       if (!counterpart || !counterpartQuality) continue;
       const comparison = compareEncodes(quality, counterpartQuality);
+      // Dominance inside the group never licenses a claim about a pair the
+      // engine refused to rank, so the measured relationship is carried
+      // through and anything that is not a clear win in one direction is
+      // reported as a duration mismatch instead of a quality verdict.
+      if (comparison.relationship === "different_media") {
+        push(makeFinding({
+          record,
+          kind: "duration_mismatch",
+          relationship: comparison.relationship,
+          severity: "medium",
+          confidence: comparison.confidence ?? "low",
+          headline: "The other local version of this identity runs for a different length, so the two are not the same item.",
+          reasons: comparison.reasons,
+          uncertainty: comparison.uncertainty,
+          axes: comparison.axes,
+          ownQuality: quality,
+          counterpartQuality,
+          counterpartFileRecordId: counterpart.id,
+          counterpartRatingKey: null,
+          winner: null,
+        }));
+        continue;
+      }
+      if (isChampion && comparison.relationship !== "superior_encode") continue;
+      if (!isChampion && comparison.relationship !== "inferior_encode") continue;
       push(makeFinding({
         record,
         kind: isChampion ? "superior_encode" : "lower_quality_duplicate",
-        relationship: isChampion ? "superior_encode" : "inferior_encode",
+        relationship: comparison.relationship,
         severity: isChampion ? "low" : "medium",
         confidence: comparison.confidence,
         headline: isChampion
@@ -532,36 +654,41 @@ function buildFindings(ownerId: string): QualityFindingRecord[] {
   }
 
   // --- 4. Local file versus the matched Plex media/part. ---
-  const plexQualityByItem = new Map<number, TechnicalQuality>();
-  for (const mediaRow of readPlexMediaRows(ownerId)) {
-    if (plexQualityByItem.has(mediaRow.item_id)) continue;
-    plexQualityByItem.set(mediaRow.item_id, technicalQualityFromPlexMedia({
-      id: mediaRow.id,
-      ratingKey: mediaRow.rating_key,
-      label: mediaRow.title,
-      videoResolution: mediaRow.video_resolution,
-      videoCodec: mediaRow.video_codec,
-      audioCodec: mediaRow.audio_codec,
-      // Plex reports media bitrate in kbps; the model normalizes to bps.
-      bitrateKbps: mediaRow.bitrate,
-      durationMs: mediaRow.duration_ms,
-      part: mediaRow.file_path
-        ? { filePath: mediaRow.file_path, sizeBytes: mediaRow.size_bytes, hash: mediaRow.checksum }
-        : null,
-    }));
-  }
   for (const record of active) {
     if (!record.plexMatch) continue;
     const plexRow = inventory.context.plexRows.find((candidate) => candidate.rating_key === record.plexMatch?.ratingKey);
-    const counterpartQuality = plexRow ? plexQualityByItem.get(plexRow.id) ?? null : null;
+    const counterpartQuality = plexRow ? plexQualityFor(plexRow.id) : null;
     const quality = qualityFor(record.id);
     if (!quality || !counterpartQuality) continue;
     const comparison = compareEncodes(quality, counterpartQuality);
     if (
       comparison.relationship === "equivalent"
-      || comparison.relationship === "different_media"
       || comparison.relationship === "insufficient_metadata"
     ) {
+      continue;
+    }
+    // A runtime gap against the matched Plex item questions the identity match
+    // itself, so it is reported instead of being treated as a non-comparison.
+    if (comparison.relationship === "different_media") {
+      push(makeFinding({
+        record,
+        kind: "duration_mismatch",
+        relationship: comparison.relationship,
+        severity: "low",
+        confidence: "low",
+        headline: "This file and the Plex item matched to it run for different lengths.",
+        reasons: comparison.reasons,
+        uncertainty: [
+          "Plex matches are made on title and year, so a runtime gap usually means the library holds a different cut rather than a worse encode.",
+          ...comparison.uncertainty,
+        ],
+        axes: comparison.axes,
+        ownQuality: quality,
+        counterpartQuality,
+        counterpartFileRecordId: null,
+        counterpartRatingKey: record.plexMatch.ratingKey,
+        winner: null,
+      }));
       continue;
     }
     const kind: QualityFindingKind = comparison.relationship === "superior_encode"
@@ -791,6 +918,7 @@ export function readQualityFindings(ownerId: string, filters: QualityFindingFilt
       lowerQualityCount: all.filter((finding) => finding.kind === "lower_quality_duplicate").length,
       superiorCount: all.filter((finding) => finding.kind === "superior_encode").length,
       materialDifferenceCount: all.filter((finding) => finding.kind === "materially_different_encode").length,
+      durationMismatchCount: all.filter((finding) => finding.kind === "duration_mismatch").length,
       conflictingMetadataCount: all.filter((finding) => finding.kind === "conflicting_quality_metadata").length,
       missingMetadataCount: all.filter((finding) => finding.kind === "missing_technical_metadata").length,
       unreviewedCount: all.filter((finding) => finding.reviewStatus === "unreviewed").length,
@@ -861,7 +989,7 @@ export function readRecordQualityReport(ownerId: string, fileRecordId: number) {
   const plexRow = record.plexMatch
     ? inventory.context.plexRows.find((candidate) => candidate.rating_key === record.plexMatch?.ratingKey)
     : undefined;
-  const plexCounterpart = plexRow ? inventory.context.indexes.plexQuality.get(plexRow.id) ?? null : null;
+  const plexCounterpart = plexRow ? context.plexQualityFor(plexRow.id) : null;
   if (plexCounterpart) {
     comparisons.push(compareWith(quality, plexCounterpart, null, record.plexMatch?.ratingKey ?? null));
   }

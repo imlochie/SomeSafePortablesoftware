@@ -773,7 +773,7 @@ export const getArchiveQualityFindingsQueryPageSizeMax = 500;
 export const GetArchiveQualityFindingsQueryParams = zod.object({
   "page": zod.coerce.number().min(1).optional(),
   "pageSize": zod.coerce.number().min(1).max(getArchiveQualityFindingsQueryPageSizeMax).optional(),
-  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'conflicting_quality_metadata', 'missing_technical_metadata']).optional(),
+  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'duration_mismatch', 'conflicting_quality_metadata', 'missing_technical_metadata']).optional(),
   "confidence": zod.enum(['high', 'medium', 'low']).optional(),
   "reviewStatus": zod.enum(['unreviewed', 'reviewed', 'deferred', 'unresolved']).optional(),
   "fileRecordId": zod.coerce.number().min(1).optional(),
@@ -792,6 +792,8 @@ export const getArchiveQualityFindingsResponseSummaryLowerQualityCountMin = 0;
 export const getArchiveQualityFindingsResponseSummarySuperiorCountMin = 0;
 
 export const getArchiveQualityFindingsResponseSummaryMaterialDifferenceCountMin = 0;
+
+export const getArchiveQualityFindingsResponseSummaryDurationMismatchCountMin = 0;
 
 export const getArchiveQualityFindingsResponseSummaryConflictingMetadataCountMin = 0;
 
@@ -819,6 +821,7 @@ export const GetArchiveQualityFindingsResponse = zod.object({
   "lowerQualityCount": zod.number().min(getArchiveQualityFindingsResponseSummaryLowerQualityCountMin),
   "superiorCount": zod.number().min(getArchiveQualityFindingsResponseSummarySuperiorCountMin),
   "materialDifferenceCount": zod.number().min(getArchiveQualityFindingsResponseSummaryMaterialDifferenceCountMin),
+  "durationMismatchCount": zod.number().min(getArchiveQualityFindingsResponseSummaryDurationMismatchCountMin).describe('Pairs grouped as one item whose runtimes differ beyond the re-encode tolerance; questions the identity match, not the encode.'),
   "conflictingMetadataCount": zod.number().min(getArchiveQualityFindingsResponseSummaryConflictingMetadataCountMin),
   "missingMetadataCount": zod.number().min(getArchiveQualityFindingsResponseSummaryMissingMetadataCountMin),
   "unreviewedCount": zod.number().min(getArchiveQualityFindingsResponseSummaryUnreviewedCountMin),
@@ -838,7 +841,7 @@ export const GetArchiveQualityFindingsResponse = zod.object({
   "filename": zod.string(),
   "relativePath": zod.string().nullish(),
   "volumeId": zod.string().nullish(),
-  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'conflicting_quality_metadata', 'missing_technical_metadata']),
+  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'duration_mismatch', 'conflicting_quality_metadata', 'missing_technical_metadata']),
   "relationship": zod.enum(['exact_duplicate', 'probable_duplicate', 'equivalent', 'superior_encode', 'inferior_encode', 'materially_different_encode', 'different_media', 'insufficient_metadata']),
   "severity": zod.enum(['high', 'medium', 'low', 'info']),
   "confidence": zod.enum(['high', 'medium', 'low']).nullish(),
@@ -1018,7 +1021,7 @@ export const GetArchiveQualityRecordResponse = zod.object({
   "filename": zod.string(),
   "relativePath": zod.string().nullish(),
   "volumeId": zod.string().nullish(),
-  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'conflicting_quality_metadata', 'missing_technical_metadata']),
+  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'duration_mismatch', 'conflicting_quality_metadata', 'missing_technical_metadata']),
   "relationship": zod.enum(['exact_duplicate', 'probable_duplicate', 'equivalent', 'superior_encode', 'inferior_encode', 'materially_different_encode', 'different_media', 'insufficient_metadata']),
   "severity": zod.enum(['high', 'medium', 'low', 'info']),
   "confidence": zod.enum(['high', 'medium', 'low']).nullish(),
@@ -1121,7 +1124,7 @@ export const updateArchiveQualityFindingReviewBodyNoteMax = 500;
 
 export const UpdateArchiveQualityFindingReviewBody = zod.object({
   "fileRecordId": zod.number().min(1),
-  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'conflicting_quality_metadata', 'missing_technical_metadata']),
+  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'duration_mismatch', 'conflicting_quality_metadata', 'missing_technical_metadata']),
   "evidenceKey": zod.string().min(updateArchiveQualityFindingReviewBodyEvidenceKeyMin),
   "status": zod.enum(['reviewed', 'deferred', 'unresolved']),
   "note": zod.string().max(updateArchiveQualityFindingReviewBodyNoteMax).nullish()

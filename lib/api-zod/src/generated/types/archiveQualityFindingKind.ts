@@ -15,6 +15,7 @@ export const ArchiveQualityFindingKind = {
   lower_quality_duplicate: 'lower_quality_duplicate',
   superior_encode: 'superior_encode',
   materially_different_encode: 'materially_different_encode',
+  duration_mismatch: 'duration_mismatch',
   conflicting_quality_metadata: 'conflicting_quality_metadata',
   missing_technical_metadata: 'missing_technical_metadata',
 } as const;

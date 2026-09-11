@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { archiveDb, addEvent } from "../src/lib/archive-db";
-import { invalidateArchiveInventoryCache } from "../src/services/archive";
+import { invalidateArchiveInventoryCache, readArchiveInventory } from "../src/services/archive";
 import {
   compareEncodes,
   coarseQualityScore,
@@ -993,6 +993,237 @@ describe("archive quality findings", () => {
     assert.equal(locationAxis?.materiality, "informational");
     assert.equal(locationAxis?.leftValue, "D:\\Movies");
     assert.equal(lowerQuality?.currentQuality.storageScope, "library");
+  });
+
+  test("a runtime gap inside one identity is a duration mismatch, not a quality verdict", () => {
+    // Two entries of the same title sharing every measured axis except runtime
+    // (theatrical vs extended cut). Neither may be called the better encode.
+    const theatrical = insertFileRecord({
+      ownerId: ownerA,
+      filename: "Gap Cut.2025.1080p.Theatrical.mkv",
+      path: "D:\\Movies\\Gap Cut.2025.1080p.Theatrical.mkv",
+      identityKey: "movie:gap cut:2025",
+      checksum: "71".padEnd(64, "a"),
+      durationSeconds: 3600,
+      sizeBytes: 2_700_000_000,
+      height: 1080,
+      width: 1920,
+      videoCodec: "h264",
+      audioCodec: "aac",
+      audioChannels: 2,
+      bitrate: 6_000_000,
+      dynamicRange: "bt709",
+      fingerprint: "gap cut|3600|1920|1080|h264|aac",
+    });
+    const extended = insertFileRecord({
+      ownerId: ownerA,
+      filename: "Gap Cut.2025.1080p.Extended.mkv",
+      path: "D:\\Movies\\Gap Cut.2025.1080p.Extended.mkv",
+      identityKey: "movie:gap cut:2025",
+      checksum: "72".padEnd(64, "b"),
+      durationSeconds: 5400,
+      sizeBytes: 4_050_000_000,
+      height: 1080,
+      width: 1920,
+      videoCodec: "h264",
+      audioCodec: "aac",
+      audioChannels: 2,
+      bitrate: 6_000_000,
+      dynamicRange: "bt709",
+      fingerprint: "gap cut|5400|1920|1080|h264|aac",
+    });
+    freshOwnerScope();
+
+    for (const fileRecordId of [theatrical, extended]) {
+      const report = readRecordQualityReport(ownerA, fileRecordId);
+      assert.ok(report);
+      const finding = report.findings.find((candidate) => candidate.kind === "duration_mismatch");
+      assert.ok(finding, `expected a duration mismatch on record ${fileRecordId}`);
+      assert.equal(finding?.relationship, "different_media");
+      assert.equal(finding?.winner, null);
+      assert.equal(finding?.action, "review_only");
+      assert.ok(finding?.reasons.some((reason) => /No quality verdict/i.test(reason)));
+      assert.equal(finding?.axes.find((axis) => axis.axis === "duration")?.status, "different");
+      // Nothing in this group may be labelled a better or worse copy of the other.
+      assert.ok(!report.findings.some(
+        (candidate) =>
+          candidate.kind === "lower_quality_duplicate"
+          || candidate.kind === "superior_encode"
+          || candidate.kind === "materially_different_encode",
+      ));
+    }
+
+    const counted = readQualityFindings(ownerA, { kind: "duration_mismatch" });
+    assert.ok(counted.summary.durationMismatchCount >= 2);
+    assert.deepEqual(
+      counted.results
+        .filter((finding) => [theatrical, extended].includes(finding.fileRecordId))
+        .map((finding) => finding.fileRecordId)
+        .sort(),
+      [theatrical, extended].sort(),
+    );
+  });
+
+  test("an ambiguous group can still contain a measured winner between two members", () => {
+    // A 1080p copy, a 4K HDR copy that dominates it, and a longer cut that is
+    // not comparable to either. The group has no champion, but the first pair
+    // does have a defensible verdict and must not be reported as a stalemate.
+    const weaker = insertFileRecord({
+      ownerId: ownerA,
+      filename: "Stalemate Cut.2025.1080p.mkv",
+      path: "D:\\Movies\\Stalemate Cut.2025.1080p.mkv",
+      identityKey: "movie:stalemate cut:2025",
+      checksum: "81".padEnd(64, "1"),
+      durationSeconds: 3600,
+      sizeBytes: 2_700_000_000,
+      height: 1080,
+      width: 1920,
+      videoCodec: "h264",
+      audioCodec: "aac",
+      audioChannels: 2,
+      bitrate: 6_000_000,
+      dynamicRange: "bt709",
+    });
+    const stronger = insertFileRecord({
+      ownerId: ownerA,
+      filename: "Stalemate Cut.2025.2160p.HDR.mkv",
+      path: "D:\\Movies\\Stalemate Cut.2025.2160p.HDR.mkv",
+      identityKey: "movie:stalemate cut:2025",
+      checksum: "82".padEnd(64, "2"),
+      durationSeconds: 3600,
+      sizeBytes: 5_400_000_000,
+      height: 2160,
+      width: 3840,
+      videoCodec: "hevc",
+      videoProfile: "Main 10",
+      videoPixFmt: "yuv420p10le",
+      audioCodec: "eac3",
+      audioChannels: 6,
+      audioChannelLayout: "5.1(side)",
+      bitrate: 12_000_000,
+      dynamicRange: "smpte2084",
+    });
+    const otherCut = insertFileRecord({
+      ownerId: ownerA,
+      filename: "Stalemate Cut.2025.2160p.HDR.Extended.mkv",
+      path: "D:\\Movies\\Stalemate Cut.2025.2160p.HDR.Extended.mkv",
+      identityKey: "movie:stalemate cut:2025",
+      checksum: "83".padEnd(64, "3"),
+      durationSeconds: 5400,
+      sizeBytes: 8_100_000_000,
+      height: 2160,
+      width: 3840,
+      videoCodec: "hevc",
+      videoProfile: "Main 10",
+      videoPixFmt: "yuv420p10le",
+      audioCodec: "eac3",
+      audioChannels: 6,
+      audioChannelLayout: "5.1(side)",
+      bitrate: 12_000_000,
+      dynamicRange: "smpte2084",
+    });
+    freshOwnerScope();
+
+    const weakerReport = readRecordQualityReport(ownerA, weaker);
+    const strongerReport = readRecordQualityReport(ownerA, stronger);
+    const otherCutReport = readRecordQualityReport(ownerA, otherCut);
+    assert.ok(weakerReport && strongerReport && otherCutReport);
+
+    const dominated = weakerReport?.findings.find((finding) => finding.kind === "lower_quality_duplicate");
+    assert.equal(dominated?.counterpartFileRecordId, stronger);
+    assert.equal(dominated?.winner, "right");
+    assert.equal(dominated?.relationship, "inferior_encode");
+
+    const dominant = strongerReport?.findings.find((finding) => finding.kind === "superior_encode");
+    assert.equal(dominant?.counterpartFileRecordId, weaker);
+    assert.equal(dominant?.winner, "left");
+    // A pair-level winner is not a group-level champion: the stalemate label
+    // must not appear on a pair the engine actually ranked.
+    assert.ok(!strongerReport?.findings.some((finding) => finding.kind === "materially_different_encode"));
+    assert.ok(dominant?.headline.includes("no single best version overall"));
+
+    assert.equal(
+      otherCutReport?.findings.find((finding) => finding.fileRecordId === otherCut)?.kind,
+      "duration_mismatch",
+    );
+
+    // The inventory keeps refusing to crown a best version for the group.
+    const records = readArchiveInventory(ownerA).records;
+    for (const id of [weaker, stronger, otherCut]) {
+      assert.equal(records.find((record) => record.id === id)?.qualityStatus, "needs_review");
+    }
+  });
+
+  test("a matched Plex item at a different runtime is reported instead of dropped", () => {
+    const local = insertFileRecord({
+      ownerId: ownerA,
+      filename: "Plex Gap.2025.1080p.mkv",
+      path: "D:\\Movies\\Plex Gap.2025.1080p.mkv",
+      checksum: "73".padEnd(64, "c"),
+      durationSeconds: 3600,
+      sizeBytes: 2_700_000_000,
+      height: 1080,
+      width: 1920,
+      videoCodec: "h264",
+      audioCodec: "aac",
+      audioChannels: 2,
+      bitrate: 6_000_000,
+      dynamicRange: "bt709",
+    });
+    archiveDb.prepare(
+      "INSERT INTO plex_library (name, server_url, owner_id) VALUES ('Quality Plex', 'http://127.0.0.1:32400', ?)",
+    ).run(ownerA);
+    const libraryId = Number((archiveDb.prepare("SELECT last_insert_rowid() AS id").get() as { id: number }).id);
+    archiveDb.prepare(`
+      INSERT INTO plex_item (library_id, rating_key, title, item_type, year, owner_id)
+      VALUES (?, 'rk-quality-gap', 'Plex Gap', 'movie', 2025, ?)
+    `).run(libraryId, ownerA);
+    const itemId = Number((archiveDb.prepare("SELECT last_insert_rowid() AS id").get() as { id: number }).id);
+    // The Plex copy runs 25 minutes longer, so the identity match itself is suspect.
+    archiveDb.prepare(
+      "INSERT INTO plex_media (item_id, video_resolution, video_codec, audio_codec, bitrate, duration_ms) VALUES (?, '1080', 'h264', 'aac', 6000, 5100000)",
+    ).run(itemId);
+    const mediaId = Number((archiveDb.prepare("SELECT last_insert_rowid() AS id").get() as { id: number }).id);
+    archiveDb.prepare(
+      "INSERT INTO plex_part (media_id, file_path, size_bytes) VALUES (?, 'D:\\Plex\\Plex Gap (2025)\\Plex.Gap.2025.1080p.mkv', 3825000000)",
+    ).run(mediaId);
+    freshOwnerScope();
+
+    const report = readRecordQualityReport(ownerA, local);
+    assert.ok(report);
+    assert.equal(report.findings.some((finding) => finding.kind === "duration_mismatch"), true);
+    const finding = report.findings.find((candidate) => candidate.kind === "duration_mismatch");
+    assert.equal(finding?.counterpartRatingKey, "rk-quality-gap");
+    assert.equal(finding?.counterpartFileRecordId, null);
+    assert.equal(finding?.winner, null);
+    assert.ok(finding?.uncertainty.some((note) => /different cut/i.test(note)));
+    // The record report's own comparison for that counterpart must agree with
+    // the finding: one Plex item, one quality shape, one verdict.
+    const plexComparison = report.comparisons.find((candidate) => candidate.counterpartRatingKey === "rk-quality-gap");
+    assert.ok(plexComparison, "expected a Plex comparison on the record report");
+    assert.equal(plexComparison?.relationship, "different_media");
+    assert.equal(plexComparison?.winner, null);
+    assert.equal(plexComparison?.counterpart.durationSeconds, 5100);
+    // The runtime gap is stated as the finding; no quality claim is attached to it.
+    assert.ok(!report.findings.some(
+      (candidate) => candidate.kind === "superior_encode" || candidate.kind === "lower_quality_duplicate",
+    ));
+
+    // A new kind is reviewable through the same evidence-key semantics.
+    assert.ok(finding);
+    const saved = saveQualityFindingReview(ownerA, {
+      fileRecordId: local,
+      kind: "duration_mismatch",
+      evidenceKey: finding?.evidenceKey ?? "",
+      status: "reviewed",
+      note: "Separate release: the Plex library holds the extended cut.",
+    });
+    assert.equal(saved?.status, "reviewed");
+    assert.equal(saved?.findingType, "duration_mismatch");
+    assert.equal(
+      readQualityFindings(ownerA, { fileRecordId: local, kind: "duration_mismatch" }).results[0]?.reviewStatus,
+      "reviewed",
+    );
   });
 
   test("the record report exposes the model, the comparisons, and the findings", () => {
