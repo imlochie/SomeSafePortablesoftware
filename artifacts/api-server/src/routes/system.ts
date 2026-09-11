@@ -8,6 +8,7 @@ import {
   GetSystemOverviewResponse,
 } from "@workspace/api-zod";
 import { archiveDb, pruneSystemEvents, readEvents, readSettings } from "../lib/archive-db";
+import { runtimeConfig } from "../lib/runtime-config";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import { getArchiveVolumes } from "../services/storage";
 import {
@@ -102,7 +103,14 @@ router.get("/system/overview", (req, res) => {
 
 router.get("/system/dependencies", (_req, res) => {
   const settings = readSettings();
-  res.json(GetSystemDependenciesResponse.parse(dependencyDefinitions.map((dependency) => detectDependency(dependency, settings))));
+  res.json(
+    GetSystemDependenciesResponse.parse({
+      dependencies: dependencyDefinitions.map((dependency) =>
+        detectDependency(dependency, settings),
+      ),
+      mediaBundle: runtimeConfig.mediaBundle,
+    }),
+  );
 });
 
 router.get("/system/events", (req, res) => {

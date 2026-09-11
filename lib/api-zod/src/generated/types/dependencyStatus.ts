@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DependencyStatusSource } from './dependencyStatusSource';
 import type { DependencyStatusStatus } from './dependencyStatusStatus';
 
 export interface DependencyStatus {
@@ -15,4 +16,5 @@ export interface DependencyStatus {
   /** @nullable */
   version: string | null;
   capabilities: string[];
+  source: DependencyStatusSource;
 }

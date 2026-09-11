@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { SettingsRecord } from "../lib/archive-db";
+import { runtimeConfig } from "../lib/runtime-config";
 import { getLocalToolPaths } from "./local-tools";
 
 export const dependencyDefinitions = [
@@ -10,12 +11,27 @@ export const dependencyDefinitions = [
   { name: "yt-dlp", key: "ytDlp", fallback: "yt-dlp", args: ["--version"] },
 ] as const;
 
+type DependencySource = "bundled" | "override" | "system";
+
+function getDependencySource(
+  dependency: (typeof dependencyDefinitions)[number],
+  command: string,
+): DependencySource {
+  if (!dependency.key) return "system";
+  if (runtimeConfig.toolOverrides[dependency.key]) return "override";
+  if (runtimeConfig.mediaBundle && command === runtimeConfig.tools[dependency.key]) {
+    return "bundled";
+  }
+  return command === dependency.fallback ? "system" : "override";
+}
+
 export function detectDependency(
   dependency: (typeof dependencyDefinitions)[number],
   settings: SettingsRecord,
 ) {
   const tools = getLocalToolPaths(settings);
   const command = dependency.key ? tools[dependency.key] : dependency.fallback;
+  const source = getDependencySource(dependency, command);
   try {
     const versionOutput = execFileSync(command, dependency.args, {
       encoding: "utf8",
@@ -34,6 +50,7 @@ export function detectDependency(
       detail: "Detected on this machine",
       version,
       capabilities,
+      source,
     };
   } catch {
     return {
@@ -49,6 +66,7 @@ export function detectDependency(
           : "Optional dependency not detected",
       version: null,
       capabilities: [],
+      source,
     };
   }
 }

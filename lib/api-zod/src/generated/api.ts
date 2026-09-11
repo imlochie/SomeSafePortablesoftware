@@ -56,15 +56,23 @@ export const GetSystemOverviewResponse = zod.object({
 /**
  * @summary Detect optional local dependencies
  */
-export const GetSystemDependenciesResponseItem = zod.object({
+export const GetSystemDependenciesResponse = zod.object({
+  "dependencies": zod.array(zod.object({
   "name": zod.string(),
   "command": zod.string(),
   "status": zod.enum(['available', 'missing', 'not_configured']),
   "detail": zod.string(),
   "version": zod.string().nullable(),
-  "capabilities": zod.array(zod.string())
+  "capabilities": zod.array(zod.string()),
+  "source": zod.enum(['bundled', 'override', 'system'])
+})),
+  "mediaBundle": zod.union([zod.object({
+  "architecture": zod.enum(['x64', 'arm64']),
+  "targetTriple": zod.string(),
+  "ytDlpVersion": zod.string(),
+  "ffmpegVersion": zod.string()
+}),zod.null()])
 })
-export const GetSystemDependenciesResponse = zod.array(GetSystemDependenciesResponseItem)
 
 
 /**

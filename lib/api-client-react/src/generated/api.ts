@@ -39,7 +39,6 @@ import type {
   CreateAcquisitionJob,
   CreateArchiveOperation,
   CreateReviewItem,
-  DependencyStatus,
   DiscoverArchiveMissingMediaParams,
   DownloadJob,
   DownloadJobInput,
@@ -78,6 +77,7 @@ import type {
   ReviewItem,
   ReviewSyncResult,
   RotateWebhookSecretBody,
+  SystemDependencies,
   SystemEvent,
   SystemOverview,
   WebhookSecretStatus,
@@ -277,9 +277,9 @@ export const getGetSystemDependenciesUrl = () => {
 /**
  * @summary Detect optional local dependencies
  */
-export const getSystemDependencies = async ( options?: Parameters<typeof customFetch>[1]): Promise<DependencyStatus[]> => {
+export const getSystemDependencies = async ( options?: Parameters<typeof customFetch>[1]): Promise<SystemDependencies> => {
 
-  return customFetch<DependencyStatus[]>(getGetSystemDependenciesUrl(),
+  return customFetch<SystemDependencies>(getGetSystemDependenciesUrl(),
   {
     ...options,
     method: 'GET'

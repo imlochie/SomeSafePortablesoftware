@@ -97,6 +97,15 @@ export const DependencyStatusStatus = {
   not_configured: 'not_configured',
 } as const;
 
+export type DependencyStatusSource = typeof DependencyStatusSource[keyof typeof DependencyStatusSource];
+
+
+export const DependencyStatusSource = {
+  bundled: 'bundled',
+  override: 'override',
+  system: 'system',
+} as const;
+
 export interface DependencyStatus {
   name: string;
   command: string;
@@ -105,6 +114,27 @@ export interface DependencyStatus {
   /** @nullable */
   version: string | null;
   capabilities: string[];
+  source: DependencyStatusSource;
+}
+
+export type MediaBundleStatusArchitecture = typeof MediaBundleStatusArchitecture[keyof typeof MediaBundleStatusArchitecture];
+
+
+export const MediaBundleStatusArchitecture = {
+  x64: 'x64',
+  arm64: 'arm64',
+} as const;
+
+export interface MediaBundleStatus {
+  architecture: MediaBundleStatusArchitecture;
+  targetTriple: string;
+  ytDlpVersion: string;
+  ffmpegVersion: string;
+}
+
+export interface SystemDependencies {
+  dependencies: DependencyStatus[];
+  mediaBundle: MediaBundleStatus | null;
 }
 
 export type AppSettingsLogLevel = typeof AppSettingsLogLevel[keyof typeof AppSettingsLogLevel];

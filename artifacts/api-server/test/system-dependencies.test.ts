@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { describe, test } from "node:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { GetSystemDependenciesResponse } from "@workspace/api-zod";
 import { readSettings } from "../src/lib/archive-db";
 import { resolveRuntimeConfig } from "../src/lib/runtime-config";
@@ -11,15 +14,17 @@ import {
 
 describe("system dependency status", { concurrency: false }, () => {
   test("always returns schema-valid capability metadata", async () => {
-    const dependencies = GetSystemDependenciesResponse.parse(
-      dependencyDefinitions.map((dependency) =>
+    const response = GetSystemDependenciesResponse.parse({
+      dependencies: dependencyDefinitions.map((dependency) =>
         detectDependency(dependency, readSettings()),
       ),
-    );
-    assert.equal(dependencies.length, 5);
+      mediaBundle: null,
+    });
+    assert.equal(response.dependencies.length, 5);
 
-    for (const dependency of dependencies) {
+    for (const dependency of response.dependencies) {
       assert.ok(Array.isArray(dependency.capabilities));
+      assert.ok(["bundled", "override", "system"].includes(dependency.source));
       if (dependency.name !== "FFmpeg") {
         assert.deepEqual(dependency.capabilities, []);
       }
@@ -33,6 +38,36 @@ describe("system dependency status", { concurrency: false }, () => {
     assert.equal(config.tools.ytDlp, "/managed/media-tools/yt-dlp");
     assert.equal(config.tools.ffmpeg, "/managed/media-tools/ffmpeg");
     assert.equal(config.tools.ffprobe, "/managed/media-tools/ffprobe");
+    assert.equal(config.mediaBundle, null);
+  });
+
+  test("reads only sanitized bundle metadata from the managed manifest", async () => {
+    const managedDirectory = await mkdtemp(join(tmpdir(), "archive-media-tools-"));
+    try {
+      await writeFile(
+        join(managedDirectory, "manifest.json"),
+        JSON.stringify({
+          platform: "windows",
+          architecture: "arm64",
+          targetTriple: "aarch64-pc-windows-msvc",
+          tools: {
+            ytDlp: { version: "2026.07.04", url: "https://example.invalid/secret" },
+            ffmpeg: { version: "n8.1", url: "https://example.invalid/secret" },
+          },
+        }),
+      );
+      const config = resolveRuntimeConfig({
+        ARCHIVE_MEDIA_TOOLS_DIR: managedDirectory,
+      });
+      assert.deepEqual(config.mediaBundle, {
+        architecture: "arm64",
+        targetTriple: "aarch64-pc-windows-msvc",
+        ytDlpVersion: "2026.07.04",
+        ffmpegVersion: "n8.1",
+      });
+    } finally {
+      await rm(managedDirectory, { recursive: true, force: true });
+    }
   });
 
   test("keeps environment tool overrides ahead of the managed directory", () => {

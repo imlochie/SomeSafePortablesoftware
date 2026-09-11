@@ -67,9 +67,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/DependencyStatus"
+                $ref: "#/components/schemas/SystemDependencies"
   /system/events:
     get:
       operationId: getSystemEvents
@@ -1493,7 +1491,7 @@ components:
           enum: [ready, warning, critical, unavailable]
     DependencyStatus:
       type: object
-      required: [name, command, status, detail, version, capabilities]
+      required: [name, command, status, detail, version, capabilities, source]
       properties:
         name:
           type: string
@@ -1510,6 +1508,34 @@ components:
           type: array
           items:
             type: string
+        source:
+          type: string
+          enum: [bundled, override, system]
+    MediaBundleStatus:
+      type: object
+      required: [architecture, targetTriple, ytDlpVersion, ffmpegVersion]
+      properties:
+        architecture:
+          type: string
+          enum: [x64, arm64]
+        targetTriple:
+          type: string
+        ytDlpVersion:
+          type: string
+        ffmpegVersion:
+          type: string
+    SystemDependencies:
+      type: object
+      required: [dependencies, mediaBundle]
+      properties:
+        dependencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/DependencyStatus"
+        mediaBundle:
+          oneOf:
+            - $ref: "#/components/schemas/MediaBundleStatus"
+            - type: "null"
     SystemEvent:
       type: object
       required: [id, level, message, timestamp, source, operatorId, retentionClass]

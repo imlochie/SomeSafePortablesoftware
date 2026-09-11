@@ -1,7 +1,61 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
 export type AuthMode = "local" | "clerk";
+export type MediaBundleArchitecture = "x64" | "arm64";
+
+export type ManagedMediaBundle = {
+  architecture: MediaBundleArchitecture;
+  targetTriple: string;
+  ytDlpVersion: string;
+  ffmpegVersion: string;
+};
+
+function readManagedMediaBundle(
+  managedDirectory: string | undefined,
+): ManagedMediaBundle | null {
+  if (!managedDirectory) return null;
+
+  try {
+    const manifest = JSON.parse(
+      readFileSync(join(managedDirectory, "manifest.json"), "utf8"),
+    ) as {
+      architecture?: unknown;
+      targetTriple?: unknown;
+      tools?: {
+        ytDlp?: { version?: unknown };
+        ffmpeg?: { version?: unknown };
+      };
+    };
+    const architecture =
+      manifest.architecture === "x64" || manifest.architecture === "arm64"
+        ? manifest.architecture
+        : null;
+    const targetTriple =
+      typeof manifest.targetTriple === "string" && manifest.targetTriple.trim()
+        ? manifest.targetTriple.trim()
+        : null;
+    const ytDlpVersion =
+      typeof manifest.tools?.ytDlp?.version === "string" &&
+      manifest.tools.ytDlp.version.trim()
+        ? manifest.tools.ytDlp.version.trim()
+        : null;
+    const ffmpegVersion =
+      typeof manifest.tools?.ffmpeg?.version === "string" &&
+      manifest.tools.ffmpeg.version.trim()
+        ? manifest.tools.ffmpeg.version.trim()
+        : null;
+
+    if (!architecture || !targetTriple || !ytDlpVersion || !ffmpegVersion) {
+      return null;
+    }
+
+    return { architecture, targetTriple, ytDlpVersion, ffmpegVersion };
+  } catch {
+    return null;
+  }
+}
 
 function parseAuthMode(value: string | undefined): AuthMode {
   const normalized = value?.trim().toLowerCase() || "local";
@@ -47,6 +101,7 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
   const authMode = parseAuthMode(env.AUTH_MODE);
   const archiveRoot = join(homedir(), "ARCHIVE");
   const managedToolDirectory = env.ARCHIVE_MEDIA_TOOLS_DIR?.trim() || undefined;
+  const mediaBundle = readManagedMediaBundle(managedToolDirectory);
   const developmentHostRequired =
     env.NODE_ENV !== "production" || env.REPL_ID !== undefined;
 
@@ -80,6 +135,12 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
       ffmpeg: managedToolPath(env.FFMPEG_PATH, "ffmpeg", managedToolDirectory),
       ffprobe: managedToolPath(env.FFPROBE_PATH, "ffprobe", managedToolDirectory),
     },
+    toolOverrides: {
+      ytDlp: Boolean(env.YT_DLP_PATH?.trim()),
+      ffmpeg: Boolean(env.FFMPEG_PATH?.trim()),
+      ffprobe: Boolean(env.FFPROBE_PATH?.trim()),
+    },
+    mediaBundle,
     mockMode: parseBoolean(env.ARCHIVE_MOCK_MODE, true),
   } as const;
 }
