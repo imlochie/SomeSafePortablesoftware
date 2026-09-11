@@ -1,0 +1,27 @@
+{
+  "platform": "windows-x64",
+  "releasePolicy": "Pinned release assets; update this manifest and rebuild to update the desktop bundle.",
+  "tools": {
+    "ytDlp": {
+      "version": "2026.07.04",
+      "license": "Unlicense",
+      "source": "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.07.04",
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp.exe",
+      "sha256": "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8",
+      "downloadBytes": 18226085,
+      "asset": "yt-dlp.exe"
+    },
+    "ffmpeg": {
+      "version": "n8.1",
+      "license": "GNU LGPL v2.1 or later",
+      "source": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest",
+      "releasePublishedAt": "2026-09-11T13:43:15Z",
+      "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-8.1.zip",
+      "sha256": "677f350e158f45476bb9d7f8f3de2d050151f4df9d908c8001aef65c3abd9ff6",
+      "downloadBytes": 169522175,
+      "asset": "ffmpeg-n8.1-latest-win64-lgpl-8.1.zip",
+      "includes": ["ffmpeg.exe", "ffprobe.exe"]
+    }
+  },
+  "totalDownloadBytes": 187748260
+}

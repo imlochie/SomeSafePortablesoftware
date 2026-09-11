@@ -103,6 +103,14 @@ fn node_command(app: &AppHandle) -> PathBuf {
         })
 }
 
+fn bundled_media_tools_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .resource_dir()
+        .ok()
+        .map(|resource_dir| resource_dir.join("runtime").join("media-tools"))
+        .filter(|path| path.is_dir())
+}
+
 fn sidecar_command(app: &AppHandle) -> Result<Command, String> {
     let root = workspace_root();
     let app_data = app
@@ -118,6 +126,7 @@ fn sidecar_command(app: &AppHandle) -> Result<Command, String> {
         app_data.join("archive-assistant.sqlite")
     });
     let api_entry = api_entry_path(app);
+    let media_tools_dir = bundled_media_tools_path(app);
     if !api_entry.exists() {
         return Err(format!(
             "The API bundle was not found at {}. Build the API before launching the desktop shell.",
@@ -151,24 +160,16 @@ fn sidecar_command(app: &AppHandle) -> Result<Command, String> {
             configured_path("ARCHIVE_TEMP_PATH", || archive_root.join("tmp")),
         )
         .env(
-            "YT_DLP_PATH",
-            configured_path("YT_DLP_PATH", || PathBuf::from("yt-dlp")),
-        )
-        .env(
-            "FFMPEG_PATH",
-            configured_path("FFMPEG_PATH", || PathBuf::from("ffmpeg")),
-        )
-        .env(
-            "FFPROBE_PATH",
-            configured_path("FFPROBE_PATH", || PathBuf::from("ffprobe")),
-        )
-        .env(
             "ARCHIVE_MOCK_MODE",
             configured_path("ARCHIVE_MOCK_MODE", || PathBuf::from("false")),
         )
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    if let Some(media_tools_dir) = media_tools_dir {
+        command.env("ARCHIVE_MEDIA_TOOLS_DIR", media_tools_dir);
+    }
 
     #[cfg(windows)]
     {

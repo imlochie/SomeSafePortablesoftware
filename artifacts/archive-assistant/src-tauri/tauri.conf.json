@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm --dir ../.. --filter @workspace/api-server run build && pnpm --dir ../.. --filter @workspace/archive-assistant run dev",
     "devUrl": "http://127.0.0.1:3000",
-    "beforeBuildCommand": "node ./scripts/stage-node-runtime.mjs && pnpm --dir ../.. --filter @workspace/api-server run build && pnpm --dir ../.. --filter @workspace/archive-assistant run build",
+    "beforeBuildCommand": "node ./scripts/stage-node-runtime.mjs && node ./scripts/stage-media-tools.mjs && pnpm --dir ../.. --filter @workspace/api-server run build && pnpm --dir ../.. --filter @workspace/archive-assistant run build",
     "frontendDist": "../dist/public"
   },
   "app": {

@@ -29,9 +29,24 @@ function configured(value: string | undefined, fallback: string) {
   return value?.trim() || fallback;
 }
 
+function managedToolPath(
+  value: string | undefined,
+  fallback: string,
+  managedDirectory: string | undefined,
+) {
+  const configuredValue = value?.trim();
+  if (configuredValue) return configuredValue;
+  if (!managedDirectory) return fallback;
+  return join(
+    managedDirectory,
+    process.platform === "win32" ? `${fallback}.exe` : fallback,
+  );
+}
+
 export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
   const authMode = parseAuthMode(env.AUTH_MODE);
   const archiveRoot = join(homedir(), "ARCHIVE");
+  const managedToolDirectory = env.ARCHIVE_MEDIA_TOOLS_DIR?.trim() || undefined;
   const developmentHostRequired =
     env.NODE_ENV !== "production" || env.REPL_ID !== undefined;
 
@@ -61,9 +76,9 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
       temporary: configured(env.ARCHIVE_TEMP_PATH, join(archiveRoot, "tmp")),
     },
     tools: {
-      ytDlp: configured(env.YT_DLP_PATH, "yt-dlp"),
-      ffmpeg: configured(env.FFMPEG_PATH, "ffmpeg"),
-      ffprobe: configured(env.FFPROBE_PATH, "ffprobe"),
+      ytDlp: managedToolPath(env.YT_DLP_PATH, "yt-dlp", managedToolDirectory),
+      ffmpeg: managedToolPath(env.FFMPEG_PATH, "ffmpeg", managedToolDirectory),
+      ffprobe: managedToolPath(env.FFPROBE_PATH, "ffprobe", managedToolDirectory),
     },
     mockMode: parseBoolean(env.ARCHIVE_MOCK_MODE, true),
   } as const;

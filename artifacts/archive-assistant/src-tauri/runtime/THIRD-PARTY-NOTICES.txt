@@ -1,0 +1,19 @@
+ARCHIVE ASSISTANT WINDOWS MEDIA TOOLS
+
+The desktop installer includes these verified portable Windows x64 tools:
+
+* yt-dlp 2026.07.04
+  License: Unlicense
+  Source: https://github.com/yt-dlp/yt-dlp
+  Release: https://github.com/yt-dlp/yt-dlp/releases/tag/2026.07.04
+
+* FFmpeg n8.1 LGPL static build, including ffprobe
+  License: GNU LGPL version 2.1 or later
+  Build source: https://github.com/BtbN/FFmpeg-Builds
+  Release: https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest
+  The upstream release provides the corresponding license text and source
+  information at the linked release.
+
+The exact download URLs, SHA-256 digests, versions, and sizes are recorded in
+scripts/media-tools-manifest.json. The staging script verifies every download
+before it is copied into the application resources.
