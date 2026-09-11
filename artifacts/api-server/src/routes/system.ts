@@ -1,7 +1,8 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { statfsSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { promisify } from "node:util";
 import { Router, type IRouter } from "express";
 import {
   GetSystemDependenciesResponse,
@@ -15,6 +16,19 @@ import { getArchiveVolumes } from "../services/storage";
 
 const router: IRouter = Router();
 
+const execFileAsync = promisify(execFile);
+
+/**
+ * Version probes are asynchronous: the synchronous variants (execFileSync and
+ * spawnSync with piped stdio) deadlock outright for some Windows executables —
+ * a configured yt-dlp.exe answers "--version" with ETIMEDOUT under every
+ * synchronous pipe configuration, while the same probe through execFile/spawn
+ * resolves immediately. The asynchronous path also keeps the event loop free
+ * while a cold executable starts, so the timeout can be generous enough for
+ * real-world Python-packaged tools without ever blocking a request.
+ */
+const DEPENDENCY_PROBE_TIMEOUT_MS = 5_000;
+
 const dependencyDefinitions = [
   { name: "Node.js", key: null, fallback: "node", args: ["--version"] },
   { name: "SQLite", key: null, fallback: "sqlite3", args: ["--version"] },
@@ -23,17 +37,17 @@ const dependencyDefinitions = [
   { name: "yt-dlp", key: "ytDlp", fallback: "yt-dlp", args: ["--version"] },
 ] as const;
 
-function detectDependency(dependency: (typeof dependencyDefinitions)[number], settings: ReturnType<typeof readSettings>) {
+async function detectDependency(dependency: (typeof dependencyDefinitions)[number], settings: ReturnType<typeof readSettings>) {
   const tools = getLocalToolPaths(settings);
   const command = dependency.key ? tools[dependency.key] : dependency.fallback;
   try {
-    const versionOutput = execFileSync(command, dependency.args, {
+    const { stdout } = await execFileAsync(command, dependency.args, {
       encoding: "utf8",
-      timeout: 1200,
-      stdio: ["ignore", "pipe", "pipe"],
+      timeout: DEPENDENCY_PROBE_TIMEOUT_MS,
+      windowsHide: true,
     });
-    const version = versionOutput.trim().split(/\r?\n/)[0] ?? null;
-    const capabilities = dependency.name === "FFmpeg" ? detectFfmpegCapabilities(tools.ffmpeg) : [];
+    const version = stdout.trim().split(/\r?\n/)[0] ?? null;
+    const capabilities = dependency.name === "FFmpeg" ? await detectFfmpegCapabilities(tools.ffmpeg) : [];
     return {
       name: dependency.name,
       command,
@@ -57,17 +71,26 @@ capabilities: [],
   }
 }
 
-function detectFfmpegCapabilities(command: string) {
+async function detectFfmpegCapabilities(command: string) {
   try {
-    const output = execFileSync(command, ["-hide_banner", "-hwaccels"], {
+    const { stdout } = await execFileAsync(command, ["-hide_banner", "-hwaccels"], {
       encoding: "utf8",
-      timeout: 1800,
-      stdio: ["ignore", "pipe", "pipe"],
+      timeout: DEPENDENCY_PROBE_TIMEOUT_MS,
+      windowsHide: true,
     });
-    return output.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.includes("Hardware acceleration"));
+    return stdout.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.includes("Hardware acceleration"));
   } catch {
     return [];
   }
+}
+
+/**
+ * Every dependency probe, run concurrently. Exported for the regression test:
+ * a configured absolute executable path (the Windows layout, e.g.
+ * C:\Users\...\yt-dlp.exe) must be detected through the asynchronous path.
+ */
+export async function readSystemDependencies(settings: ReturnType<typeof readSettings> = readSettings()) {
+  return Promise.all(dependencyDefinitions.map((dependency) => detectDependency(dependency, settings)));
 }
 
 function expandHome(value: string) {
@@ -152,9 +175,16 @@ router.get("/system/overview", (req, res) => {
   res.json(payload);
 });
 
-router.get("/system/dependencies", (_req, res) => {
-  const settings = readSettings();
-  res.json(GetSystemDependenciesResponse.parse(dependencyDefinitions.map((dependency) => detectDependency(dependency, settings))));
+router.get("/system/dependencies", (_req, res, next) => {
+  void (async () => {
+    try {
+      const settings = readSettings();
+      const dependencies = await readSystemDependencies(settings);
+      res.json(GetSystemDependenciesResponse.parse(dependencies));
+    } catch (error) {
+      next(error);
+    }
+  })();
 });
 
 router.get("/system/events", (req, res) => {
