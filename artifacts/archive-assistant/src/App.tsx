@@ -24,9 +24,12 @@ import {
   useRollbackArchiveOperation, getGetArchiveNamingProposalsQueryKey, getGetArchiveOperationsQueryKey,
   useGetArchiveQualityRecord, useUpdateArchiveQualityFindingReview,
   getGetArchiveQualityRecordQueryKey, getGetArchiveQualityFindingsQueryKey, useGetArchiveQualityFindings,
+  getGetAcquisitionFindingsQueryKey,
+  useGetAcquisitionFindings,
+  useRefreshAcquisitionIntelligence,
   setBaseUrl,
 } from '@workspace/api-client-react';
-import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent } from '@workspace/api-client-react';
+import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent, GetAcquisitionFindingsParams } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -37,6 +40,7 @@ const queryClient = new QueryClient();
 const navItems = [
   { label: 'HOME', href: '/user-portal', icon: Activity }, { label: 'ASSISTANT', href: '/assistant', icon: Bot },
   { label: 'QUEUE', href: '/queue', icon: Download }, { label: 'ARCHIVE', href: '/archive', icon: Archive },
+  { label: 'DISCOVERY', href: '/discovery', icon: Search },
   { label: 'PLEX', href: '/plex', icon: PlaySquare }, { label: 'SOURCES', href: '/sources', icon: FolderOpen },
   { label: 'HISTORY', href: '/history', icon: History }, { label: 'SETTINGS', href: '/settings', icon: SettingsIcon },
 ];
@@ -1255,6 +1259,60 @@ function ArchivePage() {
   );
 }
 
+function acquisitionQualityLabel(quality: { height: number | null; hdr: boolean; videoCodec: string | null; audioCodec: string | null } | null) {
+  if (!quality) return 'UNKNOWN QUALITY';
+  const resolution = quality.height ? `${quality.height}P` : 'RESOLUTION UNKNOWN';
+  const hdr = quality.hdr ? ' / HDR' : '';
+  const codecs = [quality.videoCodec, quality.audioCodec].filter(Boolean).join(' / ');
+  return `${resolution}${hdr}${codecs ? ` / ${codecs}` : ''}`;
+}
+
+function DiscoveryPage() {
+  const queryClient = useQueryClient();
+  const [mediaType, setMediaType] = useState<'all' | 'movie' | 'tv'>('all');
+  const [status, setStatus] = useState<'all' | 'recommended' | 'not_recommended'>('all');
+  const params: GetAcquisitionFindingsParams = {
+    mediaType: mediaType === 'all' ? undefined : mediaType,
+    status: status === 'all' ? undefined : status,
+    page: 1,
+    pageSize: 100,
+  };
+  const findingsQuery = useGetAcquisitionFindings(params);
+  const refresh = useRefreshAcquisitionIntelligence();
+  const findings = (findingsQuery.data?.results ?? []).filter((finding) => finding.need.archiveState !== 'fully_present');
+  const handleRefresh = () => {
+    refresh.mutate(undefined, {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetAcquisitionFindingsQueryKey(params) }),
+    });
+  };
+
+  return <>
+    <PageIntro
+      eyebrow="DISCOVERY / ACQUISITION INTELLIGENCE"
+      title="What should be acquired?"
+      description="A provider-neutral, reviewable readout of missing media, candidate sources, quality tradeoffs, and storage implications. Nothing is downloaded from this surface."
+      action={<button onClick={handleRefresh} disabled={refresh.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-refresh-discovery"><RefreshCw size={14} className={refresh.isPending ? 'animate-spin' : ''} /> {refresh.isPending ? 'RECOMPUTING' : 'REFRESH INTELLIGENCE'}</button>}
+    />
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border border-[#e3e8e7] bg-white/60 p-3" data-testid="panel-discovery-filters">
+      <div className="archive-mono text-[10px] tracking-[.12em] text-[#7f9194]">{findingsQuery.data?.summary.recommended ?? 0} RECOMMENDED / {findingsQuery.data?.summary.blocked ?? 0} BLOCKED</div>
+      <div className="flex flex-wrap gap-2">
+        <select value={mediaType} onChange={(event) => setMediaType(event.target.value as typeof mediaType)} className="border border-[#d6dfdc] bg-[#fbfcfa] px-2.5 py-2 text-[10px] font-bold tracking-[.08em] text-[#53656b]" data-testid="select-discovery-media-type"><option value="all">ALL MEDIA</option><option value="movie">MOVIES</option><option value="tv">TV</option></select>
+        <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className="border border-[#d6dfdc] bg-[#fbfcfa] px-2.5 py-2 text-[10px] font-bold tracking-[.08em] text-[#53656b]" data-testid="select-discovery-status"><option value="all">ALL FINDINGS</option><option value="recommended">RECOMMENDED</option><option value="not_recommended">BLOCKED / REVIEW</option></select>
+      </div>
+    </div>
+    {findingsQuery.isLoading ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-[260px]" /><Skeleton className="h-[260px]" /></div> : findingsQuery.isError ? <ErrorState title="Discovery unavailable" message="Acquisition findings could not be read from the local node." onRetry={() => findingsQuery.refetch()} testId="button-retry-discovery" /> : findings.length === 0 ? <EmptyState icon={Search} title="Nothing needs acquisition review" description="The local intelligence layer has no missing or lower-quality findings for this filter. Add normalized adapter candidates or refresh after archive/Plex state changes." /> : <div className="grid gap-4 xl:grid-cols-2" data-testid="panel-discovery-findings">{findings.map((finding) => {
+      const option = finding.recommendation.candidateSources.find((candidate) => candidate.availability.state === 'available') ?? finding.recommendation.candidateSources[0];
+      const storage = finding.recommendation.expectedStorageImpact;
+      return <article key={finding.id} className="archive-panel p-5 md:p-6" data-testid={`card-discovery-finding-${finding.id}`}>
+        <div className="flex items-start justify-between gap-4"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">WHAT'S MISSING / {finding.need.identity.mediaType.toUpperCase()}</div><h2 className="archive-display mt-1 text-xl font-extrabold text-[#263844]">{finding.need.identity.title}{finding.need.identity.year ? ` (${finding.need.identity.year})` : ''}{finding.need.scope === 'season' && finding.need.identity.season !== null ? ` / SEASON ${finding.need.identity.season}` : ''}</h2></div><span className={`archive-mono shrink-0 px-2 py-1 text-[9px] font-bold tracking-[.08em] ${finding.recommendation.status === 'recommended' ? 'bg-[#eaf3ef] text-[#39736e]' : 'bg-[#fff0c9] text-[#8d681d]'}`}>{finding.recommendation.priority.toUpperCase()} PRIORITY</span></div>
+        <div className="mt-5 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-4 text-[11px] leading-5 text-[#43545b]"><div className="archive-mono mb-1 text-[9px] tracking-[.12em] text-[#39736e]">WHY IT MATTERS</div>{finding.recommendation.reason}</div>
+        <div className="mt-5 grid gap-x-5 gap-y-4 sm:grid-cols-2"><div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">BEST CURRENT OPTION</div><div className="mt-1 text-[12px] font-bold text-[#43545b]">{option ? `${option.provider} / ${option.title}` : 'No candidate source'}</div><div className="mt-1 text-[10px] text-[#879599]">{option?.availability.state.toUpperCase() ?? 'UNAVAILABLE'}</div></div><div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">QUALITY</div><div className="mt-1 text-[12px] font-bold text-[#43545b]">{acquisitionQualityLabel(finding.recommendation.expectedQuality)}</div></div><div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">STORAGE IMPACT</div><div className={`mt-1 text-[12px] font-bold ${storage.status === 'sufficient' ? 'text-[#39736e]' : storage.status === 'insufficient' ? 'text-[#994b43]' : 'text-[#8d681d]'}`}>{storage.status.toUpperCase()}</div><div className="mt-1 text-[10px] text-[#879599]">{storage.summary}</div></div><div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">CONFIDENCE</div><div className="mt-1 text-[12px] font-bold text-[#43545b]">{Math.round(finding.recommendation.confidence * 100)}%</div><div className="mt-1 text-[10px] text-[#879599]">Identity {Math.round(finding.need.identity.confidence * 100)}% / source evidence {option ? Math.round(option.confidence * 100) : 0}%</div></div></div>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#e3e8e7] pt-4"><div><div className="archive-mono text-[9px] tracking-[.1em] text-[#829197]">REVIEW STATE</div><div className="mt-1 text-[11px] font-bold tracking-[.06em] text-[#53656b]">{finding.review.status.replace(/_/g, ' ').toUpperCase()}</div></div><div className="text-right">{finding.recommendation.blockingReasons.length > 0 && <div className="archive-mono text-[9px] text-[#994b43]">BLOCKED / {finding.recommendation.blockingReasons.join(', ')}</div>}<div className="archive-mono mt-1 text-[9px] text-[#9aa7a7]">COMPUTED / {formatTime(finding.computedAt)}</div></div></div>
+      </article>;
+    })}</div>}
+  </>;
+}
+
 const settingsGroups = [{ name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel'] }, { name: 'Downloads', icon: Download, fields: ['downloadDirectory', 'temporaryDirectory', 'concurrentDownloads', 'maxRetries', 'bandwidthLimit'] }, { name: 'Archive', icon: Archive, fields: ['archiveDirectory', 'outputContainer', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'] }, { name: 'Plex', icon: PlaySquare, fields: [] }, { name: 'AI', icon: Sparkles, fields: [] }, { name: 'Local Model', icon: Cpu, fields: [] }, { name: 'OpenAI', icon: Zap, fields: [] }, { name: 'Local Engine', icon: Terminal, fields: ['ytDlpPath', 'ffmpegPath', 'ffprobePath'] }, { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration', 'hardwareAccelerationMode'] }, { name: 'Network', icon: Network, fields: ['networkMode'] }, { name: 'Security', icon: ShieldCheck, fields: [] }, { name: 'Logging', icon: Terminal, fields: [] }];
 function SettingsPage() {
   const queryClient = useQueryClient(); const { data, isLoading, isError, refetch } = useGetSettings(); const { data: dependencies } = useGetSystemDependencies(); const mutation = useUpdateSettings(); const [form, setForm] = useState<Partial<AppSettings>>({}); const [notice, setNotice] = useState('');
@@ -1318,7 +1376,7 @@ function Workspace() {
   const { isLoaded, isSignedIn } = useAppAuth();
   if (!isLoaded) return <AuthLoading />;
   if (!isSignedIn) return <Redirect to="/" />;
-  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
+  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/assistant"><PlaceholderPage section="ASSISTANT" /></Route><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/discovery" component={DiscoveryPage} /><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
 }
 
 function Router() {

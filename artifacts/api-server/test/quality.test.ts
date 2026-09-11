@@ -12,7 +12,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { archiveDb, addEvent } from "../src/lib/archive-db";
-import { invalidateArchiveInventoryCache, readArchiveInventory } from "../src/services/archive";
+import {
+  invalidateArchiveInventoryCache,
+  qualityRank,
+  readArchiveInventory,
+  type LegacyQualityShape,
+} from "../src/services/archive";
 import {
   compareEncodes,
   coarseQualityScore,
@@ -1286,3 +1291,32 @@ describe("archive quality findings", () => {
     assert.ok(events.some((event) => event.message === "quality analysis recorded an event"));
   });
 });
+
+  test("the legacy ranking the acquisition path uses agrees with the quality model", () => {
+    // Reconciliation and acquisition rank candidate encodes with `qualityRank`
+    // on their own narrower shape, while findings rank through the model. If a
+    // future change moves one formula, an "upgrade available" finding and the
+    // preferred-encode pick would contradict each other, so the two are pinned.
+    const samples: Array<{ legacy: LegacyQualityShape; model: TechnicalQuality }> = [
+      {
+        legacy: { height: 2160, hdr: true, videoCodec: "hevc", bitrate: 80_000_000, audioCodec: "eac3", audioChannels: 7, container: "mkv" },
+        model: { height: 2160, dynamicRange: "hdr10", videoCodec: "hevc", containerBitrate: 80_000_000, audioChannels: 7 } as TechnicalQuality,
+      },
+      {
+        legacy: { height: 1080, hdr: false, videoCodec: "av1", bitrate: 4_000_000, audioCodec: "opus", audioChannels: 6, container: "mkv" },
+        model: { height: 1080, dynamicRange: "sdr", videoCodec: "av1", containerBitrate: 4_000_000, audioChannels: 6 } as TechnicalQuality,
+      },
+      {
+        legacy: { height: 576, hdr: false, videoCodec: "mpeg4", bitrate: null, audioCodec: null, audioChannels: null, container: "avi" },
+        model: { height: 576, dynamicRange: "unknown", videoCodec: "mpeg4", containerBitrate: null, audioChannels: null } as TechnicalQuality,
+      },
+    ];
+
+    for (const sample of samples) {
+      assert.equal(
+        qualityRank(sample.legacy),
+        coarseQualityScore(sample.model),
+        `ranking diverged for ${sample.legacy.videoCodec ?? "unknown"} ${sample.legacy.height ?? "?"}p`,
+      );
+    }
+  });

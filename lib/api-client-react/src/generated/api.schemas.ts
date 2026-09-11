@@ -1813,6 +1813,356 @@ export interface IntegrationInventory {
   items: IntegrationMediaItem[];
 }
 
+export interface AcquisitionTechnicalQuality {
+  /** @nullable */
+  height: number | null;
+  hdr: boolean;
+  /** @nullable */
+  videoCodec: string | null;
+  /** @nullable */
+  bitrate: number | null;
+  /** @nullable */
+  audioCodec: string | null;
+  /** @nullable */
+  audioChannels: number | null;
+  /** @nullable */
+  container: string | null;
+}
+
+export type AcquisitionAvailabilityState = typeof AcquisitionAvailabilityState[keyof typeof AcquisitionAvailabilityState];
+
+
+export const AcquisitionAvailabilityState = {
+  unavailable: 'unavailable',
+  available: 'available',
+  unknown: 'unknown',
+} as const;
+
+export interface AcquisitionAvailability {
+  state: AcquisitionAvailabilityState;
+  provider: string;
+  /** @nullable */
+  discoveredTitle: string | null;
+  /** @nullable */
+  discoveredId: string | null;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  sourceConfidence: number;
+  /** @nullable */
+  checkedAt: string | null;
+}
+
+export type AcquisitionIdentityMediaType = typeof AcquisitionIdentityMediaType[keyof typeof AcquisitionIdentityMediaType];
+
+
+export const AcquisitionIdentityMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export interface AcquisitionIdentity {
+  key: string;
+  title: string;
+  mediaType: AcquisitionIdentityMediaType;
+  /** @nullable */
+  year: number | null;
+  /** @nullable */
+  show: string | null;
+  /** @nullable */
+  season: number | null;
+  /** @nullable */
+  episode: number | null;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  confidence: number;
+}
+
+export type AcquisitionNeedScope = typeof AcquisitionNeedScope[keyof typeof AcquisitionNeedScope];
+
+
+export const AcquisitionNeedScope = {
+  movie: 'movie',
+  episode: 'episode',
+  season: 'season',
+} as const;
+
+export type AcquisitionNeedArchiveState = typeof AcquisitionNeedArchiveState[keyof typeof AcquisitionNeedArchiveState];
+
+
+export const AcquisitionNeedArchiveState = {
+  fully_present: 'fully_present',
+  partially_present: 'partially_present',
+  missing: 'missing',
+  present_lower_quality: 'present_lower_quality',
+  uncertain: 'uncertain',
+} as const;
+
+export interface AcquisitionNeed {
+  identity: AcquisitionIdentity;
+  scope: AcquisitionNeedScope;
+  archiveState: AcquisitionNeedArchiveState;
+  /** @minimum 0 */
+  presentCount: number;
+  /** @minimum 1 */
+  expectedCount: number;
+  /** @minimum 0 */
+  observedCount: number;
+  archiveQuality: AcquisitionTechnicalQuality | null;
+  /** @minimum 0 */
+  archiveSizeBytes: number;
+  preferredQuality: AcquisitionTechnicalQuality | null;
+}
+
+export type AcquisitionSourceOptionMediaType = typeof AcquisitionSourceOptionMediaType[keyof typeof AcquisitionSourceOptionMediaType];
+
+
+export const AcquisitionSourceOptionMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export type AcquisitionSourceOptionScope = typeof AcquisitionSourceOptionScope[keyof typeof AcquisitionSourceOptionScope];
+
+
+export const AcquisitionSourceOptionScope = {
+  movie: 'movie',
+  episode: 'episode',
+  season: 'season',
+} as const;
+
+export interface AcquisitionSourceOption {
+  id: number | string;
+  provider: string;
+  sourceKey?: string;
+  title: string;
+  mediaType: AcquisitionSourceOptionMediaType;
+  scope: AcquisitionSourceOptionScope;
+  /** @nullable */
+  season: number | null;
+  /** @nullable */
+  episode: number | null;
+  quality: AcquisitionTechnicalQuality | null;
+  /** @nullable */
+  estimatedSizeBytes: number | null;
+  availability: AcquisitionAvailability;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  confidence: number;
+}
+
+export type AcquisitionStorageImpactStatus = typeof AcquisitionStorageImpactStatus[keyof typeof AcquisitionStorageImpactStatus];
+
+
+export const AcquisitionStorageImpactStatus = {
+  sufficient: 'sufficient',
+  insufficient: 'insufficient',
+  unknown: 'unknown',
+} as const;
+
+export interface AcquisitionStorageImpact {
+  /** @nullable */
+  estimatedBytes: number | null;
+  /** @nullable */
+  freeBytesBefore: number | null;
+  /** @nullable */
+  freeBytesAfter: number | null;
+  status: AcquisitionStorageImpactStatus;
+  summary: string;
+}
+
+export type AcquisitionRecommendationStatus = typeof AcquisitionRecommendationStatus[keyof typeof AcquisitionRecommendationStatus];
+
+
+export const AcquisitionRecommendationStatus = {
+  recommended: 'recommended',
+  not_recommended: 'not_recommended',
+} as const;
+
+export type AcquisitionRecommendationPriority = typeof AcquisitionRecommendationPriority[keyof typeof AcquisitionRecommendationPriority];
+
+
+export const AcquisitionRecommendationPriority = {
+  high: 'high',
+  normal: 'normal',
+  low: 'low',
+} as const;
+
+export type AcquisitionRecommendationArchiveState = typeof AcquisitionRecommendationArchiveState[keyof typeof AcquisitionRecommendationArchiveState];
+
+
+export const AcquisitionRecommendationArchiveState = {
+  fully_present: 'fully_present',
+  partially_present: 'partially_present',
+  missing: 'missing',
+  present_lower_quality: 'present_lower_quality',
+  uncertain: 'uncertain',
+} as const;
+
+export interface AcquisitionRecommendation {
+  status: AcquisitionRecommendationStatus;
+  priority: AcquisitionRecommendationPriority;
+  reason: string;
+  candidateSources: AcquisitionSourceOption[];
+  expectedQuality: AcquisitionTechnicalQuality | null;
+  expectedStorageImpact: AcquisitionStorageImpact;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  confidence: number;
+  blockingReasons: string[];
+  archiveState: AcquisitionRecommendationArchiveState;
+}
+
+export type AcquisitionReviewStatus = typeof AcquisitionReviewStatus[keyof typeof AcquisitionReviewStatus];
+
+
+export const AcquisitionReviewStatus = {
+  unreviewed: 'unreviewed',
+  reviewed: 'reviewed',
+  deferred: 'deferred',
+  dismissed: 'dismissed',
+} as const;
+
+export interface AcquisitionReview {
+  status: AcquisitionReviewStatus;
+  /** @nullable */
+  note: string | null;
+  updatedAt: string;
+}
+
+export interface AcquisitionFinding {
+  id: number;
+  need: AcquisitionNeed;
+  recommendation: AcquisitionRecommendation;
+  review: AcquisitionReview;
+  computedAt: string;
+}
+
+export interface AcquisitionFindingSummary {
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  recommended: number;
+  /** @minimum 0 */
+  blocked: number;
+  /** @minimum 0 */
+  highPriority: number;
+}
+
+export interface AcquisitionFindingPagination {
+  /** @minimum 1 */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  totalPages: number;
+}
+
+export interface AcquisitionFindingResponse {
+  summary: AcquisitionFindingSummary;
+  pagination: AcquisitionFindingPagination;
+  results: AcquisitionFinding[];
+}
+
+export interface AcquisitionRefreshResponse {
+  computedAt: string;
+  /** @minimum 0 */
+  findingCount: number;
+  /** @minimum 0 */
+  recommendedCount: number;
+  /** @minimum 0 */
+  blockedCount: number;
+}
+
+export type AcquisitionCandidateInputMediaType = typeof AcquisitionCandidateInputMediaType[keyof typeof AcquisitionCandidateInputMediaType];
+
+
+export const AcquisitionCandidateInputMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export type AcquisitionCandidateInputScope = typeof AcquisitionCandidateInputScope[keyof typeof AcquisitionCandidateInputScope];
+
+
+export const AcquisitionCandidateInputScope = {
+  movie: 'movie',
+  episode: 'episode',
+  season: 'season',
+} as const;
+
+export type AcquisitionCandidateInputAvailabilityState = typeof AcquisitionCandidateInputAvailabilityState[keyof typeof AcquisitionCandidateInputAvailabilityState];
+
+
+export const AcquisitionCandidateInputAvailabilityState = {
+  unavailable: 'unavailable',
+  available: 'available',
+  unknown: 'unknown',
+} as const;
+
+export interface AcquisitionCandidateInput {
+  identityKey: string;
+  title: string;
+  mediaType: AcquisitionCandidateInputMediaType;
+  scope: AcquisitionCandidateInputScope;
+  /** @nullable */
+  year?: number | null;
+  /** @nullable */
+  show?: string | null;
+  /** @nullable */
+  season?: number | null;
+  /** @nullable */
+  episode?: number | null;
+  provider: string;
+  sourceKey?: string;
+  /** @nullable */
+  discoveredId?: string | null;
+  quality?: AcquisitionTechnicalQuality | null;
+  /** @nullable */
+  estimatedSizeBytes?: number | null;
+  availabilityState: AcquisitionCandidateInputAvailabilityState;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  sourceConfidence?: number;
+  /** @nullable */
+  checkedAt?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  confidence?: number;
+}
+
+export type AcquisitionReviewUpdateStatus = typeof AcquisitionReviewUpdateStatus[keyof typeof AcquisitionReviewUpdateStatus];
+
+
+export const AcquisitionReviewUpdateStatus = {
+  unreviewed: 'unreviewed',
+  reviewed: 'reviewed',
+  deferred: 'deferred',
+  dismissed: 'dismissed',
+} as const;
+
+export interface AcquisitionReviewUpdate {
+  status: AcquisitionReviewUpdateStatus;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  note?: string | null;
+}
+
 export type GetArchiveNamingProposalsParams = {
 /**
  * @minimum 1
@@ -1939,5 +2289,56 @@ export const GetArchiveQualityFindingsReviewStatus = {
   reviewed: 'reviewed',
   deferred: 'deferred',
   unresolved: 'unresolved',
+} as const;
+
+export type GetAcquisitionFindingsParams = {
+mediaType?: GetAcquisitionFindingsMediaType;
+status?: GetAcquisitionFindingsStatus;
+priority?: GetAcquisitionFindingsPriority;
+reviewStatus?: GetAcquisitionFindingsReviewStatus;
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+pageSize?: number;
+};
+
+export type GetAcquisitionFindingsMediaType = typeof GetAcquisitionFindingsMediaType[keyof typeof GetAcquisitionFindingsMediaType];
+
+
+export const GetAcquisitionFindingsMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export type GetAcquisitionFindingsStatus = typeof GetAcquisitionFindingsStatus[keyof typeof GetAcquisitionFindingsStatus];
+
+
+export const GetAcquisitionFindingsStatus = {
+  recommended: 'recommended',
+  not_recommended: 'not_recommended',
+} as const;
+
+export type GetAcquisitionFindingsPriority = typeof GetAcquisitionFindingsPriority[keyof typeof GetAcquisitionFindingsPriority];
+
+
+export const GetAcquisitionFindingsPriority = {
+  high: 'high',
+  normal: 'normal',
+  low: 'low',
+} as const;
+
+export type GetAcquisitionFindingsReviewStatus = typeof GetAcquisitionFindingsReviewStatus[keyof typeof GetAcquisitionFindingsReviewStatus];
+
+
+export const GetAcquisitionFindingsReviewStatus = {
+  unreviewed: 'unreviewed',
+  reviewed: 'reviewed',
+  deferred: 'deferred',
+  dismissed: 'dismissed',
 } as const;
 

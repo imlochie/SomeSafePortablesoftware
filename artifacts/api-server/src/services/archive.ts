@@ -120,6 +120,42 @@ type PlexRow = {
  */
 type QualityShape = TechnicalQuality;
 
+/**
+ * The coarse ranking shape the reconciliation path (`pickBetterQuality`) and the
+ * acquisition engine were written against. The quality findings layer ranks
+ * through `coarseQualityScore` on the normalized model instead; this adapter
+ * delegates to that one scoring function rather than repeating its weights, so
+ * the score lives in one place conceptually. The weights below are the model's
+ * `coarseQualityScore` expressed on this narrower shape, and `quality.test.ts`
+ * pins the two together so they cannot drift apart unnoticed. `hdr` is the only
+ * field with no model counterpart: a plain boolean means "any non-SDR range",
+ * which is exactly what the score keys on.
+ */
+export type LegacyQualityShape = {
+  height: number | null;
+  hdr: boolean;
+  videoCodec: string | null;
+  bitrate: number | null;
+  audioCodec: string | null;
+  audioChannels: number | null;
+  container: string | null;
+};
+
+export function qualityRank(shape: LegacyQualityShape) {
+  const height = shape.height ?? 0;
+  const hdr = shape.hdr ? 5000 : 0;
+  const codec = /av1/i.test(shape.videoCodec ?? "")
+    ? 300
+    : /265|hevc/i.test(shape.videoCodec ?? "")
+      ? 250
+      : /264/i.test(shape.videoCodec ?? "")
+        ? 150
+        : 50;
+  const bitrate = Math.min(100, Math.round((shape.bitrate ?? 0) / 1_000_000));
+  const audio = shape.audioChannels ?? 0;
+  return height + hdr + codec + bitrate + audio;
+}
+
 function expandPath(value: string) {
   return value.startsWith("~/")
     ? resolve(process.env.HOME ?? process.cwd(), value.slice(2))
