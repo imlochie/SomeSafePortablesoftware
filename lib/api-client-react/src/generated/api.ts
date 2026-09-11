@@ -38,6 +38,10 @@ import type {
   ErrorResponse,
   GetArchiveNamingProposalsParams,
   HealthStatus,
+  IntegrationConfigUpdate,
+  IntegrationDescriptor,
+  IntegrationErrorResponse,
+  IntegrationInventory,
   LocalMediaInspectInput,
   LocalMediaInspection,
   MediaInspectInput,
@@ -75,6 +79,303 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getListIntegrationsUrl = () => {
+
+
+
+
+  return `/api/integrations`
+}
+
+/**
+ * @summary List owner-scoped status and implemented, planned, and available capabilities
+ */
+export const listIntegrations = async ( options?: Parameters<typeof customFetch>[1]): Promise<IntegrationDescriptor[]> => {
+
+  return customFetch<IntegrationDescriptor[]>(getListIntegrationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListIntegrationsQueryKey = () => {
+    return [
+    `/api/integrations`
+    ] as const;
+    }
+
+
+export const getListIntegrationsQueryOptions = <TData = Awaited<ReturnType<typeof listIntegrations>>, TError = ErrorType<IntegrationErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listIntegrations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListIntegrationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listIntegrations>>> = ({ signal }) => listIntegrations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listIntegrations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListIntegrationsQueryResult = NonNullable<Awaited<ReturnType<typeof listIntegrations>>>
+export type ListIntegrationsQueryError = ErrorType<IntegrationErrorResponse>
+
+
+/**
+ * @summary List owner-scoped status and implemented, planned, and available capabilities
+ */
+
+export function useListIntegrations<TData = Awaited<ReturnType<typeof listIntegrations>>, TError = ErrorType<IntegrationErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listIntegrations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListIntegrationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateIntegrationConfigUrl = (integrationId: string,) => {
+
+
+
+
+  return `/api/integrations/${integrationId}/config`
+}
+
+/**
+ * @summary Set owner-scoped enablement; provider credentials remain on existing provider configuration endpoints
+ */
+export const updateIntegrationConfig = async (integrationId: string,
+    integrationConfigUpdate: IntegrationConfigUpdate, options?: Parameters<typeof customFetch>[1]): Promise<IntegrationDescriptor> => {
+
+  return customFetch<IntegrationDescriptor>(getUpdateIntegrationConfigUrl(integrationId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(integrationConfigUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateIntegrationConfigMutationOptions = <TError = ErrorType<IntegrationErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateIntegrationConfig>>, TError,{integrationId: string;data: BodyType<IntegrationConfigUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateIntegrationConfig>>, TError,{integrationId: string;data: BodyType<IntegrationConfigUpdate>}, TContext> => {
+
+const mutationKey = ['updateIntegrationConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateIntegrationConfig>>, {integrationId: string;data: BodyType<IntegrationConfigUpdate>}> = (props) => {
+          const {integrationId,data} = props ?? {};
+
+          return  updateIntegrationConfig(integrationId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateIntegrationConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateIntegrationConfig>>>
+    export type UpdateIntegrationConfigMutationBody = BodyType<IntegrationConfigUpdate>
+    export type UpdateIntegrationConfigMutationError = ErrorType<IntegrationErrorResponse>
+
+    /**
+ * @summary Set owner-scoped enablement; provider credentials remain on existing provider configuration endpoints
+ */
+export const useUpdateIntegrationConfig = <TError = ErrorType<IntegrationErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateIntegrationConfig>>, TError,{integrationId: string;data: BodyType<IntegrationConfigUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateIntegrationConfig>>,
+        TError,
+        {integrationId: string;data: BodyType<IntegrationConfigUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateIntegrationConfigMutationOptions(options));
+    }
+
+export const getTestIntegrationConnectionUrl = (integrationId: string,) => {
+
+
+
+
+  return `/api/integrations/${integrationId}/test-connection`
+}
+
+/**
+ * @summary Explicitly check connection; disabled and unconfigured providers perform no network work
+ */
+export const testIntegrationConnection = async (integrationId: string, options?: Parameters<typeof customFetch>[1]): Promise<IntegrationDescriptor> => {
+
+  return customFetch<IntegrationDescriptor>(getTestIntegrationConnectionUrl(integrationId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getTestIntegrationConnectionMutationOptions = <TError = ErrorType<IntegrationErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testIntegrationConnection>>, TError,{integrationId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testIntegrationConnection>>, TError,{integrationId: string}, TContext> => {
+
+const mutationKey = ['testIntegrationConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testIntegrationConnection>>, {integrationId: string}> = (props) => {
+          const {integrationId} = props ?? {};
+
+          return  testIntegrationConnection(integrationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestIntegrationConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof testIntegrationConnection>>>
+
+    export type TestIntegrationConnectionMutationError = ErrorType<IntegrationErrorResponse>
+
+    /**
+ * @summary Explicitly check connection; disabled and unconfigured providers perform no network work
+ */
+export const useTestIntegrationConnection = <TError = ErrorType<IntegrationErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testIntegrationConnection>>, TError,{integrationId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testIntegrationConnection>>,
+        TError,
+        {integrationId: string},
+        TContext
+      > => {
+      return useMutation(getTestIntegrationConnectionMutationOptions(options));
+    }
+
+export const getGetIntegrationInventoryUrl = (integrationId: string,) => {
+
+
+
+
+  return `/api/integrations/${integrationId}/inventory`
+}
+
+/**
+ * @summary Read normalized cached inventory without contacting external services
+ */
+export const getIntegrationInventory = async (integrationId: string, options?: Parameters<typeof customFetch>[1]): Promise<IntegrationInventory> => {
+
+  return customFetch<IntegrationInventory>(getGetIntegrationInventoryUrl(integrationId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetIntegrationInventoryQueryKey = (integrationId: string,) => {
+    return [
+    `/api/integrations/${integrationId}/inventory`
+    ] as const;
+    }
+
+
+export const getGetIntegrationInventoryQueryOptions = <TData = Awaited<ReturnType<typeof getIntegrationInventory>>, TError = ErrorType<IntegrationErrorResponse>>(integrationId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrationInventory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetIntegrationInventoryQueryKey(integrationId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getIntegrationInventory>>> = ({ signal }) => getIntegrationInventory(integrationId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: integrationId !== null && integrationId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getIntegrationInventory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetIntegrationInventoryQueryResult = NonNullable<Awaited<ReturnType<typeof getIntegrationInventory>>>
+export type GetIntegrationInventoryQueryError = ErrorType<IntegrationErrorResponse>
+
+
+/**
+ * @summary Read normalized cached inventory without contacting external services
+ */
+
+export function useGetIntegrationInventory<TData = Awaited<ReturnType<typeof getIntegrationInventory>>, TError = ErrorType<IntegrationErrorResponse>>(
+ integrationId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrationInventory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetIntegrationInventoryQueryOptions(integrationId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getHealthCheckUrl = () => {
 
