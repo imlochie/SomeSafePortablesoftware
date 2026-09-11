@@ -323,7 +323,7 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
     ].join("|")
     : null;
   const localIdentity = localIdentityFor(filename, root, inspected?.filesize ?? null, fingerprint, fileChecksum);
-  const localIdentityId = Number(archiveDb.prepare(`
+  archiveDb.prepare(`
     INSERT INTO local_media_identity
       (owner_id, identity_key, media_type, normalized_title, year, show_identity,
        season_number, episode_number, size_bytes, fingerprint, checksum, updated_at)
@@ -351,7 +351,10 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
     localIdentity.sizeBytes,
     localIdentity.fingerprint,
     localIdentity.checksum,
-  ).lastInsertRowid);
+  );
+  const localIdentityId = Number((archiveDb.prepare(
+    "SELECT id FROM local_media_identity WHERE owner_id = ? AND identity_key = ?",
+  ).get(ownerId, localIdentity.identityKey) as { id: number }).id);
 
   const existingItem = archiveDb.prepare(
     "SELECT id FROM archive_item WHERE owner_id = ? AND archive_path = ?",
@@ -440,10 +443,11 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
   }
 
   let inspected: Awaited<ReturnType<typeof inspectLocalMedia>> | null = null;
-  const fileChecksum: string | null = null;
+  let fileChecksum: string | null = null;
   let errorMessage: string | null = null;
   try {
     inspected = await inspectLocalMedia(filePath, settings, archiveScanRoots);
+    fileChecksum = await checksum(filePath);
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : "The file could not be inspected.";
   }

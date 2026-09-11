@@ -20,6 +20,12 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AcquisitionCandidateInput,
+  AcquisitionFinding,
+  AcquisitionFindingResponse,
+  AcquisitionRefreshResponse,
+  AcquisitionReviewUpdate,
+  AcquisitionSourceOption,
   AppSettings,
   AppSettingsUpdate,
   ArchiveBulkReviewResponse,
@@ -36,6 +42,7 @@ import type {
   DownloadPreparationInput,
   DownloadSpecification,
   ErrorResponse,
+  GetAcquisitionFindingsParams,
   GetArchiveNamingProposalsParams,
   HealthStatus,
   LocalMediaInspectInput,
@@ -1432,6 +1439,382 @@ export const useUpdateArchiveRecordReviews = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateArchiveRecordReviewsMutationOptions(options));
+    }
+
+export const getGetAcquisitionFindingsUrl = (params?: GetAcquisitionFindingsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/acquisition/findings?${stringifiedParams}` : `/api/acquisition/findings`
+}
+
+/**
+ * @summary List owner-scoped acquisition intelligence findings
+ */
+export const getAcquisitionFindings = async (params?: GetAcquisitionFindingsParams, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionFindingResponse> => {
+
+  return customFetch<AcquisitionFindingResponse>(getGetAcquisitionFindingsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcquisitionFindingsQueryKey = (params?: GetAcquisitionFindingsParams,) => {
+    return [
+    `/api/acquisition/findings`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAcquisitionFindingsQueryOptions = <TData = Awaited<ReturnType<typeof getAcquisitionFindings>>, TError = ErrorType<unknown>>(params?: GetAcquisitionFindingsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionFindings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcquisitionFindingsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcquisitionFindings>>> = ({ signal }) => getAcquisitionFindings(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionFindings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcquisitionFindingsQueryResult = NonNullable<Awaited<ReturnType<typeof getAcquisitionFindings>>>
+export type GetAcquisitionFindingsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List owner-scoped acquisition intelligence findings
+ */
+
+export function useGetAcquisitionFindings<TData = Awaited<ReturnType<typeof getAcquisitionFindings>>, TError = ErrorType<unknown>>(
+ params?: GetAcquisitionFindingsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionFindings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcquisitionFindingsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAcquisitionFindingUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition/findings/${id}`
+}
+
+/**
+ * @summary Inspect one acquisition recommendation
+ */
+export const getAcquisitionFinding = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionFinding> => {
+
+  return customFetch<AcquisitionFinding>(getGetAcquisitionFindingUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAcquisitionFindingQueryKey = (id: number,) => {
+    return [
+    `/api/acquisition/findings/${id}`
+    ] as const;
+    }
+
+
+export const getGetAcquisitionFindingQueryOptions = <TData = Awaited<ReturnType<typeof getAcquisitionFinding>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionFinding>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAcquisitionFindingQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAcquisitionFinding>>> = ({ signal }) => getAcquisitionFinding(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionFinding>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAcquisitionFindingQueryResult = NonNullable<Awaited<ReturnType<typeof getAcquisitionFinding>>>
+export type GetAcquisitionFindingQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Inspect one acquisition recommendation
+ */
+
+export function useGetAcquisitionFinding<TData = Awaited<ReturnType<typeof getAcquisitionFinding>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAcquisitionFinding>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAcquisitionFindingQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateAcquisitionFindingReviewUrl = (id: number,) => {
+
+
+
+
+  return `/api/acquisition/findings/${id}/review`
+}
+
+/**
+ * @summary Save a non-destructive acquisition finding review decision
+ */
+export const updateAcquisitionFindingReview = async (id: number,
+    acquisitionReviewUpdate: AcquisitionReviewUpdate, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionFinding> => {
+
+  return customFetch<AcquisitionFinding>(getUpdateAcquisitionFindingReviewUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(acquisitionReviewUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateAcquisitionFindingReviewMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAcquisitionFindingReview>>, TError,{id: number;data: BodyType<AcquisitionReviewUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAcquisitionFindingReview>>, TError,{id: number;data: BodyType<AcquisitionReviewUpdate>}, TContext> => {
+
+const mutationKey = ['updateAcquisitionFindingReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAcquisitionFindingReview>>, {id: number;data: BodyType<AcquisitionReviewUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAcquisitionFindingReview(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAcquisitionFindingReviewMutationResult = NonNullable<Awaited<ReturnType<typeof updateAcquisitionFindingReview>>>
+    export type UpdateAcquisitionFindingReviewMutationBody = BodyType<AcquisitionReviewUpdate>
+    export type UpdateAcquisitionFindingReviewMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Save a non-destructive acquisition finding review decision
+ */
+export const useUpdateAcquisitionFindingReview = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAcquisitionFindingReview>>, TError,{id: number;data: BodyType<AcquisitionReviewUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAcquisitionFindingReview>>,
+        TError,
+        {id: number;data: BodyType<AcquisitionReviewUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateAcquisitionFindingReviewMutationOptions(options));
+    }
+
+export const getRefreshAcquisitionIntelligenceUrl = () => {
+
+
+
+
+  return `/api/acquisition/refresh`
+}
+
+/**
+ * @summary Recompute acquisition findings from normalized local capabilities
+ */
+export const refreshAcquisitionIntelligence = async ( options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionRefreshResponse> => {
+
+  return customFetch<AcquisitionRefreshResponse>(getRefreshAcquisitionIntelligenceUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRefreshAcquisitionIntelligenceMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshAcquisitionIntelligence>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshAcquisitionIntelligence>>, TError,void, TContext> => {
+
+const mutationKey = ['refreshAcquisitionIntelligence'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshAcquisitionIntelligence>>, void> = () => {
+
+
+          return  refreshAcquisitionIntelligence(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshAcquisitionIntelligenceMutationResult = NonNullable<Awaited<ReturnType<typeof refreshAcquisitionIntelligence>>>
+
+    export type RefreshAcquisitionIntelligenceMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Recompute acquisition findings from normalized local capabilities
+ */
+export const useRefreshAcquisitionIntelligence = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshAcquisitionIntelligence>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshAcquisitionIntelligence>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRefreshAcquisitionIntelligenceMutationOptions(options));
+    }
+
+export const getUpsertAcquisitionCandidateUrl = () => {
+
+
+
+
+  return `/api/acquisition/candidates`
+}
+
+/**
+ * This stores an abstract candidate only. It does not contact a provider or create a download job.
+ * @summary Register a normalized source option from a future adapter
+ */
+export const upsertAcquisitionCandidate = async (acquisitionCandidateInput: AcquisitionCandidateInput, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionSourceOption> => {
+
+  return customFetch<AcquisitionSourceOption>(getUpsertAcquisitionCandidateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(acquisitionCandidateInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertAcquisitionCandidateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertAcquisitionCandidate>>, TError,{data: BodyType<AcquisitionCandidateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertAcquisitionCandidate>>, TError,{data: BodyType<AcquisitionCandidateInput>}, TContext> => {
+
+const mutationKey = ['upsertAcquisitionCandidate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertAcquisitionCandidate>>, {data: BodyType<AcquisitionCandidateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  upsertAcquisitionCandidate(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertAcquisitionCandidateMutationResult = NonNullable<Awaited<ReturnType<typeof upsertAcquisitionCandidate>>>
+    export type UpsertAcquisitionCandidateMutationBody = BodyType<AcquisitionCandidateInput>
+    export type UpsertAcquisitionCandidateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Register a normalized source option from a future adapter
+ */
+export const useUpsertAcquisitionCandidate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertAcquisitionCandidate>>, TError,{data: BodyType<AcquisitionCandidateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertAcquisitionCandidate>>,
+        TError,
+        {data: BodyType<AcquisitionCandidateInput>},
+        TContext
+      > => {
+      return useMutation(getUpsertAcquisitionCandidateMutationOptions(options));
     }
 
 export const getInspectMediaSourceUrl = () => {

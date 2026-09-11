@@ -9,6 +9,7 @@ import { build } from "esbuild";
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 const testDir = await mkdtemp(path.join(tmpdir(), "archive-assistant-tests-"));
 const outputFile = path.join(testDir, "ownership.test.mjs");
+const acquisitionOutputFile = path.join(testDir, "acquisition.test.mjs");
 const databaseFile = path.join(testDir, "ownership.sqlite");
 
 try {
@@ -125,11 +126,21 @@ try {
     sourcemap: "inline",
     logLevel: "warning",
   });
+  await build({
+    entryPoints: [path.join(artifactDir, "test", "acquisition.test.ts")],
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    target: "node22",
+    outfile: acquisitionOutputFile,
+    sourcemap: "inline",
+    logLevel: "warning",
+  });
 
   const exitCode = await new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ["--test", pathToFileURL(outputFile).pathname],
+      ["--test", pathToFileURL(outputFile).pathname, pathToFileURL(acquisitionOutputFile).pathname],
       {
         stdio: "inherit",
         env: {

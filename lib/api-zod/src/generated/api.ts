@@ -747,6 +747,541 @@ export const UpdateArchiveRecordReviewsResponse = zod.object({
 
 
 /**
+ * @summary List owner-scoped acquisition intelligence findings
+ */
+
+export const getAcquisitionFindingsQueryPageSizeMax = 500;
+
+
+
+export const GetAcquisitionFindingsQueryParams = zod.object({
+  "mediaType": zod.enum(['movie', 'tv']).optional(),
+  "status": zod.enum(['recommended', 'not_recommended']).optional(),
+  "priority": zod.enum(['high', 'normal', 'low']).optional(),
+  "reviewStatus": zod.enum(['unreviewed', 'reviewed', 'deferred', 'dismissed']).optional(),
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(getAcquisitionFindingsQueryPageSizeMax).optional()
+})
+
+export const getAcquisitionFindingsResponseSummaryTotalMin = 0;
+
+export const getAcquisitionFindingsResponseSummaryRecommendedMin = 0;
+
+export const getAcquisitionFindingsResponseSummaryBlockedMin = 0;
+
+export const getAcquisitionFindingsResponseSummaryHighPriorityMin = 0;
+
+
+
+export const getAcquisitionFindingsResponsePaginationTotalMin = 0;
+
+export const getAcquisitionFindingsResponsePaginationTotalPagesMin = 0;
+
+export const getAcquisitionFindingsResponseResultsItemNeedIdentityConfidenceMin = 0;
+export const getAcquisitionFindingsResponseResultsItemNeedIdentityConfidenceMax = 1;
+
+export const getAcquisitionFindingsResponseResultsItemNeedPresentCountMin = 0;
+
+
+export const getAcquisitionFindingsResponseResultsItemNeedObservedCountMin = 0;
+
+export const getAcquisitionFindingsResponseResultsItemNeedArchiveSizeBytesMin = 0;
+
+export const getAcquisitionFindingsResponseResultsItemRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMin = 0;
+export const getAcquisitionFindingsResponseResultsItemRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMax = 1;
+
+export const getAcquisitionFindingsResponseResultsItemRecommendationCandidateSourcesItemConfidenceMin = 0;
+export const getAcquisitionFindingsResponseResultsItemRecommendationCandidateSourcesItemConfidenceMax = 1;
+
+export const getAcquisitionFindingsResponseResultsItemRecommendationConfidenceMin = 0;
+export const getAcquisitionFindingsResponseResultsItemRecommendationConfidenceMax = 1;
+
+
+
+export const GetAcquisitionFindingsResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().min(getAcquisitionFindingsResponseSummaryTotalMin),
+  "recommended": zod.number().min(getAcquisitionFindingsResponseSummaryRecommendedMin),
+  "blocked": zod.number().min(getAcquisitionFindingsResponseSummaryBlockedMin),
+  "highPriority": zod.number().min(getAcquisitionFindingsResponseSummaryHighPriorityMin)
+}),
+  "pagination": zod.object({
+  "page": zod.number().min(1),
+  "pageSize": zod.number().min(1),
+  "total": zod.number().min(getAcquisitionFindingsResponsePaginationTotalMin),
+  "totalPages": zod.number().min(getAcquisitionFindingsResponsePaginationTotalPagesMin)
+}),
+  "results": zod.array(zod.object({
+  "id": zod.number(),
+  "need": zod.object({
+  "identity": zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "year": zod.number().nullable(),
+  "show": zod.string().nullable(),
+  "season": zod.number().nullable(),
+  "episode": zod.number().nullable(),
+  "confidence": zod.number().min(getAcquisitionFindingsResponseResultsItemNeedIdentityConfidenceMin).max(getAcquisitionFindingsResponseResultsItemNeedIdentityConfidenceMax)
+}),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "archiveState": zod.enum(['fully_present', 'partially_present', 'missing', 'present_lower_quality', 'uncertain']),
+  "presentCount": zod.number().min(getAcquisitionFindingsResponseResultsItemNeedPresentCountMin),
+  "expectedCount": zod.number().min(1),
+  "observedCount": zod.number().min(getAcquisitionFindingsResponseResultsItemNeedObservedCountMin),
+  "archiveQuality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]),
+  "archiveSizeBytes": zod.number().min(getAcquisitionFindingsResponseResultsItemNeedArchiveSizeBytesMin),
+  "preferredQuality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()])
+}),
+  "recommendation": zod.object({
+  "status": zod.enum(['recommended', 'not_recommended']),
+  "priority": zod.enum(['high', 'normal', 'low']),
+  "reason": zod.string(),
+  "candidateSources": zod.array(zod.object({
+  "id": zod.union([zod.number(),zod.string()]),
+  "provider": zod.string(),
+  "sourceKey": zod.string().optional(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullable(),
+  "episode": zod.number().nullable(),
+  "quality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]),
+  "estimatedSizeBytes": zod.number().nullable(),
+  "availability": zod.object({
+  "state": zod.enum(['unavailable', 'available', 'unknown']),
+  "provider": zod.string(),
+  "discoveredTitle": zod.string().nullable(),
+  "discoveredId": zod.string().nullable(),
+  "sourceConfidence": zod.number().min(getAcquisitionFindingsResponseResultsItemRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMin).max(getAcquisitionFindingsResponseResultsItemRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMax),
+  "checkedAt": zod.string().nullable()
+}),
+  "confidence": zod.number().min(getAcquisitionFindingsResponseResultsItemRecommendationCandidateSourcesItemConfidenceMin).max(getAcquisitionFindingsResponseResultsItemRecommendationCandidateSourcesItemConfidenceMax)
+})),
+  "expectedQuality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]),
+  "expectedStorageImpact": zod.object({
+  "estimatedBytes": zod.number().nullable(),
+  "freeBytesBefore": zod.number().nullable(),
+  "freeBytesAfter": zod.number().nullable(),
+  "status": zod.enum(['sufficient', 'insufficient', 'unknown']),
+  "summary": zod.string()
+}),
+  "confidence": zod.number().min(getAcquisitionFindingsResponseResultsItemRecommendationConfidenceMin).max(getAcquisitionFindingsResponseResultsItemRecommendationConfidenceMax),
+  "blockingReasons": zod.array(zod.string()),
+  "archiveState": zod.enum(['fully_present', 'partially_present', 'missing', 'present_lower_quality', 'uncertain'])
+}),
+  "review": zod.object({
+  "status": zod.enum(['unreviewed', 'reviewed', 'deferred', 'dismissed']),
+  "note": zod.string().nullable(),
+  "updatedAt": zod.string()
+}),
+  "computedAt": zod.string()
+}))
+})
+
+
+/**
+ * @summary Inspect one acquisition recommendation
+ */
+
+
+
+export const GetAcquisitionFindingParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const getAcquisitionFindingResponseNeedIdentityConfidenceMin = 0;
+export const getAcquisitionFindingResponseNeedIdentityConfidenceMax = 1;
+
+export const getAcquisitionFindingResponseNeedPresentCountMin = 0;
+
+
+export const getAcquisitionFindingResponseNeedObservedCountMin = 0;
+
+export const getAcquisitionFindingResponseNeedArchiveSizeBytesMin = 0;
+
+export const getAcquisitionFindingResponseRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMin = 0;
+export const getAcquisitionFindingResponseRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMax = 1;
+
+export const getAcquisitionFindingResponseRecommendationCandidateSourcesItemConfidenceMin = 0;
+export const getAcquisitionFindingResponseRecommendationCandidateSourcesItemConfidenceMax = 1;
+
+export const getAcquisitionFindingResponseRecommendationConfidenceMin = 0;
+export const getAcquisitionFindingResponseRecommendationConfidenceMax = 1;
+
+
+
+export const GetAcquisitionFindingResponse = zod.object({
+  "id": zod.number(),
+  "need": zod.object({
+  "identity": zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "year": zod.number().nullable(),
+  "show": zod.string().nullable(),
+  "season": zod.number().nullable(),
+  "episode": zod.number().nullable(),
+  "confidence": zod.number().min(getAcquisitionFindingResponseNeedIdentityConfidenceMin).max(getAcquisitionFindingResponseNeedIdentityConfidenceMax)
+}),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "archiveState": zod.enum(['fully_present', 'partially_present', 'missing', 'present_lower_quality', 'uncertain']),
+  "presentCount": zod.number().min(getAcquisitionFindingResponseNeedPresentCountMin),
+  "expectedCount": zod.number().min(1),
+  "observedCount": zod.number().min(getAcquisitionFindingResponseNeedObservedCountMin),
+  "archiveQuality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]),
+  "archiveSizeBytes": zod.number().min(getAcquisitionFindingResponseNeedArchiveSizeBytesMin),
+  "preferredQuality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()])
+}),
+  "recommendation": zod.object({
+  "status": zod.enum(['recommended', 'not_recommended']),
+  "priority": zod.enum(['high', 'normal', 'low']),
+  "reason": zod.string(),
+  "candidateSources": zod.array(zod.object({
+  "id": zod.union([zod.number(),zod.string()]),
+  "provider": zod.string(),
+  "sourceKey": zod.string().optional(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullable(),
+  "episode": zod.number().nullable(),
+  "quality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]),
+  "estimatedSizeBytes": zod.number().nullable(),
+  "availability": zod.object({
+  "state": zod.enum(['unavailable', 'available', 'unknown']),
+  "provider": zod.string(),
+  "discoveredTitle": zod.string().nullable(),
+  "discoveredId": zod.string().nullable(),
+  "sourceConfidence": zod.number().min(getAcquisitionFindingResponseRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMin).max(getAcquisitionFindingResponseRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMax),
+  "checkedAt": zod.string().nullable()
+}),
+  "confidence": zod.number().min(getAcquisitionFindingResponseRecommendationCandidateSourcesItemConfidenceMin).max(getAcquisitionFindingResponseRecommendationCandidateSourcesItemConfidenceMax)
+})),
+  "expectedQuality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]),
+  "expectedStorageImpact": zod.object({
+  "estimatedBytes": zod.number().nullable(),
+  "freeBytesBefore": zod.number().nullable(),
+  "freeBytesAfter": zod.number().nullable(),
+  "status": zod.enum(['sufficient', 'insufficient', 'unknown']),
+  "summary": zod.string()
+}),
+  "confidence": zod.number().min(getAcquisitionFindingResponseRecommendationConfidenceMin).max(getAcquisitionFindingResponseRecommendationConfidenceMax),
+  "blockingReasons": zod.array(zod.string()),
+  "archiveState": zod.enum(['fully_present', 'partially_present', 'missing', 'present_lower_quality', 'uncertain'])
+}),
+  "review": zod.object({
+  "status": zod.enum(['unreviewed', 'reviewed', 'deferred', 'dismissed']),
+  "note": zod.string().nullable(),
+  "updatedAt": zod.string()
+}),
+  "computedAt": zod.string()
+})
+
+
+/**
+ * @summary Save a non-destructive acquisition finding review decision
+ */
+
+
+
+export const UpdateAcquisitionFindingReviewParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const updateAcquisitionFindingReviewBodyNoteMax = 500;
+
+
+
+export const UpdateAcquisitionFindingReviewBody = zod.object({
+  "status": zod.enum(['unreviewed', 'reviewed', 'deferred', 'dismissed']),
+  "note": zod.string().max(updateAcquisitionFindingReviewBodyNoteMax).nullish()
+})
+
+export const updateAcquisitionFindingReviewResponseNeedIdentityConfidenceMin = 0;
+export const updateAcquisitionFindingReviewResponseNeedIdentityConfidenceMax = 1;
+
+export const updateAcquisitionFindingReviewResponseNeedPresentCountMin = 0;
+
+
+export const updateAcquisitionFindingReviewResponseNeedObservedCountMin = 0;
+
+export const updateAcquisitionFindingReviewResponseNeedArchiveSizeBytesMin = 0;
+
+export const updateAcquisitionFindingReviewResponseRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMin = 0;
+export const updateAcquisitionFindingReviewResponseRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMax = 1;
+
+export const updateAcquisitionFindingReviewResponseRecommendationCandidateSourcesItemConfidenceMin = 0;
+export const updateAcquisitionFindingReviewResponseRecommendationCandidateSourcesItemConfidenceMax = 1;
+
+export const updateAcquisitionFindingReviewResponseRecommendationConfidenceMin = 0;
+export const updateAcquisitionFindingReviewResponseRecommendationConfidenceMax = 1;
+
+
+
+export const UpdateAcquisitionFindingReviewResponse = zod.object({
+  "id": zod.number(),
+  "need": zod.object({
+  "identity": zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "year": zod.number().nullable(),
+  "show": zod.string().nullable(),
+  "season": zod.number().nullable(),
+  "episode": zod.number().nullable(),
+  "confidence": zod.number().min(updateAcquisitionFindingReviewResponseNeedIdentityConfidenceMin).max(updateAcquisitionFindingReviewResponseNeedIdentityConfidenceMax)
+}),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "archiveState": zod.enum(['fully_present', 'partially_present', 'missing', 'present_lower_quality', 'uncertain']),
+  "presentCount": zod.number().min(updateAcquisitionFindingReviewResponseNeedPresentCountMin),
+  "expectedCount": zod.number().min(1),
+  "observedCount": zod.number().min(updateAcquisitionFindingReviewResponseNeedObservedCountMin),
+  "archiveQuality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]),
+  "archiveSizeBytes": zod.number().min(updateAcquisitionFindingReviewResponseNeedArchiveSizeBytesMin),
+  "preferredQuality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()])
+}),
+  "recommendation": zod.object({
+  "status": zod.enum(['recommended', 'not_recommended']),
+  "priority": zod.enum(['high', 'normal', 'low']),
+  "reason": zod.string(),
+  "candidateSources": zod.array(zod.object({
+  "id": zod.union([zod.number(),zod.string()]),
+  "provider": zod.string(),
+  "sourceKey": zod.string().optional(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullable(),
+  "episode": zod.number().nullable(),
+  "quality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]),
+  "estimatedSizeBytes": zod.number().nullable(),
+  "availability": zod.object({
+  "state": zod.enum(['unavailable', 'available', 'unknown']),
+  "provider": zod.string(),
+  "discoveredTitle": zod.string().nullable(),
+  "discoveredId": zod.string().nullable(),
+  "sourceConfidence": zod.number().min(updateAcquisitionFindingReviewResponseRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMin).max(updateAcquisitionFindingReviewResponseRecommendationCandidateSourcesItemAvailabilitySourceConfidenceMax),
+  "checkedAt": zod.string().nullable()
+}),
+  "confidence": zod.number().min(updateAcquisitionFindingReviewResponseRecommendationCandidateSourcesItemConfidenceMin).max(updateAcquisitionFindingReviewResponseRecommendationCandidateSourcesItemConfidenceMax)
+})),
+  "expectedQuality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]),
+  "expectedStorageImpact": zod.object({
+  "estimatedBytes": zod.number().nullable(),
+  "freeBytesBefore": zod.number().nullable(),
+  "freeBytesAfter": zod.number().nullable(),
+  "status": zod.enum(['sufficient', 'insufficient', 'unknown']),
+  "summary": zod.string()
+}),
+  "confidence": zod.number().min(updateAcquisitionFindingReviewResponseRecommendationConfidenceMin).max(updateAcquisitionFindingReviewResponseRecommendationConfidenceMax),
+  "blockingReasons": zod.array(zod.string()),
+  "archiveState": zod.enum(['fully_present', 'partially_present', 'missing', 'present_lower_quality', 'uncertain'])
+}),
+  "review": zod.object({
+  "status": zod.enum(['unreviewed', 'reviewed', 'deferred', 'dismissed']),
+  "note": zod.string().nullable(),
+  "updatedAt": zod.string()
+}),
+  "computedAt": zod.string()
+})
+
+
+/**
+ * @summary Recompute acquisition findings from normalized local capabilities
+ */
+export const refreshAcquisitionIntelligenceResponseFindingCountMin = 0;
+
+export const refreshAcquisitionIntelligenceResponseRecommendedCountMin = 0;
+
+export const refreshAcquisitionIntelligenceResponseBlockedCountMin = 0;
+
+
+
+export const RefreshAcquisitionIntelligenceResponse = zod.object({
+  "computedAt": zod.string(),
+  "findingCount": zod.number().min(refreshAcquisitionIntelligenceResponseFindingCountMin),
+  "recommendedCount": zod.number().min(refreshAcquisitionIntelligenceResponseRecommendedCountMin),
+  "blockedCount": zod.number().min(refreshAcquisitionIntelligenceResponseBlockedCountMin)
+})
+
+
+/**
+ * This stores an abstract candidate only. It does not contact a provider or create a download job.
+ * @summary Register a normalized source option from a future adapter
+ */
+export const upsertAcquisitionCandidateBodySourceConfidenceMin = 0;
+export const upsertAcquisitionCandidateBodySourceConfidenceMax = 1;
+
+export const upsertAcquisitionCandidateBodyConfidenceMin = 0;
+export const upsertAcquisitionCandidateBodyConfidenceMax = 1;
+
+
+
+export const UpsertAcquisitionCandidateBody = zod.object({
+  "identityKey": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "year": zod.number().nullish(),
+  "show": zod.string().nullish(),
+  "season": zod.number().nullish(),
+  "episode": zod.number().nullish(),
+  "provider": zod.string(),
+  "sourceKey": zod.string().optional(),
+  "discoveredId": zod.string().nullish(),
+  "quality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]).optional(),
+  "estimatedSizeBytes": zod.number().nullish(),
+  "availabilityState": zod.enum(['unavailable', 'available', 'unknown']),
+  "sourceConfidence": zod.number().min(upsertAcquisitionCandidateBodySourceConfidenceMin).max(upsertAcquisitionCandidateBodySourceConfidenceMax).optional(),
+  "checkedAt": zod.string().nullish(),
+  "confidence": zod.number().min(upsertAcquisitionCandidateBodyConfidenceMin).max(upsertAcquisitionCandidateBodyConfidenceMax).optional()
+})
+
+export const upsertAcquisitionCandidateResponseAvailabilitySourceConfidenceMin = 0;
+export const upsertAcquisitionCandidateResponseAvailabilitySourceConfidenceMax = 1;
+
+export const upsertAcquisitionCandidateResponseConfidenceMin = 0;
+export const upsertAcquisitionCandidateResponseConfidenceMax = 1;
+
+
+
+export const UpsertAcquisitionCandidateResponse = zod.object({
+  "id": zod.union([zod.number(),zod.string()]),
+  "provider": zod.string(),
+  "sourceKey": zod.string().optional(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "scope": zod.enum(['movie', 'episode', 'season']),
+  "season": zod.number().nullable(),
+  "episode": zod.number().nullable(),
+  "quality": zod.union([zod.object({
+  "height": zod.number().nullable(),
+  "hdr": zod.boolean(),
+  "videoCodec": zod.string().nullable(),
+  "bitrate": zod.number().nullable(),
+  "audioCodec": zod.string().nullable(),
+  "audioChannels": zod.number().nullable(),
+  "container": zod.string().nullable()
+}),zod.null()]),
+  "estimatedSizeBytes": zod.number().nullable(),
+  "availability": zod.object({
+  "state": zod.enum(['unavailable', 'available', 'unknown']),
+  "provider": zod.string(),
+  "discoveredTitle": zod.string().nullable(),
+  "discoveredId": zod.string().nullable(),
+  "sourceConfidence": zod.number().min(upsertAcquisitionCandidateResponseAvailabilitySourceConfidenceMin).max(upsertAcquisitionCandidateResponseAvailabilitySourceConfidenceMax),
+  "checkedAt": zod.string().nullable()
+}),
+  "confidence": zod.number().min(upsertAcquisitionCandidateResponseConfidenceMin).max(upsertAcquisitionCandidateResponseConfidenceMax)
+})
+
+
+/**
  * @summary Inspect a media URL without downloading it
  */
 export const inspectMediaSourceBodyUrlMin = 8;
