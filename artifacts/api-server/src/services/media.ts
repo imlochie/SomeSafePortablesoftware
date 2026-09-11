@@ -303,17 +303,12 @@ export function isPathWithin(candidate: string, root: string) {
   return left === right || left.startsWith(`${right}${sep}`);
 }
 
-export function validateSafeDirectory(
-  candidate: string | undefined,
-  configuredRoot: string,
-  label: string,
-) {
-  const value = candidate?.trim();
-
-  if (!value) {
-    throw new Error(`${label} is required.`);
-  }
-
+/**
+ * Directories an operator configured, in preference order. Settings accept a
+ * JSON array, newline-separated, or semicolon-separated list; the first entry
+ * is the default when a request does not name one itself.
+ */
+export function configuredDirectoryRoots(configuredRoot: string): string[] {
   const roots: string[] = [];
 
   try {
@@ -339,8 +334,24 @@ export function validateSafeDirectory(
     );
   }
 
+  return roots;
+}
+
+export function validateSafeDirectory(
+  candidate: string | undefined,
+  configuredRoot: string,
+  label: string,
+) {
+  const roots = configuredDirectoryRoots(configuredRoot);
+
   if (!roots.length) {
     throw new Error(`${label} is not configured.`);
+  }
+
+  const value = candidate?.trim();
+
+  if (!value) {
+    throw new Error(`${label} is required.`);
   }
 
   const target = resolve(value);
@@ -549,7 +560,14 @@ export function prepareDownload(input: {
 }, settings: SettingsRecord) {
   validateSourceUrl(input.sourceUrl);
   const outputContainer = input.outputContainer === "mkv" || input.outputContainer === "webm" ? input.outputContainer : settings.outputContainer;
-  const temporaryDirectory = validateSafeDirectory(input.temporaryDirectory, settings.temporaryDirectory, "Temporary directory");
+   // The per-job temporary directory is optional in the API contract: a client
+  // that does not name one downloads under the configured directory, which is
+  // itself contained in that root by construction.
+  const temporaryDirectory = validateSafeDirectory(
+    input.temporaryDirectory?.trim() || configuredDirectoryRoots(settings.temporaryDirectory)[0],
+    settings.temporaryDirectory,
+    "Temporary directory",
+  );
  const mediaType: ArchiveMediaType =
   /\bS\d{1,2}(?:E\d{1,2})?\b|\bSeason\s+\d+\b|\bEpisode\s+\d+\b|\bEp(?:isode)?\.?\s*\d+\b|\bSeries\s+\d+\b/i.test(input.title)
     ? "tv"

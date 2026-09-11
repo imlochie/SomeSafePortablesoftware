@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { mkdirSync } from "node:fs";
 import { chmod, mkdir, unlink, writeFile } from "node:fs/promises";
 import { after, describe, test } from "node:test";
 import {
@@ -115,6 +116,11 @@ describe("user ownership", { concurrency: false }, () => {
   });
 
   test("download reads, mutations, queue positions, and subscriptions are owner-isolated", () => {
+    // A configured archive volume has to exist on disk to be selectable, which
+    // mirrors Settings storing a directory the operator picked. Everything the
+    // test asserts about isolation is unchanged by this fixture step.
+    mkdirSync(join(testRoot, "library"), { recursive: true });
+
     const settings = {
       ...readSettings(),
       temporaryDirectory: join(testRoot, "tmp"),
@@ -138,6 +144,19 @@ describe("user ownership", { concurrency: false }, () => {
     unsubscribeB();
 
     assert.ok(firstA && firstB && secondA);
+
+    // A job that omits temporaryDirectory inherits the configured directory,
+    // while one that names a directory outside it is still refused.
+    assert.equal(firstA.temporaryDirectory, resolve(join(testRoot, "tmp")));
+    assert.throws(
+      () =>
+        createJob(
+          { ...input("Escape A"), temporaryDirectory: join(testRoot, "..", "outside-tmp") },
+          ownerA,
+          settings,
+        ),
+      /limited to configured Archive Assistant directories/i,
+    );
     assert.deepEqual(
       readJobs(ownerA).filter((job) => job.sourceUrl !== "https://example.com/legacy").map((job) => job.id).sort(),
       [firstA.id, secondA.id].sort(),
