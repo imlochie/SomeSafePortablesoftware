@@ -1,10 +1,14 @@
+import { createHash } from "node:crypto";
 import { setImmediate } from "node:timers/promises";
 import { basename, dirname, extname, relative, resolve, sep } from "node:path";
-import { archiveDb } from "../lib/archive-db";
+import { archiveDb, readSettings, type SettingsRecord } from "../lib/archive-db";
+import { getArchiveVolumes, isArchivePathWithin } from "./storage";
 import { localEpisodeIdentity, normalizeTitle, titleYear } from "./archive";
 
 export type NamingConfidence = "high" | "medium" | "low" | "uncertain";
 export type ProposalOperation = "rename" | "restructure" | "move" | "uncertain/no_action";
+export const PROPOSAL_DECISION_STATUSES = ["accepted", "rejected", "deferred"] as const;
+export type ProposalDecisionStatus = (typeof PROPOSAL_DECISION_STATUSES)[number];
 
 type LocalRow = {
   id: number;
@@ -16,6 +20,8 @@ type LocalRow = {
   volume_id: string | null;
   archive_root: string | null;
   scan_status: string;
+  size_bytes: number | null;
+  modified_at_ms: number | null;
 };
 
 type Candidate = {
@@ -48,6 +54,9 @@ type PlexEpisode = {
   showRatingKey: string | null;
 };
 
+// The operator's canonical Windows volumes stay as an always-available map,
+// but any volume configured through System Settings participates as well so
+// naming intelligence reflects the real archive layout on every platform.
 const canonicalVolumes: Volume[] = [
   { id: "d-movies", root: "D:\\Movies", mediaType: "movie" },
   { id: "d-tv", root: "D:\\Tv Shows", mediaType: "tv" },
@@ -55,12 +64,50 @@ const canonicalVolumes: Volume[] = [
   { id: "e-tv", root: "E:\\Tv Shows", mediaType: "tv" },
 ];
 
-function volumeForPath(path: string) {
-  const target = resolve(path).replaceAll("/", "\\").toLowerCase().replace(/[\\]+$/, "");
-  return canonicalVolumes.find((volume) => {
-    const root = volume.root.toLowerCase();
-    return target === root || target.startsWith(`${root}\\`);
-  }) ?? null;
+export function namingVolumes(settings: SettingsRecord = readSettings()): Volume[] {
+  const configured: Volume[] = getArchiveVolumes(settings).map((volume) => ({
+    id: volume.id,
+    root: volume.path,
+    mediaType: volume.mediaType,
+  }));
+  const covered = new Set(configured.map((volume) => volume.root.replace(/[\\/]+$/g, "").toLowerCase()));
+  const legacy = canonicalVolumes.filter((volume) => !covered.has(volume.root.replace(/[\\/]+$/g, "").toLowerCase()));
+  return [...configured, ...legacy];
+}
+
+function volumeForPath(path: string, volumes: Volume[]) {
+  return volumes.find((volume) => isArchivePathWithin(path, volume.root)) ?? null;
+}
+
+// Evidence identity for durable decisions: it must change whenever the input
+// or output of a proposal changes, so a decision can never follow a file to
+// unrelated evidence. Mirrors the archive_review evidence-key design.
+export function namingProposalEvidenceKey(input: {
+  fileRecordId: number;
+  sourcePath: string;
+  sourceFilename: string;
+  sizeBytes: number | null;
+  modifiedAtMs: number | null;
+  patternId: string;
+  confidence: NamingConfidence;
+  operation: ProposalOperation;
+  proposedPath: string | null;
+  collision: boolean;
+}) {
+  return createHash("sha256")
+    .update(JSON.stringify({
+      fileRecordId: input.fileRecordId,
+      sourcePath: input.sourcePath,
+      sourceFilename: input.sourceFilename,
+      sizeBytes: input.sizeBytes,
+      modifiedAtMs: input.modifiedAtMs,
+      patternId: input.patternId,
+      confidence: input.confidence,
+      operation: input.operation,
+      proposedPath: input.proposedPath,
+      collision: input.collision,
+    }))
+    .digest("hex");
 }
 
 function cleanShow(value: string) {
@@ -250,7 +297,33 @@ function resolveWithPlex(candidate: Candidate | null, plexByShow: Map<string, Pl
   };
 }
 
-function makeProposal(row: LocalRow, volume: Volume, candidate: Candidate | null, knownPaths: Set<string>, plexByShow: Map<string, PlexEpisode[]>) {
+// The shared shape of every proposal record (TV and movie) as returned by the
+// API and consumed by decision/apply flows. Identity payloads stay structural
+// because TV and movie identities carry different fields.
+export type NamingProposal = {
+  fileRecordId: number;
+  localIdentityId: number | null;
+  sourcePath: string;
+  proposedPath: string | null;
+  sourceFilename: string;
+  proposedFilename: string | null;
+  currentIdentity: Record<string, unknown> | null;
+  proposedIdentity: Record<string, unknown> | null;
+  patternId: string;
+  confidence: NamingConfidence;
+  operation: ProposalOperation;
+  reason: string;
+  evidence: string[];
+  mediaType: "movie" | "tv";
+  volumeId: string;
+  archiveRoot: string;
+  collision: boolean;
+  sizeBytes: number | null;
+  modifiedAtMs: number | null;
+  evidenceKey: string;
+};
+
+function makeProposal(row: LocalRow, volume: Volume, candidate: Candidate | null, knownPaths: Set<string>, plexByShow: Map<string, PlexEpisode[]>): NamingProposal {
   const resolvedCandidate = resolveWithPlex(candidate, plexByShow);
   const currentIdentity = localEpisodeIdentity(row.filename);
   const destination = resolvedCandidate ? proposedPath(row, volume, resolvedCandidate) : null;
@@ -262,11 +335,14 @@ function makeProposal(row: LocalRow, volume: Volume, candidate: Candidate | null
     : executable && destination
       ? (dirname(destination).toLowerCase() === dirname(row.path).toLowerCase() ? "rename" : "restructure")
       : "uncertain/no_action";
+  const confidence = (resolvedCandidate?.confidence ?? "uncertain") as NamingConfidence;
+  const patternId = resolvedCandidate?.patternId ?? "unrecognized";
+  const proposedPathValue = executable ? destination : null;
   return {
     fileRecordId: row.id,
     localIdentityId: row.local_identity_id,
     sourcePath: row.path,
-    proposedPath: executable ? destination : null,
+    proposedPath: proposedPathValue,
     sourceFilename: row.filename,
     proposedFilename: executable && destination ? basename(destination) : null,
     currentIdentity: currentIdentity ? {
@@ -282,8 +358,8 @@ function makeProposal(row: LocalRow, volume: Volume, candidate: Candidate | null
       episodeTitle: resolvedCandidate.episodeTitle,
       ambiguity: resolvedCandidate.ambiguity,
     } : null,
-    patternId: resolvedCandidate?.patternId ?? "unrecognized",
-    confidence: resolvedCandidate?.confidence ?? "uncertain",
+    patternId,
+    confidence,
     operation,
     reason: collision ? "Proposed destination collides with a known file record." : resolvedCandidate?.evidence.join("; ") ?? "No safe naming convention recognized.",
     evidence: resolvedCandidate?.evidence ?? [],
@@ -291,13 +367,70 @@ function makeProposal(row: LocalRow, volume: Volume, candidate: Candidate | null
     volumeId: row.volume_id ?? volume.id,
     archiveRoot: row.archive_root ?? volume.root,
     collision,
+    sizeBytes: row.size_bytes,
+    modifiedAtMs: row.modified_at_ms,
+    evidenceKey: namingProposalEvidenceKey({
+      fileRecordId: row.id,
+      sourcePath: row.path,
+      sourceFilename: row.filename,
+      sizeBytes: row.size_bytes,
+      modifiedAtMs: row.modified_at_ms,
+      patternId,
+      confidence,
+      operation,
+      proposedPath: proposedPathValue,
+      collision,
+    }),
+  };
+}
+
+// Movie proposals are intentionally read-only (no automatic restructuring),
+// but they share the proposal shape and evidence key so decisions apply
+// uniformly: accepting a movie proposal is rejected as non-executable.
+function makeMovieProposal(row: LocalRow, volume: Volume): NamingProposal {
+  const title = normalizeTitle(row.filename);
+  const year = titleYear(row.filename);
+  const confidence: NamingConfidence = title ? "high" : "uncertain";
+  const patternId = title ? "movie_title_year" : "unrecognized";
+  return {
+    fileRecordId: row.id,
+    localIdentityId: row.local_identity_id,
+    sourcePath: row.path,
+    proposedPath: null,
+    sourceFilename: row.filename,
+    proposedFilename: null,
+    currentIdentity: title ? { title, year } : null,
+    proposedIdentity: title ? { title, year } : null,
+    patternId,
+    confidence,
+    operation: "uncertain/no_action",
+    reason: "Movie naming is reported read-only; no automatic restructuring proposal is generated.",
+    evidence: title ? ["existing movie title normalization"] : ["empty normalized movie title"],
+    mediaType: volume.mediaType,
+    volumeId: row.volume_id ?? volume.id,
+    archiveRoot: row.archive_root ?? volume.root,
+    collision: false,
+    sizeBytes: row.size_bytes,
+    modifiedAtMs: row.modified_at_ms,
+    evidenceKey: namingProposalEvidenceKey({
+      fileRecordId: row.id,
+      sourcePath: row.path,
+      sourceFilename: row.filename,
+      sizeBytes: row.size_bytes,
+      modifiedAtMs: row.modified_at_ms,
+      patternId,
+      confidence,
+      operation: "uncertain/no_action",
+      proposedPath: null,
+      collision: false,
+    }),
   };
 }
 
 function readRows(ownerId: string) {
   return archiveDb.prepare(`
     SELECT id, local_identity_id, path, relative_path, filename, media_type,
-           volume_id, archive_root, scan_status
+           volume_id, archive_root, scan_status, size_bytes, modified_at_ms
     FROM file_record
     WHERE owner_id = ?
       AND scan_status = 'active'
@@ -338,46 +471,81 @@ function readPlexEpisodes(ownerId: string) {
   return index;
 }
 
-export async function readNamingProposals(
-  ownerId: string,
-  filters: { page?: number; pageSize?: number; confidence?: string; operation?: string; pattern?: string; mediaType?: string; volume?: string; state?: string; uncertain?: boolean } = {},
-) {
+
+export type ProposalRecord = NamingProposal & {
+  decisionStatus: ProposalDecisionStatus | "unreviewed";
+  decisionNote: string | null;
+  decisionUpdatedAt: string | null;
+  decisionStale: boolean;
+};
+
+type DecisionRow = {
+  file_record_id: number;
+  evidence_key: string;
+  status: ProposalDecisionStatus;
+  note: string | null;
+  updated_at: string;
+};
+
+function readDecisions(ownerId: string) {
+  const rows = archiveDb.prepare(
+    `SELECT file_record_id, evidence_key, status, note, updated_at
+     FROM naming_proposal_decision
+     WHERE owner_id = ?`,
+  ).all(ownerId) as DecisionRow[];
+  return new Map(rows.map((row) => [row.file_record_id, row]));
+}
+
+// A stored decision only counts while it matches the current evidence. When
+// the underlying file or proposal evidence changes, the decision goes stale
+// and the proposal reopens for review instead of silently remaining accepted.
+function withDecision(proposal: NamingProposal, decisions: Map<number, DecisionRow>): ProposalRecord {
+  const stored = decisions.get(proposal.fileRecordId);
+  if (!stored || stored.evidence_key !== proposal.evidenceKey) {
+    return {
+      ...proposal,
+      decisionStatus: "unreviewed",
+      decisionNote: null,
+      decisionUpdatedAt: stored?.updated_at ?? null,
+      decisionStale: Boolean(stored),
+    };
+  }
+  return {
+    ...proposal,
+    decisionStatus: stored.status,
+    decisionNote: stored.note,
+    decisionUpdatedAt: stored.updated_at,
+    decisionStale: false,
+  };
+}
+
+export async function buildNamingProposals(ownerId: string, settings: SettingsRecord = readSettings()): Promise<ProposalRecord[]> {
   const rows = readRows(ownerId);
+  const volumes = namingVolumes(settings);
   const plexByShow = readPlexEpisodes(ownerId);
   const knownPaths = new Set(rows.map((row) => row.path.toLowerCase()));
-  const proposals: Array<Record<string, unknown>> = [];
+  const decisions = readDecisions(ownerId);
+  const proposals: ProposalRecord[] = [];
   for (let start = 0; start < rows.length; start += 500) {
     for (const row of rows.slice(start, start + 500)) {
-      const volume = volumeForPath(row.path);
+      const volume = volumeForPath(row.path, volumes);
       if (!volume) continue;
       if (volume.mediaType === "tv") {
-        proposals.push(makeProposal(row, volume, parseCandidate(row, volume), knownPaths, plexByShow));
+        proposals.push(withDecision(makeProposal(row, volume, parseCandidate(row, volume), knownPaths, plexByShow), decisions));
       } else {
-        const title = normalizeTitle(row.filename);
-        const year = titleYear(row.filename);
-        proposals.push({
-          fileRecordId: row.id,
-          localIdentityId: row.local_identity_id,
-          sourcePath: row.path,
-          proposedPath: null,
-          sourceFilename: row.filename,
-          proposedFilename: null,
-          currentIdentity: title ? { title, year } : null,
-          proposedIdentity: title ? { title, year } : null,
-          patternId: title ? "movie_title_year" : "unrecognized",
-          confidence: title ? "high" : "uncertain",
-          operation: "uncertain/no_action",
-          reason: "Movie naming is reported read-only; no automatic restructuring proposal is generated.",
-          evidence: title ? ["existing movie title normalization"] : ["empty normalized movie title"],
-          mediaType: volume.mediaType,
-          volumeId: row.volume_id ?? volume.id,
-          archiveRoot: row.archive_root ?? volume.root,
-          collision: false,
-        });
+        proposals.push(withDecision(makeMovieProposal(row, volume), decisions));
       }
     }
     await setImmediate();
   }
+  return proposals;
+}
+
+export async function readNamingProposals(
+  ownerId: string,
+  filters: { page?: number; pageSize?: number; confidence?: string; operation?: string; pattern?: string; mediaType?: string; volume?: string; state?: string; uncertain?: boolean; decision?: string } = {},
+) {
+  const proposals = await buildNamingProposals(ownerId);
   const filtered = proposals.filter((proposal) => {
     if (filters.confidence && proposal.confidence !== filters.confidence) return false;
     if (filters.operation && proposal.operation !== filters.operation) return false;
@@ -386,6 +554,7 @@ export async function readNamingProposals(
     if (filters.volume && proposal.volumeId !== filters.volume) return false;
     if (filters.state && ((filters.state === "uncertain") !== (proposal.operation === "uncertain/no_action"))) return false;
     if (filters.uncertain !== undefined && (proposal.operation === "uncertain/no_action") !== filters.uncertain) return false;
+    if (filters.decision && proposal.decisionStatus !== filters.decision) return false;
     return true;
   });
   const pageSize = Math.max(1, Math.min(500, Number.isInteger(filters.pageSize) ? filters.pageSize ?? 100 : 100));
@@ -400,6 +569,10 @@ export async function readNamingProposals(
       actionable: proposals.filter((proposal) => proposal.operation !== "uncertain/no_action").length,
       uncertain: proposals.filter((proposal) => proposal.operation === "uncertain/no_action").length,
       collisions: proposals.filter((proposal) => proposal.collision).length,
+      acceptedCount: proposals.filter((proposal) => proposal.decisionStatus === "accepted").length,
+      rejectedCount: proposals.filter((proposal) => proposal.decisionStatus === "rejected").length,
+      deferredCount: proposals.filter((proposal) => proposal.decisionStatus === "deferred").length,
+      staleDecisionCount: proposals.filter((proposal) => proposal.decisionStale).length,
     },
     pagination: {
       page,
@@ -408,5 +581,63 @@ export async function readNamingProposals(
       totalPages: Math.ceil(filtered.length / pageSize),
     },
     results: filtered.slice(offset, offset + pageSize),
+  };
+}
+
+// Phase 4: durable, evidence-bound proposal decisions. Accepting is gated on
+// the proposal being executable right now (an actual destination, no
+// collision); rejecting and deferring stay available for every proposal.
+export const NAMING_DECISION_BATCH_LIMIT = 100;
+
+export async function setNamingProposalDecisions(
+  ownerId: string,
+  items: Array<{ fileRecordId: number; status: ProposalDecisionStatus; note?: string | null }>,
+) {
+  const proposals = new Map((await buildNamingProposals(ownerId)).map((proposal) => [proposal.fileRecordId, proposal]));
+  const upsert = archiveDb.prepare(
+    `INSERT INTO naming_proposal_decision
+      (owner_id, file_record_id, evidence_key, status, note, updated_at)
+     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(owner_id, file_record_id) DO UPDATE SET
+       evidence_key = excluded.evidence_key,
+       status = excluded.status,
+       note = excluded.note,
+       updated_at = CURRENT_TIMESTAMP`,
+  );
+  const results = items.map((item) => {
+    const proposal = proposals.get(item.fileRecordId);
+    if (!proposal) {
+      return { fileRecordId: item.fileRecordId, success: false, decision: null, error: "No current naming proposal exists for this archive record." };
+    }
+    if (item.status === "accepted" && (proposal.operation === "uncertain/no_action" || !proposal.proposedPath)) {
+      return {
+        fileRecordId: item.fileRecordId,
+        success: false,
+        decision: null,
+        error: `This proposal has no executable destination (${proposal.patternId}); it can be rejected or deferred but not accepted.`,
+      };
+    }
+    upsert.run(ownerId, proposal.fileRecordId, proposal.evidenceKey, item.status, item.note ?? null);
+    const saved = archiveDb.prepare(
+      "SELECT status, note, updated_at FROM naming_proposal_decision WHERE owner_id = ? AND file_record_id = ?",
+    ).get(ownerId, proposal.fileRecordId) as { status: ProposalDecisionStatus; note: string | null; updated_at: string };
+    return {
+      fileRecordId: item.fileRecordId,
+      success: true,
+      decision: {
+        status: saved.status,
+        evidenceKey: proposal.evidenceKey,
+        note: saved.note,
+        updatedAt: saved.updated_at,
+      },
+      error: null,
+    };
+  });
+  const succeeded = results.filter((result) => result.success).length;
+  return {
+    attempted: results.length,
+    succeeded,
+    failed: results.length - succeeded,
+    results,
   };
 }

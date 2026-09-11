@@ -185,25 +185,34 @@ export function chooseArchiveVolume(
   settings: SettingsRecord,
   mediaType: ArchiveMediaType,
 ): ArchiveVolume | null {
-  const eligible = getArchiveVolumes(settings)
-    .filter(
-      (volume) =>
-        volume.mediaType === mediaType &&
-        volume.exists &&
-        volume.writable,
-    )
+  const candidates = getArchiveVolumes(settings).filter(
+    (volume) => volume.mediaType === mediaType,
+  );
+  const eligible = candidates
+    .filter((volume) => volume.exists && volume.writable)
     .sort(
       (left, right) =>
         (right.freeBytes ?? -1) -
         (left.freeBytes ?? -1),
     );
 
-  return eligible[0] ?? null;
+  if (eligible[0]) return eligible[0];
+
+  // A configured-but-missing volume is treated as creatable: prepareDownload
+  // calls ensureArchiveVolume, which creates the root and then re-verifies
+  // writability. Volumes that exist but are unwritable are still rejected.
+  return candidates.find((volume) => !volume.exists) ?? null;
 }
 
 export function ensureArchiveVolume(volume: ArchiveVolume) {
   if (!existsSync(volume.path)) {
-    mkdirSync(volume.path, { recursive: true });
+    try {
+      mkdirSync(volume.path, { recursive: true });
+    } catch (error) {
+      throw new Error(
+        `Archive destination volume could not be created: ${volume.path} (${error instanceof Error ? error.message : "unknown error"})`,
+      );
+    }
   }
 
   try {

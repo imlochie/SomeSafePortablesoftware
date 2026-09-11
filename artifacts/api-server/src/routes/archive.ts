@@ -1,10 +1,18 @@
 import { Router, type IRouter } from "express";
 import {
+  ApplyArchiveNamingProposalsBody,
+  ApplyArchiveNamingProposalsResponse,
   GetArchiveInventoryResponse,
+  GetArchiveOperationsQueryParams,
+  GetArchiveOperationsResponse,
   GetArchiveRecordParams,
   GetArchiveRecordResponse,
   GetArchiveScanResponse,
+  RollbackArchiveOperationParams,
+  RollbackArchiveOperationResponse,
   StartArchiveScanResponse,
+  UpdateArchiveNamingProposalDecisionsBody,
+  UpdateArchiveNamingProposalDecisionsResponse,
   UpdateArchiveRecordReviewBody,
   UpdateArchiveRecordReviewParams,
   UpdateArchiveRecordReviewResponse,
@@ -21,7 +29,8 @@ import {
   updateArchiveRecordReviews,
 } from "../services/archive";
 import { readReconciliationReport } from "../services/reconciliation";
-import { readNamingProposals } from "../services/naming-intelligence";
+import { readNamingProposals, setNamingProposalDecisions } from "../services/naming-intelligence";
+import { applyNamingProposals, ArchiveMutationError, readOperations, rollbackOperation } from "../services/archive-operations";
 import { readIdentityAudit } from "../services/identity-audit";
 
 const router: IRouter = Router();
@@ -72,8 +81,76 @@ router.get("/archive/naming-proposals", async (req, res, next) => {
       volume: typeof req.query.volume === "string" ? req.query.volume : undefined,
       state: typeof req.query.state === "string" ? req.query.state : undefined,
       uncertain: booleanQuery,
+      decision: typeof req.query.decision === "string" ? req.query.decision : undefined,
     }));
   } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/archive/naming-proposals/decisions", async (req, res, next) => {
+  const body = UpdateArchiveNamingProposalDecisionsBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "Each decision needs a fileRecordId and a status of accepted, rejected, or deferred." });
+    return;
+  }
+  try {
+    const result = await setNamingProposalDecisions(getAuthenticatedUserId(req), body.data.decisions);
+    res.json(UpdateArchiveNamingProposalDecisionsResponse.parse(result));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/archive/naming-proposals/apply", async (req, res, next) => {
+  const body = ApplyArchiveNamingProposalsBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "Apply requires a batch of 1-25 unique fileRecord ids and an optional dryRun flag." });
+    return;
+  }
+  try {
+    const result = await applyNamingProposals(getAuthenticatedUserId(req), body.data.fileRecordIds, { dryRun: body.data.dryRun });
+    res.json(ApplyArchiveNamingProposalsResponse.parse(result));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Naming proposals could not be applied.";
+    if (message.includes("limited to") || message.includes("required")) {
+      res.status(400).json({ error: message });
+      return;
+    }
+    next(error);
+  }
+});
+
+router.get("/archive/operations", (req, res) => {
+  const params = GetArchiveOperationsQueryParams.safeParse({
+    limit: req.query.limit === undefined ? undefined : Number(req.query.limit),
+  });
+  if (!params.success) {
+    res.status(400).json({ error: "The operations limit must be between 1 and 100." });
+    return;
+  }
+  res.json(GetArchiveOperationsResponse.parse(readOperations(getAuthenticatedUserId(req), params.data.limit ?? 20)));
+});
+
+router.post("/archive/operations/:id/rollback", async (req, res, next) => {
+  const params = RollbackArchiveOperationParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "A valid archive operation id is required." });
+    return;
+  }
+  try {
+    const operation = await rollbackOperation(getAuthenticatedUserId(req), params.data.id);
+    if (!operation) {
+      res.status(404).json({ error: "Archive operation not found." });
+      return;
+    }
+    res.json(RollbackArchiveOperationResponse.parse(operation));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Archive operation could not be rolled back.";
+    if (error instanceof ArchiveMutationError || message.includes("not found")) {
+      res.status(message.includes("not found") ? 404 : 400).json({ error: message });
+      return;
+    }
     next(error);
   }
 });
