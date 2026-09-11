@@ -4,6 +4,7 @@
 dist
 artifacts/archive-assistant/src-tauri/target
 artifacts/archive-assistant/src-tauri/gen
+artifacts/archive-assistant/src-tauri/runtime/node.exe
 tmp
 out-tsc
 *.tsbuildinfo
