@@ -4,14 +4,10 @@ import {
   type MissingMediaDiscoveryRequest,
 } from "../integrations";
 import {
-  createAcquisitionJob,
   type AcquisitionJob,
   type AcquisitionProviderId,
-  type CreateAcquisitionJobInput,
 } from "./acquisition-jobs";
-
-export type ArchiveIdentity = Record<string, unknown>;
-export type AcquisitionPolicyDecision = Record<string, unknown>;
+import { createApprovedAcquisitionJob } from "./acquisition-orchestration";
 
 export interface LookupMediaInput extends MediaLookupRequest {
   providerId?: AcquisitionProviderId | null;
@@ -21,9 +17,9 @@ export interface DiscoverMissingMediaInput extends MissingMediaDiscoveryRequest 
   providerId?: AcquisitionProviderId | null;
 }
 
-export interface RequestMediaAcquisitionInput extends CreateAcquisitionJobInput {
-  archiveIdentity?: ArchiveIdentity | null;
-  policyDecision?: AcquisitionPolicyDecision | null;
+export interface RequestMediaAcquisitionInput {
+  reviewItemId: number;
+  confirmed: true;
 }
 
 function preferredProvider(providerId: AcquisitionProviderId | null | undefined) {
@@ -68,21 +64,9 @@ export async function requestMediaAcquisition(
   input: RequestMediaAcquisitionInput,
   ownerId: string,
 ): Promise<AcquisitionJob> {
-  const archiveIdentity = input.archiveIdentity ?? null;
-  const policyDecision = input.policyDecision ?? null;
-  const metadata = {
-    ...(input.metadata ?? {}),
-    ...(archiveIdentity === null ? {} : { archiveIdentity }),
-    ...(policyDecision === null ? {} : { policyDecision }),
-  };
-  const job = await createAcquisitionJob(
-    {
-      ...input,
-      metadata,
-      start: true,
-    },
-    ownerId,
-  );
-  if (!job) throw new Error("Acquisition job could not be read after creation.");
+  if (input.confirmed !== true) {
+    throw new Error("Explicit confirmation is required before external provider work begins.");
+  }
+  const { job } = await createApprovedAcquisitionJob(input.reviewItemId, ownerId);
   return job;
 }

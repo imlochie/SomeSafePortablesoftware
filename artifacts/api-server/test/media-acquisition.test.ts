@@ -8,11 +8,15 @@ const originalEnvironment = {
 };
 
 let mediaAcquisition: typeof import("../src/services/media-acquisition");
+let review: typeof import("../src/services/review-queue");
+let archiveDb: typeof import("../src/lib/archive-db").archiveDb;
 
 before(async () => {
   process.env.SONARR_URL = "http://media-acquisition.test";
   process.env.SONARR_API_KEY = "test-sonarr-key";
   mediaAcquisition = await import("../src/services/media-acquisition");
+  review = await import("../src/services/review-queue");
+  ({ archiveDb } = await import("../src/lib/archive-db"));
 });
 
 after(() => {
@@ -95,42 +99,76 @@ describe("media acquisition orchestration", { concurrency: false }, () => {
     }]);
   });
 
-  test("persists archive identity and policy context before creating the provider job", async () => {
+  test("rejects unapproved and cross-owner requests, then starts approved work for the active owner", async () => {
     mockFetch((url) => {
       if (url.pathname.endsWith("/system/status")) return jsonResponse({ version: "4.0.0" });
       if (url.pathname.endsWith("/command")) return jsonResponse({ id: 777, status: "started" });
       throw new Error(`Unexpected URL ${url}`);
     });
 
-    const archiveIdentity = {
-      archiveItemId: 14,
-      identityKey: "tv:example series:2:3",
-      season: 2,
-      episode: 3,
-    };
-    const policyDecision = {
-      decision: "approved",
-      reason: "missing archive episode",
-      requestedBy: "operator",
-    };
-    const job = await mediaAcquisition.requestMediaAcquisition({
-      mediaType: "episode",
-      title: "Example Series",
-      externalId: "901",
-      providerId: "sonarr",
-      archiveIdentity,
-      policyDecision,
-      metadata: { source: "missing-media" },
-    }, "media-acquisition-request-owner");
+    const ownerId = "media-acquisition-request-owner";
+    const recommendationId = 999999;
+    const item = review.ensureReviewItem(ownerId, {
+      kind: "acquisition_recommendation",
+      subjectKey: "approved-acquisition-request",
+      title: "Acquire Example Series",
+      payload: {
+        recommendationId,
+      },
+    });
+    await assert.rejects(
+      mediaAcquisition.requestMediaAcquisition({ reviewItemId: item.id, confirmed: true }, ownerId),
+      /explicitly approved/,
+    );
+    review.approveReviewItem(item.id, ownerId);
+    await assert.rejects(
+      mediaAcquisition.requestMediaAcquisition({ reviewItemId: item.id, confirmed: true }, "other-owner"),
+      /not found/i,
+    );
+    await assert.rejects(
+      mediaAcquisition.requestMediaAcquisition({ reviewItemId: item.id, confirmed: false as true }, ownerId),
+      /confirmation is required/i,
+    );
 
+    archiveDb.prepare(`
+      INSERT INTO acquisition_recommendation
+        (id, owner_id, recommendation_key, media_type, title, year, external_id,
+         target_json, evidence_json, quality_json, destination_json, route_json,
+         blockers_json, confidence, priority, status, review_item_id, evidence_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    `).run(
+      recommendationId,
+      ownerId,
+      "approved-acquisition-request",
+      "series",
+      "Example Series",
+      2024,
+      "901",
+      JSON.stringify({ archiveItemId: 14 }),
+      JSON.stringify({ reason: "Missing archive episode" }),
+      JSON.stringify({}),
+      JSON.stringify({}),
+      JSON.stringify({ providerId: "sonarr", operational: true }),
+      JSON.stringify([]),
+      "medium",
+      "high",
+      item.id,
+      "approved-acquisition-evidence",
+    );
+
+    const job = await mediaAcquisition.requestMediaAcquisition(
+      { reviewItemId: item.id, confirmed: true },
+      ownerId,
+    );
+    assert.equal(job.ownerId, ownerId);
     assert.equal(job.state, "searching");
     assert.equal(job.providerJobId, "777");
-    assert.deepEqual(job.request.archiveIdentity, archiveIdentity);
-    assert.deepEqual(job.request.policyDecision, policyDecision);
-    assert.deepEqual(job.metadata, {
-      source: "missing-media",
-      archiveIdentity,
-      policyDecision,
+    assert.equal(job.metadata.reviewItemId, item.id);
+    assert.deepEqual(job.request.policyDecision, {
+      decision: "approved",
+      reviewItemId: item.id,
+      decidedBy: ownerId,
+      decisionAt: review.readReviewItem(item.id, ownerId)?.decisionAt,
     });
   });
 });

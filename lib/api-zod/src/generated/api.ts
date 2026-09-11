@@ -1859,24 +1859,16 @@ export const DiscoverArchiveMissingMediaResponse = zod.object({
 
 
 /**
- * The request is persisted locally before its provider job is created. Provider state never replaces archive state.
- * @summary Request a provider acquisition while preserving archive context
+ * External provider work begins only when the authenticated owner explicitly confirms an acquisition recommendation whose persisted review item is already approved. Owner, recommendation, provider, and approval evidence are resolved server-side; client-supplied policy metadata is not accepted.
+ * @summary Start provider work for an approved acquisition recommendation
  */
-export const requestArchiveAcquisitionBodyOneStartDefault = false;
+
+
 
 export const RequestArchiveAcquisitionBody = zod.object({
-  "mediaType": zod.string(),
-  "title": zod.string(),
-  "year": zod.number().nullish(),
-  "externalId": zod.string().nullish(),
-  "sourceId": zod.string().nullish(),
-  "sourceUrl": zod.string().nullish(),
-  "providerId": zod.union([zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent']),zod.null()]).optional(),
-  "archiveIdentity": zod.record(zod.string(), zod.unknown()).nullish(),
-  "policyDecision": zod.record(zod.string(), zod.unknown()).nullish(),
-  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
-  "start": zod.boolean().default(requestArchiveAcquisitionBodyOneStartDefault)
-}).describe('A provider acquisition request carrying archive identity and the policy decision that authorized it.')
+  "reviewItemId": zod.number().min(1).describe('Persisted acquisition recommendation review item owned by the authenticated operator.'),
+  "confirmed": zod.literal(true).describe('Must be true to confirm that external provider work should begin now.')
+}).describe('Explicit confirmation to start provider work from an approved, owner-scoped acquisition recommendation review.')
 
 export const RequestArchiveAcquisitionResponse = zod.object({
   "id": zod.number(),

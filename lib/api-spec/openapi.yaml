@@ -963,8 +963,8 @@ paths:
     post:
       operationId: requestArchiveAcquisition
       tags: [archive, acquisition]
-      summary: Request a provider acquisition while preserving archive context
-      description: The request is persisted locally before its provider job is created. Provider state never replaces archive state.
+      summary: Start provider work for an approved acquisition recommendation
+      description: External provider work begins only when the authenticated owner explicitly confirms an acquisition recommendation whose persisted review item is already approved. Owner, recommendation, provider, and approval evidence are resolved server-side; client-supplied policy metadata is not accepted.
       requestBody:
         required: true
         content:
@@ -973,7 +973,7 @@ paths:
               $ref: "#/components/schemas/RequestArchiveAcquisition"
       responses:
         "201":
-          description: Provider-backed acquisition tracking job
+          description: Confirmed provider-backed acquisition tracking job
           content:
             application/json:
               schema:
@@ -2636,9 +2636,19 @@ components:
           type: boolean
           default: false
     RequestArchiveAcquisition:
-      allOf:
-        - $ref: "#/components/schemas/CreateAcquisitionJob"
-      description: A provider acquisition request carrying archive identity and the policy decision that authorized it.
+      type: object
+      required: [reviewItemId, confirmed]
+      additionalProperties: false
+      description: Explicit confirmation to start provider work from an approved, owner-scoped acquisition recommendation review.
+      properties:
+        reviewItemId:
+          type: number
+          minimum: 1
+          description: Persisted acquisition recommendation review item owned by the authenticated operator.
+        confirmed:
+          type: boolean
+          const: true
+          description: Must be true to confirm that external provider work should begin now.
     ProgressAcquisitionJob:
       type: object
       required: [state]

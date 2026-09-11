@@ -5,9 +5,16 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { CreateAcquisitionJob } from './createAcquisitionJob';
 
 /**
- * A provider acquisition request carrying archive identity and the policy decision that authorized it.
+ * Explicit confirmation to start provider work from an approved, owner-scoped acquisition recommendation review.
  */
-export type RequestArchiveAcquisition = CreateAcquisitionJob;
+export interface RequestArchiveAcquisition {
+  /**
+     * Persisted acquisition recommendation review item owned by the authenticated operator.
+     * @minimum 1
+     */
+  reviewItemId: number;
+  /** Must be true to confirm that external provider work should begin now. */
+  confirmed: true;
+}

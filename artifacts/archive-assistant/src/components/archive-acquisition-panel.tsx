@@ -2,20 +2,15 @@ import { useEffect, useState } from 'react';
 import {
   Search,
   X,
-  Send,
   RefreshCw,
-  RotateCcw,
   AlertTriangle,
-  CheckCircle2,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   useLookupArchiveMedia,
-  useRequestArchiveAcquisition,
-  useRetryAcquisitionJob,
   getLookupArchiveMediaQueryKey,
 } from '@workspace/api-client-react';
 import type {
-  AcquisitionJob,
   AcquisitionProvider,
   ArchiveInventoryRecord,
   MediaLookupRecord,
@@ -51,31 +46,6 @@ function defaultQuery(target: ArchiveAcquisitionTarget) {
   return target.record.filename.replace(/\.[^.]+$/, '').replace(/[._-]+/g, ' ').trim();
 }
 
-function archiveIdentity(target: ArchiveAcquisitionTarget) {
-  if (target.kind === 'missing') {
-    return {
-      source: 'provider-missing-media',
-      externalId: target.item.externalId,
-      title: target.item.title,
-      mediaType: target.item.mediaType,
-      year: target.item.year,
-      detail: target.item.detail,
-    };
-  }
-  return {
-    source: 'archive-finding',
-    recordId: target.record.id,
-    archiveItemId: target.record.archiveItemId,
-    filename: target.record.filename,
-    path: target.record.path,
-    relativePath: target.record.relativePath,
-    checksum: target.record.checksum,
-    mediaType: target.record.mediaType,
-    scanStatus: target.record.scanStatus,
-    qualityStatus: target.record.qualityStatus,
-  };
-}
-
 function targetLabel(target: ArchiveAcquisitionTarget) {
   return target.kind === 'missing' ? target.item.title : target.record.filename;
 }
@@ -94,16 +64,12 @@ export function ArchiveAcquisitionPanel({
     mediaType?: string;
     providerId: AcquisitionProvider;
   } | undefined>();
-  const [policyReason, setPolicyReason] = useState('');
-  const [latestJob, setLatestJob] = useState<AcquisitionJob | null>(null);
-  const [notice, setNotice] = useState<{ tone: 'good' | 'bad' | 'pending'; text: string } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setQuery(defaultQuery(target));
     setProviderId(defaultProvider(target));
     setLookupParams(undefined);
-    setPolicyReason('');
-    setLatestJob(null);
     setNotice(null);
   }, [target]);
 
@@ -114,97 +80,9 @@ export function ArchiveAcquisitionPanel({
       queryKey: getLookupArchiveMediaQueryKey(lookupParams),
     },
   });
-  const acquisition = useRequestArchiveAcquisition();
-  const retryAcquisition = useRetryAcquisitionJob();
-
   const mediaType = target.kind === 'missing'
     ? target.item.mediaType
     : target.record.mediaType ?? (providerId === 'radarr' ? 'movie' : 'series');
-
-  const requestMedia = (result: {
-    title: string;
-    year: number | null;
-    externalId: string;
-    mediaType: string;
-    source?: AcquisitionProvider;
-  }) => {
-    const selectedProvider = result.source ?? providerId;
-    setLatestJob(null);
-    setNotice(null);
-    acquisition.mutate({
-      data: {
-        mediaType: result.mediaType,
-        title: result.title,
-        year: result.year,
-        externalId: result.externalId,
-        sourceId: result.externalId,
-        providerId: selectedProvider,
-        archiveIdentity: archiveIdentity(target),
-        policyDecision: {
-          decision: 'approved',
-          reason: policyReason.trim() || 'Operator approved acquisition from the archive review flow.',
-          source: target.kind === 'missing' ? 'missing-media' : 'archive-finding',
-        },
-        metadata: {
-          source: target.kind === 'missing' ? 'archive-missing-media' : 'archive-finding',
-        },
-        start: true,
-      },
-    }, {
-      onSuccess: (job: AcquisitionJob) => {
-        setLatestJob(job);
-        setNotice({
-          tone: job.state === 'failed' ? 'bad' : 'good',
-          text: job.state === 'failed'
-            ? `Acquisition #${job.id} failed: ${job.errorMessage ?? 'The provider rejected the request.'}`
-            : `Acquisition #${job.id} is ${job.state.replace(/_/g, ' ')}. Archive data was not changed.`,
-        });
-      },
-      onError: (error) => {
-        setNotice({ tone: 'bad', text: `Acquisition request failed: ${errorText(error)}` });
-      },
-    });
-  };
-
-  const canRetry = latestJob
-    ? (latestJob.state === 'failed' || latestJob.state === 'cancelled')
-      && latestJob.retryCount < latestJob.maxRetries
-    : false;
-  const retriesRemaining = latestJob
-    ? Math.max(latestJob.maxRetries - latestJob.retryCount, 0)
-    : 0;
-
-  const retryLastJob = () => {
-    if (!latestJob || !canRetry || retryAcquisition.isPending) return;
-    setNotice({
-      tone: 'pending',
-      text: `Retrying acquisition #${latestJob.id}. Provider error remains visible below while the retry is in progress.`,
-    });
-    retryAcquisition.mutate({ id: latestJob.id }, {
-      onSuccess: (job: AcquisitionJob) => {
-        setLatestJob(job);
-        setNotice({
-          tone: job.state === 'failed' ? 'bad' : 'good',
-          text: job.state === 'failed'
-            ? `Acquisition #${job.id} failed again: ${job.errorMessage ?? 'The provider rejected the request.'}`
-            : `Acquisition #${job.id} retry is ${job.state.replace(/_/g, ' ')}. Archive data was not changed.`,
-        });
-      },
-      onError: (error) => {
-        setNotice({ tone: 'bad', text: `Acquisition retry failed: ${errorText(error)}` });
-      },
-    });
-  };
-
-  const requestDirect = () => {
-    requestMedia({
-      title: target.kind === 'missing' ? target.item.title : target.record.filename,
-      year: target.kind === 'missing' ? target.item.year : null,
-      externalId: target.kind === 'missing' ? target.item.externalId : '',
-      mediaType,
-      source: providerId,
-    });
-  };
 
   return (
     <aside className="archive-panel h-fit overflow-hidden" data-testid="panel-archive-acquisition">
@@ -294,15 +172,9 @@ export function ArchiveAcquisitionPanel({
                       {result.source.toUpperCase()} / {result.externalId}{result.year ? ` / ${result.year}` : ''}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={acquisition.isPending}
-                    onClick={() => requestMedia(result)}
-                    className="inline-flex shrink-0 items-center gap-1.5 bg-[#39736e] px-2.5 py-2 text-[9px] font-bold tracking-[.06em] text-white disabled:opacity-50"
-                    data-testid={`button-request-provider-match-${result.externalId}`}
-                  >
-                    <Send size={11} /> REQUEST
-                  </button>
+                  <span className="shrink-0 border border-[#b9cbc7] bg-[#eaf3ef] px-2.5 py-2 text-[9px] font-bold tracking-[.06em] text-[#39736e]">
+                    LOOKUP ONLY
+                  </span>
                 </div>
               </div>
             ))}
@@ -310,82 +182,21 @@ export function ArchiveAcquisitionPanel({
         ) : null}
 
         <div className="border-t border-[#e3e8e7] pt-4">
-          <div className="archive-mono text-[9px] tracking-[.13em] text-[#7f9194]">POLICY DECISION</div>
+          <div className="archive-mono text-[9px] tracking-[.13em] text-[#7f9194]">APPROVAL REQUIRED</div>
           <div className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-[#39736e]">
-            <CheckCircle2 size={14} /> APPROVED FOR ACQUISITION
+            <ShieldCheck size={14} /> PROVIDER WORK HAS NOT STARTED
           </div>
-          <textarea
-            value={policyReason}
-            onChange={(event) => setPolicyReason(event.target.value)}
-            className="mt-3 min-h-[62px] w-full resize-y border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2 text-[11px] outline-none focus:border-[#4e9690]"
-            placeholder="Optional reason for this operator decision"
-            aria-label="Policy decision reason"
-            data-testid="input-acquisition-policy-reason"
-          />
-          <button
-            type="button"
-            disabled={acquisition.isPending}
-            onClick={requestDirect}
-            className="mt-3 inline-flex items-center gap-2 border border-[#d6dfdc] bg-white px-3 py-2 text-[10px] font-bold tracking-[.08em] text-[#53656b] hover:border-[#81999a] disabled:opacity-50"
-            data-testid="button-request-direct-acquisition"
-          >
-            {acquisition.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Send size={13} />}
-            REQUEST THIS ITEM
+          <p className="mt-3 text-[11px] leading-5 text-[#66787d]">
+            Provider work begins only after this item becomes an acquisition recommendation, its owner-scoped review is approved, and an operator explicitly selects CREATE / VIEW JOB in the Assistant approval queue.
+          </p>
+          <button type="button" onClick={() => setNotice('Open Assistant, evaluate the current state, approve the acquisition recommendation, then select CREATE / VIEW JOB to start provider work.')} className="mt-3 inline-flex items-center gap-2 border border-[#d6dfdc] bg-white px-3 py-2 text-[10px] font-bold tracking-[.08em] text-[#53656b] hover:border-[#81999a]" data-testid="button-explain-acquisition-approval">
+            <ShieldCheck size={13} /> SHOW REQUIRED STEPS
           </button>
         </div>
 
         {notice && (
-          <div className={`border p-3 text-[11px] leading-5 ${notice.tone === 'bad' ? 'border-[#e2b9b4] bg-[#fcedea] text-[#994b43]' : notice.tone === 'pending' ? 'border-[#d9bd77] bg-[#fff8e7] text-[#80652e]' : 'border-[#b9cbc7] bg-[#eaf3ef] text-[#39736e]'}`} role="status" aria-live="polite" data-testid="status-acquisition-request">
-            {notice.text}
-          </div>
-        )}
-
-        {latestJob && (
-          <div className="border border-[#d6dfdc] bg-[#fbfcfa] p-3 text-[11px] leading-5" data-testid="panel-acquisition-result">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">
-                ACQUISITION #{latestJob.id} / {latestJob.providerId?.toUpperCase() ?? 'PROVIDER'}
-              </div>
-              <span
-                className={`archive-mono text-[9px] font-bold tracking-[.08em] ${
-                  latestJob.state === 'failed' || latestJob.state === 'cancelled'
-                    ? 'text-[#994b43]'
-                    : latestJob.state === 'complete'
-                      ? 'text-[#39736e]'
-                      : 'text-[#a77517]'
-                }`}
-                data-testid="text-acquisition-state"
-              >
-                {latestJob.state.replace(/_/g, ' ').toUpperCase()}
-              </span>
-            </div>
-            {latestJob.errorMessage && (
-              <div className="mt-2 flex gap-2 border-l-2 border-[#c85b51] bg-[#fcedea] px-2.5 py-2 text-[#994b43]" role="alert" data-testid="status-acquisition-provider-error">
-                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                <span>{latestJob.errorMessage}</span>
-              </div>
-            )}
-            {(latestJob.state === 'failed' || latestJob.state === 'cancelled') && (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[10px] text-[#829197]" data-testid="text-acquisition-retry-budget">
-                  {canRetry
-                    ? `${retriesRemaining} ${retriesRemaining === 1 ? 'retry' : 'retries'} remaining`
-                    : 'Retry limit reached'}
-                </span>
-                {canRetry && (
-                  <button
-                    type="button"
-                    disabled={retryAcquisition.isPending}
-                    onClick={retryLastJob}
-                    className="inline-flex items-center gap-1.5 border border-[#d9bd77] bg-[#fff8e7] px-2.5 py-2 text-[9px] font-bold tracking-[.06em] text-[#8d681d] disabled:opacity-50"
-                    data-testid="button-retry-acquisition"
-                  >
-                    {retryAcquisition.isPending ? <RefreshCw size={11} className="animate-spin" /> : <RotateCcw size={11} />}
-                    {retryAcquisition.isPending ? 'RETRYING' : 'RETRY REQUEST'}
-                  </button>
-                )}
-              </div>
-            )}
+          <div className="border border-[#b9cbc7] bg-[#eaf3ef] p-3 text-[11px] leading-5 text-[#39736e]" role="status" aria-live="polite" data-testid="status-acquisition-request">
+            {notice}
           </div>
         )}
       </div>

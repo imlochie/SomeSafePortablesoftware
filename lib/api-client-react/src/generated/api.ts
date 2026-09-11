@@ -3560,8 +3560,8 @@ export const getRequestArchiveAcquisitionUrl = () => {
 }
 
 /**
- * The request is persisted locally before its provider job is created. Provider state never replaces archive state.
- * @summary Request a provider acquisition while preserving archive context
+ * External provider work begins only when the authenticated owner explicitly confirms an acquisition recommendation whose persisted review item is already approved. Owner, recommendation, provider, and approval evidence are resolved server-side; client-supplied policy metadata is not accepted.
+ * @summary Start provider work for an approved acquisition recommendation
  */
 export const requestArchiveAcquisition = async (requestArchiveAcquisition: RequestArchiveAcquisition, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionJob> => {
 
@@ -3610,7 +3610,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RequestArchiveAcquisitionMutationError = ErrorType<ErrorResponse>
 
     /**
- * @summary Request a provider acquisition while preserving archive context
+ * @summary Start provider work for an approved acquisition recommendation
  */
 export const useRequestArchiveAcquisition = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestArchiveAcquisition>>, TError,{data: BodyType<RequestArchiveAcquisition>}, TContext>, request?: SecondParameter<typeof customFetch>}
