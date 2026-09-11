@@ -255,6 +255,39 @@ Assistant conversations.
 System events.
 Dependency detection.
 Local runtime configuration.
+Archive inventory scanning with persisted SHA-256 duplicate evidence.
+Evidence-bound naming proposal decisions.
+Journaled archive mutations with rollback.
+
+### Archive Inventory And Safe Mutations
+
+Scan contract: an archive scan walks the configured archive volumes plus the
+configured download staging directory when one is set. Files staged for or
+completed by downloads are therefore inventoried like archive media, while a
+missing or unmounted download directory never fails the scan. Each scan records
+a streaming SHA-256 checksum for new or changed files; unchanged files keep
+their stored evidence and are never re-hashed.
+
+Naming proposals are proposals only. A durable decision (accepted, rejected,
+or deferred) is stored per file record together with an evidence key covering
+the source path, filename, size, modification time, pattern, confidence, and
+proposed destination. When any of that evidence changes, a stored acceptance
+stops matching and the proposal reopens for review instead of remaining
+silently accepted.
+
+Applying accepted proposals goes through the archive operation journal and one
+controlled endpoint; there is no arbitrary rename API. Every mutation requires
+an accepted decision tied to matching evidence, keeps both source and
+destination inside a configured archive volume, rejects traversal segments, and
+re-checks collisions immediately before execution. Existing files are never
+overwritten. Parent directories are created only for approved operations and
+are recorded so a successful operation can be rolled back, restoring the file
+to its original path. All transitions (queued, running, succeeded, failed,
+rolled back) persist with errors and evidence snapshots for auditing.
+
+`POST /media/prepare-download` and `POST /downloads` follow the OpenAPI
+contract: `temporaryDirectory` may be omitted to use the configured setting,
+and any explicit value must still live inside the configured safe directory.
 Not Yet Fully Implemented
 
 The following areas remain future development work:
@@ -266,7 +299,6 @@ Download execution.
 FFmpeg processing pipelines.
 Hardware-accelerated transcoding.
 Filesystem monitoring.
-Duplicate detection.
 Archive automation.
 Real job execution.
 AI provider connections.

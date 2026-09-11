@@ -26,7 +26,12 @@ import type {
   ArchiveBulkReviewUpdate,
   ArchiveInventory,
   ArchiveInventoryRecord,
+  ArchiveNamingProposalApplyBody,
+  ArchiveNamingProposalApplyResponse,
+  ArchiveNamingProposalDecisionsBody,
+  ArchiveNamingProposalDecisionsResponse,
   ArchiveNamingProposalResponse,
+  ArchiveOperation,
   ArchiveQualityFindingResponse,
   ArchiveQualityFindingReviewUpdate,
   ArchiveQualityRecordReport,
@@ -40,6 +45,7 @@ import type {
   DownloadSpecification,
   ErrorResponse,
   GetArchiveNamingProposalsParams,
+  GetArchiveOperationsParams,
   GetArchiveQualityFindingsParams,
   HealthStatus,
   LocalMediaInspectInput,
@@ -1212,6 +1218,320 @@ export function useGetArchiveNamingProposals<TData = Awaited<ReturnType<typeof g
 
 
 
+
+export const getUpdateArchiveNamingProposalDecisionsUrl = () => {
+
+
+
+
+  return `/api/archive/naming-proposals/decisions`
+}
+
+/**
+ * Persists accepted/rejected/deferred decisions tied to the exact proposal
+ * evidence (including the source file's size and modification time). When
+ * the underlying evidence changes, the stored decision no longer matches
+ * and the proposal reopens as unreviewed instead of silently remaining
+ * accepted. Only proposals with an executable, collision-free destination
+ * can be accepted.
+ * @summary Save durable decisions for archive naming proposals
+ */
+export const updateArchiveNamingProposalDecisions = async (archiveNamingProposalDecisionsBody: ArchiveNamingProposalDecisionsBody, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveNamingProposalDecisionsResponse> => {
+
+  return customFetch<ArchiveNamingProposalDecisionsResponse>(getUpdateArchiveNamingProposalDecisionsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(archiveNamingProposalDecisionsBody)
+  }
+);}
+
+
+
+
+
+export const getUpdateArchiveNamingProposalDecisionsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArchiveNamingProposalDecisions>>, TError,{data: BodyType<ArchiveNamingProposalDecisionsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateArchiveNamingProposalDecisions>>, TError,{data: BodyType<ArchiveNamingProposalDecisionsBody>}, TContext> => {
+
+const mutationKey = ['updateArchiveNamingProposalDecisions'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateArchiveNamingProposalDecisions>>, {data: BodyType<ArchiveNamingProposalDecisionsBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateArchiveNamingProposalDecisions(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateArchiveNamingProposalDecisionsMutationResult = NonNullable<Awaited<ReturnType<typeof updateArchiveNamingProposalDecisions>>>
+    export type UpdateArchiveNamingProposalDecisionsMutationBody = BodyType<ArchiveNamingProposalDecisionsBody>
+    export type UpdateArchiveNamingProposalDecisionsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Save durable decisions for archive naming proposals
+ */
+export const useUpdateArchiveNamingProposalDecisions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArchiveNamingProposalDecisions>>, TError,{data: BodyType<ArchiveNamingProposalDecisionsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateArchiveNamingProposalDecisions>>,
+        TError,
+        {data: BodyType<ArchiveNamingProposalDecisionsBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateArchiveNamingProposalDecisionsMutationOptions(options));
+    }
+
+export const getApplyArchiveNamingProposalsUrl = () => {
+
+
+
+
+  return `/api/archive/naming-proposals/apply`
+}
+
+/**
+ * Applies a bounded batch of naming proposals. Every item must currently
+ * be accepted against matching evidence, must have an executable
+ * collision-free destination, and is re-validated at apply time: paths
+ * are confined to configured archive volumes, traversal is rejected, and
+ * an existing target aborts that item (files are never overwritten).
+ * Destructive phases only run through the archive operation journal,
+ * which records state transitions and enables rollback. With `dryRun`
+ * the same gates and checks run without any filesystem or journal write.
+ * @summary Apply accepted archive naming proposals through the mutation journal
+ */
+export const applyArchiveNamingProposals = async (archiveNamingProposalApplyBody: ArchiveNamingProposalApplyBody, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveNamingProposalApplyResponse> => {
+
+  return customFetch<ArchiveNamingProposalApplyResponse>(getApplyArchiveNamingProposalsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(archiveNamingProposalApplyBody)
+  }
+);}
+
+
+
+
+
+export const getApplyArchiveNamingProposalsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyArchiveNamingProposals>>, TError,{data: BodyType<ArchiveNamingProposalApplyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyArchiveNamingProposals>>, TError,{data: BodyType<ArchiveNamingProposalApplyBody>}, TContext> => {
+
+const mutationKey = ['applyArchiveNamingProposals'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyArchiveNamingProposals>>, {data: BodyType<ArchiveNamingProposalApplyBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  applyArchiveNamingProposals(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyArchiveNamingProposalsMutationResult = NonNullable<Awaited<ReturnType<typeof applyArchiveNamingProposals>>>
+    export type ApplyArchiveNamingProposalsMutationBody = BodyType<ArchiveNamingProposalApplyBody>
+    export type ApplyArchiveNamingProposalsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Apply accepted archive naming proposals through the mutation journal
+ */
+export const useApplyArchiveNamingProposals = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyArchiveNamingProposals>>, TError,{data: BodyType<ArchiveNamingProposalApplyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof applyArchiveNamingProposals>>,
+        TError,
+        {data: BodyType<ArchiveNamingProposalApplyBody>},
+        TContext
+      > => {
+      return useMutation(getApplyArchiveNamingProposalsMutationOptions(options));
+    }
+
+export const getGetArchiveOperationsUrl = (params?: GetArchiveOperationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive/operations?${stringifiedParams}` : `/api/archive/operations`
+}
+
+/**
+ * @summary List recent archive mutation operations
+ */
+export const getArchiveOperations = async (params?: GetArchiveOperationsParams, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation[]> => {
+
+  return customFetch<ArchiveOperation[]>(getGetArchiveOperationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveOperationsQueryKey = (params?: GetArchiveOperationsParams,) => {
+    return [
+    `/api/archive/operations`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetArchiveOperationsQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveOperations>>, TError = ErrorType<unknown>>(params?: GetArchiveOperationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveOperations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveOperationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveOperations>>> = ({ signal }) => getArchiveOperations(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveOperations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveOperationsQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveOperations>>>
+export type GetArchiveOperationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List recent archive mutation operations
+ */
+
+export function useGetArchiveOperations<TData = Awaited<ReturnType<typeof getArchiveOperations>>, TError = ErrorType<unknown>>(
+ params?: GetArchiveOperationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveOperations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveOperationsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRollbackArchiveOperationUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive/operations/${id}/rollback`
+}
+
+/**
+ * Restores the original path only when the moved file still exists at
+ * the recorded destination and the original path is free again. Any
+ * other condition refuses the rollback without touching files.
+ * @summary Roll back a successful archive operation using its journal entry
+ */
+export const rollbackArchiveOperation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getRollbackArchiveOperationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRollbackArchiveOperationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rollbackArchiveOperation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rollbackArchiveOperation>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['rollbackArchiveOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rollbackArchiveOperation>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  rollbackArchiveOperation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RollbackArchiveOperationMutationResult = NonNullable<Awaited<ReturnType<typeof rollbackArchiveOperation>>>
+
+    export type RollbackArchiveOperationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Roll back a successful archive operation using its journal entry
+ */
+export const useRollbackArchiveOperation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rollbackArchiveOperation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rollbackArchiveOperation>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRollbackArchiveOperationMutationOptions(options));
+    }
 
 export const getGetArchiveRecordUrl = (id: number,) => {
 

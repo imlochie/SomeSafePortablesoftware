@@ -226,6 +226,39 @@ archiveDb.exec(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (owner_id, file_record_id, finding_type, evidence_key)
   );
+  CREATE TABLE IF NOT EXISTS naming_proposal_decision (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    file_record_id INTEGER NOT NULL REFERENCES file_record(id) ON DELETE CASCADE,
+    evidence_key TEXT NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, file_record_id)
+  );
+  CREATE TABLE IF NOT EXISTS archive_operation (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    target_path TEXT NOT NULL,
+    file_record_id INTEGER REFERENCES file_record(id) ON DELETE SET NULL,
+    source_evidence_key TEXT,
+    proposal_evidence TEXT NOT NULL DEFAULT '{}',
+    expected_size_bytes INTEGER,
+    expected_modified_at_ms INTEGER,
+    created_directories TEXT NOT NULL DEFAULT '[]',
+    error TEXT,
+    applied_at TEXT,
+    rolled_back_at TEXT,
+    rollback_available INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS archive_operation_owner_status_idx ON archive_operation(owner_id, status);
+  CREATE INDEX IF NOT EXISTS naming_proposal_decision_owner_idx ON naming_proposal_decision(owner_id, status);
   CREATE TABLE IF NOT EXISTS assistant_conversation (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New conversation',

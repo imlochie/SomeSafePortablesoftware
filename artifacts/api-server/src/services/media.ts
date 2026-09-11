@@ -560,11 +560,22 @@ export function prepareDownload(input: {
 }, settings: SettingsRecord) {
   validateSourceUrl(input.sourceUrl);
   const outputContainer = input.outputContainer === "mkv" || input.outputContainer === "webm" ? input.outputContainer : settings.outputContainer;
-   // The per-job temporary directory is optional in the API contract: a client
-  // that does not name one downloads under the configured directory, which is
-  // itself contained in that root by construction.
+  // The API contract allows clients to omit temporaryDirectory; the persisted
+  // setting is the fallback, and the first configured root is used when the
+  // setting holds a multi-root list. An explicit client value is still
+  // validated against the configured safe-directory roots, so omitting the
+  // field never weakens path confinement.
+  const temporaryDirectoryCandidate =
+    input.temporaryDirectory?.trim() || configuredDirectoryRoots(settings.temporaryDirectory)[0] || "";
+
+  if (!temporaryDirectoryCandidate) {
+    throw new Error(
+      "Temporary directory is required. Configure one in System Settings or pass it explicitly.",
+    );
+  }
+
   const temporaryDirectory = validateSafeDirectory(
-    input.temporaryDirectory?.trim() || configuredDirectoryRoots(settings.temporaryDirectory)[0],
+    temporaryDirectoryCandidate,
     settings.temporaryDirectory,
     "Temporary directory",
   );

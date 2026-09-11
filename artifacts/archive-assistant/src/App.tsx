@@ -19,7 +19,10 @@ import {
   useStartDownload, useStartPlexSync, useTestPlexConnection, useUpdatePlexConfig, useUpdateSettings,
   useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord, useGetArchiveNamingProposals,
   useUpdateArchiveRecordReview, useUpdateArchiveRecordReviews, getGetArchiveScanQueryKey, getGetArchiveInventoryQueryKey,
-  getGetArchiveRecordQueryKey, useGetArchiveQualityRecord, useUpdateArchiveQualityFindingReview,
+  getGetArchiveRecordQueryKey,
+  useUpdateArchiveNamingProposalDecisions, useApplyArchiveNamingProposals, useGetArchiveOperations,
+  useRollbackArchiveOperation, getGetArchiveNamingProposalsQueryKey, getGetArchiveOperationsQueryKey,
+  useGetArchiveQualityRecord, useUpdateArchiveQualityFindingReview,
   getGetArchiveQualityRecordQueryKey, getGetArchiveQualityFindingsQueryKey, useGetArchiveQualityFindings,
   setBaseUrl,
 } from '@workspace/api-client-react';
@@ -811,6 +814,8 @@ function ArchivePage() {
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
   const { data: qualityFindings } = useGetArchiveQualityFindings({ pageSize: 1 });
+  const [namingNotice, setNamingNotice] = useState('');
+  const [namingFailures, setNamingFailures] = useState<Array<{ id: number; error: string }>>([]);
   const [view, setView] = useState<'local' | 'naming_proposals' | 'plex_only'>('local');
   const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
 
@@ -840,8 +845,58 @@ function ArchivePage() {
   });
 
   const { data: namingProposals, isLoading: namingLoading, isError: namingError, refetch: refetchNaming } = useGetArchiveNamingProposals();
+  const { data: archiveOperations } = useGetArchiveOperations({ limit: 50 }, { query: { enabled: view === 'naming_proposals', queryKey: getGetArchiveOperationsQueryKey({ limit: 50 }) } });
 
   const startScan = useStartArchiveScan();
+  const namingDecisions = useUpdateArchiveNamingProposalDecisions();
+  const namingApply = useApplyArchiveNamingProposals();
+  const namingRollback = useRollbackArchiveOperation();
+
+  const refreshNamingViews = () => {
+    queryClient.invalidateQueries({ queryKey: getGetArchiveNamingProposalsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetArchiveOperationsQueryKey() });
+  };
+  const decideNamingProposal = (fileRecordId: number, status: 'accepted' | 'rejected' | 'deferred') => {
+    setNamingNotice('');
+    setNamingFailures([]);
+    namingDecisions.mutate({ data: { decisions: [{ fileRecordId, status }] } }, {
+      onSuccess: (result) => {
+        const failure = result.results.find(item => !item.success);
+        setNamingNotice(failure ? `Decision not saved: ${failure.error ?? 'unknown error'}` : `Proposal ${status}.`);
+        refreshNamingViews();
+      },
+      onError: (error) => setNamingNotice(`Decision could not be saved: ${errorText(error)}`),
+    });
+  };
+  const runNamingApply = (fileRecordIds: number[], dryRun: boolean) => {
+    if (!fileRecordIds.length) return;
+    setNamingNotice('');
+    setNamingFailures([]);
+    namingApply.mutate({ data: { fileRecordIds, dryRun } }, {
+      onSuccess: (result) => {
+        const failures = result.results.filter(item => !item.success);
+        setNamingFailures(failures.map(item => ({ id: item.fileRecordId, error: item.error ?? 'The operation did not complete.' })));
+        setNamingNotice(
+          result.dryRun
+            ? `DRY RUN / ${result.succeeded} ready to apply${result.failed ? `, ${result.failed} blocked` : ''}. Nothing was moved.`
+            : `${result.succeeded} applied${result.failed ? `, ${result.failed} refused` : ''}. Every attempt is in the operations journal.`,
+        );
+        refreshNamingViews();
+      },
+      onError: (error) => setNamingNotice(`Apply failed: ${errorText(error)}`),
+    });
+  };
+  const rollbackNamingOperation = (id: number) => {
+    setNamingNotice('');
+    setNamingFailures([]);
+    namingRollback.mutate({ id }, {
+      onSuccess: () => {
+        setNamingNotice('Operation rolled back; the file is back at its original path.');
+        refreshNamingViews();
+      },
+      onError: (error) => setNamingNotice(`Rollback refused: ${errorText(error)}`),
+    });
+  };
   const bulkReview = useUpdateArchiveRecordReviews();
   const handleStartScan = () => {
     setNotice('');
@@ -878,6 +933,17 @@ function ArchivePage() {
 
   const plexOnly = inventory?.plexOnly ?? [];
   const showPlex = view === 'plex_only';
+  const namingResults = namingProposals?.results ?? [];
+  type ArchiveOperationEntry = NonNullable<typeof archiveOperations>[number];
+  const operationsByRecord = new Map<number, ArchiveOperationEntry>();
+  for (const operation of archiveOperations ?? []) {
+    if (operation.fileRecordId != null && !operationsByRecord.has(operation.fileRecordId)) {
+      operationsByRecord.set(operation.fileRecordId, operation);
+    }
+  }
+  const acceptedActionableIds = namingResults
+    .filter(proposal => proposal.decisionStatus === 'accepted' && proposal.proposedPath && proposal.operation !== 'uncertain/no_action')
+    .map(proposal => proposal.fileRecordId);
   const selectableRecords = displayedRecords.filter(record => record.reviewStatus !== 'not_applicable');
   const selectedSet = new Set(selectedRecordIds);
   const allVisibleSelected = selectableRecords.length > 0 && selectableRecords.every(record => selectedSet.has(record.id));
@@ -976,6 +1042,31 @@ function ArchivePage() {
             )}
           </div>
 
+          {view === 'naming_proposals' && namingResults.length > 0 && (
+            <div className="border-b border-[#e3e8e7] bg-[#f7faf8] px-4 py-3 md:px-6" data-testid="panel-naming-actions">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="archive-mono text-[9px] tracking-[.08em] text-[#7f9194]" data-testid="status-naming-summary">
+                  ACCEPTED {namingProposals?.summary.acceptedCount ?? 0} / DEFERRED {namingProposals?.summary.deferredCount ?? 0} / REJECTED {namingProposals?.summary.rejectedCount ?? 0} / REOPENED {namingProposals?.summary.staleDecisionCount ?? 0}
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => runNamingApply(acceptedActionableIds, true)} disabled={!acceptedActionableIds.length || namingApply.isPending} className="inline-flex items-center gap-1.5 border border-[#d6dfdc] bg-white px-3 py-2 text-[9px] font-bold tracking-[.06em] text-[#53656b] hover:border-[#4e9690] disabled:opacity-40" data-testid="button-naming-dry-run"><Terminal size={11} /> DRY RUN ACCEPTED ({acceptedActionableIds.length})</button>
+                  <button type="button" onClick={() => runNamingApply(acceptedActionableIds, false)} disabled={!acceptedActionableIds.length || namingApply.isPending} className="inline-flex items-center gap-1.5 bg-[#1d2b38] px-3 py-2 text-[9px] font-bold tracking-[.06em] text-[#f5f6f3] hover:bg-[#21303d] disabled:opacity-40" data-testid="button-naming-apply"><ArrowDownToLine size={11} /> APPLY ACCEPTED ({acceptedActionableIds.length})</button>
+                </div>
+              </div>
+              <p className="mt-2 text-[10px] leading-4 text-[#829197]">Accepted proposals apply as journaled operations: destinations are re-checked for collisions, files are never overwritten, and successful operations can be rolled back.</p>
+              {namingNotice && (
+                <div className={`mt-3 text-[10px] ${/not saved|failed|refused|blocked/i.test(namingNotice) ? 'text-[#994b43]' : 'text-[#39736e]'}`} role="status" data-testid="status-naming-operations">
+                  <div>{namingNotice}</div>
+                  {namingFailures.length > 0 && (
+                    <ul className="mt-2" aria-label="Failed naming operations">
+                      {namingFailures.map(({ id, error }) => <li key={id} data-testid={`naming-failure-${id}`}>Record #{id}: {error}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {view === 'local' && selectableRecords.length > 0 && (
             <div className="border-b border-[#e3e8e7] bg-[#f7faf8] px-4 py-3 md:px-6" data-testid="panel-bulk-review">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1027,7 +1118,10 @@ function ArchivePage() {
                 <EmptyState icon={Sparkles} title="No naming proposals" description="The archive currently has no naming changes requiring review." />
               ) : (
                 <div className="space-y-3" data-testid="panel-naming-proposals">
-                  {namingProposals.results.map(proposal => (
+                  {namingProposals.results.map(proposal => {
+                    const proposalOperation = operationsByRecord.get(proposal.fileRecordId);
+                    const isExecutable = Boolean(proposal.proposedPath) && proposal.operation !== 'uncertain/no_action';
+                    return (
                     <div key={proposal.fileRecordId} className="border border-[#e1e8e5] bg-white/50 p-4">
                       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                         <div className="min-w-0">
@@ -1054,9 +1148,40 @@ function ArchivePage() {
                           {proposal.evidence.length > 0 && <div className="mt-1"><span className="font-bold">EVIDENCE / </span>{proposal.evidence.join('; ')}</div>}
                         </div>
                       )}
-                      <div className="mt-3 archive-mono text-[9px] tracking-[.08em] text-[#a0afaf]">PROPOSAL ONLY / NO FILESYSTEM ACTION</div>
+                      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#edf1ef] pt-3" data-testid={`panel-naming-decision-${proposal.fileRecordId}`}>
+                        <span className={`archive-mono mr-1 px-2 py-1 text-[9px] tracking-[.08em] ${proposal.decisionStatus === 'accepted' ? 'bg-[#eaf3ef] text-[#39736e]' : proposal.decisionStatus === 'deferred' ? 'bg-[#fff0c9] text-[#8d681d]' : proposal.decisionStatus === 'rejected' ? 'bg-[#fcedea] text-[#994b43]' : 'bg-[#f3f5f4] text-[#8a9b9e]'}`} data-testid={`status-naming-decision-${proposal.fileRecordId}`}>
+                          DECISION / {proposal.decisionStatus.toUpperCase()}{proposal.decisionStale ? ' · REOPENED' : ''}
+                        </span>
+                        <button type="button" onClick={() => decideNamingProposal(proposal.fileRecordId, 'accepted')} disabled={namingDecisions.isPending || (proposal.decisionStatus === 'accepted' && !proposal.decisionStale)} className="inline-flex items-center gap-1.5 bg-[#39736e] px-2.5 py-1.5 text-[9px] font-bold tracking-[.06em] text-white disabled:opacity-40" data-testid={`button-naming-accept-${proposal.fileRecordId}`} title={isExecutable ? 'Accept this proposal' : 'Only proposals with an executable destination can be accepted'}><Check size={11} /> ACCEPT</button>
+                        <button type="button" onClick={() => decideNamingProposal(proposal.fileRecordId, 'rejected')} disabled={namingDecisions.isPending} className="inline-flex items-center gap-1.5 border border-[#e2b9b4] bg-[#fcedea] px-2.5 py-1.5 text-[9px] font-bold tracking-[.06em] text-[#994b43] disabled:opacity-40" data-testid={`button-naming-reject-${proposal.fileRecordId}`}><X size={11} /> REJECT</button>
+                        <button type="button" onClick={() => decideNamingProposal(proposal.fileRecordId, 'deferred')} disabled={namingDecisions.isPending} className="inline-flex items-center gap-1.5 border border-[#d9bd77] bg-[#fff8e7] px-2.5 py-1.5 text-[9px] font-bold tracking-[.06em] text-[#8d681d] disabled:opacity-40" data-testid={`button-naming-defer-${proposal.fileRecordId}`}><Pause size={11} /> DEFER</button>
+                        {proposal.decisionStatus === 'accepted' && isExecutable && (
+                          <>
+                            <button type="button" onClick={() => runNamingApply([proposal.fileRecordId], true)} disabled={namingApply.isPending} className="inline-flex items-center gap-1.5 border border-[#d6dfdc] bg-white px-2.5 py-1.5 text-[9px] font-bold tracking-[.06em] text-[#53656b] hover:border-[#4e9690] disabled:opacity-40" data-testid={`button-naming-dry-run-one-${proposal.fileRecordId}`}><Terminal size={11} /> DRY RUN</button>
+                            <button type="button" onClick={() => runNamingApply([proposal.fileRecordId], false)} disabled={namingApply.isPending} className="inline-flex items-center gap-1.5 bg-[#1d2b38] px-2.5 py-1.5 text-[9px] font-bold tracking-[.06em] text-[#f5f6f3] hover:bg-[#21303d] disabled:opacity-40" data-testid={`button-naming-apply-one-${proposal.fileRecordId}`}><ArrowDownToLine size={11} /> APPLY</button>
+                          </>
+                        )}
+                      </div>
+                      {proposal.decisionNote && <div className="mt-2 text-[10px] leading-4 text-[#829197]">NOTE / {proposal.decisionNote}</div>}
+                      {proposalOperation && (
+                        <div className="mt-3 border-l-2 border-[#dce8e5] bg-[#f3f7f5] p-2" data-testid={`status-naming-operation-${proposal.fileRecordId}`}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className={`archive-mono text-[9px] tracking-[.08em] ${proposalOperation.status === 'succeeded' ? 'text-[#39736e]' : proposalOperation.status === 'failed' ? 'text-[#994b43]' : 'text-[#8d681d]'}`}>
+                              OPERATION #{proposalOperation.id} / {proposalOperation.kind.toUpperCase()} / {proposalOperation.status.replace('_', ' ').toUpperCase()}
+                            </span>
+                            {proposalOperation.status === 'succeeded' && proposalOperation.rollbackAvailable && (
+                              <button type="button" onClick={() => rollbackNamingOperation(proposalOperation.id)} disabled={namingRollback.isPending} className="inline-flex items-center gap-1.5 border border-[#d6dfdc] bg-white px-2 py-1 text-[9px] font-bold tracking-[.06em] text-[#53656b] hover:border-[#4e9690] disabled:opacity-40" data-testid={`button-naming-rollback-${proposal.fileRecordId}`}><RotateCcw size={11} /> ROLL BACK</button>
+                            )}
+                          </div>
+                          {proposalOperation.error && <div className="mt-1 text-[10px] leading-4 text-[#994b43]" data-testid={`error-naming-operation-${proposal.fileRecordId}`}>{proposalOperation.error}</div>}
+                        </div>
+                      )}
+                      {!proposalOperation && (
+                        <div className="mt-3 archive-mono text-[9px] tracking-[.08em] text-[#a0afaf]">{proposal.decisionStatus === 'accepted' && isExecutable ? 'ACCEPTED / APPLIES ONLY THROUGH THE OPERATION JOURNAL · NO OVERWRITES' : 'PROPOSAL ONLY / NO FILESYSTEM ACTION'}</div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )
             ) : showPlex ? (

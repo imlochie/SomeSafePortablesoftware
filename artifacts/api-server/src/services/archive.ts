@@ -4,6 +4,7 @@ import { access, readdir, stat } from "node:fs/promises";
 import { basename, extname, relative, resolve, sep } from "node:path";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia } from "./media";
+import { getArchiveScanRoots, isArchivePathWithin } from "./storage";
 import {
   coarseQualityScore,
   compareEncodes,
@@ -12,7 +13,6 @@ import {
   technicalQualityFromRecord,
   type TechnicalQuality,
 } from "./media-quality";
-import { getArchiveScanRoots } from "./storage";
 
 const supportedExtensions = new Set([
   ".avi", ".flac", ".m4a", ".m4v", ".mkv", ".mov", ".mp3", ".mp4",
@@ -154,7 +154,7 @@ export function titleYear(value: string) {
   return matches.length ? Number(matches.at(-1)?.[1]) : null;
 }
 
-function archiveVolumeId(root: string) {
+export function archiveVolumeId(root: string) {
   const normalized = root.replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
   if (normalized === "d:\\movies") return "d-movies";
   if (normalized === "d:\\tv shows") return "d-tv";
@@ -210,6 +210,48 @@ function plexQualityShape(row: PlexRow, indexes: InventoryIndexes): QualityShape
     audioCodec: row.audio_codec,
     bitrateKbps: row.bitrate,
   });
+}
+
+export function upsertLocalIdentity(ownerId: string, localIdentity: ReturnType<typeof localIdentityFor>): number {
+  archiveDb.prepare(`
+    INSERT INTO local_media_identity
+      (owner_id, identity_key, media_type, normalized_title, year, show_identity,
+       season_number, episode_number, size_bytes, fingerprint, checksum, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(owner_id, identity_key) DO UPDATE SET
+      media_type = excluded.media_type,
+      normalized_title = excluded.normalized_title,
+      year = excluded.year,
+      show_identity = excluded.show_identity,
+      season_number = excluded.season_number,
+      episode_number = excluded.episode_number,
+      size_bytes = excluded.size_bytes,
+      fingerprint = excluded.fingerprint,
+      checksum = excluded.checksum,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(
+    ownerId,
+    localIdentity.identityKey,
+    localIdentity.mediaType,
+    localIdentity.normalizedTitle,
+    localIdentity.year,
+    localIdentity.showIdentity,
+    localIdentity.seasonNumber,
+    localIdentity.episodeNumber,
+    localIdentity.sizeBytes,
+    localIdentity.fingerprint,
+    localIdentity.checksum,
+  );
+  // SQLite does not advance last_insert_rowid() on the upsert-update path, so
+  // the id must be read back; otherwise a second file sharing this identity
+  // would be linked to a stale, unrelated identity row.
+  const identity = archiveDb.prepare(
+    "SELECT id FROM local_media_identity WHERE owner_id = ? AND identity_key = ?",
+  ).get(ownerId, localIdentity.identityKey) as { id: number } | undefined;
+  if (!identity) {
+    throw new Error(`Local media identity row could not be resolved for key '${localIdentity.identityKey}'.`);
+  }
+  return identity.id;
 }
 
 function reviewEvidenceKey(record: {
@@ -296,11 +338,23 @@ type ChecksumOutcome = {
  * to duplicate and quality comparison until it is moved.
  */
 function scanRoots(settings: SettingsRecord) {
-  const roots = getArchiveScanRoots(settings);
-  const staging = settings.downloadDirectory?.trim();
-  if (!staging) return roots;
-  const expanded = expandPath(staging);
-  if (!roots.includes(expanded) && existsSync(expanded)) roots.push(expanded);
+  const volumeRoots = getArchiveScanRoots(settings);
+  const roots: Array<{ path: string; optional: boolean }> = volumeRoots.map((path) => ({ path, optional: false }));
+  // The download staging directory is inventoried like archive volumes so
+  // completed and in-flight downloads are visible to dedupe, reconciliation,
+  // and naming intelligence. It is optional: a missing directory simply
+  // contributes nothing instead of failing the scan. Nested or overlapping
+  // roots are skipped to avoid double-walking the same tree.
+  const downloadRoot = settings.downloadDirectory?.trim();
+  if (downloadRoot) {
+    const expanded = expandPath(downloadRoot);
+    const alreadyCovered = volumeRoots.some(
+      (root) => isArchivePathWithin(expanded, root) || isArchivePathWithin(root, expanded),
+    );
+    if (!alreadyCovered) {
+      roots.push({ path: expanded, optional: true });
+    }
+  }
   return roots;
 }
 
@@ -316,6 +370,22 @@ function updateScan(ownerId: string, values: Record<string, unknown>) {
   ).run(...Object.values(values) as Array<string | number | null>, ownerId);
 }
 
+function fingerprintFor(filename: string, inspected: { durationSeconds: number | null; width: number | null; height: number | null; videoCodec: string | null; audioCodec: string | null } | null) {
+  if (!inspected) return null;
+  return [
+    normalizeTitle(filename),
+    inspected.durationSeconds === null ? "unknown" : Math.round(inspected.durationSeconds),
+    inspected.width ?? "unknown",
+    inspected.height ?? "unknown",
+    inspected.videoCodec ?? "unknown",
+    inspected.audioCodec ?? "unknown",
+  ].join("|");
+}
+
+export function localIdentityForPath(filename: string, root: string, sizeBytes: number | null, fingerprint: string | null, checksum: string | null) {
+  return localIdentityFor(filename, root, sizeBytes, fingerprint, checksum);
+}
+
 function upsertArchiveRecord(
   ownerId: string,
   filePath: string,
@@ -329,56 +399,12 @@ function upsertArchiveRecord(
   const filename = basename(filePath);
   const relativePath = relative(root, filePath);
   const title = filename.replace(/\.[^.]+$/, "");
-  const fingerprint = inspected
-    ? [
-      normalizeTitle(filename),
-      inspected.durationSeconds === null ? "unknown" : Math.round(inspected.durationSeconds),
-      inspected.width ?? "unknown",
-      inspected.height ?? "unknown",
-      inspected.videoCodec ?? "unknown",
-      inspected.audioCodec ?? "unknown",
-    ].join("|")
-    : null;
+  const fingerprint = fingerprintFor(filename, inspected);
   const localIdentity = localIdentityFor(filename, root, inspected?.filesize ?? null, fingerprint, fileChecksum);
-  // The identity row is an upsert, and SQLite does not update
-  // `last_insert_rowid` when the DO UPDATE branch runs, so reading
-  // `lastInsertRowid` here would return whatever the previous file inserted.
-  // That cross-linked records onto unrelated identities (duplicate groups and
-  // quality comparisons then disagreed per scan order). Resolve by key instead.
-  archiveDb.prepare(`
-    INSERT INTO local_media_identity
-      (owner_id, identity_key, media_type, normalized_title, year, show_identity,
-       season_number, episode_number, size_bytes, fingerprint, checksum, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(owner_id, identity_key) DO UPDATE SET
-      media_type = excluded.media_type,
-      normalized_title = excluded.normalized_title,
-      year = excluded.year,
-      show_identity = excluded.show_identity,
-      season_number = excluded.season_number,
-      episode_number = excluded.episode_number,
-      size_bytes = excluded.size_bytes,
-      fingerprint = excluded.fingerprint,
-      checksum = excluded.checksum,
-      updated_at = CURRENT_TIMESTAMP
-  `).run(
-    ownerId,
-    localIdentity.identityKey,
-    localIdentity.mediaType,
-    localIdentity.normalizedTitle,
-    localIdentity.year,
-    localIdentity.showIdentity,
-    localIdentity.seasonNumber,
-    localIdentity.episodeNumber,
-    localIdentity.sizeBytes,
-    localIdentity.fingerprint,
-    localIdentity.checksum,
-  );
-  const localIdentityId = Number(
-    (archiveDb.prepare(
-      "SELECT id FROM local_media_identity WHERE owner_id = ? AND identity_key = ?",
-    ).get(ownerId, localIdentity.identityKey) as { id: number }).id,
-  );
+  // The identity row is an upsert, and SQLite does not advance
+  // `last_insert_rowid` on the DO UPDATE branch, so the id is always read back
+  // by (owner_id, identity_key) - see `upsertLocalIdentity`.
+  const localIdentityId = upsertLocalIdentity(ownerId, localIdentity);
 
   const existingItem = archiveDb.prepare(
     "SELECT id FROM archive_item WHERE owner_id = ? AND archive_path = ?",
@@ -490,10 +516,14 @@ async function computeChecksum(filePath: string): Promise<ChecksumOutcome> {
 
 async function inspectFile(filePath: string, root: string, existing: FileRow | undefined, settings: SettingsRecord, archiveScanRoots: string[]) {
   const fileStats = await stat(filePath);
+  // The unchanged fast path skips re-inspection and re-hashing entirely. Rows
+  // recorded before checksum capture was reconnected return to a null
+  // checksum, so they are inspected once more to attach duplicate evidence.
   const unchanged = existing
     && existing.scan_status === "active"
     && existing.size_bytes === fileStats.size
-    && existing.modified_at_ms === Math.trunc(fileStats.mtimeMs);
+    && existing.modified_at_ms === Math.trunc(fileStats.mtimeMs)
+    && existing.checksum;
   if (unchanged) {
     // Metadata is still valid, so FFprobe is skipped. Byte-level evidence is
     // the one thing older scans never stored, so back-fill it without probing.
@@ -524,6 +554,12 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
   // The hash is independent of FFprobe success: an unprobeable file still has
   // byte-level identity, and a duplicate of it is still an exact duplicate.
   const hashed = await computeChecksum(filePath);
+
+  // A failed hash degrades duplicate evidence only, but the operator should
+  // still see why exact-duplicate findings are unavailable for this file.
+  if (hashed.checksumStatus === "failed" && !errorMessage) {
+    errorMessage = "The file could not be hashed for duplicate evidence.";
+  }
   return {
     filePath,
     root,
@@ -541,7 +577,8 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
 async function scanArchive(ownerId: string) {
   invalidateArchiveInventoryCache(ownerId);
   const settings = readSettings();
-  const roots = scanRoots(settings);
+  const scanRootList = scanRoots(settings);
+  const roots = scanRootList.map((root) => root.path);
   const found = new Set<string>();
   let scannedFiles = 0;
   let failedFiles = 0;
@@ -565,10 +602,20 @@ const concurrency = Math.max(
   ).all(ownerId) as FileRow[];
   const existingByPath = new Map(existingRows.map((row) => [row.path, row]));
 
-for (const root of roots) {
+for (const { path: root, optional } of scanRootList) {
   try {
     await access(root);
-
+  } catch (error) {
+    if (optional) {
+      // An unmounted or unused download staging directory is not an error for
+      // the inventory scan; there is simply nothing to walk.
+      continue;
+    }
+    rootError = `${root}: ${error instanceof Error ? error.message : "directory could not be read"}`;
+    failedFiles += 1;
+    continue;
+  }
+  try {
     const batch: string[] = [];
 
     const processBatch = async () => {

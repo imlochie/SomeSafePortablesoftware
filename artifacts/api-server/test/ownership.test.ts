@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { mkdirSync } from "node:fs";
-import { chmod, mkdir, unlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, chmod, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { after, describe, test } from "node:test";
 import {
   LEGACY_OWNER_ID,
@@ -22,6 +23,7 @@ import {
   readJobs,
   subscribeDownloadEvents,
 } from "../src/services/download-engine";
+import { prepareDownload } from "../src/services/media";
 import {
   getPlexConfig,
   readPlexInventory,
@@ -36,6 +38,16 @@ import {
   updateArchiveRecordReview,
   updateArchiveRecordReviews,
 } from "../src/services/archive";
+import { readNamingProposals, setNamingProposalDecisions } from "../src/services/naming-intelligence";
+import {
+  ArchiveMutationError,
+  applyNamingProposals,
+  createOperation,
+  executeOperation,
+  readOperations,
+  rollbackOperation,
+  validateMutationPaths,
+} from "../src/services/archive-operations";
 import { getAuthenticatedUserId } from "../src/middlewares/requireAuth";
 import { resolveRuntimeConfig, runtimeConfig } from "../src/lib/runtime-config";
 
@@ -552,5 +564,480 @@ process.stdout.write(JSON.stringify({
     } finally {
       reopened.close();
     }
+  });
+
+  test("prepare download falls back to the configured temporary directory and still rejects unsafe explicit paths", () => {
+    const scoped = {
+      ...readSettings(),
+      temporaryDirectory: join(testRoot, "tmp"),
+      archiveDirectory: join(testRoot, "library"),
+    };
+    const source = (title: string) => ({
+      sourceUrl: `https://example.com/${title.toLowerCase().replaceAll(" ", "-")}`,
+      title,
+      selectedFormatId: "best",
+    });
+
+    // Omitting temporaryDirectory now resolves to the persisted setting.
+    const fallback = prepareDownload(source("Fallback One"), scoped);
+    assert.equal(fallback.temporaryDirectory, resolve(join(testRoot, "tmp")));
+
+    // An explicit client value inside the configured root is preserved.
+    const explicit = prepareDownload(
+      { ...source("Explicit One"), temporaryDirectory: join(testRoot, "tmp", "client") },
+      scoped,
+    );
+    assert.equal(explicit.temporaryDirectory, resolve(join(testRoot, "tmp", "client")));
+
+    // An explicit value outside the configured root is still rejected.
+    assert.throws(
+      () => prepareDownload({ ...source("Unsafe One"), temporaryDirectory: "/etc" }, scoped),
+      /limited to configured Archive Assistant directories/,
+    );
+
+    // Traversal segments cannot escape the configured root either.
+    assert.throws(
+      () => prepareDownload(
+        { ...source("Traversal One"), temporaryDirectory: join(testRoot, "tmp", "..", "..", "escape") },
+        scoped,
+      ),
+      /limited to configured Archive Assistant directories/,
+    );
+
+    // Nothing is invented when neither the request nor settings name a directory.
+    assert.throws(
+      () => prepareDownload(source("Unconfigured One"), { ...scoped, temporaryDirectory: "" }),
+      /Temporary directory is required/,
+    );
+    assert.throws(
+      () => prepareDownload(
+        { ...source("Unconfigured Explicit"), temporaryDirectory: join(testRoot, "tmp") },
+        { ...scoped, temporaryDirectory: "" },
+      ),
+      /not configured/,
+    );
+
+    // Job creation uses the same fallback end to end.
+    const job = createJob(source("Fallback Job"), ownerA, scoped);
+    assert.equal(job.temporaryDirectory, resolve(join(testRoot, "tmp")));
+  });
+
+  test("archive scan persists SHA-256 checksums, skips unchanged files, and repairs legacy rows", async () => {
+    const libraryDirectory = join(testRoot, "checksum-library");
+    const downloadDirectory = join(testRoot, "checksum-downloads");
+    const counterFile = join(testRoot, "checksum-probe-count.log");
+    const ffprobePath = join(testRoot, "counting-ffprobe.mjs");
+    await mkdir(libraryDirectory, { recursive: true });
+    await mkdir(downloadDirectory, { recursive: true });
+    await writeFile(ffprobePath, `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+const file = process.argv.at(-1) ?? "";
+appendFileSync(${JSON.stringify(counterFile)}, file + "\\n");
+process.stdout.write(JSON.stringify({
+  format: { duration: "100.5", format_name: "matroska,webm" },
+  streams: [{ codec_type: "video", codec_name: "h264", width: 1920, height: 1080 }],
+}));`);
+    await chmod(ffprobePath, 0o755);
+
+    const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+    const files = {
+      first: join(libraryDirectory, "First.Feature.mkv"),
+      second: join(libraryDirectory, "Second.Feature.mkv"),
+      dupOne: join(downloadDirectory, "Dup.One.mkv"),
+      dupTwo: join(downloadDirectory, "Dup.Two.mkv"),
+    };
+    await writeFile(files.first, "first-feature-content");
+    await writeFile(files.second, "second-feature-content");
+    await writeFile(files.dupOne, "same-bytes");
+    await writeFile(files.dupTwo, "same-bytes");
+    // Dup.Two starts out recorded the way older builds recorded it: active
+    // row, real stats, but no checksum. The scan must repair exactly that.
+    const legacyStats = await stat(files.dupTwo);
+    archiveDb.prepare(`
+      INSERT INTO file_record (path, owner_id, scan_status, size_bytes, modified_at_ms, checksum)
+      VALUES (?, ?, 'active', ?, ?, NULL)
+    `).run(files.dupTwo, ownerA, legacyStats.size, Math.trunc(legacyStats.mtimeMs));
+
+    writeSettings({ archiveDirectory: libraryDirectory, downloadDirectory, ffprobePath });
+
+    const waitForScan = async (ownerId: string) => {
+      startArchiveScan(ownerId);
+      for (let attempt = 0; attempt < 400; attempt += 1) {
+        const state = readArchiveScan(ownerId);
+        if (state.status !== "scanning") return state;
+        await new Promise((resolveScan) => setTimeout(resolveScan, 10));
+      }
+      throw new Error("Archive scan did not finish.");
+    };
+    const probeCount = async () => {
+      try {
+        return (await readFile(counterFile, "utf8")).trim().split("\n").filter(Boolean).length;
+      } catch {
+        return 0;
+      }
+    };
+
+    const firstScan = await waitForScan(ownerA);
+    assert.equal(firstScan.status, "completed");
+    assert.equal(firstScan.scannedFiles, 4);
+    assert.equal(firstScan.failedFiles, 0);
+    assert.equal(await probeCount(), 4, "every discovered file should be probed once on first scan");
+
+    let inventory = readArchiveInventory(ownerA);
+    const recordOf = (filename: string) => inventory.records.find((record) => record.filename === filename);
+    assert.equal(recordOf("First.Feature.mkv")?.checksum, sha256("first-feature-content"));
+    assert.equal(recordOf("Second.Feature.mkv")?.checksum, sha256("second-feature-content"));
+    assert.equal(recordOf("Dup.One.mkv")?.checksum, sha256("same-bytes"));
+    assert.equal(recordOf("Dup.Two.mkv")?.checksum, sha256("same-bytes"), "legacy null-checksum rows are repaired on the next scan");
+    const ownNames = ["First.Feature.mkv", "Second.Feature.mkv", "Dup.One.mkv", "Dup.Two.mkv"];
+    const duplicates = inventory.records
+      .filter((record) => ownNames.includes(record.filename) && record.qualityStatus === "duplicate")
+      .map((record) => record.filename)
+      .sort();
+    assert.deepEqual(duplicates, ["Dup.One.mkv", "Dup.Two.mkv"], "checksum equality marks both byte-identical copies");
+
+    // Re-scanning unchanged files must neither spawn ffprobe nor re-read the
+    // bytes for hashing; the stored checksum is the durable duplicate evidence.
+    const secondScan = await waitForScan(ownerA);
+    assert.equal(secondScan.status, "completed");
+    assert.equal(await probeCount(), 4, "unchanged files must not be re-inspected or re-hashed");
+    inventory = readArchiveInventory(ownerA);
+    assert.equal(recordOf("Dup.One.mkv")?.checksum, sha256("same-bytes"));
+
+    // Changing one file's content re-inspects and re-hashes that file only.
+    await writeFile(files.dupOne, "same-bytes-extended");
+    const thirdScan = await waitForScan(ownerA);
+    assert.equal(thirdScan.status, "completed");
+    assert.equal(await probeCount(), 5, "only the changed file is probed again");
+    inventory = readArchiveInventory(ownerA);
+    assert.equal(recordOf("Dup.One.mkv")?.checksum, sha256("same-bytes-extended"));
+    assert.equal(recordOf("Dup.Two.mkv")?.checksum, sha256("same-bytes"));
+    assert.equal(recordOf("Dup.One.mkv")?.qualityStatus, "local_only", "the checksum pair no longer matches after the edit");
+    assert.equal(recordOf("Dup.Two.mkv")?.qualityStatus, "local_only");
+  });
+
+  test("archive operations confine paths, refuse overwrites, journal failures, and roll back", async () => {
+    const opsRoot = join(testRoot, "ops-volume");
+    await mkdir(opsRoot, { recursive: true });
+    writeSettings({
+      archiveDirectory: opsRoot,
+      downloadDirectory: "",
+      temporaryDirectory: join(testRoot, "tmp"),
+    });
+
+    const missing = async (candidate: string) => access(candidate).then(() => false, () => true);
+    const opById = (id: number) => readOperations(ownerA, 100).find((entry) => entry.id === id);
+
+    // --- path safety matrix -------------------------------------------------
+    assert.throws(
+      () => validateMutationPaths(join(opsRoot, "inside.mkv"), join(testRoot, "outside.mkv")),
+      /not inside a configured archive volume/,
+    );
+    // Raw ".." segments are rejected before any path normalization happens.
+    assert.throws(
+      () => validateMutationPaths(`${opsRoot}/../escape.mkv`, join(opsRoot, "target.mkv")),
+      /traversal segments/,
+    );
+    // Normalized escapes are caught by volume containment as a second layer.
+    assert.throws(
+      () => validateMutationPaths(join(opsRoot, "..", "escape.mkv"), join(opsRoot, "target.mkv")),
+      /not inside a configured archive volume/,
+    );
+    assert.throws(
+      () => validateMutationPaths("relative/path.mkv", join(opsRoot, "target.mkv")),
+      /must be absolute/,
+    );
+    assert.throws(
+      () => validateMutationPaths(join(opsRoot, "clip.mkv"), join(opsRoot, "clip.txt")),
+      /extensions/,
+    );
+    assert.throws(
+      () => validateMutationPaths(join(opsRoot, "same.mkv"), join(opsRoot, "same.mkv")),
+      /identical/,
+    );
+
+    const source = join(opsRoot, "Old Name.mkv");
+    const target = join(opsRoot, "Renamed.mkv");
+    await writeFile(source, "payload-one");
+
+    // --- stale source is refused, and the failure is journaled ---------------
+    let stats = await stat(source);
+    const staleOp = createOperation(ownerA, {
+      kind: "rename",
+      sourcePath: source,
+      targetPath: target,
+      fileRecordId: null,
+      sourceEvidenceKey: "evidence-stale",
+      proposalEvidence: { patternId: "manual-test" },
+      expectedSizeBytes: stats.size,
+      expectedModifiedAtMs: Math.trunc(stats.mtimeMs),
+    });
+    assert.ok(staleOp && staleOp.status === "queued");
+    await writeFile(source, "payload-one-with-extra-bytes");
+    await assert.rejects(() => executeOperation(ownerA, staleOp!.id), /size changed/);
+    assert.equal(opById(staleOp!.id)?.status, "failed");
+    assert.match(opById(staleOp!.id)?.error ?? "", /not executed/);
+    assert.equal(await missing(source), false, "a refused operation never moves the source");
+
+    // --- armed again, the rename succeeds ----------------------------------
+    await writeFile(source, "payload-one");
+    stats = await stat(source);
+    archiveDb.prepare(
+      "UPDATE archive_operation SET status = 'queued', error = NULL, expected_size_bytes = ?, expected_modified_at_ms = ? WHERE id = ? AND owner_id = ?",
+    ).run(stats.size, Math.trunc(stats.mtimeMs), staleOp!.id, ownerA);
+    const executed = await executeOperation(ownerA, staleOp!.id);
+    assert.equal(executed?.status, "succeeded");
+    assert.equal(await missing(source), true);
+    assert.equal(await missing(target), false);
+    assert.ok(executed?.appliedAt, "success records when the change applied");
+
+    // --- collision at execution time refuses to overwrite --------------------
+    const collisionSource = join(opsRoot, "Collision.mkv");
+    const collisionTarget = join(opsRoot, "Collision-Taken.mkv");
+    await writeFile(collisionSource, "collision-payload");
+    await writeFile(collisionTarget, "occupant");
+    const collisionOp = createOperation(ownerA, {
+      kind: "rename",
+      sourcePath: collisionSource,
+      targetPath: collisionTarget,
+      fileRecordId: null,
+      sourceEvidenceKey: "evidence-collision",
+      proposalEvidence: {},
+      expectedSizeBytes: null,
+      expectedModifiedAtMs: null,
+    });
+    await assert.rejects(() => executeOperation(ownerA, collisionOp!.id), /nothing was overwritten/);
+    assert.equal(opById(collisionOp!.id)?.status, "failed");
+    assert.equal(await missing(collisionSource), false, "a blocked collision leaves both files alone");
+    assert.equal(await readFile(collisionTarget, "utf8"), "occupant");
+    await unlink(collisionTarget);
+
+    // --- rollback restores the original path --------------------------------
+    const rolledBack = await rollbackOperation(ownerA, staleOp!.id);
+    assert.equal(rolledBack?.status, "rolled_back");
+    assert.equal(await missing(target), true);
+    assert.equal(await missing(source), false);
+    await assert.rejects(() => rollbackOperation(ownerA, staleOp!.id), /cannot be rolled back/);
+
+    // --- restructure creates only in-volume directories, and cleans them up --
+    const deepTarget = join(opsRoot, "Created", "Deep", "Renamed.mkv");
+    stats = await stat(source);
+    const deepOp = createOperation(ownerA, {
+      kind: "restructure",
+      sourcePath: source,
+      targetPath: deepTarget,
+      fileRecordId: null,
+      sourceEvidenceKey: "evidence-deep",
+      proposalEvidence: {},
+      expectedSizeBytes: stats.size,
+      expectedModifiedAtMs: Math.trunc(stats.mtimeMs),
+    });
+    const deepExecuted = await executeOperation(ownerA, deepOp!.id);
+    assert.equal(deepExecuted?.status, "succeeded");
+    assert.ok(deepExecuted && deepExecuted.createdDirectories.includes(join(opsRoot, "Created")));
+    assert.ok(deepExecuted && deepExecuted.createdDirectories.includes(join(opsRoot, "Created", "Deep")));
+    const deepRollback = await rollbackOperation(ownerA, deepOp!.id);
+    assert.equal(deepRollback?.status, "rolled_back");
+    assert.equal(await missing(join(opsRoot, "Created")), true, "empty directories created for the move are removed by rollback");
+
+    // --- move kind + rollback that is impossible now stays journaled --------
+    const moveSource = join(opsRoot, "Move Me.mkv");
+    const moveTarget = join(opsRoot, "Moved", "Move Me.mkv");
+    await writeFile(moveSource, "move-payload");
+    const moveOp = createOperation(ownerA, {
+      kind: "move",
+      sourcePath: moveSource,
+      targetPath: moveTarget,
+      fileRecordId: null,
+      sourceEvidenceKey: "evidence-move",
+      proposalEvidence: {},
+      expectedSizeBytes: null,
+      expectedModifiedAtMs: null,
+    });
+    assert.equal((await executeOperation(ownerA, moveOp!.id))?.status, "succeeded");
+    await unlink(moveTarget);
+    await assert.rejects(() => rollbackOperation(ownerA, moveOp!.id), /no longer exists at its recorded destination/);
+    assert.equal(opById(moveOp!.id)?.status, "succeeded", "a failed rollback attempt leaves the journal truthful");
+    assert.match(opById(moveOp!.id)?.error ?? "", /Rollback failed/);
+
+    // --- missing sources fail cleanly -----------------------------------------
+    const ghostOp = createOperation(ownerA, {
+      kind: "move",
+      sourcePath: join(opsRoot, "Ghost.mkv"),
+      targetPath: join(opsRoot, "Ghost-Moved.mkv"),
+      fileRecordId: null,
+      sourceEvidenceKey: null,
+      proposalEvidence: {},
+      expectedSizeBytes: null,
+      expectedModifiedAtMs: null,
+    });
+    await assert.rejects(() => executeOperation(ownerA, ghostOp!.id), /Source file does not exist/);
+    assert.equal(opById(ghostOp!.id)?.status, "failed");
+
+    // --- owner isolation -------------------------------------------------------
+    assert.deepEqual(readOperations(ownerB), []);
+    await assert.rejects(() => rollbackOperation(ownerB, moveOp!.id), /not found/);
+    await assert.rejects(() => executeOperation(ownerB, moveOp!.id), /not found/);
+
+    // The operation kind enum rejects nothing else: sanity-check the error class.
+    assert.ok(new ArchiveMutationError("collision", "x") instanceof Error);
+  });
+
+  test("naming proposals persist evidence-bound decisions, reopen on evidence change, and apply through the journal", async () => {
+    const tvVolume = join(testRoot, "naming-volume", "Tv Shows");
+    // "Some Show S1" normalizes to "some show": the destination directory then
+    // differs from the source in more than case, so the engine classifies the
+    // proposal as a true restructure rather than an in-place rename.
+    const showDirectory = join(tvVolume, "Some Show S1", "Season 01");
+    await mkdir(showDirectory, { recursive: true });
+    const ffprobePath = join(testRoot, "naming-ffprobe.mjs");
+    await writeFile(ffprobePath, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({
+  format: { duration: "1234.5", format_name: "matroska,webm" },
+  streams: [{ codec_type: "video", codec_name: "h264", width: 1920, height: 1080 }],
+}));`);
+    await chmod(ffprobePath, 0o755);
+    const episodeFile = join(showDirectory, "01 - Cold Open.mkv");
+    await writeFile(episodeFile, "pilot-master");
+    await writeFile(join(tvVolume, "Unrelated File.mkv"), "unrelated");
+    writeSettings({ archiveDirectory: tvVolume, downloadDirectory: "", ffprobePath });
+
+    const missing = async (candidate: string) => access(candidate).then(() => false, () => true);
+    // Tests share one database; journal assertions count deltas from a baseline.
+    const journalLength = () => readOperations(ownerA, 100).length;
+    const waitForScan = async (ownerId: string) => {
+      startArchiveScan(ownerId);
+      for (let attempt = 0; attempt < 400; attempt += 1) {
+        const state = readArchiveScan(ownerId);
+        if (state.status !== "scanning") return state;
+        await new Promise((resolveScan) => setTimeout(resolveScan, 10));
+      }
+      throw new Error("Archive scan did not finish.");
+    };
+    assert.equal((await waitForScan(ownerA)).status, "completed");
+
+    const naming = await readNamingProposals(ownerA);
+    const proposal = naming.results.find((entry) => entry.sourceFilename === "01 - Cold Open.mkv");
+    assert.ok(proposal, "the directory-backed episode should produce a proposal");
+    assert.equal(proposal.patternId, "directory_show_season_episode_number");
+    assert.equal(proposal.confidence, "high");
+    assert.equal(proposal.operation, "restructure");
+    assert.equal(proposal.decisionStatus, "unreviewed");
+    assert.equal(proposal.decisionStale, false);
+    assert.ok(typeof proposal.proposedPath === "string" && proposal.proposedPath.includes(join("some show", "Season 01")));
+    const proposedPath = proposal.proposedPath as string;
+
+    // --- apply gates before any acceptance ------------------------------------
+    const baseline = journalLength();
+    const gated = await applyNamingProposals(ownerA, [proposal.fileRecordId]);
+    assert.equal(gated.results[0]?.success, false);
+    assert.match(gated.results[0]?.error ?? "", /must be accepted/);
+    assert.equal(gated.results[0]?.operation, null, "a gated item never reaches the journal");
+
+    const badAccept = await setNamingProposalDecisions(ownerA, [{ fileRecordId: -1, status: "accepted" }]);
+    assert.equal(badAccept.results[0]?.success, false, "unknown records are rejected per item");
+
+    // --- durable decision -------------------------------------------------------
+    const decision = await setNamingProposalDecisions(ownerA, [
+      { fileRecordId: proposal.fileRecordId, status: "accepted", note: "tidy up S1" },
+    ]);
+    assert.equal(decision.succeeded, 1);
+    const afterDecision = await readNamingProposals(ownerA);
+    const acceptedRow = afterDecision.results.find((entry) => entry.fileRecordId === proposal.fileRecordId);
+    assert.equal(acceptedRow?.decisionStatus, "accepted");
+    assert.equal(acceptedRow?.decisionNote, "tidy up S1");
+    assert.equal(acceptedRow?.decisionStale, false);
+    assert.equal(afterDecision.summary.acceptedCount, 1);
+    const storedDecision = archiveDb.prepare(
+      "SELECT status, note FROM naming_proposal_decision WHERE owner_id = ? AND file_record_id = ?",
+    ).get(ownerA, proposal.fileRecordId) as { status: string; note: string | null };
+    assert.equal(storedDecision.status, "accepted");
+    assert.equal(storedDecision.note, "tidy up S1");
+
+    // --- dry run reports the plan but touches nothing ---------------------------
+    const dryRun = await applyNamingProposals(ownerA, [proposal.fileRecordId], { dryRun: true });
+    assert.equal(dryRun.dryRun, true);
+    assert.equal(dryRun.results[0]?.success, true);
+    assert.equal(dryRun.results[0]?.plan?.ok, true);
+    assert.deepEqual(
+      (dryRun.results[0]?.plan?.checks ?? []).map((check: { step: string }) => check.step),
+      ["path_safety", "source", "collision", "directories"],
+    );
+    assert.equal(journalLength(), baseline, "a dry run writes no journal rows");
+    assert.equal(await missing(episodeFile), false, "a dry run moves no files");
+
+    // --- collision re-checked at apply time -------------------------------------
+    await mkdir(dirname(resolve(proposedPath)), { recursive: true });
+    await writeFile(proposedPath, "occupant");
+    const blocked = await applyNamingProposals(ownerA, [proposal.fileRecordId]);
+    assert.equal(blocked.results[0]?.success, false);
+    assert.match(blocked.results[0]?.error ?? "", /overwritten/);
+    const blockedOperations = readOperations(ownerA, 100);
+    assert.equal(blockedOperations.length, baseline + 1, "the attempt is audited even though it failed");
+    assert.equal(blockedOperations[0]?.status, "failed");
+    assert.equal(await missing(episodeFile), false, "the source stays untouched on collision");
+    await unlink(proposedPath);
+
+    // --- apply -------------------------------------------------------------------
+    const applied = await applyNamingProposals(ownerA, [proposal.fileRecordId]);
+    assert.equal(applied.requested, 1);
+    assert.equal(applied.succeeded, 1);
+    const appliedOperation = applied.results[0]?.operation;
+    assert.ok(appliedOperation);
+    assert.equal(appliedOperation?.status, "succeeded");
+    assert.equal(appliedOperation?.kind, "restructure");
+    assert.equal(await missing(episodeFile), true, "the source path is vacated");
+    assert.equal(await missing(appliedOperation!.targetPath), false, "the target now holds the file");
+    assert.equal(
+      (archiveDb.prepare("SELECT path FROM file_record WHERE owner_id = ? AND id = ?").get(ownerA, proposal.fileRecordId) as { path: string }).path,
+      appliedOperation!.targetPath,
+      "the inventory row follows the move so the archive stays truthful",
+    );
+
+    // --- rollback through the journal --------------------------------------------
+    const rolledBack = await rollbackOperation(ownerA, appliedOperation!.id);
+    assert.equal(rolledBack?.status, "rolled_back");
+    assert.equal(await missing(episodeFile), false);
+    assert.equal(await missing(appliedOperation!.targetPath), true);
+
+    // --- evidence change reopens an accepted proposal ------------------------------
+    await setNamingProposalDecisions(ownerA, [{ fileRecordId: proposal.fileRecordId, status: "accepted" }]);
+    await writeFile(episodeFile, "pilot-master-remuxed");
+    assert.equal((await waitForScan(ownerA)).status, "completed");
+    const reopened = await readNamingProposals(ownerA);
+    const reopenedProposal = reopened.results.find((entry) => entry.fileRecordId === proposal.fileRecordId);
+    assert.equal(reopenedProposal?.decisionStatus, "unreviewed", "changed evidence reopens the proposal for review");
+    assert.equal(reopenedProposal?.decisionStale, true);
+    assert.equal(reopened.summary.acceptedCount, 0);
+    assert.equal(reopened.summary.staleDecisionCount, 1);
+    const reopenBlocked = await applyNamingProposals(ownerA, [proposal.fileRecordId]);
+    assert.match(reopenBlocked.results[0]?.error ?? "", /superseded evidence/);
+
+    // deferred/rejected remain expressible on the reopened proposal
+    const deferred = await setNamingProposalDecisions(ownerA, [{ fileRecordId: proposal.fileRecordId, status: "deferred" }]);
+    assert.equal(deferred.results[0]?.success, true);
+    const deferredView = await readNamingProposals(ownerA);
+    assert.equal(deferredView.results.find((entry) => entry.fileRecordId === proposal.fileRecordId)?.decisionStatus, "deferred");
+    assert.equal(deferredView.summary.deferredCount, 1);
+    const rejectedView = await setNamingProposalDecisions(ownerA, [{ fileRecordId: proposal.fileRecordId, status: "rejected" }]);
+    assert.equal(rejectedView.results[0]?.success, true);
+    assert.equal(
+      (await readNamingProposals(ownerA)).results.find((entry) => entry.fileRecordId === proposal.fileRecordId)?.decisionStatus,
+      "rejected",
+    );
+
+    // --- bounded batch -----------------------------------------------------------
+    await assert.rejects(
+      () => applyNamingProposals(ownerA, Array.from({ length: 26 }, (_, index) => index + 1)),
+      /limited to 25/,
+    );
+
+    // --- owner isolation ------------------------------------------------------------
+    assert.equal((await readNamingProposals(ownerB)).results.length, 0);
+    const crossOwnerDecision = await setNamingProposalDecisions(ownerB, [{ fileRecordId: proposal.fileRecordId, status: "accepted" }]);
+    assert.equal(crossOwnerDecision.results[0]?.success, false, "other owners cannot decide on this archive");
+    const crossOwnerApply = await applyNamingProposals(ownerB, [proposal.fileRecordId]);
+    assert.match(crossOwnerApply.results[0]?.error ?? "", /No current naming proposal/);
+    assert.deepEqual(readOperations(ownerB), [], "journal rows are owner-scoped");
   });
 });

@@ -254,6 +254,11 @@ paths:
           in: query
           schema:
             type: boolean
+        - name: decision
+          in: query
+          schema:
+            type: string
+            enum: [accepted, rejected, deferred, unreviewed]
       responses:
         "200":
           description: Archive naming proposals
@@ -261,6 +266,126 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ArchiveNamingProposalResponse"
+  /archive/naming-proposals/decisions:
+    post:
+      operationId: updateArchiveNamingProposalDecisions
+      tags: [archive]
+      summary: Save durable decisions for archive naming proposals
+      description: |
+        Persists accepted/rejected/deferred decisions tied to the exact proposal
+        evidence (including the source file's size and modification time). When
+        the underlying evidence changes, the stored decision no longer matches
+        and the proposal reopens as unreviewed instead of silently remaining
+        accepted. Only proposals with an executable, collision-free destination
+        can be accepted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveNamingProposalDecisionsBody"
+      responses:
+        "200":
+          description: Per-proposal decision outcomes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveNamingProposalDecisionsResponse"
+        "400":
+          description: Decision input is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /archive/naming-proposals/apply:
+    post:
+      operationId: applyArchiveNamingProposals
+      tags: [archive]
+      summary: Apply accepted archive naming proposals through the mutation journal
+      description: |
+        Applies a bounded batch of naming proposals. Every item must currently
+        be accepted against matching evidence, must have an executable
+        collision-free destination, and is re-validated at apply time: paths
+        are confined to configured archive volumes, traversal is rejected, and
+        an existing target aborts that item (files are never overwritten).
+        Destructive phases only run through the archive operation journal,
+        which records state transitions and enables rollback. With `dryRun`
+        the same gates and checks run without any filesystem or journal write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveNamingProposalApplyBody"
+      responses:
+        "200":
+          description: Per-proposal apply outcomes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveNamingProposalApplyResponse"
+        "400":
+          description: Apply input is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /archive/operations:
+    get:
+      operationId: getArchiveOperations
+      tags: [archive]
+      summary: List recent archive mutation operations
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Owner-scoped archive operations, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArchiveOperation"
+  /archive/operations/{id}/rollback:
+    post:
+      operationId: rollbackArchiveOperation
+      tags: [archive]
+      summary: Roll back a successful archive operation using its journal entry
+      description: |
+        Restores the original path only when the moved file still exists at
+        the recorded destination and the original path is free again. Any
+        other condition refuses the rollback without touching files.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+            minimum: 1
+      responses:
+        "200":
+          description: The operation after rollback
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
+        "400":
+          description: Rollback is not possible for this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Archive operation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /archive/records/{id}:
     get:
       operationId: getArchiveRecord
@@ -711,6 +836,13 @@ components:
         - volumeId
         - archiveRoot
         - collision
+        - sizeBytes
+        - modifiedAtMs
+        - evidenceKey
+        - decisionStatus
+        - decisionNote
+        - decisionUpdatedAt
+        - decisionStale
       properties:
         fileRecordId:
           type: number
@@ -772,6 +904,37 @@ components:
         collision:
           type: boolean
 
+        sizeBytes:
+          type: [number, "null"]
+
+        modifiedAtMs:
+          type: [number, "null"]
+
+        evidenceKey:
+          type: string
+          description: |
+            SHA-256 over the evidence this proposal was derived from (source
+            path, filename, size, mtime, pattern, confidence, operation, and
+            destination). Decisions and applies are bound to this key.
+
+        decisionStatus:
+          type: string
+          enum: [accepted, rejected, deferred, unreviewed]
+          description: |
+            The durable decision that currently matches this proposal's
+            evidence. A stored decision whose evidence key no longer matches
+            reads back as `unreviewed` (the proposal reopens for review).
+
+        decisionNote:
+          type: [string, "null"]
+
+        decisionUpdatedAt:
+          type: [string, "null"]
+
+        decisionStale:
+          type: boolean
+          description: True when a decision exists but was made against superseded evidence.
+
     ArchiveNamingProposalSummary:
       type: object
       required:
@@ -782,6 +945,10 @@ components:
         - actionable
         - uncertain
         - collisions
+        - acceptedCount
+        - rejectedCount
+        - deferredCount
+        - staleDecisionCount
       properties:
         total:
           type: number
@@ -810,6 +977,24 @@ components:
         collisions:
           type: number
           minimum: 0
+
+        acceptedCount:
+          type: number
+          minimum: 0
+          description: Proposals whose currently-matching decision is accepted.
+
+        rejectedCount:
+          type: number
+          minimum: 0
+
+        deferredCount:
+          type: number
+          minimum: 0
+
+        staleDecisionCount:
+          type: number
+          minimum: 0
+          description: Proposals carrying a decision made against superseded evidence.
 
     ArchiveNamingProposalPagination:
       type: object
@@ -852,6 +1037,225 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ArchiveNamingProposal"
+    ArchiveNamingProposalDecisionUpdate:
+      type: object
+      required: [fileRecordId, status]
+      properties:
+        fileRecordId:
+          type: number
+          minimum: 1
+        status:
+          type: string
+          enum: [accepted, rejected, deferred]
+        note:
+          type: [string, "null"]
+          maxLength: 500
+    ArchiveNamingProposalDecisionsBody:
+      type: object
+      required: [decisions]
+      properties:
+        decisions:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ArchiveNamingProposalDecisionUpdate"
+    ArchiveNamingProposalDecision:
+      type: object
+      required: [status, evidenceKey, note, updatedAt]
+      properties:
+        status:
+          type: string
+          enum: [accepted, rejected, deferred]
+        evidenceKey:
+          type: string
+        note:
+          type: [string, "null"]
+        updatedAt:
+          type: string
+    ArchiveNamingProposalDecisionResult:
+      type: object
+      required: [fileRecordId, success, decision, error]
+      properties:
+        fileRecordId:
+          type: number
+        success:
+          type: boolean
+        decision:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveNamingProposalDecision"
+            - type: "null"
+        error:
+          type: [string, "null"]
+    ArchiveNamingProposalDecisionsResponse:
+      type: object
+      required: [attempted, succeeded, failed, results]
+      properties:
+        attempted:
+          type: number
+          minimum: 1
+        succeeded:
+          type: number
+          minimum: 0
+        failed:
+          type: number
+          minimum: 0
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveNamingProposalDecisionResult"
+    ArchiveNamingProposalApplyBody:
+      type: object
+      required: [fileRecordIds]
+      properties:
+        fileRecordIds:
+          type: array
+          minItems: 1
+          maxItems: 25
+          uniqueItems: true
+          description: |
+            Bounded batch of file_record ids whose accepted naming proposals
+            should be applied. A single apply request touches at most 25 files.
+          items:
+            type: number
+            minimum: 1
+        dryRun:
+          type: boolean
+          default: false
+          description: |
+            When true, every gate (accepted decision, executable destination,
+            path confinement, collision, source-freshness) is evaluated but no
+            filesystem or journal write happens.
+    ArchiveOperation:
+      type: object
+      description: |
+        Durable, owner-scoped journal entry for one filesystem mutation.
+        Source and target are confined to configured archive volumes; the
+        evidence snapshot plus expected size/mtime make the change auditable,
+        and successful entries carry enough information to roll the mutation
+        back.
+      required:
+        - id
+        - kind
+        - status
+        - sourcePath
+        - targetPath
+        - fileRecordId
+        - sourceEvidenceKey
+        - proposalEvidence
+        - expectedSizeBytes
+        - expectedModifiedAtMs
+        - createdDirectories
+        - error
+        - appliedAt
+        - rolledBackAt
+        - rollbackAvailable
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: number
+        kind:
+          type: string
+          enum: [rename, move, restructure]
+        status:
+          type: string
+          enum: [proposed, approved, queued, running, succeeded, failed, rolled_back]
+        sourcePath:
+          type: string
+        targetPath:
+          type: string
+        fileRecordId:
+          type: [number, "null"]
+        sourceEvidenceKey:
+          type: [string, "null"]
+        proposalEvidence:
+          type: object
+          additionalProperties: true
+        expectedSizeBytes:
+          type: [number, "null"]
+        expectedModifiedAtMs:
+          type: [number, "null"]
+        createdDirectories:
+          type: array
+          items:
+            type: string
+        error:
+          type: [string, "null"]
+        appliedAt:
+          type: [string, "null"]
+        rolledBackAt:
+          type: [string, "null"]
+        rollbackAvailable:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+    ArchiveOperationCheck:
+      type: object
+      required: [step, ok, message]
+      properties:
+        step:
+          type: string
+        ok:
+          type: boolean
+        message:
+          type: string
+    ArchiveOperationPlan:
+      type: object
+      required: [kind, ok, sourcePath, targetPath, checks]
+      properties:
+        ok:
+          type: boolean
+        kind:
+          type: string
+          enum: [rename, move, restructure]
+        sourcePath:
+          type: [string, "null"]
+        targetPath:
+          type: [string, "null"]
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveOperationCheck"
+    ArchiveNamingProposalApplyResult:
+      type: object
+      required: [fileRecordId, success, error, operation, plan]
+      properties:
+        fileRecordId:
+          type: number
+        success:
+          type: boolean
+        error:
+          type: [string, "null"]
+        operation:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveOperation"
+            - type: "null"
+        plan:
+          oneOf:
+            - $ref: "#/components/schemas/ArchiveOperationPlan"
+            - type: "null"
+    ArchiveNamingProposalApplyResponse:
+      type: object
+      required: [requested, dryRun, succeeded, failed, results]
+      properties:
+        requested:
+          type: number
+          minimum: 1
+        dryRun:
+          type: boolean
+        succeeded:
+          type: number
+          minimum: 0
+        failed:
+          type: number
+          minimum: 0
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveNamingProposalApplyResult"
     StatusValue:
       type: string
       enum: [ready, connected, idle, placeholder, warning, unavailable, processing]
