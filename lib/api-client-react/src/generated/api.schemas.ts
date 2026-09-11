@@ -1742,6 +1742,77 @@ export interface ErrorResponse {
   error: string;
 }
 
+export type IntegrationCapability = typeof IntegrationCapability[keyof typeof IntegrationCapability];
+
+
+export const IntegrationCapability = {
+  media_host_inventory: 'media_host_inventory',
+  search_source: 'search_source',
+  availability_lookup: 'availability_lookup',
+  acquisition_request: 'acquisition_request',
+  download_status: 'download_status',
+  completed_item_notification: 'completed_item_notification',
+  request_ingestion: 'request_ingestion',
+} as const;
+
+export interface IntegrationConfigUpdate {
+  enabled: boolean;
+}
+
+export interface IntegrationErrorResponse {
+  error: string;
+}
+
+export type IntegrationDescriptorState = typeof IntegrationDescriptorState[keyof typeof IntegrationDescriptorState];
+
+
+export const IntegrationDescriptorState = {
+  not_configured: 'not_configured',
+  configured: 'configured',
+  connected: 'connected',
+  disconnected: 'disconnected',
+  unavailable: 'unavailable',
+} as const;
+
+export interface IntegrationDescriptor {
+  id: string;
+  name: string;
+  enabled: boolean;
+  configured: boolean;
+  state: IntegrationDescriptorState;
+  /** @nullable */
+  lastSuccessfulSyncAt: string | null;
+  capabilities: IntegrationCapability[];
+  plannedCapabilities: IntegrationCapability[];
+  availableCapabilities: IntegrationCapability[];
+}
+
+export type IntegrationMediaItemKind = typeof IntegrationMediaItemKind[keyof typeof IntegrationMediaItemKind];
+
+
+export const IntegrationMediaItemKind = {
+  movie: 'movie',
+  show: 'show',
+  episode: 'episode',
+  other: 'other',
+} as const;
+
+export interface IntegrationMediaItem {
+  /** Opaque integration-local reference */
+  id: string;
+  title: string;
+  kind: IntegrationMediaItemKind;
+  /** @nullable */
+  year: number | null;
+}
+
+export interface IntegrationInventory {
+  cached: true;
+  /** @nullable */
+  lastSuccessfulSyncAt: string | null;
+  items: IntegrationMediaItem[];
+}
+
 export type GetArchiveNamingProposalsParams = {
 /**
  * @minimum 1

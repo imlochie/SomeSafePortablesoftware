@@ -147,6 +147,9 @@ for (const testFile of testFiles) {
       platform: "node",
       target: "node22",
       outfile: outputFile,
+      // Every suite is bundled the same way: route tests pull CommonJS
+      // dependencies (express) into ESM and need a real `require`.
+      banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
       sourcemap: "inline",
       logLevel: "warning",
     });
@@ -159,6 +162,7 @@ for (const testFile of testFiles) {
           stdio: "inherit",
           env: {
             ...process.env,
+            AUTH_MODE: "local",
             ARCHIVE_DB_PATH: databaseFile,
             ARCHIVE_TEST_ROOT: testDir,
           },
