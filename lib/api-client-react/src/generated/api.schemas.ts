@@ -636,6 +636,46 @@ export const ArchiveInventoryRecordReviewStatus = {
   unresolved: 'unresolved',
 } as const;
 
+/**
+ * @nullable
+ */
+export type ArchiveInventoryRecordChecksumStatus = typeof ArchiveInventoryRecordChecksumStatus[keyof typeof ArchiveInventoryRecordChecksumStatus] | null;
+
+
+export const ArchiveInventoryRecordChecksumStatus = {
+  computed: 'computed',
+  failed: 'failed',
+  not_computed: 'not_computed',
+} as const;
+
+/**
+ * Whether a duplicate finding rests on checksums or on the coarse fingerprint.
+ * @nullable
+ */
+export type ArchiveInventoryRecordDuplicateKind = typeof ArchiveInventoryRecordDuplicateKind[keyof typeof ArchiveInventoryRecordDuplicateKind] | null;
+
+
+export const ArchiveInventoryRecordDuplicateKind = {
+  exact: 'exact',
+  probable: 'probable',
+  null: 'null',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ArchiveInventoryRecordDynamicRangeFormat = typeof ArchiveInventoryRecordDynamicRangeFormat[keyof typeof ArchiveInventoryRecordDynamicRangeFormat] | null;
+
+
+export const ArchiveInventoryRecordDynamicRangeFormat = {
+  sdr: 'sdr',
+  hdr10: 'hdr10',
+  hdr10_plus: 'hdr10_plus',
+  hlg: 'hlg',
+  dolby_vision: 'dolby_vision',
+  unknown: 'unknown',
+} as const;
+
 export interface ArchiveInventoryRecord {
   id: number;
   /** @nullable */
@@ -687,6 +727,466 @@ export interface ArchiveInventoryRecord {
   reviewNote: string | null;
   /** @nullable */
   reviewUpdatedAt: string | null;
+  /**
+     * Deterministic evidence identity behind the legacy quality finding review.
+     * @nullable
+     */
+  reviewEvidenceKey?: string | null;
+  /** @nullable */
+  checksumStatus?: ArchiveInventoryRecordChecksumStatus;
+  /**
+     * Whether a duplicate finding rests on checksums or on the coarse fingerprint.
+     * @nullable
+     */
+  duplicateKind?: ArchiveInventoryRecordDuplicateKind;
+  /** @nullable */
+  identityKey?: string | null;
+  /** @nullable */
+  dynamicRangeFormat?: ArchiveInventoryRecordDynamicRangeFormat;
+}
+
+export type ArchiveQualitySnapshotDynamicRange = typeof ArchiveQualitySnapshotDynamicRange[keyof typeof ArchiveQualitySnapshotDynamicRange];
+
+
+export const ArchiveQualitySnapshotDynamicRange = {
+  sdr: 'sdr',
+  hdr10: 'hdr10',
+  hdr10_plus: 'hdr10_plus',
+  hlg: 'hlg',
+  dolby_vision: 'dolby_vision',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ArchiveQualitySnapshotChecksumStatus = typeof ArchiveQualitySnapshotChecksumStatus[keyof typeof ArchiveQualitySnapshotChecksumStatus] | null;
+
+
+export const ArchiveQualitySnapshotChecksumStatus = {
+  computed: 'computed',
+  failed: 'failed',
+  not_computed: 'not_computed',
+} as const;
+
+export type ArchiveQualitySnapshotProvenance = typeof ArchiveQualitySnapshotProvenance[keyof typeof ArchiveQualitySnapshotProvenance];
+
+
+export const ArchiveQualitySnapshotProvenance = {
+  remux: 'remux',
+  disc_encode: 'disc_encode',
+  web_dl: 'web_dl',
+  web_rip: 'web_rip',
+  tv_capture: 'tv_capture',
+  camera_or_capture: 'camera_or_capture',
+  unknown: 'unknown',
+} as const;
+
+export type ArchiveQualitySnapshotStorageScope = typeof ArchiveQualitySnapshotStorageScope[keyof typeof ArchiveQualitySnapshotStorageScope];
+
+
+export const ArchiveQualitySnapshotStorageScope = {
+  library: 'library',
+  staging: 'staging',
+  plex: 'plex',
+  unknown: 'unknown',
+} as const;
+
+export interface ArchiveQualitySnapshot {
+  /** Origin pointer, for example `file_record:12` or `plex_item:4`. */
+  reference: string;
+  /** @nullable */
+  fileRecordId?: number | null;
+  label: string;
+  /** Normalized resolution label such as `2160p`, `1080p`, `audio only`, or `unknown`. */
+  resolution: string;
+  /** @nullable */
+  width?: number | null;
+  /** @nullable */
+  height?: number | null;
+  dynamicRange: ArchiveQualitySnapshotDynamicRange;
+  /** @nullable */
+  videoCodec?: string | null;
+  /** @nullable */
+  videoProfile?: string | null;
+  /** @nullable */
+  bitDepth?: number | null;
+  /** @nullable */
+  framerate?: number | null;
+  /**
+     * Container-level bitrate in bits per second.
+     * @nullable
+     */
+  bitrate?: number | null;
+  /**
+     * Compact audio summary, for example `EAC3 5.1`.
+     * @nullable
+     */
+  audio?: string | null;
+  audioLanguages: string[];
+  subtitleLanguages: string[];
+  /** @nullable */
+  container?: string | null;
+  /** @nullable */
+  durationSeconds?: number | null;
+  /** @nullable */
+  sizeBytes?: number | null;
+  /** @nullable */
+  checksum?: string | null;
+  /** @nullable */
+  checksumStatus?: ArchiveQualitySnapshotChecksumStatus;
+  provenance: ArchiveQualitySnapshotProvenance;
+  storageScope: ArchiveQualitySnapshotStorageScope;
+  /** @nullable */
+  volumeId?: string | null;
+  /** @nullable */
+  relativePath?: string | null;
+  technicalMetadataMissing: boolean;
+}
+
+export type ArchiveQualityAxisAxis = typeof ArchiveQualityAxisAxis[keyof typeof ArchiveQualityAxisAxis];
+
+
+export const ArchiveQualityAxisAxis = {
+  resolution: 'resolution',
+  dynamic_range: 'dynamic_range',
+  video_codec: 'video_codec',
+  video_profile: 'video_profile',
+  bit_depth: 'bit_depth',
+  framerate: 'framerate',
+  bitrate: 'bitrate',
+  video_bitrate: 'video_bitrate',
+  audio_codec: 'audio_codec',
+  audio_channels: 'audio_channels',
+  audio_bitrate: 'audio_bitrate',
+  audio_languages: 'audio_languages',
+  subtitle_languages: 'subtitle_languages',
+  container: 'container',
+  duration: 'duration',
+  file_size: 'file_size',
+  checksum: 'checksum',
+  source_provenance: 'source_provenance',
+  location: 'location',
+} as const;
+
+export type ArchiveQualityAxisStatus = typeof ArchiveQualityAxisStatus[keyof typeof ArchiveQualityAxisStatus];
+
+
+export const ArchiveQualityAxisStatus = {
+  left_better: 'left_better',
+  right_better: 'right_better',
+  equal: 'equal',
+  different: 'different',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * `ranked` axes participate in Pareto dominance. `escalating` axes are
+ * real differences that are never ordered. `informational` axes are
+ * recorded for the operator and never change a verdict.
+ */
+export type ArchiveQualityAxisMateriality = typeof ArchiveQualityAxisMateriality[keyof typeof ArchiveQualityAxisMateriality];
+
+
+export const ArchiveQualityAxisMateriality = {
+  ranked: 'ranked',
+  escalating: 'escalating',
+  informational: 'informational',
+} as const;
+
+export interface ArchiveQualityAxis {
+  axis: ArchiveQualityAxisAxis;
+  status: ArchiveQualityAxisStatus;
+  /**
+     * `ranked` axes participate in Pareto dominance. `escalating` axes are
+     * real differences that are never ordered. `informational` axes are
+     * recorded for the operator and never change a verdict.
+     */
+  materiality: ArchiveQualityAxisMateriality;
+  /** @nullable */
+  leftValue?: string | null;
+  /** @nullable */
+  rightValue?: string | null;
+  text: string;
+  /** @nullable */
+  note?: string | null;
+}
+
+export type ArchiveQualityComparisonRelationship = typeof ArchiveQualityComparisonRelationship[keyof typeof ArchiveQualityComparisonRelationship];
+
+
+export const ArchiveQualityComparisonRelationship = {
+  exact_duplicate: 'exact_duplicate',
+  probable_duplicate: 'probable_duplicate',
+  equivalent: 'equivalent',
+  superior_encode: 'superior_encode',
+  inferior_encode: 'inferior_encode',
+  materially_different_encode: 'materially_different_encode',
+  different_media: 'different_media',
+  insufficient_metadata: 'insufficient_metadata',
+} as const;
+
+/**
+ * Which side is preferred, or null when the evidence does not support a winner.
+ * @nullable
+ */
+export type ArchiveQualityComparisonWinner = typeof ArchiveQualityComparisonWinner[keyof typeof ArchiveQualityComparisonWinner] | null;
+
+
+export const ArchiveQualityComparisonWinner = {
+  left: 'left',
+  right: 'right',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ArchiveQualityComparisonConfidence = typeof ArchiveQualityComparisonConfidence[keyof typeof ArchiveQualityComparisonConfidence] | null;
+
+
+export const ArchiveQualityComparisonConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export interface ArchiveQualityComparison {
+  counterpart: ArchiveQualitySnapshot;
+  /** @nullable */
+  counterpartFileRecordId?: number | null;
+  /** @nullable */
+  counterpartRatingKey?: string | null;
+  relationship: ArchiveQualityComparisonRelationship;
+  /**
+     * Which side is preferred, or null when the evidence does not support a winner.
+     * @nullable
+     */
+  winner?: ArchiveQualityComparisonWinner;
+  /** @nullable */
+  confidence?: ArchiveQualityComparisonConfidence;
+  reasons: string[];
+  uncertainty: string[];
+  axes: ArchiveQualityAxis[];
+}
+
+export type ArchiveQualityFindingKind = typeof ArchiveQualityFindingKind[keyof typeof ArchiveQualityFindingKind];
+
+
+export const ArchiveQualityFindingKind = {
+  exact_duplicate: 'exact_duplicate',
+  probable_duplicate: 'probable_duplicate',
+  lower_quality_duplicate: 'lower_quality_duplicate',
+  superior_encode: 'superior_encode',
+  materially_different_encode: 'materially_different_encode',
+  conflicting_quality_metadata: 'conflicting_quality_metadata',
+  missing_technical_metadata: 'missing_technical_metadata',
+} as const;
+
+export type ArchiveQualityFindingRelationship = typeof ArchiveQualityFindingRelationship[keyof typeof ArchiveQualityFindingRelationship];
+
+
+export const ArchiveQualityFindingRelationship = {
+  exact_duplicate: 'exact_duplicate',
+  probable_duplicate: 'probable_duplicate',
+  equivalent: 'equivalent',
+  superior_encode: 'superior_encode',
+  inferior_encode: 'inferior_encode',
+  materially_different_encode: 'materially_different_encode',
+  different_media: 'different_media',
+  insufficient_metadata: 'insufficient_metadata',
+} as const;
+
+export type ArchiveQualityFindingSeverity = typeof ArchiveQualityFindingSeverity[keyof typeof ArchiveQualityFindingSeverity];
+
+
+export const ArchiveQualityFindingSeverity = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  info: 'info',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ArchiveQualityFindingConfidence = typeof ArchiveQualityFindingConfidence[keyof typeof ArchiveQualityFindingConfidence] | null;
+
+
+export const ArchiveQualityFindingConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ArchiveQualityFindingWinner = typeof ArchiveQualityFindingWinner[keyof typeof ArchiveQualityFindingWinner] | null;
+
+
+export const ArchiveQualityFindingWinner = {
+  left: 'left',
+  right: 'right',
+} as const;
+
+export type ArchiveQualityFindingReviewStatus = typeof ArchiveQualityFindingReviewStatus[keyof typeof ArchiveQualityFindingReviewStatus];
+
+
+export const ArchiveQualityFindingReviewStatus = {
+  unreviewed: 'unreviewed',
+  reviewed: 'reviewed',
+  deferred: 'deferred',
+  unresolved: 'unresolved',
+} as const;
+
+/**
+ * Fixed value; the quality layer never proposes a destructive action.
+ */
+export type ArchiveQualityFindingAction = typeof ArchiveQualityFindingAction[keyof typeof ArchiveQualityFindingAction];
+
+
+export const ArchiveQualityFindingAction = {
+  review_only: 'review_only',
+} as const;
+
+export interface ArchiveQualityFinding {
+  key: string;
+  /** Deterministic evidence identity; a changed key reopens the finding. */
+  evidenceKey: string;
+  fileRecordId: number;
+  filename: string;
+  /** @nullable */
+  relativePath?: string | null;
+  /** @nullable */
+  volumeId?: string | null;
+  kind: ArchiveQualityFindingKind;
+  relationship: ArchiveQualityFindingRelationship;
+  severity: ArchiveQualityFindingSeverity;
+  /** @nullable */
+  confidence?: ArchiveQualityFindingConfidence;
+  headline: string;
+  reason: string;
+  reasons: string[];
+  uncertainty: string[];
+  currentQuality: ArchiveQualitySnapshot;
+  currentQualityLine: string;
+  counterpart?: ArchiveQualitySnapshot | null;
+  /** @nullable */
+  counterpartFileRecordId?: number | null;
+  /** @nullable */
+  counterpartRatingKey?: string | null;
+  /** @nullable */
+  counterpartLine?: string | null;
+  /** @nullable */
+  winner?: ArchiveQualityFindingWinner;
+  /** @nullable */
+  preferredFilename?: string | null;
+  axes: ArchiveQualityAxis[];
+  reviewStatus: ArchiveQualityFindingReviewStatus;
+  /** @nullable */
+  reviewNote?: string | null;
+  /** @nullable */
+  reviewUpdatedAt?: string | null;
+  /** Fixed value; the quality layer never proposes a destructive action. */
+  action: ArchiveQualityFindingAction;
+}
+
+export interface ArchiveQualityFindingSummary {
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  exactDuplicateCount: number;
+  /** @minimum 0 */
+  probableDuplicateCount: number;
+  /** @minimum 0 */
+  lowerQualityCount: number;
+  /** @minimum 0 */
+  superiorCount: number;
+  /** @minimum 0 */
+  materialDifferenceCount: number;
+  /** @minimum 0 */
+  conflictingMetadataCount: number;
+  /** @minimum 0 */
+  missingMetadataCount: number;
+  /** @minimum 0 */
+  unreviewedCount: number;
+  /** @minimum 0 */
+  reviewedCount: number;
+  /** @minimum 0 */
+  affectedFiles: number;
+}
+
+export interface ArchiveQualityFindingPagination {
+  /** @minimum 1 */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  totalPages: number;
+}
+
+export interface ArchiveQualityFindingResponse {
+  summary: ArchiveQualityFindingSummary;
+  pagination: ArchiveQualityFindingPagination;
+  results: ArchiveQualityFinding[];
+}
+
+export type ArchiveQualityRecordReportAction = typeof ArchiveQualityRecordReportAction[keyof typeof ArchiveQualityRecordReportAction];
+
+
+export const ArchiveQualityRecordReportAction = {
+  review_only: 'review_only',
+} as const;
+
+export interface ArchiveQualityRecordReport {
+  fileRecordId: number;
+  filename: string;
+  /** @nullable */
+  relativePath?: string | null;
+  identityKey: string;
+  currentQuality: ArchiveQualitySnapshot;
+  currentQualityLine: string;
+  comparisons: ArchiveQualityComparison[];
+  findings: ArchiveQualityFinding[];
+  action: ArchiveQualityRecordReportAction;
+}
+
+export type ArchiveQualityFindingReviewUpdateKind = typeof ArchiveQualityFindingReviewUpdateKind[keyof typeof ArchiveQualityFindingReviewUpdateKind];
+
+
+export const ArchiveQualityFindingReviewUpdateKind = {
+  exact_duplicate: 'exact_duplicate',
+  probable_duplicate: 'probable_duplicate',
+  lower_quality_duplicate: 'lower_quality_duplicate',
+  superior_encode: 'superior_encode',
+  materially_different_encode: 'materially_different_encode',
+  conflicting_quality_metadata: 'conflicting_quality_metadata',
+  missing_technical_metadata: 'missing_technical_metadata',
+} as const;
+
+export type ArchiveQualityFindingReviewUpdateStatus = typeof ArchiveQualityFindingReviewUpdateStatus[keyof typeof ArchiveQualityFindingReviewUpdateStatus];
+
+
+export const ArchiveQualityFindingReviewUpdateStatus = {
+  reviewed: 'reviewed',
+  deferred: 'deferred',
+  unresolved: 'unresolved',
+} as const;
+
+export interface ArchiveQualityFindingReviewUpdate {
+  /** @minimum 1 */
+  fileRecordId: number;
+  kind: ArchiveQualityFindingReviewUpdateKind;
+  /** @minLength 8 */
+  evidenceKey: string;
+  status: ArchiveQualityFindingReviewUpdateStatus;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  note?: string | null;
 }
 
 export interface ArchiveInventory {
@@ -797,6 +1297,48 @@ export const LocalMediaInspectionVerification = {
   failed: 'failed',
 } as const;
 
+/**
+ * @nullable
+ */
+export type LocalMediaInspectionDynamicRangeFormat = typeof LocalMediaInspectionDynamicRangeFormat[keyof typeof LocalMediaInspectionDynamicRangeFormat] | null;
+
+
+export const LocalMediaInspectionDynamicRangeFormat = {
+  sdr: 'sdr',
+  hdr10: 'hdr10',
+  hdr10_plus: 'hdr10_plus',
+  hlg: 'hlg',
+  dolby_vision: 'dolby_vision',
+  unknown: 'unknown',
+} as const;
+
+export interface MediaAudioTrack {
+  index: number;
+  /** @nullable */
+  codec?: string | null;
+  /** @nullable */
+  profile?: string | null;
+  /** @nullable */
+  channels?: number | null;
+  /** @nullable */
+  channelLayout?: string | null;
+  /** @nullable */
+  language?: string | null;
+  /** @nullable */
+  bitrate?: number | null;
+  default: boolean;
+}
+
+export interface MediaSubtitleTrack {
+  index: number;
+  /** @nullable */
+  codec?: string | null;
+  /** @nullable */
+  language?: string | null;
+  default: boolean;
+  forced: boolean;
+}
+
 export interface LocalMediaInspection {
   filename: string;
   path: string;
@@ -828,6 +1370,26 @@ export interface LocalMediaInspection {
   /** @nullable */
   dynamicRange: string | null;
   verification: LocalMediaInspectionVerification;
+  /** @nullable */
+  videoProfile?: string | null;
+  /** @nullable */
+  videoPixFmt?: string | null;
+  /** @nullable */
+  videoBitDepth?: number | null;
+  /** @nullable */
+  colorPrimaries?: string | null;
+  /** @nullable */
+  dynamicRangeFormat?: LocalMediaInspectionDynamicRangeFormat;
+  /** @nullable */
+  audioProfile?: string | null;
+  /** @nullable */
+  audioChannelLayout?: string | null;
+  /** @nullable */
+  videoBitrate?: number | null;
+  /** @nullable */
+  audioBitrate?: number | null;
+  audioTracks?: MediaAudioTrack[];
+  subtitleTracks?: MediaSubtitleTrack[];
 }
 
 export type DownloadPreparationInputOutputContainer = typeof DownloadPreparationInputOutputContainer[keyof typeof DownloadPreparationInputOutputContainer];
@@ -1001,5 +1563,58 @@ export type GetArchiveNamingProposalsState = typeof GetArchiveNamingProposalsSta
 export const GetArchiveNamingProposalsState = {
   actionable: 'actionable',
   uncertain: 'uncertain',
+} as const;
+
+export type GetArchiveQualityFindingsParams = {
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+pageSize?: number;
+kind?: GetArchiveQualityFindingsKind;
+confidence?: GetArchiveQualityFindingsConfidence;
+reviewStatus?: GetArchiveQualityFindingsReviewStatus;
+/**
+ * @minimum 1
+ */
+fileRecordId?: number;
+volume?: string;
+includeReviewed?: boolean;
+};
+
+export type GetArchiveQualityFindingsKind = typeof GetArchiveQualityFindingsKind[keyof typeof GetArchiveQualityFindingsKind];
+
+
+export const GetArchiveQualityFindingsKind = {
+  exact_duplicate: 'exact_duplicate',
+  probable_duplicate: 'probable_duplicate',
+  lower_quality_duplicate: 'lower_quality_duplicate',
+  superior_encode: 'superior_encode',
+  materially_different_encode: 'materially_different_encode',
+  conflicting_quality_metadata: 'conflicting_quality_metadata',
+  missing_technical_metadata: 'missing_technical_metadata',
+} as const;
+
+export type GetArchiveQualityFindingsConfidence = typeof GetArchiveQualityFindingsConfidence[keyof typeof GetArchiveQualityFindingsConfidence];
+
+
+export const GetArchiveQualityFindingsConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type GetArchiveQualityFindingsReviewStatus = typeof GetArchiveQualityFindingsReviewStatus[keyof typeof GetArchiveQualityFindingsReviewStatus];
+
+
+export const GetArchiveQualityFindingsReviewStatus = {
+  unreviewed: 'unreviewed',
+  reviewed: 'reviewed',
+  deferred: 'deferred',
+  unresolved: 'unresolved',
 } as const;
 

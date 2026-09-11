@@ -1,9 +1,17 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { access, readdir, stat } from "node:fs/promises";
 import { basename, extname, relative, resolve, sep } from "node:path";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia } from "./media";
+import {
+  coarseQualityScore,
+  compareEncodes,
+  legacyQualityDifferences,
+  technicalQualityFromPlexItemRow,
+  technicalQualityFromRecord,
+  type TechnicalQuality,
+} from "./media-quality";
 import { getArchiveScanRoots } from "./storage";
 
 const supportedExtensions = new Set([
@@ -63,6 +71,18 @@ type FileRow = {
   local_identity_id?: number | null;
   volume_id?: string | null;
   archive_root?: string | null;
+  video_profile?: string | null;
+  video_pix_fmt?: string | null;
+  video_bit_depth?: number | null;
+  color_primaries?: string | null;
+  audio_profile?: string | null;
+  audio_channel_layout?: string | null;
+  video_bitrate?: number | null;
+  audio_bitrate?: number | null;
+  audio_tracks?: string | null;
+  subtitle_tracks?: string | null;
+  checksum_status?: string | null;
+  identity_key?: string | null;
 };
 
 type LocalMediaIdentity = {
@@ -92,15 +112,13 @@ type PlexRow = {
   bitrate: number | null;
 };
 
-type QualityShape = {
-  height: number | null;
-  hdr: boolean;
-  videoCodec: string | null;
-  bitrate: number | null;
-  audioCodec: string | null;
-  audioChannels: number | null;
-  container: string | null;
-};
+/**
+ * The normalized technical-quality model is the single source of truth for
+ * comparisons. `file_record` rows and cached Plex rows are both converted into
+ * it (see `media-quality.ts`), so the inventory and the findings layer never
+ * disagree about what a file is.
+ */
+type QualityShape = TechnicalQuality;
 
 function expandPath(value: string) {
   return value.startsWith("~/")
@@ -173,51 +191,25 @@ function localIdentityFor(
   };
 }
 
-function qualityShape(row: Pick<FileRow, "height" | "dynamic_range" | "video_codec" | "bitrate" | "audio_codec" | "audio_channels" | "container">): QualityShape {
-  return {
-    height: row.height,
-    hdr: Boolean(row.dynamic_range && /hdr|smpte2084|arib-std-b67|hlg/i.test(row.dynamic_range)),
+function qualityOf(row: FileRow, indexes: InventoryIndexes): QualityShape {
+  const known = indexes.quality.get(row.id);
+  if (known) return known;
+  return technicalQualityFromRecord(row);
+}
+
+function plexQualityShape(row: PlexRow, indexes: InventoryIndexes): QualityShape {
+  const known = indexes.plexQuality.get(row.id);
+  if (known) return known;
+  return technicalQualityFromPlexItemRow({
+    id: row.id,
+    ratingKey: row.rating_key,
+    title: row.title,
+    metadataJson: row.metadata_json,
+    videoResolution: row.video_resolution,
     videoCodec: row.video_codec,
-    bitrate: row.bitrate,
     audioCodec: row.audio_codec,
-    audioChannels: row.audio_channels,
-    container: row.container,
-  };
-}
-
-function plexQualityShape(row: PlexRow): QualityShape {
-  const metadata = parseMetadata(row.metadata_json);
-  const media = asRecord(metadata.media);
-  return {
-    height: row.video_resolution ? Number.parseInt(row.video_resolution.replace(/\D/g, ""), 10) || null : null,
-    hdr: Boolean(metadata.dynamicRange && /hdr|smpte2084|arib-std-b67|hlg/i.test(String(metadata.dynamicRange))),
-    videoCodec: row.video_codec,
-    bitrate: row.bitrate,
-    audioCodec: row.audio_codec,
-    audioChannels: typeof media?.audioChannels === "number" ? media.audioChannels : null,
-    container: typeof media?.container === "string" ? media.container : null,
-  };
-}
-
-export function qualityRank(shape: QualityShape) {
-  const height = shape.height ?? 0;
-  const hdr = shape.hdr ? 5000 : 0;
-  const codec = /av1/i.test(shape.videoCodec ?? "") ? 300 : /265|hevc/i.test(shape.videoCodec ?? "") ? 250 : /264/i.test(shape.videoCodec ?? "") ? 150 : 50;
-  const bitrate = Math.min(100, Math.round((shape.bitrate ?? 0) / 1_000_000));
-  const audio = shape.audioChannels ?? 0;
-  return height + hdr + codec + bitrate + audio;
-}
-
-function qualityDifferences(left: QualityShape, right: QualityShape) {
-  const differences: string[] = [];
-  if (left.height !== right.height && (left.height !== null || right.height !== null)) differences.push(`resolution ${left.height ?? "unknown"}p vs ${right.height ?? "unknown"}p`);
-  if (left.hdr !== right.hdr) differences.push(`${left.hdr ? "HDR" : "SDR"} vs ${right.hdr ? "HDR" : "SDR"}`);
-  if (left.videoCodec !== right.videoCodec) differences.push(`video codec ${left.videoCodec ?? "unknown"} vs ${right.videoCodec ?? "unknown"}`);
-  if (left.bitrate !== right.bitrate && (left.bitrate !== null || right.bitrate !== null)) differences.push(`bitrate ${left.bitrate ?? "unknown"} vs ${right.bitrate ?? "unknown"}`);
-  if (left.audioCodec !== right.audioCodec) differences.push(`audio codec ${left.audioCodec ?? "unknown"} vs ${right.audioCodec ?? "unknown"}`);
-  if (left.audioChannels !== right.audioChannels && (left.audioChannels !== null || right.audioChannels !== null)) differences.push(`audio channels ${left.audioChannels ?? "unknown"} vs ${right.audioChannels ?? "unknown"}`);
-  if (left.container !== right.container) differences.push(`container ${left.container ?? "unknown"} vs ${right.container ?? "unknown"}`);
-  return differences;
+    bitrateKbps: row.bitrate,
+  });
 }
 
 function reviewEvidenceKey(record: {
@@ -292,8 +284,24 @@ async function* walk(root: string, onWarning: (message: string) => void): AsyncG
   }
 }
 
+type ChecksumOutcome = {
+  checksum: string | null;
+  checksumStatus: "computed" | "failed" | "not_computed";
+};
+
+/**
+ * Scan roots are the configured archive volumes plus the download staging
+ * directory when it exists. Staging has to be inventoried too, otherwise a
+ * freshly downloaded copy of something already in the library stays invisible
+ * to duplicate and quality comparison until it is moved.
+ */
 function scanRoots(settings: SettingsRecord) {
-  return getArchiveScanRoots(settings);
+  const roots = getArchiveScanRoots(settings);
+  const staging = settings.downloadDirectory?.trim();
+  if (!staging) return roots;
+  const expanded = expandPath(staging);
+  if (!roots.includes(expanded) && existsSync(expanded)) roots.push(expanded);
+  return roots;
 }
 
 function updateScan(ownerId: string, values: Record<string, unknown>) {
@@ -308,7 +316,16 @@ function updateScan(ownerId: string, values: Record<string, unknown>) {
   ).run(...Object.values(values) as Array<string | number | null>, ownerId);
 }
 
-function upsertArchiveRecord(ownerId: string, filePath: string, root: string, modifiedAtMs: number, inspected: Awaited<ReturnType<typeof inspectLocalMedia>> | null, fileChecksum: string | null, errorMessage: string | null) {
+function upsertArchiveRecord(
+  ownerId: string,
+  filePath: string,
+  root: string,
+  modifiedAtMs: number,
+  inspected: Awaited<ReturnType<typeof inspectLocalMedia>> | null,
+  fileChecksum: string | null,
+  errorMessage: string | null,
+  checksumStatus: ChecksumOutcome["checksumStatus"] = fileChecksum ? "computed" : "not_computed",
+) {
   const filename = basename(filePath);
   const relativePath = relative(root, filePath);
   const title = filename.replace(/\.[^.]+$/, "");
@@ -323,7 +340,12 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
     ].join("|")
     : null;
   const localIdentity = localIdentityFor(filename, root, inspected?.filesize ?? null, fingerprint, fileChecksum);
-  const localIdentityId = Number(archiveDb.prepare(`
+  // The identity row is an upsert, and SQLite does not update
+  // `last_insert_rowid` when the DO UPDATE branch runs, so reading
+  // `lastInsertRowid` here would return whatever the previous file inserted.
+  // That cross-linked records onto unrelated identities (duplicate groups and
+  // quality comparisons then disagreed per scan order). Resolve by key instead.
+  archiveDb.prepare(`
     INSERT INTO local_media_identity
       (owner_id, identity_key, media_type, normalized_title, year, show_identity,
        season_number, episode_number, size_bytes, fingerprint, checksum, updated_at)
@@ -351,7 +373,12 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
     localIdentity.sizeBytes,
     localIdentity.fingerprint,
     localIdentity.checksum,
-  ).lastInsertRowid);
+  );
+  const localIdentityId = Number(
+    (archiveDb.prepare(
+      "SELECT id FROM local_media_identity WHERE owner_id = ? AND identity_key = ?",
+    ).get(ownerId, localIdentity.identityKey) as { id: number }).id,
+  );
 
   const existingItem = archiveDb.prepare(
     "SELECT id FROM archive_item WHERE owner_id = ? AND archive_path = ?",
@@ -370,12 +397,16 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
          local_identity_id, volume_id, archive_root,
          scan_status, last_seen_at, modified_at_ms, extension, duration_seconds, video_codec, audio_codec,
          width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages,
-         subtitle_languages, fingerprint, error_message, updated_at)
+         subtitle_languages, fingerprint, error_message,
+         video_profile, video_pix_fmt, video_bit_depth, color_primaries, audio_profile,
+         audio_channel_layout, video_bitrate, audio_bitrate, audio_tracks, subtitle_tracks,
+         checksum_status, updated_at)
        VALUES (
          ?, ?, ?, ?, ?, ?, ?, ?,
          ?, ?, ?,
          ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?,
-         ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+         ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
        )
        ON CONFLICT(owner_id, path) DO UPDATE SET
          size_bytes = excluded.size_bytes, checksum = excluded.checksum, media_type = excluded.media_type,
@@ -387,7 +418,13 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
          bitrate = excluded.bitrate, container = excluded.container, dynamic_range = excluded.dynamic_range,
          audio_channels = excluded.audio_channels, audio_languages = excluded.audio_languages,
          subtitle_languages = excluded.subtitle_languages, fingerprint = excluded.fingerprint,
-         error_message = excluded.error_message, updated_at = CURRENT_TIMESTAMP`,
+         error_message = excluded.error_message,
+         video_profile = excluded.video_profile, video_pix_fmt = excluded.video_pix_fmt,
+         video_bit_depth = excluded.video_bit_depth, color_primaries = excluded.color_primaries,
+         audio_profile = excluded.audio_profile, audio_channel_layout = excluded.audio_channel_layout,
+         video_bitrate = excluded.video_bitrate, audio_bitrate = excluded.audio_bitrate,
+         audio_tracks = excluded.audio_tracks, subtitle_tracks = excluded.subtitle_tracks,
+         checksum_status = excluded.checksum_status, updated_at = CURRENT_TIMESTAMP`,
   ).run(
    filePath,
    inspected?.filesize ?? null,
@@ -417,7 +454,38 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
    JSON.stringify(inspected?.subtitleLanguages ?? []),
    fingerprint,
    errorMessage,
+   inspected?.videoProfile ?? null,
+   inspected?.videoPixFmt ?? null,
+   inspected?.videoBitDepth ?? null,
+   inspected?.colorPrimaries ?? null,
+   inspected?.audioProfile ?? null,
+   inspected?.audioChannelLayout ?? null,
+   inspected?.videoBitrate ?? null,
+   inspected?.audioBitrate ?? null,
+   JSON.stringify(inspected?.audioTracks ?? []),
+   JSON.stringify(inspected?.subtitleTracks ?? []),
+   checksumStatus,
   );
+}
+
+/**
+ * Hashes one file with the checksum logic that already existed in this module.
+ *
+ * The scanner previously left `file_record.checksum` permanently NULL, which
+ * meant `exact_duplicate` could never be reported: the byte-level index was
+ * always empty and every duplicate fell back to the coarse fingerprint. A
+ * checksum is now produced whenever a file is (re-)inspected, and back-filled
+ * once for records that were scanned before this existed.
+ *
+ * Hashing is only paid for new or changed files: the size + mtime short circuit
+ * below keeps already-verified records at zero cost.
+ */
+async function computeChecksum(filePath: string): Promise<ChecksumOutcome> {
+  try {
+    return { checksum: await checksum(filePath), checksumStatus: "computed" };
+  } catch {
+    return { checksum: null, checksumStatus: "failed" };
+  }
 }
 
 async function inspectFile(filePath: string, root: string, existing: FileRow | undefined, settings: SettingsRecord, archiveScanRoots: string[]) {
@@ -427,34 +495,45 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
     && existing.size_bytes === fileStats.size
     && existing.modified_at_ms === Math.trunc(fileStats.mtimeMs);
   if (unchanged) {
+    // Metadata is still valid, so FFprobe is skipped. Byte-level evidence is
+    // the one thing older scans never stored, so back-fill it without probing.
+    const backfill = existing.checksum ? null : await computeChecksum(filePath);
     return {
       filePath,
       root,
       modifiedAtMs: Math.trunc(fileStats.mtimeMs),
       inspected: null,
-      fileChecksum: null,
+      fileChecksum: existing.checksum ?? backfill?.checksum ?? null,
+      checksumStatus: existing.checksum
+        ? "computed" as const
+        : backfill?.checksumStatus ?? "not_computed" as const,
       errorMessage: null,
       unchangedRecordId: existing.id,
+      checksumBackfill: backfill,
       warningMessage: undefined,
     };
   }
 
   let inspected: Awaited<ReturnType<typeof inspectLocalMedia>> | null = null;
-  const fileChecksum: string | null = null;
   let errorMessage: string | null = null;
   try {
     inspected = await inspectLocalMedia(filePath, settings, archiveScanRoots);
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : "The file could not be inspected.";
   }
+  // The hash is independent of FFprobe success: an unprobeable file still has
+  // byte-level identity, and a duplicate of it is still an exact duplicate.
+  const hashed = await computeChecksum(filePath);
   return {
     filePath,
     root,
     modifiedAtMs: Math.trunc(fileStats.mtimeMs),
     inspected,
-    fileChecksum,
+    fileChecksum: hashed.checksum,
+    checksumStatus: hashed.checksumStatus,
     errorMessage,
     unchangedRecordId: null,
+    checksumBackfill: null,
     warningMessage: undefined,
   };
 }
@@ -515,8 +594,10 @@ for (const root of roots) {
                 modifiedAtMs: 0,
                 inspected: null,
                 fileChecksum: null,
+                checksumStatus: "not_computed" as const,
                 errorMessage: null,
                 unchangedRecordId: null,
+                checksumBackfill: null,
                 warningMessage: `Archive scan could not inspect ${basename(filePath)}: ${
                   error instanceof Error ? error.message : "unknown error"
                 }`,
@@ -536,9 +617,18 @@ for (const root of roots) {
           } else {
             try {
               if (result.unchangedRecordId !== null) {
-                archiveDb.prepare(
-                  "UPDATE file_record SET last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
-                ).run(result.unchangedRecordId, ownerId);
+                if (result.checksumBackfill?.checksum) {
+                  archiveDb.prepare(
+                    "UPDATE file_record SET checksum = ?, checksum_status = ?, last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+                  ).run(result.checksumBackfill.checksum, result.checksumBackfill.checksumStatus, result.unchangedRecordId, ownerId);
+                  archiveDb.prepare(
+                    "UPDATE local_media_identity SET checksum = COALESCE(?, checksum), updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT local_identity_id FROM file_record WHERE id = ?)",
+                  ).run(result.checksumBackfill.checksum, result.unchangedRecordId);
+                } else {
+                  archiveDb.prepare(
+                    "UPDATE file_record SET last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+                  ).run(result.unchangedRecordId, ownerId);
+                }
               } else {
                 upsertArchiveRecord(
                   ownerId,
@@ -548,6 +638,7 @@ for (const root of roots) {
                   result.inspected,
                   result.fileChecksum,
                   result.errorMessage,
+                  result.checksumStatus,
                 );
                 if (result.inspected === null) failedFiles += 1;
               }
@@ -808,6 +899,7 @@ function plexMatch(row: FileRow, indexes: PlexTitleIndexes, episodeIndex: Map<st
 function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, plexTitleIndex: PlexTitleIndexes, reviews: Map<string, ReviewRow>, localIdentity?: LocalMediaIdentity) {
   const identityKey = localIdentity?.identity_key
     ?? `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
+  const quality = qualityOf(row, indexes);
   const sameIdentity = (indexes.identity.get(identityKey) ?? []).filter((candidate) => candidate.id !== row.id);
   const exactDuplicate = row.checksum
     ? (indexes.checksum.get(row.checksum) ?? []).find((candidate) => candidate.id !== row.id)
@@ -831,32 +923,43 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     qualityStatus = "duplicate";
     qualitySummary = exactDuplicate ? "Exact SHA-256 checksum matches another local file." : "Normalized title, duration, dimensions, and codecs match another local file.";
   } else if (row.scan_status === "active" && sameIdentity.length) {
-    const best = indexes.bestByIdentity.get(identityKey) ?? row;
-    if (best.id === row.id) {
-      qualityStatus = "best_local_version";
-      qualitySummary = "Highest available local version for this normalized media identity.";
+    const group = indexes.groups.get(identityKey);
+    if (group?.ambiguous) {
+      // No encode dominates the others: a resolution gain traded against a
+      // better dynamic range or a different codec generation is an operator
+      // decision, so the inventory refuses to crown a "best" copy.
+      qualityStatus = "needs_review";
+      qualityDifferences = group.differences;
+      qualitySummary = "Local versions of this identity differ in ways the stored metadata cannot rank; no best copy was selected.";
     } else {
-      qualityStatus = "lower_quality_version";
-      qualityDifferences = qualityDifferencesFor(row, best);
-      qualitySummary = "A higher-quality local version exists; factors are listed below.";
+      const best = group ? indexes.rowsById.get(group.championId) ?? row : row;
+      if (best.id === row.id) {
+        qualityStatus = "best_local_version";
+        qualitySummary = group
+          ? "At least as good as every other local version of this identity on all comparable measured axes."
+          : "Only local version of this normalized media identity.";
+      } else {
+        qualityStatus = "lower_quality_version";
+        qualityDifferences = legacyQualityDifferences(quality, qualityOf(best, indexes));
+        qualitySummary = "Another local version is at least as good on every comparable measured axis; factors are listed below.";
+      }
     }
   } else if (row.scan_status === "active" && match) {
-    const differences = qualityDifferencesFor(row, match);
-    const localQuality = qualityShape(row);
-    const plexQuality = plexQualityShape(match);
-    const localRank = qualityRank(localQuality);
-    const plexRank = qualityRank(plexQuality);
+    const plexQuality = plexQualityShape(match, indexes);
+    const differences = legacyQualityDifferences(quality, plexQuality);
+    const localRank = coarseQualityScore(quality);
+    const plexRank = coarseQualityScore(plexQuality);
+    const localHasHdr = hasHdr(quality);
+    const plexHasHdr = hasHdr(plexQuality);
     const resolutionDiffers =
-      localQuality.height !== null &&
+      quality.height !== null &&
       plexQuality.height !== null &&
-      localQuality.height !== plexQuality.height;
+      quality.height !== plexQuality.height;
     const localHasHigherResolution =
-      resolutionDiffers && localQuality.height! > plexQuality.height!;
-    const localHasHdr = localQuality.hdr && !plexQuality.hdr;
-    const plexHasHdr = plexQuality.hdr && !localQuality.hdr;
+      resolutionDiffers && quality.height! > plexQuality.height!;
     const materialTradeoff =
       resolutionDiffers &&
-      (localHasHigherResolution ? plexHasHdr : localHasHdr);
+      (localHasHigherResolution ? plexHasHdr && !localHasHdr : localHasHdr && !plexHasHdr);
     qualityDifferences = differences;
     if (!differences.length) {
       qualityStatus = "plex_version_exists";
@@ -873,6 +976,7 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     }
   }
   const duplicateOfId = exactDuplicate?.id ?? fingerprintDuplicate?.id ?? null;
+  const duplicateKind = exactDuplicate ? "exact" : fingerprintDuplicate ? "probable" : null;
   const plexMatchResult = match ? {
     ratingKey: match.rating_key,
     title: match.title,
@@ -896,6 +1000,7 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     relativePath: row.relative_path,
     sizeBytes: row.size_bytes,
     checksum: row.checksum,
+    checksumStatus: row.checksum_status ?? (row.checksum ? "computed" : "not_computed"),
     mediaType: row.media_type,
     scanStatus: row.scan_status,
     errorMessage: row.error_message,
@@ -908,6 +1013,7 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     bitrate: row.bitrate,
     container: row.container,
     dynamicRange: row.dynamic_range,
+    dynamicRangeFormat: quality.dynamicRange,
     audioChannels: row.audio_channels,
     audioLanguages: parseJsonArray(row.audio_languages),
     subtitleLanguages: parseJsonArray(row.subtitle_languages),
@@ -916,6 +1022,8 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     qualitySummary,
     qualityDifferences,
     duplicateOfId,
+    duplicateKind,
+    identityKey,
     plexMatch: plexMatchResult,
     reviewStatus: review.status,
     reviewNote: review.note,
@@ -924,24 +1032,113 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
   };
 }
 
-function qualityDifferencesFor(local: FileRow, other: FileRow | PlexRow) {
-  return qualityDifferences(
-    qualityShape(local),
-    "rating_key" in other ? plexQualityShape(other) : qualityShape(other),
-  );
+/** True when the normalized model reports a non-SDR, non-unknown dynamic range. */
+function hasHdr(quality: QualityShape) {
+  return quality.dynamicRange !== "sdr" && quality.dynamicRange !== "unknown";
 }
 
-type InventoryIndexes = {
+export type IdentityGroup = {
+  championId: number;
+  /** True when no member dominates the others, so "best" is not defensible. */
+  ambiguous: boolean;
+  memberIds: number[];
+  differences: string[];
+};
+
+export type InventoryIndexes = {
   identity: Map<string, FileRow[]>;
   checksum: Map<string, FileRow[]>;
   fingerprint: Map<string, FileRow[]>;
-  bestByIdentity: Map<string, FileRow>;
+  rowsById: Map<number, FileRow>;
+  quality: Map<number, QualityShape>;
+  plexQuality: Map<number, QualityShape>;
+  groups: Map<string, IdentityGroup>;
 };
+
+/**
+ * Picks the representative encode for one semantic identity.
+ *
+ * A member wins only when nothing else in the group dominates it, where
+ * dominance comes from `compareEncodes` (at least as good on every comparable
+ * measured axis and strictly better on at least one). When several members
+ * survive, the group is ambiguous and the caller must not present a winner.
+ */
+function selectIdentityChampion(rows: FileRow[], modelOf: (row: FileRow) => QualityShape): IdentityGroup | null {
+  let members = rows;
+  if (members.length < 2) return null;
+  // Byte-identical copies are one candidate, not competing versions: keep the
+  // lowest record id per checksum so duplicate sets cannot make a group look
+  // ambiguous, and so the surviving members are genuinely distinct encodes.
+  const perChecksum = new Map<string, FileRow>();
+  for (const member of members) {
+    if (!member.checksum) continue;
+    const known = perChecksum.get(member.checksum);
+    if (!known || member.id < known.id) perChecksum.set(member.checksum, member);
+  }
+  if (perChecksum.size) {
+    const seenChecksums = new Set(perChecksum.keys());
+    const deduped = members.filter(
+      (member) => !member.checksum || (seenChecksums.has(member.checksum) && perChecksum.get(member.checksum)!.id === member.id),
+    );
+    if (deduped.length !== members.length) members = deduped;
+  }
+  if (members.length < 2) return null;
+  const dominated = new Set<number>();
+  for (const [index, left] of members.entries()) {
+    for (const right of members.slice(index + 1)) {
+      const comparison = compareEncodes(modelOf(left), modelOf(right));
+      if (comparison.relationship === "superior_encode" && comparison.winner === "left") {
+        dominated.add(right.id);
+      } else if (comparison.relationship === "inferior_encode" && comparison.winner === "right") {
+        dominated.add(left.id);
+      } else if (comparison.relationship === "exact_duplicate") {
+        // Byte-identical copies are redundant, not competing versions; keep
+        // the lower record id as the canonical one so the choice is stable.
+        dominated.add(Math.max(left.id, right.id));
+      }
+    }
+  }
+  const front = members.filter((member) => !dominated.has(member.id));
+  if (!front.length) return null;
+  if (front.length === 1) {
+    // A single survivor needs no difference list: each losing record already
+    // gets its own comparison against the champion in `mapFile`.
+    return {
+      championId: front[0].id,
+      ambiguous: false,
+      memberIds: members.map((member) => member.id),
+      differences: [],
+    };
+  }
+  const champion = front.reduce((best, candidate) =>
+    coarseQualityScore(modelOf(candidate)) > coarseQualityScore(modelOf(best)) ? candidate : best,
+  );
+  const differences = Array.from(new Set(
+    front
+      .filter((member) => member.id !== champion.id)
+      .flatMap((member) => legacyQualityDifferences(modelOf(champion), modelOf(member))),
+  ));
+  return { championId: champion.id, ambiguous: true, memberIds: members.map((member) => member.id), differences };
+}
 
 function buildArchiveInventory(ownerId: string) {
   const rows = archiveDb.prepare(
-    "SELECT id, archive_item_id, local_identity_id, filename, path, relative_path, size_bytes, checksum, media_type, scan_status, error_message, duration_seconds, video_codec, audio_codec, width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages, subtitle_languages, fingerprint, modified_at_ms, last_seen_at FROM file_record WHERE owner_id = ? ORDER BY filename COLLATE NOCASE, path",
-  ).all(ownerId) as FileRow[];
+    `SELECT file_record.id, file_record.archive_item_id, file_record.local_identity_id, file_record.filename,
+            file_record.path, file_record.relative_path, file_record.size_bytes, file_record.checksum,
+            file_record.checksum_status, file_record.media_type, file_record.scan_status, file_record.error_message,
+            file_record.duration_seconds, file_record.video_codec, file_record.audio_codec, file_record.width,
+            file_record.height, file_record.fps, file_record.bitrate, file_record.container, file_record.dynamic_range,
+            file_record.audio_channels, file_record.audio_languages, file_record.subtitle_languages,
+            file_record.fingerprint, file_record.video_profile, file_record.video_pix_fmt, file_record.video_bit_depth,
+            file_record.color_primaries, file_record.audio_profile, file_record.audio_channel_layout,
+            file_record.video_bitrate, file_record.audio_bitrate, file_record.audio_tracks, file_record.subtitle_tracks,
+            file_record.modified_at_ms, file_record.last_seen_at, file_record.volume_id, file_record.archive_root,
+            local_media_identity.identity_key AS identity_key
+     FROM file_record
+     LEFT JOIN local_media_identity ON local_media_identity.id = file_record.local_identity_id
+     WHERE file_record.owner_id = ?
+     ORDER BY file_record.filename COLLATE NOCASE, file_record.path`,
+    ).all(ownerId) as FileRow[];
   const identityRows = archiveDb.prepare(
     `SELECT id, identity_key, media_type, normalized_title, year, show_identity,
             season_number, episode_number, size_bytes, fingerprint, checksum
@@ -956,9 +1153,14 @@ function buildArchiveInventory(ownerId: string) {
     identity: new Map(),
     checksum: new Map(),
     fingerprint: new Map(),
-    bestByIdentity: new Map(),
+    rowsById: new Map(),
+    quality: new Map(),
+    plexQuality: new Map(),
+    groups: new Map(),
   };
   for (const row of rows) {
+    indexes.quality.set(row.id, technicalQualityFromRecord(row));
+    indexes.rowsById.set(row.id, row);
     if (row.scan_status !== "active") continue;
     const localIdentity = row.local_identity_id === null || row.local_identity_id === undefined
       ? undefined
@@ -978,10 +1180,13 @@ function buildArchiveInventory(ownerId: string) {
       fingerprintRows.push(row);
       indexes.fingerprint.set(row.fingerprint, fingerprintRows);
     }
-    const best = indexes.bestByIdentity.get(identityKey);
-    if (!best || qualityRank(qualityShape(row)) > qualityRank(qualityShape(best))) {
-      indexes.bestByIdentity.set(identityKey, row);
-    }
+  }
+  for (const plexRow of plexRows) {
+    indexes.plexQuality.set(plexRow.id, plexQualityShape(plexRow, indexes));
+  }
+  for (const [identityKey, members] of indexes.identity) {
+    const group = selectIdentityChampion(members, (row) => indexes.quality.get(row.id) ?? technicalQualityFromRecord(row));
+    if (group) indexes.groups.set(identityKey, group);
   }
   const reviews = new Map<string, ReviewRow>();
   const reviewRows = archiveDb.prepare(
@@ -1033,8 +1238,22 @@ function buildArchiveInventory(ownerId: string) {
     },
     records,
     plexOnly,
+    // Internal, non-serialized context: the normalized quality model, the
+    // identity groups, and the Plex rows that produced these records. The
+    // quality findings layer reads it so the same scan output backs both
+    // views instead of a second inspection pass.
+    context: {
+      indexes,
+      identities,
+      plexRows,
+      episodeIndex,
+      plexTitleIndex,
+    },
   };
 }
+
+export type ArchiveInventoryRecord = ReturnType<typeof mapFile>;
+export type ArchiveInventoryContext = ReturnType<typeof buildArchiveInventory>;
 
 export function invalidateArchiveInventoryCache(ownerId: string) {
   inventoryCache.delete(ownerId);

@@ -529,7 +529,12 @@ export const GetArchiveInventoryResponse = zod.object({
 }),zod.null()]),
   "reviewStatus": zod.enum(['not_applicable', 'unreviewed', 'reviewed', 'deferred', 'unresolved']),
   "reviewNote": zod.string().nullable(),
-  "reviewUpdatedAt": zod.string().nullable()
+  "reviewUpdatedAt": zod.string().nullable(),
+  "reviewEvidenceKey": zod.string().nullish().describe('Deterministic evidence identity behind the legacy quality finding review.'),
+  "checksumStatus": zod.enum(['computed', 'failed', 'not_computed']).nullish(),
+  "duplicateKind": zod.enum(['exact', 'probable', 'null']).nullish().describe('Whether a duplicate finding rests on checksums or on the coarse fingerprint.'),
+  "identityKey": zod.string().nullish(),
+  "dynamicRangeFormat": zod.enum(['sdr', 'hdr10', 'hdr10_plus', 'hlg', 'dolby_vision', 'unknown']).nullish()
 })),
   "plexOnly": zod.array(zod.object({
   "ratingKey": zod.string(),
@@ -667,7 +672,12 @@ export const GetArchiveRecordResponse = zod.object({
 }),zod.null()]),
   "reviewStatus": zod.enum(['not_applicable', 'unreviewed', 'reviewed', 'deferred', 'unresolved']),
   "reviewNote": zod.string().nullable(),
-  "reviewUpdatedAt": zod.string().nullable()
+  "reviewUpdatedAt": zod.string().nullable(),
+  "reviewEvidenceKey": zod.string().nullish().describe('Deterministic evidence identity behind the legacy quality finding review.'),
+  "checksumStatus": zod.enum(['computed', 'failed', 'not_computed']).nullish(),
+  "duplicateKind": zod.enum(['exact', 'probable', 'null']).nullish().describe('Whether a duplicate finding rests on checksums or on the coarse fingerprint.'),
+  "identityKey": zod.string().nullish(),
+  "dynamicRangeFormat": zod.enum(['sdr', 'hdr10', 'hdr10_plus', 'hlg', 'dolby_vision', 'unknown']).nullish()
 })
 
 
@@ -743,6 +753,386 @@ export const UpdateArchiveRecordReviewsResponse = zod.object({
 }),zod.null()]),
   "error": zod.string().nullable()
 }))
+})
+
+
+/**
+ * Read-only findings produced by the quality intelligence layer: exact and
+ * probable duplicates, lower-quality duplicates, superior encodes,
+ * materially different encodes, and conflicting or missing technical
+ * metadata. Nothing here deletes, moves, or replaces media; every finding
+ * carries `action: review_only`.
+ * @summary Get derived technical quality findings for the local archive
+ */
+
+export const getArchiveQualityFindingsQueryPageSizeMax = 500;
+
+
+
+
+export const GetArchiveQualityFindingsQueryParams = zod.object({
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(getArchiveQualityFindingsQueryPageSizeMax).optional(),
+  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'conflicting_quality_metadata', 'missing_technical_metadata']).optional(),
+  "confidence": zod.enum(['high', 'medium', 'low']).optional(),
+  "reviewStatus": zod.enum(['unreviewed', 'reviewed', 'deferred', 'unresolved']).optional(),
+  "fileRecordId": zod.coerce.number().min(1).optional(),
+  "volume": zod.coerce.string().optional(),
+  "includeReviewed": zod.coerce.boolean().optional()
+})
+
+export const getArchiveQualityFindingsResponseSummaryTotalMin = 0;
+
+export const getArchiveQualityFindingsResponseSummaryExactDuplicateCountMin = 0;
+
+export const getArchiveQualityFindingsResponseSummaryProbableDuplicateCountMin = 0;
+
+export const getArchiveQualityFindingsResponseSummaryLowerQualityCountMin = 0;
+
+export const getArchiveQualityFindingsResponseSummarySuperiorCountMin = 0;
+
+export const getArchiveQualityFindingsResponseSummaryMaterialDifferenceCountMin = 0;
+
+export const getArchiveQualityFindingsResponseSummaryConflictingMetadataCountMin = 0;
+
+export const getArchiveQualityFindingsResponseSummaryMissingMetadataCountMin = 0;
+
+export const getArchiveQualityFindingsResponseSummaryUnreviewedCountMin = 0;
+
+export const getArchiveQualityFindingsResponseSummaryReviewedCountMin = 0;
+
+export const getArchiveQualityFindingsResponseSummaryAffectedFilesMin = 0;
+
+
+
+export const getArchiveQualityFindingsResponsePaginationTotalMin = 0;
+
+export const getArchiveQualityFindingsResponsePaginationTotalPagesMin = 0;
+
+
+
+export const GetArchiveQualityFindingsResponse = zod.object({
+  "summary": zod.object({
+  "total": zod.number().min(getArchiveQualityFindingsResponseSummaryTotalMin),
+  "exactDuplicateCount": zod.number().min(getArchiveQualityFindingsResponseSummaryExactDuplicateCountMin),
+  "probableDuplicateCount": zod.number().min(getArchiveQualityFindingsResponseSummaryProbableDuplicateCountMin),
+  "lowerQualityCount": zod.number().min(getArchiveQualityFindingsResponseSummaryLowerQualityCountMin),
+  "superiorCount": zod.number().min(getArchiveQualityFindingsResponseSummarySuperiorCountMin),
+  "materialDifferenceCount": zod.number().min(getArchiveQualityFindingsResponseSummaryMaterialDifferenceCountMin),
+  "conflictingMetadataCount": zod.number().min(getArchiveQualityFindingsResponseSummaryConflictingMetadataCountMin),
+  "missingMetadataCount": zod.number().min(getArchiveQualityFindingsResponseSummaryMissingMetadataCountMin),
+  "unreviewedCount": zod.number().min(getArchiveQualityFindingsResponseSummaryUnreviewedCountMin),
+  "reviewedCount": zod.number().min(getArchiveQualityFindingsResponseSummaryReviewedCountMin),
+  "affectedFiles": zod.number().min(getArchiveQualityFindingsResponseSummaryAffectedFilesMin)
+}),
+  "pagination": zod.object({
+  "page": zod.number().min(1),
+  "pageSize": zod.number().min(1),
+  "total": zod.number().min(getArchiveQualityFindingsResponsePaginationTotalMin),
+  "totalPages": zod.number().min(getArchiveQualityFindingsResponsePaginationTotalPagesMin)
+}),
+  "results": zod.array(zod.object({
+  "key": zod.string(),
+  "evidenceKey": zod.string().describe('Deterministic evidence identity; a changed key reopens the finding.'),
+  "fileRecordId": zod.number(),
+  "filename": zod.string(),
+  "relativePath": zod.string().nullish(),
+  "volumeId": zod.string().nullish(),
+  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'conflicting_quality_metadata', 'missing_technical_metadata']),
+  "relationship": zod.enum(['exact_duplicate', 'probable_duplicate', 'equivalent', 'superior_encode', 'inferior_encode', 'materially_different_encode', 'different_media', 'insufficient_metadata']),
+  "severity": zod.enum(['high', 'medium', 'low', 'info']),
+  "confidence": zod.enum(['high', 'medium', 'low']).nullish(),
+  "headline": zod.string(),
+  "reason": zod.string(),
+  "reasons": zod.array(zod.string()),
+  "uncertainty": zod.array(zod.string()),
+  "currentQuality": zod.object({
+  "reference": zod.string().describe('Origin pointer, for example `file_record:12` or `plex_item:4`.'),
+  "fileRecordId": zod.number().nullish(),
+  "label": zod.string(),
+  "resolution": zod.string().describe('Normalized resolution label such as `2160p`, `1080p`, `audio only`, or `unknown`.'),
+  "width": zod.number().nullish(),
+  "height": zod.number().nullish(),
+  "dynamicRange": zod.enum(['sdr', 'hdr10', 'hdr10_plus', 'hlg', 'dolby_vision', 'unknown']),
+  "videoCodec": zod.string().nullish(),
+  "videoProfile": zod.string().nullish(),
+  "bitDepth": zod.number().nullish(),
+  "framerate": zod.number().nullish(),
+  "bitrate": zod.number().nullish().describe('Container-level bitrate in bits per second.'),
+  "audio": zod.string().nullish().describe('Compact audio summary, for example `EAC3 5.1`.'),
+  "audioLanguages": zod.array(zod.string()),
+  "subtitleLanguages": zod.array(zod.string()),
+  "container": zod.string().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "sizeBytes": zod.number().nullish(),
+  "checksum": zod.string().nullish(),
+  "checksumStatus": zod.enum(['computed', 'failed', 'not_computed']).nullish(),
+  "provenance": zod.enum(['remux', 'disc_encode', 'web_dl', 'web_rip', 'tv_capture', 'camera_or_capture', 'unknown']),
+  "storageScope": zod.enum(['library', 'staging', 'plex', 'unknown']),
+  "volumeId": zod.string().nullish(),
+  "relativePath": zod.string().nullish(),
+  "technicalMetadataMissing": zod.boolean()
+}),
+  "currentQualityLine": zod.string(),
+  "counterpart": zod.union([zod.object({
+  "reference": zod.string().describe('Origin pointer, for example `file_record:12` or `plex_item:4`.'),
+  "fileRecordId": zod.number().nullish(),
+  "label": zod.string(),
+  "resolution": zod.string().describe('Normalized resolution label such as `2160p`, `1080p`, `audio only`, or `unknown`.'),
+  "width": zod.number().nullish(),
+  "height": zod.number().nullish(),
+  "dynamicRange": zod.enum(['sdr', 'hdr10', 'hdr10_plus', 'hlg', 'dolby_vision', 'unknown']),
+  "videoCodec": zod.string().nullish(),
+  "videoProfile": zod.string().nullish(),
+  "bitDepth": zod.number().nullish(),
+  "framerate": zod.number().nullish(),
+  "bitrate": zod.number().nullish().describe('Container-level bitrate in bits per second.'),
+  "audio": zod.string().nullish().describe('Compact audio summary, for example `EAC3 5.1`.'),
+  "audioLanguages": zod.array(zod.string()),
+  "subtitleLanguages": zod.array(zod.string()),
+  "container": zod.string().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "sizeBytes": zod.number().nullish(),
+  "checksum": zod.string().nullish(),
+  "checksumStatus": zod.enum(['computed', 'failed', 'not_computed']).nullish(),
+  "provenance": zod.enum(['remux', 'disc_encode', 'web_dl', 'web_rip', 'tv_capture', 'camera_or_capture', 'unknown']),
+  "storageScope": zod.enum(['library', 'staging', 'plex', 'unknown']),
+  "volumeId": zod.string().nullish(),
+  "relativePath": zod.string().nullish(),
+  "technicalMetadataMissing": zod.boolean()
+}),zod.null()]).optional(),
+  "counterpartFileRecordId": zod.number().nullish(),
+  "counterpartRatingKey": zod.string().nullish(),
+  "counterpartLine": zod.string().nullish(),
+  "winner": zod.enum(['left', 'right']).nullish(),
+  "preferredFilename": zod.string().nullish(),
+  "axes": zod.array(zod.object({
+  "axis": zod.enum(['resolution', 'dynamic_range', 'video_codec', 'video_profile', 'bit_depth', 'framerate', 'bitrate', 'video_bitrate', 'audio_codec', 'audio_channels', 'audio_bitrate', 'audio_languages', 'subtitle_languages', 'container', 'duration', 'file_size', 'checksum', 'source_provenance', 'location']),
+  "status": zod.enum(['left_better', 'right_better', 'equal', 'different', 'unknown']),
+  "materiality": zod.enum(['ranked', 'escalating', 'informational']).describe('`ranked` axes participate in Pareto dominance. `escalating` axes are\nreal differences that are never ordered. `informational` axes are\nrecorded for the operator and never change a verdict.\n'),
+  "leftValue": zod.string().nullish(),
+  "rightValue": zod.string().nullish(),
+  "text": zod.string(),
+  "note": zod.string().nullish()
+})),
+  "reviewStatus": zod.enum(['unreviewed', 'reviewed', 'deferred', 'unresolved']),
+  "reviewNote": zod.string().nullish(),
+  "reviewUpdatedAt": zod.string().nullish(),
+  "action": zod.enum(['review_only']).describe('Fixed value; the quality layer never proposes a destructive action.')
+}))
+})
+
+
+/**
+ * @summary Get the normalized quality model and comparisons for one archive record
+ */
+
+
+
+export const GetArchiveQualityRecordParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const GetArchiveQualityRecordResponse = zod.object({
+  "fileRecordId": zod.number(),
+  "filename": zod.string(),
+  "relativePath": zod.string().nullish(),
+  "identityKey": zod.string(),
+  "currentQuality": zod.object({
+  "reference": zod.string().describe('Origin pointer, for example `file_record:12` or `plex_item:4`.'),
+  "fileRecordId": zod.number().nullish(),
+  "label": zod.string(),
+  "resolution": zod.string().describe('Normalized resolution label such as `2160p`, `1080p`, `audio only`, or `unknown`.'),
+  "width": zod.number().nullish(),
+  "height": zod.number().nullish(),
+  "dynamicRange": zod.enum(['sdr', 'hdr10', 'hdr10_plus', 'hlg', 'dolby_vision', 'unknown']),
+  "videoCodec": zod.string().nullish(),
+  "videoProfile": zod.string().nullish(),
+  "bitDepth": zod.number().nullish(),
+  "framerate": zod.number().nullish(),
+  "bitrate": zod.number().nullish().describe('Container-level bitrate in bits per second.'),
+  "audio": zod.string().nullish().describe('Compact audio summary, for example `EAC3 5.1`.'),
+  "audioLanguages": zod.array(zod.string()),
+  "subtitleLanguages": zod.array(zod.string()),
+  "container": zod.string().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "sizeBytes": zod.number().nullish(),
+  "checksum": zod.string().nullish(),
+  "checksumStatus": zod.enum(['computed', 'failed', 'not_computed']).nullish(),
+  "provenance": zod.enum(['remux', 'disc_encode', 'web_dl', 'web_rip', 'tv_capture', 'camera_or_capture', 'unknown']),
+  "storageScope": zod.enum(['library', 'staging', 'plex', 'unknown']),
+  "volumeId": zod.string().nullish(),
+  "relativePath": zod.string().nullish(),
+  "technicalMetadataMissing": zod.boolean()
+}),
+  "currentQualityLine": zod.string(),
+  "comparisons": zod.array(zod.object({
+  "counterpart": zod.object({
+  "reference": zod.string().describe('Origin pointer, for example `file_record:12` or `plex_item:4`.'),
+  "fileRecordId": zod.number().nullish(),
+  "label": zod.string(),
+  "resolution": zod.string().describe('Normalized resolution label such as `2160p`, `1080p`, `audio only`, or `unknown`.'),
+  "width": zod.number().nullish(),
+  "height": zod.number().nullish(),
+  "dynamicRange": zod.enum(['sdr', 'hdr10', 'hdr10_plus', 'hlg', 'dolby_vision', 'unknown']),
+  "videoCodec": zod.string().nullish(),
+  "videoProfile": zod.string().nullish(),
+  "bitDepth": zod.number().nullish(),
+  "framerate": zod.number().nullish(),
+  "bitrate": zod.number().nullish().describe('Container-level bitrate in bits per second.'),
+  "audio": zod.string().nullish().describe('Compact audio summary, for example `EAC3 5.1`.'),
+  "audioLanguages": zod.array(zod.string()),
+  "subtitleLanguages": zod.array(zod.string()),
+  "container": zod.string().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "sizeBytes": zod.number().nullish(),
+  "checksum": zod.string().nullish(),
+  "checksumStatus": zod.enum(['computed', 'failed', 'not_computed']).nullish(),
+  "provenance": zod.enum(['remux', 'disc_encode', 'web_dl', 'web_rip', 'tv_capture', 'camera_or_capture', 'unknown']),
+  "storageScope": zod.enum(['library', 'staging', 'plex', 'unknown']),
+  "volumeId": zod.string().nullish(),
+  "relativePath": zod.string().nullish(),
+  "technicalMetadataMissing": zod.boolean()
+}),
+  "counterpartFileRecordId": zod.number().nullish(),
+  "counterpartRatingKey": zod.string().nullish(),
+  "relationship": zod.enum(['exact_duplicate', 'probable_duplicate', 'equivalent', 'superior_encode', 'inferior_encode', 'materially_different_encode', 'different_media', 'insufficient_metadata']),
+  "winner": zod.enum(['left', 'right']).nullish().describe('Which side is preferred, or null when the evidence does not support a winner.'),
+  "confidence": zod.enum(['high', 'medium', 'low']).nullish(),
+  "reasons": zod.array(zod.string()),
+  "uncertainty": zod.array(zod.string()),
+  "axes": zod.array(zod.object({
+  "axis": zod.enum(['resolution', 'dynamic_range', 'video_codec', 'video_profile', 'bit_depth', 'framerate', 'bitrate', 'video_bitrate', 'audio_codec', 'audio_channels', 'audio_bitrate', 'audio_languages', 'subtitle_languages', 'container', 'duration', 'file_size', 'checksum', 'source_provenance', 'location']),
+  "status": zod.enum(['left_better', 'right_better', 'equal', 'different', 'unknown']),
+  "materiality": zod.enum(['ranked', 'escalating', 'informational']).describe('`ranked` axes participate in Pareto dominance. `escalating` axes are\nreal differences that are never ordered. `informational` axes are\nrecorded for the operator and never change a verdict.\n'),
+  "leftValue": zod.string().nullish(),
+  "rightValue": zod.string().nullish(),
+  "text": zod.string(),
+  "note": zod.string().nullish()
+}))
+})),
+  "findings": zod.array(zod.object({
+  "key": zod.string(),
+  "evidenceKey": zod.string().describe('Deterministic evidence identity; a changed key reopens the finding.'),
+  "fileRecordId": zod.number(),
+  "filename": zod.string(),
+  "relativePath": zod.string().nullish(),
+  "volumeId": zod.string().nullish(),
+  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'conflicting_quality_metadata', 'missing_technical_metadata']),
+  "relationship": zod.enum(['exact_duplicate', 'probable_duplicate', 'equivalent', 'superior_encode', 'inferior_encode', 'materially_different_encode', 'different_media', 'insufficient_metadata']),
+  "severity": zod.enum(['high', 'medium', 'low', 'info']),
+  "confidence": zod.enum(['high', 'medium', 'low']).nullish(),
+  "headline": zod.string(),
+  "reason": zod.string(),
+  "reasons": zod.array(zod.string()),
+  "uncertainty": zod.array(zod.string()),
+  "currentQuality": zod.object({
+  "reference": zod.string().describe('Origin pointer, for example `file_record:12` or `plex_item:4`.'),
+  "fileRecordId": zod.number().nullish(),
+  "label": zod.string(),
+  "resolution": zod.string().describe('Normalized resolution label such as `2160p`, `1080p`, `audio only`, or `unknown`.'),
+  "width": zod.number().nullish(),
+  "height": zod.number().nullish(),
+  "dynamicRange": zod.enum(['sdr', 'hdr10', 'hdr10_plus', 'hlg', 'dolby_vision', 'unknown']),
+  "videoCodec": zod.string().nullish(),
+  "videoProfile": zod.string().nullish(),
+  "bitDepth": zod.number().nullish(),
+  "framerate": zod.number().nullish(),
+  "bitrate": zod.number().nullish().describe('Container-level bitrate in bits per second.'),
+  "audio": zod.string().nullish().describe('Compact audio summary, for example `EAC3 5.1`.'),
+  "audioLanguages": zod.array(zod.string()),
+  "subtitleLanguages": zod.array(zod.string()),
+  "container": zod.string().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "sizeBytes": zod.number().nullish(),
+  "checksum": zod.string().nullish(),
+  "checksumStatus": zod.enum(['computed', 'failed', 'not_computed']).nullish(),
+  "provenance": zod.enum(['remux', 'disc_encode', 'web_dl', 'web_rip', 'tv_capture', 'camera_or_capture', 'unknown']),
+  "storageScope": zod.enum(['library', 'staging', 'plex', 'unknown']),
+  "volumeId": zod.string().nullish(),
+  "relativePath": zod.string().nullish(),
+  "technicalMetadataMissing": zod.boolean()
+}),
+  "currentQualityLine": zod.string(),
+  "counterpart": zod.union([zod.object({
+  "reference": zod.string().describe('Origin pointer, for example `file_record:12` or `plex_item:4`.'),
+  "fileRecordId": zod.number().nullish(),
+  "label": zod.string(),
+  "resolution": zod.string().describe('Normalized resolution label such as `2160p`, `1080p`, `audio only`, or `unknown`.'),
+  "width": zod.number().nullish(),
+  "height": zod.number().nullish(),
+  "dynamicRange": zod.enum(['sdr', 'hdr10', 'hdr10_plus', 'hlg', 'dolby_vision', 'unknown']),
+  "videoCodec": zod.string().nullish(),
+  "videoProfile": zod.string().nullish(),
+  "bitDepth": zod.number().nullish(),
+  "framerate": zod.number().nullish(),
+  "bitrate": zod.number().nullish().describe('Container-level bitrate in bits per second.'),
+  "audio": zod.string().nullish().describe('Compact audio summary, for example `EAC3 5.1`.'),
+  "audioLanguages": zod.array(zod.string()),
+  "subtitleLanguages": zod.array(zod.string()),
+  "container": zod.string().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "sizeBytes": zod.number().nullish(),
+  "checksum": zod.string().nullish(),
+  "checksumStatus": zod.enum(['computed', 'failed', 'not_computed']).nullish(),
+  "provenance": zod.enum(['remux', 'disc_encode', 'web_dl', 'web_rip', 'tv_capture', 'camera_or_capture', 'unknown']),
+  "storageScope": zod.enum(['library', 'staging', 'plex', 'unknown']),
+  "volumeId": zod.string().nullish(),
+  "relativePath": zod.string().nullish(),
+  "technicalMetadataMissing": zod.boolean()
+}),zod.null()]).optional(),
+  "counterpartFileRecordId": zod.number().nullish(),
+  "counterpartRatingKey": zod.string().nullish(),
+  "counterpartLine": zod.string().nullish(),
+  "winner": zod.enum(['left', 'right']).nullish(),
+  "preferredFilename": zod.string().nullish(),
+  "axes": zod.array(zod.object({
+  "axis": zod.enum(['resolution', 'dynamic_range', 'video_codec', 'video_profile', 'bit_depth', 'framerate', 'bitrate', 'video_bitrate', 'audio_codec', 'audio_channels', 'audio_bitrate', 'audio_languages', 'subtitle_languages', 'container', 'duration', 'file_size', 'checksum', 'source_provenance', 'location']),
+  "status": zod.enum(['left_better', 'right_better', 'equal', 'different', 'unknown']),
+  "materiality": zod.enum(['ranked', 'escalating', 'informational']).describe('`ranked` axes participate in Pareto dominance. `escalating` axes are\nreal differences that are never ordered. `informational` axes are\nrecorded for the operator and never change a verdict.\n'),
+  "leftValue": zod.string().nullish(),
+  "rightValue": zod.string().nullish(),
+  "text": zod.string(),
+  "note": zod.string().nullish()
+})),
+  "reviewStatus": zod.enum(['unreviewed', 'reviewed', 'deferred', 'unresolved']),
+  "reviewNote": zod.string().nullish(),
+  "reviewUpdatedAt": zod.string().nullish(),
+  "action": zod.enum(['review_only']).describe('Fixed value; the quality layer never proposes a destructive action.')
+})),
+  "action": zod.enum(['review_only'])
+})
+
+
+/**
+ * Reviews are keyed by owner, file record, finding kind, and the finding's
+ * deterministic evidence key. Saving a decision writes only to
+ * `archive_review`; media files and file records are never modified. If the
+ * underlying evidence changes later, the evidence key changes and the
+ * finding reopens while the previous decision remains as history.
+ * @summary Save a non-destructive review decision for one quality finding
+ */
+
+export const updateArchiveQualityFindingReviewBodyEvidenceKeyMin = 8;
+
+export const updateArchiveQualityFindingReviewBodyNoteMax = 500;
+
+
+
+export const UpdateArchiveQualityFindingReviewBody = zod.object({
+  "fileRecordId": zod.number().min(1),
+  "kind": zod.enum(['exact_duplicate', 'probable_duplicate', 'lower_quality_duplicate', 'superior_encode', 'materially_different_encode', 'conflicting_quality_metadata', 'missing_technical_metadata']),
+  "evidenceKey": zod.string().min(updateArchiveQualityFindingReviewBodyEvidenceKeyMin),
+  "status": zod.enum(['reviewed', 'deferred', 'unresolved']),
+  "note": zod.string().max(updateArchiveQualityFindingReviewBodyNoteMax).nullish()
+})
+
+export const UpdateArchiveQualityFindingReviewResponse = zod.object({
+  "status": zod.enum(['reviewed', 'deferred', 'unresolved']),
+  "findingType": zod.string(),
+  "note": zod.string().nullable(),
+  "reviewedAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 
@@ -839,7 +1229,33 @@ export const InspectLocalMediaResponse = zod.object({
   "bitrate": zod.number().nullable(),
   "container": zod.string().nullable(),
   "dynamicRange": zod.string().nullable(),
-  "verification": zod.enum(['passed', 'failed'])
+  "verification": zod.enum(['passed', 'failed']),
+  "videoProfile": zod.string().nullish(),
+  "videoPixFmt": zod.string().nullish(),
+  "videoBitDepth": zod.number().nullish(),
+  "colorPrimaries": zod.string().nullish(),
+  "dynamicRangeFormat": zod.enum(['sdr', 'hdr10', 'hdr10_plus', 'hlg', 'dolby_vision', 'unknown']).nullish(),
+  "audioProfile": zod.string().nullish(),
+  "audioChannelLayout": zod.string().nullish(),
+  "videoBitrate": zod.number().nullish(),
+  "audioBitrate": zod.number().nullish(),
+  "audioTracks": zod.array(zod.object({
+  "index": zod.number(),
+  "codec": zod.string().nullish(),
+  "profile": zod.string().nullish(),
+  "channels": zod.number().nullish(),
+  "channelLayout": zod.string().nullish(),
+  "language": zod.string().nullish(),
+  "bitrate": zod.number().nullish(),
+  "default": zod.boolean()
+})).optional(),
+  "subtitleTracks": zod.array(zod.object({
+  "index": zod.number(),
+  "codec": zod.string().nullish(),
+  "language": zod.string().nullish(),
+  "default": zod.boolean(),
+  "forced": zod.boolean()
+})).optional()
 })
 
 

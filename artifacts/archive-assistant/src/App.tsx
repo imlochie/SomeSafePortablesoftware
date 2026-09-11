@@ -19,7 +19,8 @@ import {
   useStartDownload, useStartPlexSync, useTestPlexConnection, useUpdatePlexConfig, useUpdateSettings,
   useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord, useGetArchiveNamingProposals,
   useUpdateArchiveRecordReview, useUpdateArchiveRecordReviews, getGetArchiveScanQueryKey, getGetArchiveInventoryQueryKey,
-  getGetArchiveRecordQueryKey,
+  getGetArchiveRecordQueryKey, useGetArchiveQualityRecord, useUpdateArchiveQualityFindingReview,
+  getGetArchiveQualityRecordQueryKey, getGetArchiveQualityFindingsQueryKey, useGetArchiveQualityFindings,
   setBaseUrl,
 } from '@workspace/api-client-react';
 import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, SystemEvent } from '@workspace/api-client-react';
@@ -562,6 +563,8 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
         </div>
       )}
 
+      <ArchiveQualityIntelligence recordId={id} />
+
       {record.reviewStatus !== 'not_applicable' && (
         <div className="mt-6 border-t border-[#e3e8e7] pt-5" data-testid="panel-archive-review">
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -613,6 +616,173 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
   );
 }
 
+const qualityRelationshipCopy: Record<string, string> = {
+  exact_duplicate: 'Byte-identical copies',
+  probable_duplicate: 'Probable duplicate',
+  equivalent: 'Equivalent encodes',
+  superior_encode: 'This copy dominates the others',
+  inferior_encode: 'A better copy exists',
+  materially_different_encode: 'Materially different encodes',
+  different_media: 'Different cut or runtime',
+  insufficient_metadata: 'Not enough metadata to compare',
+};
+
+const qualityConfidenceTone: Record<string, string> = {
+  high: 'bg-[#eaf3ef] text-[#39736e]',
+  medium: 'bg-[#fff0c9] text-[#8d681d]',
+  low: 'bg-[#fcedea] text-[#994b43]',
+};
+
+/**
+ * Read-only quality intelligence for one record: the normalized technical
+ * model, the comparison that produced the finding, the reason, the confidence,
+ * and the review state. Nothing here touches media; findings are reviewable.
+ */
+function ArchiveQualityIntelligence({ recordId }: { recordId: number }) {
+  const queryClient = useQueryClient();
+  const { data: report } = useGetArchiveQualityRecord(recordId);
+  const reviewFinding = useUpdateArchiveQualityFindingReview();
+  const [qualityNotice, setQualityNotice] = useState('');
+
+  if (!report) return null;
+  const finding = report.findings[0];
+  const comparison = finding
+    ? {
+      counterpartLine: finding.counterpartLine ?? null,
+      relationship: finding.relationship,
+      winner: finding.winner,
+      confidence: finding.confidence,
+      reasons: finding.reasons,
+      uncertainty: finding.uncertainty,
+      axes: finding.axes,
+    }
+    : report.comparisons[0]
+      ? {
+        counterpartLine: `${report.comparisons[0].counterpart.label} - ${report.comparisons[0].counterpart.resolution}`,
+        relationship: report.comparisons[0].relationship,
+        winner: report.comparisons[0].winner,
+        confidence: report.comparisons[0].confidence,
+        reasons: report.comparisons[0].reasons,
+        uncertainty: report.comparisons[0].uncertainty,
+        axes: report.comparisons[0].axes,
+      }
+      : null;
+  if (!comparison) return null;
+
+  const markReviewed = () => {
+    if (!finding) return;
+    setQualityNotice('');
+    reviewFinding.mutate({
+      data: {
+        fileRecordId: finding.fileRecordId,
+        kind: finding.kind,
+        evidenceKey: finding.evidenceKey,
+        status: 'reviewed',
+        note: `Reviewed from the archive panel: ${finding.headline}.`,
+      },
+    }, {
+      onSuccess: () => {
+        setQualityNotice('Quality finding marked reviewed. Media was not changed.');
+        queryClient.invalidateQueries({ queryKey: getGetArchiveQualityRecordQueryKey(recordId) });
+        queryClient.invalidateQueries({ queryKey: getGetArchiveQualityFindingsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+      },
+      onError: (error) => setQualityNotice(`Review could not be saved: ${errorText(error)}`),
+    });
+  };
+
+  const notableAxes = comparison.axes.filter((axis) => axis.status !== 'equal');
+
+  return (
+    <div className="mt-6 border-t border-[#e3e8e7] pt-5" data-testid="panel-archive-quality">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">QUALITY INTELLIGENCE</div>
+        {finding?.severity && (
+          <span className={`archive-mono px-2 py-1 text-[9px] tracking-[.08em] ${qualityConfidenceTone[finding.severity] ?? 'bg-[#f1f4f3] text-[#5f7178]'}`}>
+            {finding.kind.replace(/_/g, ' ').toUpperCase()}
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-3 text-[11px] leading-5">
+        <div>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">CURRENT QUALITY</div>
+          <div className="mt-0.5 text-[#344851]">{report.currentQualityLine}</div>
+        </div>
+        <div>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">COMPARISON</div>
+          <div className="mt-0.5 text-[#344851]">
+            {qualityRelationshipCopy[comparison.relationship] ?? comparison.relationship.replace(/_/g, ' ')}
+            {comparison.counterpartLine ? <span className="text-[#859296]"> / {comparison.counterpartLine}</span> : null}
+          </div>
+          {comparison.winner && (
+            <div className="mt-1 text-[10px] text-[#43545b]">
+              Preferred: <span className="font-bold text-[#39736e]">{comparison.winner === 'left' ? 'this record' : comparison.counterpartLine?.split(' - ')[0] ?? 'the other copy'}</span>
+            </div>
+          )}
+        </div>
+        <div>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">REASON</div>
+          <ul className="mt-0.5 space-y-1.5">
+            {comparison.reasons.slice(0, 4).map((reason, index) => (
+              <li key={index} className="flex items-start gap-2 text-[#43545b]">
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[#4e9690]" />
+                <span className="min-w-0 flex-1 break-words">{reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {notableAxes.length > 0 && (
+          <div className="space-y-1">
+            {notableAxes.slice(0, 6).map((axis, index) => (
+              <div key={`${axis.axis}-${index}`} className="archive-mono text-[9px] leading-4 text-[#859296]">
+                {axis.materiality.toUpperCase()} / {axis.text}
+                {axis.note ? <span className="text-[#a0aaaa]"> - {axis.note}</span> : null}
+              </div>
+            ))}
+          </div>
+        )}
+        {comparison.uncertainty.length > 0 && (
+          <div className="border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[10px] leading-4 text-[#80652e]">
+            {comparison.uncertainty[0]}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">CONFIDENCE</div>
+          <span className={`archive-mono px-2 py-1 text-[9px] tracking-[.08em] ${qualityConfidenceTone[comparison.confidence ?? ''] ?? 'bg-[#f1f4f3] text-[#5f7178]'}`}>
+            {(comparison.confidence ?? 'not scored').replace(/ /g, '_').toUpperCase()}
+          </span>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">REVIEW STATUS</div>
+          <span className={`archive-mono px-2 py-1 text-[9px] tracking-[.08em] ${finding?.reviewStatus === 'reviewed' ? 'bg-[#eaf3ef] text-[#39736e]' : 'bg-[#fff0c9] text-[#8d681d]'}`}>
+            {(finding?.reviewStatus ?? 'unreviewed').replace(/_/g, ' ').toUpperCase()}
+          </span>
+        </div>
+        {report.findings.length > 1 && (
+          <div className="archive-mono text-[9px] text-[#97a3a4]">
+            SHOWING THE HIGHEST-PRIORITY OF {report.findings.length} QUALITY FINDINGS ON THIS RECORD.
+          </div>
+        )}
+        {finding && finding.reviewStatus !== 'reviewed' && (
+          <button
+            type="button"
+            onClick={markReviewed}
+            disabled={reviewFinding.isPending}
+            className="inline-flex items-center justify-center gap-1.5 border border-[#cbe0d9] bg-[#f4faf7] px-2 py-2 text-[9px] font-bold tracking-[.06em] text-[#39736e] disabled:opacity-50"
+            data-testid="button-quality-review-reviewed"
+          >
+            <Check size={12} /> MARK FINDING REVIEWED
+          </button>
+        )}
+        {qualityNotice && (
+          <div className={`text-[10px] ${qualityNotice.includes('could not') ? 'text-[#994b43]' : 'text-[#39736e]'}`} data-testid="status-quality-review">
+            {qualityNotice}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ArchivePage() {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState('');
@@ -620,6 +790,7 @@ function ArchivePage() {
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
+  const { data: qualityFindings } = useGetArchiveQualityFindings({ pageSize: 1 });
   const [view, setView] = useState<'local' | 'naming_proposals' | 'plex_only'>('local');
   const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
 
@@ -756,11 +927,12 @@ function ArchivePage() {
       )}
 
       {scan && (
-        <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
           <MetricCard icon={FileCheck2} label="ACTIVE FILES" value={String(scan.activeFiles)} note="Verified local media" status={isScanning ? 'processing' : 'ready'} />
           <MetricCard icon={Archive} label="MISSING FILES" value={String(scan.missingCount)} note="Known but missing" accent={scan.missingCount ? 'red' : 'teal'} status={scan.missingCount ? 'error' : 'idle'} />
           <MetricCard icon={Library} label="DUPLICATES" value={String(scan.duplicateCount)} note="Identical files found" accent={scan.duplicateCount ? 'amber' : 'teal'} />
           <MetricCard icon={Activity} label="QUALITY CONFLICTS" value={String(scan.qualityConflictCount)} note="Multiple versions exist" accent={scan.qualityConflictCount ? 'amber' : 'teal'} />
+          <MetricCard icon={ShieldCheck} label="QUALITY FINDINGS" value={String(qualityFindings?.summary.unreviewedCount ?? 0)} note={qualityFindings ? `${qualityFindings.summary.exactDuplicateCount} exact / ${qualityFindings.summary.probableDuplicateCount} probable / ${qualityFindings.summary.lowerQualityCount} lower quality` : 'Compare on: resolution, HDR, codec, bitrate, audio'} accent={qualityFindings?.summary.exactDuplicateCount ? 'amber' : 'teal'} />
         </div>
       )}
 

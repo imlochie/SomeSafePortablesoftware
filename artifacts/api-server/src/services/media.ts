@@ -4,6 +4,7 @@ import { basename, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { SettingsRecord } from "../lib/archive-db";
 import { getLocalToolPaths } from "./local-tools";
+import { technicalQualityFromProbe } from "./media-quality";
 import {
   chooseArchiveVolume,
   ensureArchiveVolume,
@@ -141,8 +142,19 @@ const mockFormats: NormalizedMediaFormat[] = [
   }),
 ];
 
+/**
+ * FFprobe reports `duration` and `bit_rate` as decimal strings, so numeric
+ * strings are accepted here. Strict `typeof === "number"` parsing silently
+ * dropped the duration and bitrate of every probed file, which starved the
+ * quality model of the two axes duplicates are judged on.
+ */
 function numberOrNull(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function stringOrNull(value: unknown) {
@@ -479,6 +491,15 @@ export async function inspectLocalMedia(filePath: string, settings: SettingsReco
     : null;
   const fpsValue = stringOrNull(video?.r_frame_rate);
   const [fpsN, fpsD] = fpsValue?.split("/").map(Number) ?? [];
+  // The normalized quality model is derived from the same probe output, so the
+  // scanner and the inspection endpoint never disagree about what a file is.
+  const quality = technicalQualityFromProbe(probe, {
+    reference: `probe:${candidate}`,
+    label: basename(candidate),
+    filename: basename(candidate),
+    sizeBytes: stat.size,
+    archiveRoot: archiveScanRoots.find((root) => isPathWithin(candidate, root)) ?? null,
+  });
   return {
     filename: basename(candidate),
     path: candidate,
@@ -500,6 +521,17 @@ export async function inspectLocalMedia(filePath: string, settings: SettingsReco
     container: stringOrNull(probe.format?.format_name),
     dynamicRange: stringOrNull(video?.color_transfer) ?? sideData,
     verification: "passed" as const,
+    videoProfile: quality.videoProfile,
+    videoPixFmt: quality.pixelFormat,
+    videoBitDepth: quality.bitDepth,
+    colorPrimaries: quality.colorPrimaries,
+    dynamicRangeFormat: quality.dynamicRange,
+    audioProfile: quality.audioProfile,
+    audioChannelLayout: quality.audioChannelLayout,
+    videoBitrate: quality.videoBitrate,
+    audioBitrate: quality.audioBitrate,
+    audioTracks: quality.audioTracks,
+    subtitleTracks: quality.subtitleTracks,
   };
 }
 

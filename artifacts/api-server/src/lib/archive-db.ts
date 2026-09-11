@@ -164,6 +164,17 @@ archiveDb.exec(`
     subtitle_languages TEXT NOT NULL DEFAULT '[]',
     fingerprint TEXT,
     error_message TEXT,
+    video_profile TEXT,
+    video_pix_fmt TEXT,
+    video_bit_depth INTEGER,
+    color_primaries TEXT,
+    audio_profile TEXT,
+    audio_channel_layout TEXT,
+    video_bitrate INTEGER,
+    audio_bitrate INTEGER,
+    audio_tracks TEXT NOT NULL DEFAULT '[]',
+    subtitle_tracks TEXT NOT NULL DEFAULT '[]',
+    checksum_status TEXT,
     local_identity_id INTEGER REFERENCES local_media_identity(id),
     volume_id TEXT,
     archive_root TEXT,
@@ -469,6 +480,17 @@ for (const [column, definition] of [
   ["subtitle_languages", "TEXT NOT NULL DEFAULT '[]'"],
   ["fingerprint", "TEXT"],
   ["error_message", "TEXT"],
+  ["video_profile", "TEXT"],
+  ["video_pix_fmt", "TEXT"],
+  ["video_bit_depth", "INTEGER"],
+  ["color_primaries", "TEXT"],
+  ["audio_profile", "TEXT"],
+  ["audio_channel_layout", "TEXT"],
+  ["video_bitrate", "INTEGER"],
+  ["audio_bitrate", "INTEGER"],
+  ["audio_tracks", "TEXT NOT NULL DEFAULT '[]'"],
+  ["subtitle_tracks", "TEXT NOT NULL DEFAULT '[]'"],
+  ["checksum_status", "TEXT"],
   ["local_identity_id", "INTEGER"],
   ["volume_id", "TEXT"],
   ["archive_root", "TEXT"],
@@ -478,6 +500,8 @@ for (const [column, definition] of [
 }
 archiveDb.exec(`
   CREATE INDEX IF NOT EXISTS file_record_local_identity_idx ON file_record(local_identity_id);
+  CREATE INDEX IF NOT EXISTS file_record_checksum_idx ON file_record(owner_id, checksum);
+  CREATE INDEX IF NOT EXISTS file_record_fingerprint_idx ON file_record(owner_id, fingerprint);
   CREATE INDEX IF NOT EXISTS local_media_identity_owner_type_idx ON local_media_identity(owner_id, media_type);
 `);
 ensureColumn("archive_scan", "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
