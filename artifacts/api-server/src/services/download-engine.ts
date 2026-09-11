@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess, execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { moveFile } from "../lib/fs-move";
+import { expandPath } from "../lib/expand-path";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
@@ -269,7 +270,12 @@ async function runMockJob(id: number, ownerId: string) {
 export function createJob(input: Parameters<typeof prepareDownload>[0], ownerId: string, settings = readSettings()) {
   const spec = prepareDownload({
     ...input,
-    temporaryDirectory: input.temporaryDirectory ?? settings.temporaryDirectory,
+    // The configured temporary directory is resolved to its absolute,
+    // home-expanded form before it enters the job: a "~/ARCHIVE/tmp" setting
+    // must reach yt-dlp as the real staging path, not a literal "~" directory
+    // relative to the working directory that the inspection guard would then
+    // (correctly) refuse.
+    temporaryDirectory: input.temporaryDirectory ?? expandPath(settings.temporaryDirectory),
   }, settings);
   const result = archiveDb.prepare(`
     INSERT INTO download_job

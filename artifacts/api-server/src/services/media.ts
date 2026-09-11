@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
-import { homedir } from "node:os";
 import { promises as fs } from "node:fs";
 import { basename, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { SettingsRecord } from "../lib/archive-db";
+import { expandPath } from "../lib/expand-path";
 import { getLocalToolPaths } from "./local-tools";
 import { technicalQualityFromProbe } from "./media-quality";
 import {
@@ -291,10 +291,6 @@ function validateSourceUrl(sourceUrl: string) {
   return parsed;
 }
 
-function expandPath(value: string) {
-  return value.startsWith("~/") ? join(homedir() || process.cwd(), value.slice(2)) : value;
-}
-
 export function isPathWithin(candidate: string, root: string) {
   const candidatePath = resolve(expandPath(candidate));
   const rootPath = resolve(expandPath(root));
@@ -358,7 +354,10 @@ export function validateSafeDirectory(
   const target = resolve(value);
 
   const allowed = roots.some((root) => {
-    const base = resolve(root);
+    // The configured root expands through the same shared helper the
+    // inspection guard (isPathWithin) uses, so "~" means the real user
+    // profile on both sides of the comparison.
+    const base = expandPath(root);
 
     const normalizedTarget =
       process.platform === "win32"

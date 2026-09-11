@@ -13,11 +13,13 @@
  */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { after, describe, test } from "node:test";
-import { archiveDb } from "../src/lib/archive-db";
+import { archiveDb, writeSettings, readSettings } from "../src/lib/archive-db";
+import { createJob } from "../src/services/download-engine";
+import { inspectLocalMedia } from "../src/services/media";
 import { moveFile } from "../src/lib/fs-move";
 import { isPathWithin, sanitizeFilename } from "../src/services/media";
 import { plexSafeDestination, type PlanCandidate } from "../src/services/acquisition-plan";
@@ -149,5 +151,129 @@ describe("user-profile path expansion", () => {
       false,
       "containment still refuses sibling paths",
     );
+  });
+});
+
+describe("download job temporary directory expansion", { concurrency: false }, () => {
+  // The real-Windows failure this guards against: a persisted
+  // temporaryDirectory of "~/ARCHIVE/tmp" entered the download job verbatim,
+  // yt-dlp downloaded into a literal "~" directory relative to the working
+  // directory, and the local inspection guard (which expands "~" against the
+  // real user profile) correctly refused the file. The configured directory
+  // must be resolved to its absolute, home-expanded form before it enters a
+  // job, and the guard must interpret the configured root exactly the same
+  // way. os.homedir() reads HOME at call time on POSIX, so the tests point it
+  // at a throwaway profile under the test root.
+  const fakeHome = join(testRoot, "fake-home");
+  const scenario = join(testRoot, "temp-expansion");
+  const movies = join(scenario, "Movies");
+  const downloads = join(scenario, "downloads");
+  const bin = join(scenario, "bin");
+  const owner = "temp-expansion-owner";
+
+  const scenarioSettings = async () => {
+    await mkdir(movies, { recursive: true });
+    await mkdir(downloads, { recursive: true });
+    await mkdir(bin, { recursive: true });
+    const ffprobeStub = join(bin, "ffprobe.mjs");
+    await writeFile(ffprobeStub, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({
+  format: { duration: "1320.5", format_name: "matroska,webm", bit_rate: "4500000" },
+  streams: [
+    { codec_type: "video", codec_name: "h264", width: 1920, height: 1080, r_frame_rate: "24000/1001" },
+    { codec_type: "audio", codec_name: "aac", channels: 2 },
+  ],
+}));
+`);
+    await chmod(ffprobeStub, 0o755);
+    writeSettings({
+      archiveDirectory: movies,
+      downloadDirectory: downloads,
+      temporaryDirectory: "~/ARCHIVE/tmp",
+      ytDlpPath: join(bin, "yt-dlp.mjs"),
+      ffmpegPath: join(bin, "ffmpeg.mjs"),
+      ffprobePath: ffprobeStub,
+      mockMode: false,
+    });
+    return ffprobeStub;
+  };
+
+  test('a configured "~/ARCHIVE/tmp" is resolved to the real home before the job is persisted', async () => {
+    const realHome = process.env.HOME;
+    process.env.HOME = fakeHome;
+    try {
+      await scenarioSettings();
+      const job = createJob(
+        { sourceUrl: "https://example.test/watch/temp-probe", title: "Tempdir Expansion Probe", selectedFormatId: "best" },
+        owner,
+      );
+      assert.ok(job, "the job is created");
+      const expected = join(fakeHome, "ARCHIVE", "tmp");
+      assert.equal(job.temporaryDirectory, expected, "the configured ~/ path is expanded against the user profile");
+      assert.ok(isAbsolute(job.temporaryDirectory), "the staging path yt-dlp receives is absolute");
+      assert.ok(!job.temporaryDirectory.includes("~"), "no literal ~ component remains");
+    } finally {
+      process.env.HOME = realHome;
+    }
+  });
+
+  test("an explicit absolute temporaryDirectory inside the configured root is preserved unchanged", async () => {
+    const realHome = process.env.HOME;
+    process.env.HOME = fakeHome;
+    try {
+      await scenarioSettings();
+      const explicit = join(fakeHome, "ARCHIVE", "tmp", "explicit-run");
+      const job = createJob(
+        {
+          sourceUrl: "https://example.test/watch/temp-explicit",
+          title: "Tempdir Explicit Probe",
+          selectedFormatId: "best",
+          temporaryDirectory: explicit,
+        },
+        owner,
+      );
+      assert.ok(job);
+      assert.equal(job.temporaryDirectory, explicit, "an explicit absolute directory passes through unchanged");
+    } finally {
+      process.env.HOME = realHome;
+    }
+  });
+
+  test("a file staged in the resolved directory passes the inspection guard; an unconfigured path still does not", async () => {
+    const realHome = process.env.HOME;
+    process.env.HOME = fakeHome;
+    try {
+      await scenarioSettings();
+      const job = createJob(
+        { sourceUrl: "https://example.test/watch/temp-guard", title: "Tempdir Guard Probe", selectedFormatId: "best" },
+        owner,
+      );
+      assert.ok(job);
+      assert.equal(job.temporaryDirectory, join(fakeHome, "ARCHIVE", "tmp"));
+
+      // Stage a media file exactly where the resolved job directory points.
+      const staged = join(job.temporaryDirectory, "staged-probe.mkv");
+      await mkdir(job.temporaryDirectory, { recursive: true });
+      await writeFile(staged, "staged-media-bytes");
+
+      // The guard must accept the staged file against the SAME "~/..."-shaped
+      // settings the job was created with, and FFprobe must verify it.
+      const settings = readSettings();
+      const inspection = await inspectLocalMedia(staged, settings);
+      assert.equal(inspection.verification, "passed");
+      assert.ok(inspection.videoStreams + inspection.audioStreams >= 1);
+
+      // No weakening: a file outside every configured root is still refused.
+      const rogueDir = join(scenario, "unconfigured");
+      await mkdir(rogueDir, { recursive: true });
+      const rogue = join(rogueDir, "rogue.mkv");
+      await writeFile(rogue, "rogue-bytes");
+      await assert.rejects(
+        () => inspectLocalMedia(rogue, settings),
+        /limited to configured Archive Assistant directories/,
+      );
+    } finally {
+      process.env.HOME = realHome;
+    }
   });
 });

@@ -1,7 +1,7 @@
 import { accessSync, constants, existsSync, statfsSync, mkdirSync } from "node:fs";
 import { basename, relative, resolve, sep } from "node:path";
-import { homedir } from "node:os";
 import type { SettingsRecord } from "../lib/archive-db";
+import { expandPath } from "../lib/expand-path";
 
 export type ArchiveMediaType = "movie" | "tv";
 
@@ -41,12 +41,6 @@ const WINDOWS_VOLUMES = [
     path: "E:\\Tv Shows",
   },
 ];
-
-function expandPath(value: string) {
-  return value.startsWith("~/")
-    ? resolve(homedir() || process.cwd(), value.slice(2))
-    : resolve(value);
-}
 
 function configuredArchivePaths(settings: SettingsRecord): string[] {
   const value = settings.archiveDirectory?.trim() ?? "";
