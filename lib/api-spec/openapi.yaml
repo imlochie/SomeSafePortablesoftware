@@ -984,6 +984,105 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /archive/reconciliation:
+    get:
+      operationId: getArchiveReconciliation
+      tags: [archive]
+      summary: Compare owner-scoped local archive records with Plex inventory
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Paginated reconciliation report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconciliationReport"
+  /archive/naming-proposals:
+    get:
+      operationId: getArchiveNamingProposals
+      tags: [archive]
+      summary: Get read-only naming proposals for owner-scoped archive records
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - { name: confidence, in: query, required: false, schema: { type: string } }
+        - { name: operation, in: query, required: false, schema: { type: string } }
+        - { name: pattern, in: query, required: false, schema: { type: string } }
+        - { name: mediaType, in: query, required: false, schema: { type: string } }
+        - { name: volume, in: query, required: false, schema: { type: string } }
+        - { name: state, in: query, required: false, schema: { type: string } }
+        - { name: uncertain, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Paginated naming proposals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamingProposalReport"
+  /archive/identity-audit:
+    get:
+      operationId: getArchiveIdentityAudit
+      tags: [archive]
+      summary: Audit owner-scoped archive identity evidence
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - { name: auditType, in: query, required: false, schema: { type: string } }
+        - { name: confidence, in: query, required: false, schema: { type: string } }
+        - { name: mediaType, in: query, required: false, schema: { type: string } }
+        - { name: needsReview, in: query, required: false, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Paginated identity audit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityAuditReport"
+  /acquisition-webhooks/{provider}:
+    post:
+      operationId: receiveAcquisitionWebhook
+      tags: [acquisition]
+      summary: Receive a signed acquisition provider webhook
+      description: Public provider callback. Authentication is performed using the provider signature over the raw request body rather than a browser session.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/AcquisitionProvider"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcquisitionWebhookPayload"
+      responses:
+        "202":
+          description: Webhook accepted or intentionally ignored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcquisitionWebhookAccepted"
+        "400":
+          description: Malformed webhook
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid provider signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Provider integration unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /archive/scan:
     get:
       operationId: getArchiveScan
@@ -1308,6 +1407,21 @@ paths:
                 $ref: "#/components/schemas/DownloadJob"
 components:
   parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: number
+        minimum: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        type: number
+        minimum: 1
+        maximum: 500
     DownloadId:
       name: id
       in: path
@@ -2760,6 +2874,68 @@ components:
         namingItems: { type: number }
         archiveFindingItems: { type: number }
         total: { type: number }
+    ReportPagination:
+      type: object
+      required: [page, pageSize, total, totalPages]
+      properties:
+        page: { type: number }
+        pageSize: { type: number }
+        total: { type: number }
+        totalPages: { type: number }
+    ReconciliationReport:
+      type: object
+      required: [summary, pagination, results]
+      properties:
+        summary:
+          type: object
+          additionalProperties: true
+        pagination:
+          $ref: "#/components/schemas/ReportPagination"
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    NamingProposalReport:
+      type: object
+      required: [summary, pagination, results]
+      properties:
+        summary:
+          type: object
+          additionalProperties: true
+        pagination:
+          $ref: "#/components/schemas/ReportPagination"
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    IdentityAuditReport:
+      type: object
+      required: [summary, pagination, results]
+      properties:
+        summary:
+          type: object
+          additionalProperties: true
+        pagination:
+          $ref: "#/components/schemas/ReportPagination"
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AcquisitionWebhookAccepted:
+      type: object
+      required: [accepted, status]
+      properties:
+        accepted:
+          type: boolean
+          const: true
+        status:
+          type: string
+    AcquisitionWebhookPayload:
+      type: object
+      additionalProperties: true
     ErrorResponse:
       type: object
       required: [error]

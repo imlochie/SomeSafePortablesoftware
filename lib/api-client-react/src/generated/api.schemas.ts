@@ -1464,9 +1464,57 @@ export interface ReviewSyncResult {
   total: number;
 }
 
+export interface ReportPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export type ReconciliationReportSummary = { [key: string]: unknown };
+
+export type ReconciliationReportResultsItem = { [key: string]: unknown };
+
+export interface ReconciliationReport {
+  summary: ReconciliationReportSummary;
+  pagination: ReportPagination;
+  results: ReconciliationReportResultsItem[];
+}
+
+export type NamingProposalReportSummary = { [key: string]: unknown };
+
+export type NamingProposalReportResultsItem = { [key: string]: unknown };
+
+export interface NamingProposalReport {
+  summary: NamingProposalReportSummary;
+  pagination: ReportPagination;
+  results: NamingProposalReportResultsItem[];
+}
+
+export type IdentityAuditReportSummary = { [key: string]: unknown };
+
+export type IdentityAuditReportResultsItem = { [key: string]: unknown };
+
+export interface IdentityAuditReport {
+  summary: IdentityAuditReportSummary;
+  pagination: ReportPagination;
+  results: IdentityAuditReportResultsItem[];
+}
+
+export interface AcquisitionWebhookAccepted {
+  accepted: true;
+  status: string;
+}
+
+export interface AcquisitionWebhookPayload { [key: string]: unknown }
+
 export interface ErrorResponse {
   error: string;
 }
+
+export type PageParameter = number;
+
+export type PageSizeParameter = number;
 
 export type GetAcquisitionJobsParams = {
 state?: AcquisitionJobState;
@@ -1500,5 +1548,52 @@ export type DiscoverArchiveMissingMediaParams = {
 query?: string;
 mediaType?: string;
 providerId?: AcquisitionProvider;
+};
+
+export type GetArchiveReconciliationParams = {
+/**
+ * @minimum 1
+ */
+page?: PageParameter;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+pageSize?: PageSizeParameter;
+};
+
+export type GetArchiveNamingProposalsParams = {
+/**
+ * @minimum 1
+ */
+page?: PageParameter;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+pageSize?: PageSizeParameter;
+confidence?: string;
+operation?: string;
+pattern?: string;
+mediaType?: string;
+volume?: string;
+state?: string;
+uncertain?: boolean;
+};
+
+export type GetArchiveIdentityAuditParams = {
+/**
+ * @minimum 1
+ */
+page?: PageParameter;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+pageSize?: PageSizeParameter;
+auditType?: string;
+confidence?: string;
+mediaType?: string;
+needsReview?: boolean;
 };
 

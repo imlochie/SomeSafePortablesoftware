@@ -1923,6 +1923,108 @@ export const RequestArchiveAcquisitionResponse = zod.object({
 
 
 /**
+ * @summary Compare owner-scoped local archive records with Plex inventory
+ */
+
+export const getArchiveReconciliationQueryPageSizeMax = 500;
+
+
+
+export const GetArchiveReconciliationQueryParams = zod.object({
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(getArchiveReconciliationQueryPageSizeMax).optional()
+})
+
+export const GetArchiveReconciliationResponse = zod.object({
+  "summary": zod.record(zod.string(), zod.unknown()),
+  "pagination": zod.object({
+  "page": zod.number(),
+  "pageSize": zod.number(),
+  "total": zod.number(),
+  "totalPages": zod.number()
+}),
+  "results": zod.array(zod.record(zod.string(), zod.unknown()))
+})
+
+
+/**
+ * @summary Get read-only naming proposals for owner-scoped archive records
+ */
+
+export const getArchiveNamingProposalsQueryPageSizeMax = 500;
+
+
+
+export const GetArchiveNamingProposalsQueryParams = zod.object({
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(getArchiveNamingProposalsQueryPageSizeMax).optional(),
+  "confidence": zod.coerce.string().optional(),
+  "operation": zod.coerce.string().optional(),
+  "pattern": zod.coerce.string().optional(),
+  "mediaType": zod.coerce.string().optional(),
+  "volume": zod.coerce.string().optional(),
+  "state": zod.coerce.string().optional(),
+  "uncertain": zod.coerce.boolean().optional()
+})
+
+export const GetArchiveNamingProposalsResponse = zod.object({
+  "summary": zod.record(zod.string(), zod.unknown()),
+  "pagination": zod.object({
+  "page": zod.number(),
+  "pageSize": zod.number(),
+  "total": zod.number(),
+  "totalPages": zod.number()
+}),
+  "results": zod.array(zod.record(zod.string(), zod.unknown()))
+})
+
+
+/**
+ * @summary Audit owner-scoped archive identity evidence
+ */
+
+export const getArchiveIdentityAuditQueryPageSizeMax = 500;
+
+
+
+export const GetArchiveIdentityAuditQueryParams = zod.object({
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(getArchiveIdentityAuditQueryPageSizeMax).optional(),
+  "auditType": zod.coerce.string().optional(),
+  "confidence": zod.coerce.string().optional(),
+  "mediaType": zod.coerce.string().optional(),
+  "needsReview": zod.coerce.boolean().optional()
+})
+
+export const GetArchiveIdentityAuditResponse = zod.object({
+  "summary": zod.record(zod.string(), zod.unknown()),
+  "pagination": zod.object({
+  "page": zod.number(),
+  "pageSize": zod.number(),
+  "total": zod.number(),
+  "totalPages": zod.number()
+}),
+  "results": zod.array(zod.record(zod.string(), zod.unknown()))
+})
+
+
+/**
+ * Public provider callback. Authentication is performed using the provider signature over the raw request body rather than a browser session.
+ * @summary Receive a signed acquisition provider webhook
+ */
+export const ReceiveAcquisitionWebhookParams = zod.object({
+  "provider": zod.enum(['sonarr', 'radarr', 'prowlarr', 'qbittorrent'])
+})
+
+export const ReceiveAcquisitionWebhookBody = zod.record(zod.string(), zod.unknown())
+
+export const ReceiveAcquisitionWebhookResponse = zod.object({
+  "accepted": zod.literal(true),
+  "status": zod.string()
+})
+
+
+/**
  * @summary Get the current local archive scan state
  */
 export const getArchiveScanResponseScannedFilesMin = 0;

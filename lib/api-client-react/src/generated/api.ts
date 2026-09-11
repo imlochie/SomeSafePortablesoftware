@@ -21,7 +21,10 @@ import type {
 
 import type {
   AcquisitionJob,
+  AcquisitionProvider,
   AcquisitionRecommendation,
+  AcquisitionWebhookAccepted,
+  AcquisitionWebhookPayload,
   AppSettings,
   AppSettingsUpdate,
   ApprovedAcquisitionResult,
@@ -44,8 +47,12 @@ import type {
   DownloadSpecification,
   ErrorResponse,
   GetAcquisitionJobsParams,
+  GetArchiveIdentityAuditParams,
+  GetArchiveNamingProposalsParams,
+  GetArchiveReconciliationParams,
   GetAssistantToolCatalog200,
   HealthStatus,
+  IdentityAuditReport,
   IntegrationStatusResponse,
   LinkAcquisitionDownload,
   ListAcquisitionRecommendationsParams,
@@ -58,12 +65,14 @@ import type {
   MediaInspection,
   MediaLookupResponse,
   MissingMediaResponse,
+  NamingProposalReport,
   OperationConfirmation,
   PlanAcquisitionImport,
   PlexConfig,
   PlexConfigUpdate,
   PlexInventory,
   ProgressAcquisitionJob,
+  ReconciliationReport,
   RequestArchiveAcquisition,
   ReviewDecisionInput,
   ReviewItem,
@@ -3612,6 +3621,331 @@ export const useRequestArchiveAcquisition = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getRequestArchiveAcquisitionMutationOptions(options));
+    }
+
+export const getGetArchiveReconciliationUrl = (params?: GetArchiveReconciliationParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive/reconciliation?${stringifiedParams}` : `/api/archive/reconciliation`
+}
+
+/**
+ * @summary Compare owner-scoped local archive records with Plex inventory
+ */
+export const getArchiveReconciliation = async (params?: GetArchiveReconciliationParams, options?: Parameters<typeof customFetch>[1]): Promise<ReconciliationReport> => {
+
+  return customFetch<ReconciliationReport>(getGetArchiveReconciliationUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveReconciliationQueryKey = (params?: GetArchiveReconciliationParams,) => {
+    return [
+    `/api/archive/reconciliation`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetArchiveReconciliationQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveReconciliation>>, TError = ErrorType<unknown>>(params?: GetArchiveReconciliationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveReconciliation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveReconciliationQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveReconciliation>>> = ({ signal }) => getArchiveReconciliation(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveReconciliation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveReconciliationQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveReconciliation>>>
+export type GetArchiveReconciliationQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Compare owner-scoped local archive records with Plex inventory
+ */
+
+export function useGetArchiveReconciliation<TData = Awaited<ReturnType<typeof getArchiveReconciliation>>, TError = ErrorType<unknown>>(
+ params?: GetArchiveReconciliationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveReconciliation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveReconciliationQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetArchiveNamingProposalsUrl = (params?: GetArchiveNamingProposalsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive/naming-proposals?${stringifiedParams}` : `/api/archive/naming-proposals`
+}
+
+/**
+ * @summary Get read-only naming proposals for owner-scoped archive records
+ */
+export const getArchiveNamingProposals = async (params?: GetArchiveNamingProposalsParams, options?: Parameters<typeof customFetch>[1]): Promise<NamingProposalReport> => {
+
+  return customFetch<NamingProposalReport>(getGetArchiveNamingProposalsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveNamingProposalsQueryKey = (params?: GetArchiveNamingProposalsParams,) => {
+    return [
+    `/api/archive/naming-proposals`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetArchiveNamingProposalsQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveNamingProposals>>, TError = ErrorType<unknown>>(params?: GetArchiveNamingProposalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveNamingProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveNamingProposalsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveNamingProposals>>> = ({ signal }) => getArchiveNamingProposals(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveNamingProposals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveNamingProposalsQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveNamingProposals>>>
+export type GetArchiveNamingProposalsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get read-only naming proposals for owner-scoped archive records
+ */
+
+export function useGetArchiveNamingProposals<TData = Awaited<ReturnType<typeof getArchiveNamingProposals>>, TError = ErrorType<unknown>>(
+ params?: GetArchiveNamingProposalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveNamingProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveNamingProposalsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetArchiveIdentityAuditUrl = (params?: GetArchiveIdentityAuditParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive/identity-audit?${stringifiedParams}` : `/api/archive/identity-audit`
+}
+
+/**
+ * @summary Audit owner-scoped archive identity evidence
+ */
+export const getArchiveIdentityAudit = async (params?: GetArchiveIdentityAuditParams, options?: Parameters<typeof customFetch>[1]): Promise<IdentityAuditReport> => {
+
+  return customFetch<IdentityAuditReport>(getGetArchiveIdentityAuditUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveIdentityAuditQueryKey = (params?: GetArchiveIdentityAuditParams,) => {
+    return [
+    `/api/archive/identity-audit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetArchiveIdentityAuditQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveIdentityAudit>>, TError = ErrorType<unknown>>(params?: GetArchiveIdentityAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveIdentityAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveIdentityAuditQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveIdentityAudit>>> = ({ signal }) => getArchiveIdentityAudit(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveIdentityAudit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveIdentityAuditQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveIdentityAudit>>>
+export type GetArchiveIdentityAuditQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Audit owner-scoped archive identity evidence
+ */
+
+export function useGetArchiveIdentityAudit<TData = Awaited<ReturnType<typeof getArchiveIdentityAudit>>, TError = ErrorType<unknown>>(
+ params?: GetArchiveIdentityAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveIdentityAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveIdentityAuditQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReceiveAcquisitionWebhookUrl = (provider: AcquisitionProvider,) => {
+
+
+
+
+  return `/api/acquisition-webhooks/${provider}`
+}
+
+/**
+ * Public provider callback. Authentication is performed using the provider signature over the raw request body rather than a browser session.
+ * @summary Receive a signed acquisition provider webhook
+ */
+export const receiveAcquisitionWebhook = async (provider: AcquisitionProvider,
+    acquisitionWebhookPayload: AcquisitionWebhookPayload, options?: Parameters<typeof customFetch>[1]): Promise<AcquisitionWebhookAccepted> => {
+
+  return customFetch<AcquisitionWebhookAccepted>(getReceiveAcquisitionWebhookUrl(provider),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(acquisitionWebhookPayload)
+  }
+);}
+
+
+
+
+
+export const getReceiveAcquisitionWebhookMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof receiveAcquisitionWebhook>>, TError,{provider: AcquisitionProvider;data: BodyType<AcquisitionWebhookPayload>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof receiveAcquisitionWebhook>>, TError,{provider: AcquisitionProvider;data: BodyType<AcquisitionWebhookPayload>}, TContext> => {
+
+const mutationKey = ['receiveAcquisitionWebhook'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof receiveAcquisitionWebhook>>, {provider: AcquisitionProvider;data: BodyType<AcquisitionWebhookPayload>}> = (props) => {
+          const {provider,data} = props ?? {};
+
+          return  receiveAcquisitionWebhook(provider,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReceiveAcquisitionWebhookMutationResult = NonNullable<Awaited<ReturnType<typeof receiveAcquisitionWebhook>>>
+    export type ReceiveAcquisitionWebhookMutationBody = BodyType<AcquisitionWebhookPayload>
+    export type ReceiveAcquisitionWebhookMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Receive a signed acquisition provider webhook
+ */
+export const useReceiveAcquisitionWebhook = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof receiveAcquisitionWebhook>>, TError,{provider: AcquisitionProvider;data: BodyType<AcquisitionWebhookPayload>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof receiveAcquisitionWebhook>>,
+        TError,
+        {provider: AcquisitionProvider;data: BodyType<AcquisitionWebhookPayload>},
+        TContext
+      > => {
+      return useMutation(getReceiveAcquisitionWebhookMutationOptions(options));
     }
 
 export const getGetArchiveScanUrl = () => {
