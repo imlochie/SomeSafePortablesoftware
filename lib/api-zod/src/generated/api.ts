@@ -2019,6 +2019,10 @@ export const getArchiveInventoryResponseSummaryActiveFilesMin = 0;
 
 export const getArchiveInventoryResponseSummaryFailedFilesMin = 0;
 
+export const getArchiveInventoryResponseSummaryIntegrityFailureCountMin = 0;
+
+export const getArchiveInventoryResponseSummaryInspectionFailureCountMin = 0;
+
 export const getArchiveInventoryResponseSummaryDuplicateCountMin = 0;
 
 export const getArchiveInventoryResponseSummaryMissingCountMin = 0;
@@ -2053,6 +2057,9 @@ export const GetArchiveInventoryResponse = zod.object({
   "summary": zod.object({
   "activeFiles": zod.number().min(getArchiveInventoryResponseSummaryActiveFilesMin),
   "failedFiles": zod.number().min(getArchiveInventoryResponseSummaryFailedFilesMin),
+  "integrityFailureCount": zod.number().min(getArchiveInventoryResponseSummaryIntegrityFailureCountMin).describe('Files whose media container was classified as corrupt or malformed by FFprobe.'),
+  "inspectionFailureCount": zod.number().min(getArchiveInventoryResponseSummaryInspectionFailureCountMin).describe('Files that could not be inspected because of an operational access or tooling failure.'),
+  "healthStatus": zod.enum(['healthy', 'attention_required']),
   "duplicateCount": zod.number().min(getArchiveInventoryResponseSummaryDuplicateCountMin),
   "missingCount": zod.number().min(getArchiveInventoryResponseSummaryMissingCountMin),
   "qualityConflictCount": zod.number().min(getArchiveInventoryResponseSummaryQualityConflictCountMin),
@@ -2072,6 +2079,8 @@ export const GetArchiveInventoryResponse = zod.object({
   "mediaType": zod.string().nullable(),
   "scanStatus": zod.enum(['active', 'missing', 'error']),
   "errorMessage": zod.string().nullable(),
+  "integrityClassification": zod.union([zod.literal('corrupt_or_malformed_container'),zod.literal('inspection_unavailable'),zod.literal(null)]).nullable(),
+  "integritySummary": zod.string().nullable(),
   "durationSeconds": zod.number().nullable(),
   "videoCodec": zod.string().nullable(),
   "audioCodec": zod.string().nullable(),
@@ -2130,6 +2139,8 @@ export const GetArchiveRecordResponse = zod.object({
   "mediaType": zod.string().nullable(),
   "scanStatus": zod.enum(['active', 'missing', 'error']),
   "errorMessage": zod.string().nullable(),
+  "integrityClassification": zod.union([zod.literal('corrupt_or_malformed_container'),zod.literal('inspection_unavailable'),zod.literal(null)]).nullable(),
+  "integritySummary": zod.string().nullable(),
   "durationSeconds": zod.number().nullable(),
   "videoCodec": zod.string().nullable(),
   "audioCodec": zod.string().nullable(),

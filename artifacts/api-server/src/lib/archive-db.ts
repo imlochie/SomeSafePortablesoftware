@@ -213,6 +213,7 @@ archiveDb.exec(`
     subtitle_languages TEXT NOT NULL DEFAULT '[]',
     fingerprint TEXT,
     error_message TEXT,
+    integrity_classification TEXT,
     local_identity_id INTEGER REFERENCES local_media_identity(id),
     volume_id TEXT,
     archive_root TEXT,
@@ -549,6 +550,11 @@ const fileRecordColumns = archiveDb
 const fileRecordHasOwner = fileRecordColumns.some((column) => column.name === "owner_id");
 if (!fileRecordHasOwner || hasSingleColumnUniqueIndex("file_record", "path")) {
   const ownerExpression = fileRecordHasOwner ? "owner_id" : `'${LEGACY_OWNER_ID}'`;
+  const integrityClassificationExpression = fileRecordColumns.some(
+    (column) => column.name === "integrity_classification",
+  )
+    ? "integrity_classification"
+    : "NULL";
   archiveDb.exec(`
     PRAGMA foreign_keys = OFF;
     BEGIN IMMEDIATE;
@@ -581,12 +587,13 @@ if (!fileRecordHasOwner || hasSingleColumnUniqueIndex("file_record", "path")) {
       subtitle_languages TEXT NOT NULL DEFAULT '[]',
       fingerprint TEXT,
       error_message TEXT,
+      integrity_classification TEXT,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (owner_id, path)
     );
     INSERT INTO file_record_owned
-      (id, path, size_bytes, checksum, media_type, discovered_at, owner_id)
-    SELECT id, path, size_bytes, checksum, media_type, discovered_at, ${ownerExpression}
+      (id, path, size_bytes, checksum, media_type, discovered_at, owner_id, integrity_classification)
+    SELECT id, path, size_bytes, checksum, media_type, discovered_at, ${ownerExpression}, ${integrityClassificationExpression}
     FROM file_record;
     DROP TABLE file_record;
     ALTER TABLE file_record_owned RENAME TO file_record;
@@ -617,6 +624,7 @@ for (const [column, definition] of [
   ["subtitle_languages", "TEXT NOT NULL DEFAULT '[]'"],
   ["fingerprint", "TEXT"],
   ["error_message", "TEXT"],
+  ["integrity_classification", "TEXT"],
   ["local_identity_id", "INTEGER"],
   ["volume_id", "TEXT"],
   ["archive_root", "TEXT"],

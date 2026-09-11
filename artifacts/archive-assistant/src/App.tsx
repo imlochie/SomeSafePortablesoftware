@@ -479,6 +479,11 @@ function EmptyState({ icon: Icon, title, description }: { icon: typeof Activity;
 }
 
 type FindingRecord = {
+  filename?: string;
+  path?: string;
+  integrityClassification?: string | null;
+  integritySummary?: string | null;
+  errorMessage?: string | null;
   qualityStatus: string;
   qualitySummary: string;
   qualityDifferences: string[];
@@ -514,7 +519,17 @@ function explainFinding(record: FindingRecord) {
   let consider: string;
   let assessment: string;
 
-  if (record.qualityStatus === 'file_missing') {
+  if (record.integrityClassification === 'corrupt_or_malformed_container') {
+    finding = 'FFprobe classified this file as a corrupt or malformed media container.';
+    why = record.integritySummary || 'The archive scan found a container-level media integrity failure.';
+    consider = 'Keep the file for investigation, compare it with another source, and do not delete or repair it automatically.';
+    assessment = 'MEDIA INTEGRITY / INVESTIGATE';
+  } else if (record.integrityClassification === 'inspection_unavailable') {
+    finding = 'The archive file was discovered, but FFprobe could not inspect it operationally.';
+    why = record.integritySummary || 'The failure may come from access, tooling, or another non-media condition.';
+    consider = 'Check the path, permissions, and local FFprobe configuration before treating this as media damage.';
+    assessment = 'INSPECTION / INVESTIGATE';
+  } else if (record.qualityStatus === 'file_missing') {
     finding = 'This file is known to the archive but was not present during the latest completed scan.';
     why = 'The local path may have changed, the storage may be unavailable, or the file may have been removed.';
     consider = 'Check the recorded path and storage before deciding whether the archive record should remain.';
@@ -675,6 +690,16 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
         </div>
       )}
 
+      {record.integrityClassification && (
+        <div className={`mt-6 border-l-2 p-4 text-[11px] leading-5 ${record.integrityClassification === 'corrupt_or_malformed_container' ? 'border-[#c85b51] bg-[#fcedea] text-[#994b43]' : 'border-[#d9bd77] bg-[#fff8e7] text-[#80652e]'}`} data-testid="panel-media-integrity">
+          <div className="archive-mono mb-3 text-[10px] tracking-[.14em]">ARCHIVE HEALTH / MEDIA INTEGRITY</div>
+          <div className="font-bold">{record.integritySummary}</div>
+          {record.path && <div className="mt-2 break-all"><span className="font-bold">PATH / </span>{record.path}</div>}
+          {record.errorMessage && <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words border-t border-current/20 pt-3 font-mono text-[10px]">{record.errorMessage}</pre>}
+          <div className="mt-3 text-[10px]">No automatic repair or deletion was attempted.</div>
+        </div>
+      )}
+
       {record.reviewStatus !== 'not_applicable' && (
         <div className="mt-6 border-t border-[#e3e8e7] pt-5" data-testid="panel-archive-review">
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -734,7 +759,7 @@ export function ArchivePage() {
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
   const [view, setView] = useState<'local' | 'plex_only' | 'missing_media'>('local');
-  const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
+  const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'integrity' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
   const [acquisitionTarget, setAcquisitionTarget] = useState<ArchiveAcquisitionTarget | null>(null);
 
   const [isScanning, setIsScanning] = useState(false);
@@ -792,6 +817,7 @@ export function ArchivePage() {
      });
  } else if (filter === 'duplicates') displayedRecords = records.filter(r => r.qualityStatus.includes('duplicate'));
   else if (filter === 'conflicts') displayedRecords = records.filter(r => ['higher_quality_available', 'lower_quality_version', 'needs_review'].includes(r.qualityStatus) || (r.qualityDifferences && r.qualityDifferences.length > 0));
+   else if (filter === 'integrity') displayedRecords = records.filter(r => r.integrityClassification === 'corrupt_or_malformed_container' || r.integrityClassification === 'inspection_unavailable');
   else if (filter === 'missing') displayedRecords = records.filter(r => r.scanStatus === 'missing' || r.qualityStatus === 'file_missing');
   else if (filter === 'local_only') displayedRecords = records.filter(r => r.qualityStatus === 'local_only');
   else if (filter === 'reviewed') displayedRecords = records.filter(r => r.reviewStatus === 'reviewed');
@@ -868,8 +894,10 @@ export function ArchivePage() {
       )}
 
       {scan && (
-        <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <MetricCard icon={FileCheck2} label="ACTIVE FILES" value={String(scan.activeFiles)} note="Verified local media" status={isScanning ? 'processing' : 'ready'} />
+           <MetricCard icon={Activity} label="SCAN FAILURES" value={String(inventory?.summary.failedFiles ?? scan.failedFiles)} note={`${inventory?.summary.integrityFailureCount ?? 0} integrity / ${inventory?.summary.inspectionFailureCount ?? 0} operational`} accent={scan.failedFiles ? 'red' : 'teal'} status={scan.failedFiles ? 'error' : 'idle'} />
+           <MetricCard icon={ShieldCheck} label="ARCHIVE HEALTH" value={(inventory?.summary.healthStatus ?? 'healthy').replace('_', ' ').toUpperCase()} note="Pre-existing media findings stay visible" accent={inventory?.summary.healthStatus === 'attention_required' ? 'amber' : 'teal'} status={inventory?.summary.healthStatus === 'attention_required' ? 'error' : 'ready'} />
           <MetricCard icon={Archive} label="MISSING FILES" value={String(scan.missingCount)} note="Known but missing" accent={scan.missingCount ? 'red' : 'teal'} status={scan.missingCount ? 'error' : 'idle'} />
           <MetricCard icon={Library} label="DUPLICATES" value={String(scan.duplicateCount)} note="Identical files found" accent={scan.duplicateCount ? 'amber' : 'teal'} />
           <MetricCard icon={Activity} label="QUALITY CONFLICTS" value={String(scan.qualityConflictCount)} note="Multiple versions exist" accent={scan.qualityConflictCount ? 'amber' : 'teal'} />
@@ -887,7 +915,7 @@ export function ArchivePage() {
 
             {view === 'local' && (
               <div className="flex flex-wrap items-center gap-2">
-                {(['all', 'queue', 'duplicates', 'conflicts', 'missing', 'local_only', 'reviewed', 'unresolved'] as const).map(f => (
+                {(['all', 'queue', 'duplicates', 'conflicts', 'integrity', 'missing', 'local_only', 'reviewed', 'unresolved'] as const).map(f => (
                   <button key={f} onClick={() => { setFilter(f); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`archive-mono text-[9px] tracking-[.08em] px-2 py-1 border ${filter === f ? 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]' : 'border-[#d6dfdc] bg-white text-[#7f9194] hover:border-[#aabfba]'}`}>
                     {f === 'queue' ? 'REVIEW QUEUE' : f.replace('_', ' ').toUpperCase()}
                   </button>
@@ -986,11 +1014,18 @@ export function ArchivePage() {
                           <span className={`archive-mono tracking-[.05em] ${r.qualityStatus.includes('duplicate') || r.qualityStatus.includes('missing') || r.qualityStatus.includes('needs_review') ? 'text-[#a77517]' : 'text-[#4e9690]'}`}>
                             {r.qualityStatus.replace(/_/g, ' ').toUpperCase()}
                           </span>
+                          {r.integrityClassification && (
+                            <span className={`archive-mono tracking-[.05em] ${r.integrityClassification === 'corrupt_or_malformed_container' ? 'text-[#994b43]' : 'text-[#a77517]'}`}>
+                              {r.integrityClassification === 'corrupt_or_malformed_container' ? 'MEDIA INTEGRITY' : 'INSPECTION UNAVAILABLE'}
+                            </span>
+                          )}
                           <span className="text-[#8a9b9e]">{formatBytes(r.sizeBytes)}</span>
                         </div>
                       </div>
                       <div className="flex gap-2 shrink-0">
                         {r.scanStatus === 'missing' && <span className="grid h-6 place-items-center bg-[#fcedea] px-2 text-[9px] font-bold text-[#c85b51]">MISSING</span>}
+                        {r.integrityClassification === 'corrupt_or_malformed_container' && <span className="grid h-6 place-items-center bg-[#fcedea] px-2 text-[9px] font-bold text-[#994b43]">CORRUPT / MALFORMED</span>}
+                        {r.integrityClassification === 'inspection_unavailable' && <span className="grid h-6 place-items-center bg-[#fff0c9] px-2 text-[9px] font-bold text-[#8d681d]">INSPECTION FAILED</span>}
                         {r.plexMatch && <span className="grid h-6 place-items-center bg-[#fff0c9] px-2 text-[9px] font-bold text-[#a77517]">IN PLEX</span>}
                         {r.reviewStatus !== 'not_applicable' && <span className={`grid h-6 place-items-center px-2 text-[9px] font-bold ${r.reviewStatus === 'reviewed' ? 'bg-[#eaf3ef] text-[#39736e]' : r.reviewStatus === 'deferred' ? 'bg-[#fff0c9] text-[#8d681d]' : 'bg-[#fcedea] text-[#994b43]'}`}>{r.reviewStatus.replace(/_/g, ' ').toUpperCase()}</span>}
                       </div>

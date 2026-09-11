@@ -16,6 +16,7 @@ const testFiles = [
   "media-acquisition.test.ts",
   "control-plane.test.ts",
   "system-dependencies.test.ts",
+  "media-integrity.test.ts",
 ];
 const outputFiles = testFiles.map((file) => path.join(testDir, file.replace(/\.ts$/, ".cjs")));
 const databaseFile = path.join(testDir, "ownership.sqlite");

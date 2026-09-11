@@ -571,11 +571,30 @@ export interface ArchiveScan {
   localOnlyCount: number;
 }
 
+export type ArchiveInventorySummaryHealthStatus = typeof ArchiveInventorySummaryHealthStatus[keyof typeof ArchiveInventorySummaryHealthStatus];
+
+
+export const ArchiveInventorySummaryHealthStatus = {
+  healthy: 'healthy',
+  attention_required: 'attention_required',
+} as const;
+
 export interface ArchiveInventorySummary {
   /** @minimum 0 */
   activeFiles: number;
   /** @minimum 0 */
   failedFiles: number;
+  /**
+     * Files whose media container was classified as corrupt or malformed by FFprobe.
+     * @minimum 0
+     */
+  integrityFailureCount: number;
+  /**
+     * Files that could not be inspected because of an operational access or tooling failure.
+     * @minimum 0
+     */
+  inspectionFailureCount: number;
+  healthStatus: ArchiveInventorySummaryHealthStatus;
   /** @minimum 0 */
   duplicateCount: number;
   /** @minimum 0 */
@@ -699,6 +718,17 @@ export const ArchiveInventoryRecordScanStatus = {
   error: 'error',
 } as const;
 
+/**
+ * @nullable
+ */
+export type ArchiveInventoryRecordIntegrityClassification = typeof ArchiveInventoryRecordIntegrityClassification[keyof typeof ArchiveInventoryRecordIntegrityClassification] | null;
+
+
+export const ArchiveInventoryRecordIntegrityClassification = {
+  corrupt_or_malformed_container: 'corrupt_or_malformed_container',
+  inspection_unavailable: 'inspection_unavailable',
+} as const;
+
 export type ArchiveInventoryRecordQualityStatus = typeof ArchiveInventoryRecordQualityStatus[keyof typeof ArchiveInventoryRecordQualityStatus];
 
 
@@ -740,6 +770,10 @@ export interface ArchiveInventoryRecord {
   scanStatus: ArchiveInventoryRecordScanStatus;
   /** @nullable */
   errorMessage: string | null;
+  /** @nullable */
+  integrityClassification: ArchiveInventoryRecordIntegrityClassification;
+  /** @nullable */
+  integritySummary: string | null;
   /** @nullable */
   durationSeconds: number | null;
   /** @nullable */

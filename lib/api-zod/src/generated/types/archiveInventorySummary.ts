@@ -5,12 +5,24 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ArchiveInventorySummaryHealthStatus } from './archiveInventorySummaryHealthStatus';
 
 export interface ArchiveInventorySummary {
   /** @minimum 0 */
   activeFiles: number;
   /** @minimum 0 */
   failedFiles: number;
+  /**
+     * Files whose media container was classified as corrupt or malformed by FFprobe.
+     * @minimum 0
+     */
+  integrityFailureCount: number;
+  /**
+     * Files that could not be inspected because of an operational access or tooling failure.
+     * @minimum 0
+     */
+  inspectionFailureCount: number;
+  healthStatus: ArchiveInventorySummaryHealthStatus;
   /** @minimum 0 */
   duplicateCount: number;
   /** @minimum 0 */

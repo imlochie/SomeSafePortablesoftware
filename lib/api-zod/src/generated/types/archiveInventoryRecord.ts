@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ArchiveInventoryRecordIntegrityClassification } from './archiveInventoryRecordIntegrityClassification';
 import type { ArchiveInventoryRecordQualityStatus } from './archiveInventoryRecordQualityStatus';
 import type { ArchiveInventoryRecordReviewStatus } from './archiveInventoryRecordReviewStatus';
 import type { ArchiveInventoryRecordScanStatus } from './archiveInventoryRecordScanStatus';
@@ -26,6 +27,10 @@ export interface ArchiveInventoryRecord {
   scanStatus: ArchiveInventoryRecordScanStatus;
   /** @nullable */
   errorMessage: string | null;
+  /** @nullable */
+  integrityClassification: ArchiveInventoryRecordIntegrityClassification;
+  /** @nullable */
+  integritySummary: string | null;
   /** @nullable */
   durationSeconds: number | null;
   /** @nullable */

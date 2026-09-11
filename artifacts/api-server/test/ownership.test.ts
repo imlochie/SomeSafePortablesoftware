@@ -377,7 +377,7 @@ describe("user ownership", { concurrency: false }, () => {
     await writeFile(ffprobePath, `#!/usr/bin/env node
 const file = process.argv.at(-1) ?? "";
 if (file.includes("Corrupt")) {
-  process.stderr.write("invalid media");
+  process.stderr.write("Invalid Matroska EBML header");
   process.exit(1);
 }
 const is2160 = file.includes("2160") || file.includes("Alpha");
@@ -475,6 +475,13 @@ process.stdout.write(JSON.stringify({
     assert.equal(duplicateRows.length, 2);
     assert.ok(duplicateRows.every((record) => record.qualitySummary.includes("SHA-256")));
     assert.equal(inventory.records.find((record) => record.filename === "Corrupt.mp4")?.scanStatus, "error");
+    const corrupt = inventory.records.find((record) => record.filename === "Corrupt.mp4");
+    assert.equal(corrupt?.integrityClassification, "corrupt_or_malformed_container");
+    assert.match(corrupt?.integritySummary ?? "", /corrupt or malformed/i);
+    assert.match(corrupt?.errorMessage ?? "", /Invalid Matroska EBML header/i);
+    assert.equal(inventory.summary.integrityFailureCount, 1);
+    assert.equal(inventory.summary.inspectionFailureCount, 0);
+    assert.equal(inventory.summary.healthStatus, "attention_required");
     assert.ok(inventory.plexOnly.some((record) => record.title === "Beta"));
     assert.deepEqual(readArchiveInventory(ownerB).records, []);
 

@@ -1842,7 +1842,7 @@ components:
           minimum: 0
     ArchiveInventorySummary:
       type: object
-      required: [activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount, reviewedCount, unresolvedCount]
+      required: [activeFiles, failedFiles, integrityFailureCount, inspectionFailureCount, healthStatus, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount, reviewedCount, unresolvedCount]
       properties:
         activeFiles:
           type: number
@@ -1850,6 +1850,17 @@ components:
         failedFiles:
           type: number
           minimum: 0
+        integrityFailureCount:
+          type: number
+          minimum: 0
+          description: Files whose media container was classified as corrupt or malformed by FFprobe.
+        inspectionFailureCount:
+          type: number
+          minimum: 0
+          description: Files that could not be inspected because of an operational access or tooling failure.
+        healthStatus:
+          type: string
+          enum: [healthy, attention_required]
         duplicateCount:
           type: number
           minimum: 0
@@ -1981,7 +1992,7 @@ components:
           type: string
     ArchiveInventoryRecord:
       type: object
-      required: [id, archiveItemId, filename, path, relativePath, sizeBytes, checksum, mediaType, scanStatus, errorMessage, durationSeconds, videoCodec, audioCodec, width, height, fps, bitrate, container, dynamicRange, audioChannels, audioLanguages, subtitleLanguages, lastSeenAt, qualityStatus, qualitySummary, qualityDifferences, duplicateOfId, plexMatch, reviewStatus, reviewNote, reviewUpdatedAt]
+      required: [id, archiveItemId, filename, path, relativePath, sizeBytes, checksum, mediaType, scanStatus, errorMessage, integrityClassification, integritySummary, durationSeconds, videoCodec, audioCodec, width, height, fps, bitrate, container, dynamicRange, audioChannels, audioLanguages, subtitleLanguages, lastSeenAt, qualityStatus, qualitySummary, qualityDifferences, duplicateOfId, plexMatch, reviewStatus, reviewNote, reviewUpdatedAt]
       properties:
         id:
           type: number
@@ -2003,6 +2014,11 @@ components:
           type: string
           enum: [active, missing, error]
         errorMessage:
+          type: [string, "null"]
+        integrityClassification:
+          type: [string, "null"]
+          enum: [corrupt_or_malformed_container, inspection_unavailable, null]
+        integritySummary:
           type: [string, "null"]
         durationSeconds:
           type: [number, "null"]

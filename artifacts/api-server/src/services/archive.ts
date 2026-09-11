@@ -4,6 +4,11 @@ import { access, readdir, stat } from "node:fs/promises";
 import { basename, extname, relative, resolve, sep } from "node:path";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia } from "./media";
+import {
+  assessMediaIntegrityFailure,
+  mediaIntegritySummary,
+  type MediaIntegrityClassification,
+} from "./media-integrity";
 import { getArchiveScanRoots } from "./storage";
 
 const supportedExtensions = new Set([
@@ -45,6 +50,7 @@ type FileRow = {
   media_type: string | null;
   scan_status: FileStatus;
   error_message: string | null;
+  integrity_classification: MediaIntegrityClassification | null;
   duration_seconds: number | null;
   video_codec: string | null;
   audio_codec: string | null;
@@ -308,7 +314,16 @@ function updateScan(ownerId: string, values: Record<string, unknown>) {
   ).run(...Object.values(values) as Array<string | number | null>, ownerId);
 }
 
-function upsertArchiveRecord(ownerId: string, filePath: string, root: string, modifiedAtMs: number, inspected: Awaited<ReturnType<typeof inspectLocalMedia>> | null, fileChecksum: string | null, errorMessage: string | null) {
+function upsertArchiveRecord(
+  ownerId: string,
+  filePath: string,
+  root: string,
+  modifiedAtMs: number,
+  inspected: Awaited<ReturnType<typeof inspectLocalMedia>> | null,
+  fileChecksum: string | null,
+  errorMessage: string | null,
+  integrityClassification: MediaIntegrityClassification | null,
+) {
   const filename = basename(filePath);
   const relativePath = relative(root, filePath);
   const title = filename.replace(/\.[^.]+$/, "");
@@ -373,12 +388,12 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
          local_identity_id, volume_id, archive_root,
          scan_status, last_seen_at, modified_at_ms, extension, duration_seconds, video_codec, audio_codec,
          width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages,
-         subtitle_languages, fingerprint, error_message, updated_at)
+          subtitle_languages, fingerprint, error_message, integrity_classification, updated_at)
        VALUES (
          ?, ?, ?, ?, ?, ?, ?, ?,
          ?, ?, ?,
          ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?,
-         ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
        )
        ON CONFLICT(owner_id, path) DO UPDATE SET
          size_bytes = excluded.size_bytes, checksum = excluded.checksum, media_type = excluded.media_type,
@@ -390,7 +405,8 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
          bitrate = excluded.bitrate, container = excluded.container, dynamic_range = excluded.dynamic_range,
          audio_channels = excluded.audio_channels, audio_languages = excluded.audio_languages,
          subtitle_languages = excluded.subtitle_languages, fingerprint = excluded.fingerprint,
-         error_message = excluded.error_message, updated_at = CURRENT_TIMESTAMP`,
+          error_message = excluded.error_message, integrity_classification = excluded.integrity_classification,
+          updated_at = CURRENT_TIMESTAMP`,
   ).run(
    filePath,
    inspected?.filesize ?? null,
@@ -420,6 +436,7 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
    JSON.stringify(inspected?.subtitleLanguages ?? []),
    fingerprint,
    errorMessage,
+    integrityClassification,
   );
 }
 
@@ -437,6 +454,7 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
       inspected: null,
       fileChecksum: null,
       errorMessage: null,
+      integrityClassification: null,
       unchangedRecordId: existing.id,
       warningMessage: undefined,
     };
@@ -445,11 +463,13 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
   let inspected: Awaited<ReturnType<typeof inspectLocalMedia>> | null = null;
   let fileChecksum: string | null = null;
   let errorMessage: string | null = null;
+  let integrityClassification: MediaIntegrityClassification | null = null;
   try {
     inspected = await inspectLocalMedia(filePath, settings, archiveScanRoots);
     fileChecksum = await checksum(filePath);
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : "The file could not be inspected.";
+    integrityClassification = assessMediaIntegrityFailure(errorMessage).classification;
   }
   return {
     filePath,
@@ -458,6 +478,7 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
     inspected,
     fileChecksum,
     errorMessage,
+    integrityClassification,
     unchangedRecordId: null,
     warningMessage: undefined,
   };
@@ -520,6 +541,7 @@ for (const root of roots) {
                 inspected: null,
                 fileChecksum: null,
                 errorMessage: null,
+                integrityClassification: "inspection_unavailable" as const,
                 unchangedRecordId: null,
                 warningMessage: `Archive scan could not inspect ${basename(filePath)}: ${
                   error instanceof Error ? error.message : "unknown error"
@@ -552,6 +574,7 @@ for (const root of roots) {
                   result.inspected,
                   result.fileChecksum,
                   result.errorMessage,
+                  result.integrityClassification,
                 );
                 if (result.inspected === null) failedFiles += 1;
               }
@@ -771,6 +794,11 @@ function plexTitleIndexes(plexRows: PlexRow[]): PlexTitleIndexes {
   return { byTitle, byTitleAndYear, byTitleWithoutYear, order };
 }
 
+function integrityClassificationFor(row: Pick<FileRow, "integrity_classification" | "error_message">) {
+  if (row.integrity_classification) return row.integrity_classification;
+  return row.error_message ? assessMediaIntegrityFailure(row.error_message).classification : null;
+}
+
 function plexMatch(row: FileRow, indexes: PlexTitleIndexes, episodeIndex: Map<string, PlexRow>, localIdentity?: LocalMediaIdentity) {
   if (localIdentity) {
     if (localIdentity.media_type === "tv") {
@@ -810,6 +838,8 @@ function plexMatch(row: FileRow, indexes: PlexTitleIndexes, episodeIndex: Map<st
 }
 
 function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, plexTitleIndex: PlexTitleIndexes, reviews: Map<string, ReviewRow>, localIdentity?: LocalMediaIdentity) {
+  const integrityClassification = integrityClassificationFor(row);
+  const integritySummary = mediaIntegritySummary(integrityClassification);
   const identityKey = localIdentity?.identity_key
     ?? `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
   const sameIdentity = (indexes.identity.get(identityKey) ?? []).filter((candidate) => candidate.id !== row.id);
@@ -828,7 +858,7 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
   let qualitySummary = row.scan_status === "missing"
     ? "The file was not present during the latest completed scan."
     : row.scan_status === "error"
-      ? "FFprobe could not provide reliable metadata for this file."
+      ? integritySummary ?? "FFprobe could not provide reliable metadata for this file."
       : "No matching Plex item was found.";
   let qualityDifferences: string[] = [];
   if (row.scan_status === "active" && (exactDuplicate || fingerprintDuplicate)) {
@@ -903,6 +933,8 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     mediaType: row.media_type,
     scanStatus: row.scan_status,
     errorMessage: row.error_message,
+    integrityClassification,
+    integritySummary,
     durationSeconds: row.duration_seconds,
     videoCodec: row.video_codec,
     audioCodec: row.audio_codec,
@@ -1022,11 +1054,20 @@ function buildArchiveInventory(ownerId: string) {
       qualitySummary: "Plex contains this item, but no matching local file was found.",
     }));
   const scan = readArchiveScan(ownerId);
+  const integrityFailureCount = records.filter(
+    (record) => record.integrityClassification === "corrupt_or_malformed_container",
+  ).length;
+  const inspectionFailureCount = records.filter(
+    (record) => record.scanStatus === "error" && record.integrityClassification === "inspection_unavailable",
+  ).length;
   return {
     scan,
     summary: {
       activeFiles: records.filter((record) => record.scanStatus === "active").length,
       failedFiles: records.filter((record) => record.scanStatus === "error").length,
+      integrityFailureCount,
+      inspectionFailureCount,
+      healthStatus: integrityFailureCount || inspectionFailureCount ? "attention_required" : "healthy",
       duplicateCount: records.filter((record) => record.qualityStatus === "duplicate").length,
       missingCount: records.filter((record) => record.qualityStatus === "file_missing").length,
       qualityConflictCount: records.filter((record) => ["lower_quality_version", "higher_quality_available"].includes(record.qualityStatus)).length,
