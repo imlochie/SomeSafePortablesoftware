@@ -1473,40 +1473,399 @@ export interface ReviewSyncResult {
 }
 
 export interface ReportPagination {
+  /** @minimum 1 */
   page: number;
+  /** @minimum 1 */
   pageSize: number;
+  /** @minimum 0 */
   total: number;
+  /** @minimum 0 */
   totalPages: number;
 }
 
-export type ReconciliationReportSummary = { [key: string]: unknown };
+export interface ReconciliationSummary {
+  /** @minimum 0 */
+  localCount: number;
+  /** @minimum 0 */
+  plexCount: number;
+  /** @minimum 0 */
+  matchedCount: number;
+  /** @minimum 0 */
+  localOnlyCount: number;
+  /** @minimum 0 */
+  plexOnlyCount: number;
+  /** @minimum 0 */
+  uncertainCount: number;
+  /** @minimum 0 */
+  duplicateCount: number;
+  /** @minimum 0 */
+  qualityConflictCount: number;
+}
 
-export type ReconciliationReportResultsItem = { [key: string]: unknown };
+export interface ReconciliationTvIdentity {
+  strategy: 'tv_show_season_episode';
+  show: string;
+  season: number;
+  episode: number;
+  /** @nullable */
+  grandparentRatingKey?: string | null;
+  /** @nullable */
+  parentRatingKey?: string | null;
+  title?: string;
+  ratingKey?: string;
+}
+
+export type ReconciliationMovieIdentityStrategy = typeof ReconciliationMovieIdentityStrategy[keyof typeof ReconciliationMovieIdentityStrategy];
+
+
+export const ReconciliationMovieIdentityStrategy = {
+  movie_title_year: 'movie_title_year',
+  fallback_title_year: 'fallback_title_year',
+} as const;
+
+export interface ReconciliationMovieIdentity {
+  strategy: ReconciliationMovieIdentityStrategy;
+  title: string;
+  /** @nullable */
+  year: number | null;
+}
+
+export type ReconciliationIdentity = ReconciliationTvIdentity | ReconciliationMovieIdentity;
+
+export interface ReconciliationLocalItem {
+  fileRecordId: number;
+  /** @nullable */
+  localMediaIdentityId: number | null;
+  path: string;
+  relativePath: string;
+  /** @nullable */
+  volumeId: string | null;
+  /** @nullable */
+  archiveRoot: string | null;
+  /** @nullable */
+  mediaType: string | null;
+  identity: ReconciliationIdentity | null;
+  scanStatus: string;
+}
+
+export interface ReconciliationPlexItem {
+  id: number;
+  ratingKey: string;
+  libraryId: number;
+  libraryName: string;
+  title: string;
+  /** @nullable */
+  year: number | null;
+  itemType: string;
+  identity: ReconciliationIdentity | null;
+}
+
+export type ReconciliationQualityStatus = typeof ReconciliationQualityStatus[keyof typeof ReconciliationQualityStatus];
+
+
+export const ReconciliationQualityStatus = {
+  not_compared: 'not_compared',
+  conflict: 'conflict',
+  equivalent_available_metadata: 'equivalent_available_metadata',
+} as const;
+
+export type ReconciliationQualityDifferencesItem = typeof ReconciliationQualityDifferencesItem[keyof typeof ReconciliationQualityDifferencesItem];
+
+
+export const ReconciliationQualityDifferencesItem = {
+  resolution: 'resolution',
+  dynamic_range: 'dynamic_range',
+  video_codec: 'video_codec',
+  bitrate: 'bitrate',
+  audio_codec: 'audio_codec',
+  audio_channels: 'audio_channels',
+  container: 'container',
+} as const;
+
+export interface ReconciliationQuality {
+  status: ReconciliationQualityStatus;
+  differences: ReconciliationQualityDifferencesItem[];
+}
+
+export type ReconciliationResultClassification = typeof ReconciliationResultClassification[keyof typeof ReconciliationResultClassification];
+
+
+export const ReconciliationResultClassification = {
+  matched: 'matched',
+  local_only: 'local_only',
+  plex_only: 'plex_only',
+  duplicate: 'duplicate',
+  quality_conflict: 'quality_conflict',
+  uncertain: 'uncertain',
+} as const;
+
+export type ReconciliationResultMatchingStrategy = typeof ReconciliationResultMatchingStrategy[keyof typeof ReconciliationResultMatchingStrategy];
+
+
+export const ReconciliationResultMatchingStrategy = {
+  tv_show_season_episode: 'tv_show_season_episode',
+  movie_title_year: 'movie_title_year',
+  fallback_title_year: 'fallback_title_year',
+  checksum: 'checksum',
+  fingerprint: 'fingerprint',
+  semantic_identity: 'semantic_identity',
+  ambiguous: 'ambiguous',
+  no_match: 'no_match',
+} as const;
+
+export interface ReconciliationResult {
+  classification: ReconciliationResultClassification;
+  matchingStrategy: ReconciliationResultMatchingStrategy;
+  /** @minimum 0 */
+  candidateCount: number;
+  local: ReconciliationLocalItem | null;
+  plex: ReconciliationPlexItem | null;
+  ambiguityCandidates: ReconciliationPlexItem[];
+  quality: ReconciliationQuality;
+}
 
 export interface ReconciliationReport {
-  summary: ReconciliationReportSummary;
+  summary: ReconciliationSummary;
   pagination: ReportPagination;
-  results: ReconciliationReportResultsItem[];
+  results: ReconciliationResult[];
 }
 
-export type NamingProposalReportSummary = { [key: string]: unknown };
+export interface NamingProposalSummary {
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  highConfidence: number;
+  /** @minimum 0 */
+  mediumConfidence: number;
+  /** @minimum 0 */
+  lowConfidence: number;
+  /** @minimum 0 */
+  actionable: number;
+  /** @minimum 0 */
+  uncertain: number;
+  /** @minimum 0 */
+  collisions: number;
+}
 
-export type NamingProposalReportResultsItem = { [key: string]: unknown };
+export interface NamingCurrentTvIdentity {
+  show: string;
+  season: number;
+  episode: number;
+}
+
+export interface NamingMovieIdentity {
+  title: string;
+  /** @nullable */
+  year: number | null;
+}
+
+export type NamingCurrentIdentity = NamingCurrentTvIdentity | NamingMovieIdentity;
+
+export type NamingProposedTvIdentityAmbiguity = typeof NamingProposedTvIdentityAmbiguity[keyof typeof NamingProposedTvIdentityAmbiguity];
+
+
+export const NamingProposedTvIdentityAmbiguity = {
+  resolved: 'resolved',
+  compound: 'compound',
+  ambiguous: 'ambiguous',
+  unresolved: 'unresolved',
+} as const;
+
+export interface NamingProposedTvIdentity {
+  /** @nullable */
+  show: string | null;
+  /** @nullable */
+  season: number | null;
+  /** @nullable */
+  episode: number | null;
+  episodes: number[];
+  /** @nullable */
+  episodeTitle: string | null;
+  ambiguity: NamingProposedTvIdentityAmbiguity;
+}
+
+export type NamingProposedIdentity = NamingProposedTvIdentity | NamingMovieIdentity;
+
+export type NamingProposalResultConfidence = typeof NamingProposalResultConfidence[keyof typeof NamingProposalResultConfidence];
+
+
+export const NamingProposalResultConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  uncertain: 'uncertain',
+} as const;
+
+export type NamingProposalResultOperation = typeof NamingProposalResultOperation[keyof typeof NamingProposalResultOperation];
+
+
+export const NamingProposalResultOperation = {
+  rename: 'rename',
+  restructure: 'restructure',
+  move: 'move',
+  'uncertain/no_action': 'uncertain/no_action',
+} as const;
+
+export type NamingProposalResultMediaType = typeof NamingProposalResultMediaType[keyof typeof NamingProposalResultMediaType];
+
+
+export const NamingProposalResultMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export interface NamingProposalResult {
+  fileRecordId: number;
+  /** @nullable */
+  localIdentityId: number | null;
+  sourcePath: string;
+  /** @nullable */
+  proposedPath: string | null;
+  sourceFilename: string;
+  /** @nullable */
+  proposedFilename: string | null;
+  currentIdentity: NamingCurrentIdentity | null;
+  proposedIdentity: NamingProposedIdentity | null;
+  patternId: string;
+  confidence: NamingProposalResultConfidence;
+  operation: NamingProposalResultOperation;
+  reason: string;
+  evidence: string[];
+  mediaType: NamingProposalResultMediaType;
+  volumeId: string;
+  archiveRoot: string;
+  collision: boolean;
+}
 
 export interface NamingProposalReport {
-  summary: NamingProposalReportSummary;
+  summary: NamingProposalSummary;
   pagination: ReportPagination;
-  results: NamingProposalReportResultsItem[];
+  results: NamingProposalResult[];
 }
 
-export type IdentityAuditReportSummary = { [key: string]: unknown };
+export interface IdentityAuditTypeCounts {
+  /** @minimum 0 */
+  suspicious_year?: number;
+  /** @minimum 0 */
+  numeric_title?: number;
+  /** @minimum 0 */
+  collection_prefix?: number;
+  /** @minimum 0 */
+  missing_year?: number;
+  /** @minimum 0 */
+  year_conflict?: number;
+  /** @minimum 0 */
+  title_conflict?: number;
+  /** @minimum 0 */
+  multiple_candidates?: number;
+  /** @minimum 0 */
+  unresolved?: number;
+}
 
-export type IdentityAuditReportResultsItem = { [key: string]: unknown };
+export interface IdentityAuditConfidenceCounts {
+  /** @minimum 0 */
+  high?: number;
+  /** @minimum 0 */
+  medium?: number;
+  /** @minimum 0 */
+  low?: number;
+}
+
+export interface IdentityAuditSummary {
+  /** @minimum 0 */
+  totalCandidates: number;
+  byAuditType: IdentityAuditTypeCounts;
+  byConfidence: IdentityAuditConfidenceCounts;
+}
+
+export interface IdentityAuditLocalIdentity {
+  /** @nullable */
+  id: number | null;
+  /** @nullable */
+  identityKey: string | null;
+  /** @nullable */
+  title: string | null;
+  /** @nullable */
+  year: number | null;
+  /** @nullable */
+  show: string | null;
+  /** @nullable */
+  season: number | null;
+  /** @nullable */
+  episode: number | null;
+}
+
+export type IdentityAuditExtractedCandidateSource = typeof IdentityAuditExtractedCandidateSource[keyof typeof IdentityAuditExtractedCandidateSource];
+
+
+export const IdentityAuditExtractedCandidateSource = {
+  filename: 'filename',
+  media_folder: 'media_folder',
+  collection_folder: 'collection_folder',
+  processing_folder: 'processing_folder',
+  contextual_folder: 'contextual_folder',
+} as const;
+
+export interface IdentityAuditExtractedCandidate {
+  title: string;
+  normalizedTitle: string;
+  /** @nullable */
+  year: number | null;
+  source: IdentityAuditExtractedCandidateSource;
+}
+
+export interface IdentityAuditPlexCandidate {
+  title: string;
+  normalizedTitle: string;
+  /** @nullable */
+  year: number | null;
+  ratingKey: string;
+  itemType: string;
+}
+
+export type IdentityAuditResultAuditType = typeof IdentityAuditResultAuditType[keyof typeof IdentityAuditResultAuditType];
+
+
+export const IdentityAuditResultAuditType = {
+  suspicious_year: 'suspicious_year',
+  numeric_title: 'numeric_title',
+  collection_prefix: 'collection_prefix',
+  missing_year: 'missing_year',
+  year_conflict: 'year_conflict',
+  title_conflict: 'title_conflict',
+  multiple_candidates: 'multiple_candidates',
+  unresolved: 'unresolved',
+} as const;
+
+export type IdentityAuditResultConfidence = typeof IdentityAuditResultConfidence[keyof typeof IdentityAuditResultConfidence];
+
+
+export const IdentityAuditResultConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export interface IdentityAuditResult {
+  fileRecordId: number;
+  path: string;
+  currentLocalIdentity: IdentityAuditLocalIdentity | null;
+  extractedCandidates: IdentityAuditExtractedCandidate[];
+  plexCandidates: IdentityAuditPlexCandidate[];
+  reason: string;
+  auditType: IdentityAuditResultAuditType;
+  confidence: IdentityAuditResultConfidence;
+  evidence: string[];
+  recommendedInterpretation: string;
+  needsReview: boolean;
+  /** @nullable */
+  mediaType: string | null;
+}
 
 export interface IdentityAuditReport {
-  summary: IdentityAuditReportSummary;
+  summary: IdentityAuditSummary;
   pagination: ReportPagination;
-  results: IdentityAuditReportResultsItem[];
+  results: IdentityAuditResult[];
 }
 
 export interface AcquisitionWebhookAccepted {

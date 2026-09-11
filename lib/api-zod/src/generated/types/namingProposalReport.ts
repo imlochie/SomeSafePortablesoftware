@@ -5,12 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { NamingProposalReportResultsItem } from './namingProposalReportResultsItem';
-import type { NamingProposalReportSummary } from './namingProposalReportSummary';
+import type { NamingProposalResult } from './namingProposalResult';
+import type { NamingProposalSummary } from './namingProposalSummary';
 import type { ReportPagination } from './reportPagination';
 
 export interface NamingProposalReport {
-  summary: NamingProposalReportSummary;
+  summary: NamingProposalSummary;
   pagination: ReportPagination;
-  results: NamingProposalReportResultsItem[];
+  results: NamingProposalResult[];
 }

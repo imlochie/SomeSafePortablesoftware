@@ -1927,15 +1927,128 @@ export const GetArchiveReconciliationQueryParams = zod.object({
   "pageSize": zod.coerce.number().min(1).max(getArchiveReconciliationQueryPageSizeMax).optional()
 })
 
+export const getArchiveReconciliationResponseSummaryLocalCountMin = 0;
+
+export const getArchiveReconciliationResponseSummaryPlexCountMin = 0;
+
+export const getArchiveReconciliationResponseSummaryMatchedCountMin = 0;
+
+export const getArchiveReconciliationResponseSummaryLocalOnlyCountMin = 0;
+
+export const getArchiveReconciliationResponseSummaryPlexOnlyCountMin = 0;
+
+export const getArchiveReconciliationResponseSummaryUncertainCountMin = 0;
+
+export const getArchiveReconciliationResponseSummaryDuplicateCountMin = 0;
+
+export const getArchiveReconciliationResponseSummaryQualityConflictCountMin = 0;
+
+
+
+export const getArchiveReconciliationResponsePaginationTotalMin = 0;
+
+export const getArchiveReconciliationResponsePaginationTotalPagesMin = 0;
+
+export const getArchiveReconciliationResponseResultsItemCandidateCountMin = 0;
+
+
+
 export const GetArchiveReconciliationResponse = zod.object({
-  "summary": zod.record(zod.string(), zod.unknown()),
-  "pagination": zod.object({
-  "page": zod.number(),
-  "pageSize": zod.number(),
-  "total": zod.number(),
-  "totalPages": zod.number()
+  "summary": zod.object({
+  "localCount": zod.number().min(getArchiveReconciliationResponseSummaryLocalCountMin),
+  "plexCount": zod.number().min(getArchiveReconciliationResponseSummaryPlexCountMin),
+  "matchedCount": zod.number().min(getArchiveReconciliationResponseSummaryMatchedCountMin),
+  "localOnlyCount": zod.number().min(getArchiveReconciliationResponseSummaryLocalOnlyCountMin),
+  "plexOnlyCount": zod.number().min(getArchiveReconciliationResponseSummaryPlexOnlyCountMin),
+  "uncertainCount": zod.number().min(getArchiveReconciliationResponseSummaryUncertainCountMin),
+  "duplicateCount": zod.number().min(getArchiveReconciliationResponseSummaryDuplicateCountMin),
+  "qualityConflictCount": zod.number().min(getArchiveReconciliationResponseSummaryQualityConflictCountMin)
 }),
-  "results": zod.array(zod.record(zod.string(), zod.unknown()))
+  "pagination": zod.object({
+  "page": zod.number().min(1),
+  "pageSize": zod.number().min(1),
+  "total": zod.number().min(getArchiveReconciliationResponsePaginationTotalMin),
+  "totalPages": zod.number().min(getArchiveReconciliationResponsePaginationTotalPagesMin)
+}),
+  "results": zod.array(zod.object({
+  "classification": zod.enum(['matched', 'local_only', 'plex_only', 'duplicate', 'quality_conflict', 'uncertain']),
+  "matchingStrategy": zod.enum(['tv_show_season_episode', 'movie_title_year', 'fallback_title_year', 'checksum', 'fingerprint', 'semantic_identity', 'ambiguous', 'no_match']),
+  "candidateCount": zod.number().min(getArchiveReconciliationResponseResultsItemCandidateCountMin),
+  "local": zod.union([zod.object({
+  "fileRecordId": zod.number(),
+  "localMediaIdentityId": zod.number().nullable(),
+  "path": zod.string(),
+  "relativePath": zod.string(),
+  "volumeId": zod.string().nullable(),
+  "archiveRoot": zod.string().nullable(),
+  "mediaType": zod.string().nullable(),
+  "identity": zod.union([zod.union([zod.object({
+  "strategy": zod.literal("tv_show_season_episode"),
+  "show": zod.string(),
+  "season": zod.number(),
+  "episode": zod.number(),
+  "grandparentRatingKey": zod.string().nullish(),
+  "parentRatingKey": zod.string().nullish(),
+  "title": zod.string().optional(),
+  "ratingKey": zod.string().optional()
+}),zod.object({
+  "strategy": zod.enum(['movie_title_year', 'fallback_title_year']),
+  "title": zod.string(),
+  "year": zod.number().nullable()
+})]),zod.null()]),
+  "scanStatus": zod.string()
+}),zod.null()]),
+  "plex": zod.union([zod.object({
+  "id": zod.number(),
+  "ratingKey": zod.string(),
+  "libraryId": zod.number(),
+  "libraryName": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "itemType": zod.string(),
+  "identity": zod.union([zod.union([zod.object({
+  "strategy": zod.literal("tv_show_season_episode"),
+  "show": zod.string(),
+  "season": zod.number(),
+  "episode": zod.number(),
+  "grandparentRatingKey": zod.string().nullish(),
+  "parentRatingKey": zod.string().nullish(),
+  "title": zod.string().optional(),
+  "ratingKey": zod.string().optional()
+}),zod.object({
+  "strategy": zod.enum(['movie_title_year', 'fallback_title_year']),
+  "title": zod.string(),
+  "year": zod.number().nullable()
+})]),zod.null()])
+}),zod.null()]),
+  "ambiguityCandidates": zod.array(zod.object({
+  "id": zod.number(),
+  "ratingKey": zod.string(),
+  "libraryId": zod.number(),
+  "libraryName": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "itemType": zod.string(),
+  "identity": zod.union([zod.union([zod.object({
+  "strategy": zod.literal("tv_show_season_episode"),
+  "show": zod.string(),
+  "season": zod.number(),
+  "episode": zod.number(),
+  "grandparentRatingKey": zod.string().nullish(),
+  "parentRatingKey": zod.string().nullish(),
+  "title": zod.string().optional(),
+  "ratingKey": zod.string().optional()
+}),zod.object({
+  "strategy": zod.enum(['movie_title_year', 'fallback_title_year']),
+  "title": zod.string(),
+  "year": zod.number().nullable()
+})]),zod.null()])
+})),
+  "quality": zod.object({
+  "status": zod.enum(['not_compared', 'conflict', 'equivalent_available_metadata']),
+  "differences": zod.array(zod.enum(['resolution', 'dynamic_range', 'video_codec', 'bitrate', 'audio_codec', 'audio_channels', 'container']))
+})
+}))
 })
 
 
@@ -1959,15 +2072,80 @@ export const GetArchiveNamingProposalsQueryParams = zod.object({
   "uncertain": zod.coerce.boolean().optional()
 })
 
+export const getArchiveNamingProposalsResponseSummaryTotalMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryHighConfidenceMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryMediumConfidenceMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryLowConfidenceMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryActionableMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryUncertainMin = 0;
+
+export const getArchiveNamingProposalsResponseSummaryCollisionsMin = 0;
+
+
+
+export const getArchiveNamingProposalsResponsePaginationTotalMin = 0;
+
+export const getArchiveNamingProposalsResponsePaginationTotalPagesMin = 0;
+
+
+
 export const GetArchiveNamingProposalsResponse = zod.object({
-  "summary": zod.record(zod.string(), zod.unknown()),
-  "pagination": zod.object({
-  "page": zod.number(),
-  "pageSize": zod.number(),
-  "total": zod.number(),
-  "totalPages": zod.number()
+  "summary": zod.object({
+  "total": zod.number().min(getArchiveNamingProposalsResponseSummaryTotalMin),
+  "highConfidence": zod.number().min(getArchiveNamingProposalsResponseSummaryHighConfidenceMin),
+  "mediumConfidence": zod.number().min(getArchiveNamingProposalsResponseSummaryMediumConfidenceMin),
+  "lowConfidence": zod.number().min(getArchiveNamingProposalsResponseSummaryLowConfidenceMin),
+  "actionable": zod.number().min(getArchiveNamingProposalsResponseSummaryActionableMin),
+  "uncertain": zod.number().min(getArchiveNamingProposalsResponseSummaryUncertainMin),
+  "collisions": zod.number().min(getArchiveNamingProposalsResponseSummaryCollisionsMin)
 }),
-  "results": zod.array(zod.record(zod.string(), zod.unknown()))
+  "pagination": zod.object({
+  "page": zod.number().min(1),
+  "pageSize": zod.number().min(1),
+  "total": zod.number().min(getArchiveNamingProposalsResponsePaginationTotalMin),
+  "totalPages": zod.number().min(getArchiveNamingProposalsResponsePaginationTotalPagesMin)
+}),
+  "results": zod.array(zod.object({
+  "fileRecordId": zod.number(),
+  "localIdentityId": zod.number().nullable(),
+  "sourcePath": zod.string(),
+  "proposedPath": zod.string().nullable(),
+  "sourceFilename": zod.string(),
+  "proposedFilename": zod.string().nullable(),
+  "currentIdentity": zod.union([zod.union([zod.object({
+  "show": zod.string(),
+  "season": zod.number(),
+  "episode": zod.number()
+}),zod.object({
+  "title": zod.string(),
+  "year": zod.number().nullable()
+})]),zod.null()]),
+  "proposedIdentity": zod.union([zod.union([zod.object({
+  "show": zod.string().nullable(),
+  "season": zod.number().nullable(),
+  "episode": zod.number().nullable(),
+  "episodes": zod.array(zod.number()),
+  "episodeTitle": zod.string().nullable(),
+  "ambiguity": zod.enum(['resolved', 'compound', 'ambiguous', 'unresolved'])
+}),zod.object({
+  "title": zod.string(),
+  "year": zod.number().nullable()
+})]),zod.null()]),
+  "patternId": zod.string(),
+  "confidence": zod.enum(['high', 'medium', 'low', 'uncertain']),
+  "operation": zod.enum(['rename', 'restructure', 'move', 'uncertain/no_action']),
+  "reason": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "volumeId": zod.string(),
+  "archiveRoot": zod.string(),
+  "collision": zod.boolean()
+}))
 })
 
 
@@ -1988,15 +2166,96 @@ export const GetArchiveIdentityAuditQueryParams = zod.object({
   "needsReview": zod.coerce.boolean().optional()
 })
 
+export const getArchiveIdentityAuditResponseSummaryTotalCandidatesMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByAuditTypeSuspiciousYearMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByAuditTypeNumericTitleMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByAuditTypeCollectionPrefixMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByAuditTypeMissingYearMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByAuditTypeYearConflictMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByAuditTypeTitleConflictMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByAuditTypeMultipleCandidatesMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByAuditTypeUnresolvedMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByConfidenceHighMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByConfidenceMediumMin = 0;
+
+export const getArchiveIdentityAuditResponseSummaryByConfidenceLowMin = 0;
+
+
+
+export const getArchiveIdentityAuditResponsePaginationTotalMin = 0;
+
+export const getArchiveIdentityAuditResponsePaginationTotalPagesMin = 0;
+
+
+
 export const GetArchiveIdentityAuditResponse = zod.object({
-  "summary": zod.record(zod.string(), zod.unknown()),
-  "pagination": zod.object({
-  "page": zod.number(),
-  "pageSize": zod.number(),
-  "total": zod.number(),
-  "totalPages": zod.number()
+  "summary": zod.object({
+  "totalCandidates": zod.number().min(getArchiveIdentityAuditResponseSummaryTotalCandidatesMin),
+  "byAuditType": zod.object({
+  "suspicious_year": zod.number().min(getArchiveIdentityAuditResponseSummaryByAuditTypeSuspiciousYearMin).optional(),
+  "numeric_title": zod.number().min(getArchiveIdentityAuditResponseSummaryByAuditTypeNumericTitleMin).optional(),
+  "collection_prefix": zod.number().min(getArchiveIdentityAuditResponseSummaryByAuditTypeCollectionPrefixMin).optional(),
+  "missing_year": zod.number().min(getArchiveIdentityAuditResponseSummaryByAuditTypeMissingYearMin).optional(),
+  "year_conflict": zod.number().min(getArchiveIdentityAuditResponseSummaryByAuditTypeYearConflictMin).optional(),
+  "title_conflict": zod.number().min(getArchiveIdentityAuditResponseSummaryByAuditTypeTitleConflictMin).optional(),
+  "multiple_candidates": zod.number().min(getArchiveIdentityAuditResponseSummaryByAuditTypeMultipleCandidatesMin).optional(),
+  "unresolved": zod.number().min(getArchiveIdentityAuditResponseSummaryByAuditTypeUnresolvedMin).optional()
 }),
-  "results": zod.array(zod.record(zod.string(), zod.unknown()))
+  "byConfidence": zod.object({
+  "high": zod.number().min(getArchiveIdentityAuditResponseSummaryByConfidenceHighMin).optional(),
+  "medium": zod.number().min(getArchiveIdentityAuditResponseSummaryByConfidenceMediumMin).optional(),
+  "low": zod.number().min(getArchiveIdentityAuditResponseSummaryByConfidenceLowMin).optional()
+})
+}),
+  "pagination": zod.object({
+  "page": zod.number().min(1),
+  "pageSize": zod.number().min(1),
+  "total": zod.number().min(getArchiveIdentityAuditResponsePaginationTotalMin),
+  "totalPages": zod.number().min(getArchiveIdentityAuditResponsePaginationTotalPagesMin)
+}),
+  "results": zod.array(zod.object({
+  "fileRecordId": zod.number(),
+  "path": zod.string(),
+  "currentLocalIdentity": zod.union([zod.object({
+  "id": zod.number().nullable(),
+  "identityKey": zod.string().nullable(),
+  "title": zod.string().nullable(),
+  "year": zod.number().nullable(),
+  "show": zod.string().nullable(),
+  "season": zod.number().nullable(),
+  "episode": zod.number().nullable()
+}),zod.null()]),
+  "extractedCandidates": zod.array(zod.object({
+  "title": zod.string(),
+  "normalizedTitle": zod.string(),
+  "year": zod.number().nullable(),
+  "source": zod.enum(['filename', 'media_folder', 'collection_folder', 'processing_folder', 'contextual_folder'])
+})),
+  "plexCandidates": zod.array(zod.object({
+  "title": zod.string(),
+  "normalizedTitle": zod.string(),
+  "year": zod.number().nullable(),
+  "ratingKey": zod.string(),
+  "itemType": zod.string()
+})),
+  "reason": zod.string(),
+  "auditType": zod.enum(['suspicious_year', 'numeric_title', 'collection_prefix', 'missing_year', 'year_conflict', 'title_conflict', 'multiple_candidates', 'unresolved']),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "evidence": zod.array(zod.string()),
+  "recommendedInterpretation": zod.string(),
+  "needsReview": zod.boolean(),
+  "mediaType": zod.string().nullable()
+}))
 })
 
 

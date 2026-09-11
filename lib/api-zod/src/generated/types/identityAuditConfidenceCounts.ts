@@ -6,13 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ReportPagination {
-  /** @minimum 1 */
-  page: number;
-  /** @minimum 1 */
-  pageSize: number;
+export interface IdentityAuditConfidenceCounts {
   /** @minimum 0 */
-  total: number;
+  high?: number;
   /** @minimum 0 */
-  totalPages: number;
+  medium?: number;
+  /** @minimum 0 */
+  low?: number;
 }

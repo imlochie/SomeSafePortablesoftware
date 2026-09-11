@@ -5,12 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { ReconciliationReportResultsItem } from './reconciliationReportResultsItem';
-import type { ReconciliationReportSummary } from './reconciliationReportSummary';
+import type { ReconciliationResult } from './reconciliationResult';
+import type { ReconciliationSummary } from './reconciliationSummary';
 import type { ReportPagination } from './reportPagination';
 
 export interface ReconciliationReport {
-  summary: ReconciliationReportSummary;
+  summary: ReconciliationSummary;
   pagination: ReportPagination;
-  results: ReconciliationReportResultsItem[];
+  results: ReconciliationResult[];
 }

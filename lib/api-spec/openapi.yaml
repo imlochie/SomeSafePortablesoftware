@@ -2888,52 +2888,321 @@ components:
       type: object
       required: [page, pageSize, total, totalPages]
       properties:
-        page: { type: number }
-        pageSize: { type: number }
-        total: { type: number }
-        totalPages: { type: number }
+        page: { type: number, minimum: 1 }
+        pageSize: { type: number, minimum: 1 }
+        total: { type: number, minimum: 0 }
+        totalPages: { type: number, minimum: 0 }
+    ReconciliationSummary:
+      type: object
+      required: [localCount, plexCount, matchedCount, localOnlyCount, plexOnlyCount, uncertainCount, duplicateCount, qualityConflictCount]
+      properties:
+        localCount: { type: number, minimum: 0 }
+        plexCount: { type: number, minimum: 0 }
+        matchedCount: { type: number, minimum: 0 }
+        localOnlyCount: { type: number, minimum: 0 }
+        plexOnlyCount: { type: number, minimum: 0 }
+        uncertainCount: { type: number, minimum: 0 }
+        duplicateCount: { type: number, minimum: 0 }
+        qualityConflictCount: { type: number, minimum: 0 }
+    ReconciliationTvIdentity:
+      type: object
+      required: [strategy, show, season, episode]
+      properties:
+        strategy:
+          type: string
+          const: tv_show_season_episode
+        show: { type: string }
+        season: { type: number }
+        episode: { type: number }
+        grandparentRatingKey: { type: ["string", "null"] }
+        parentRatingKey: { type: ["string", "null"] }
+        title: { type: string }
+        ratingKey: { type: string }
+    ReconciliationMovieIdentity:
+      type: object
+      required: [strategy, title, year]
+      properties:
+        strategy:
+          type: string
+          enum: [movie_title_year, fallback_title_year]
+        title: { type: string }
+        year: { type: ["number", "null"] }
+    ReconciliationIdentity:
+      oneOf:
+        - $ref: "#/components/schemas/ReconciliationTvIdentity"
+        - $ref: "#/components/schemas/ReconciliationMovieIdentity"
+    ReconciliationLocalItem:
+      type: object
+      required: [fileRecordId, localMediaIdentityId, path, relativePath, volumeId, archiveRoot, mediaType, identity, scanStatus]
+      properties:
+        fileRecordId: { type: number }
+        localMediaIdentityId: { type: ["number", "null"] }
+        path: { type: string }
+        relativePath: { type: string }
+        volumeId: { type: ["string", "null"] }
+        archiveRoot: { type: ["string", "null"] }
+        mediaType: { type: ["string", "null"] }
+        identity:
+          oneOf:
+            - $ref: "#/components/schemas/ReconciliationIdentity"
+            - type: "null"
+        scanStatus: { type: string }
+    ReconciliationPlexItem:
+      type: object
+      required: [id, ratingKey, libraryId, libraryName, title, year, itemType, identity]
+      properties:
+        id: { type: number }
+        ratingKey: { type: string }
+        libraryId: { type: number }
+        libraryName: { type: string }
+        title: { type: string }
+        year: { type: ["number", "null"] }
+        itemType: { type: string }
+        identity:
+          oneOf:
+            - $ref: "#/components/schemas/ReconciliationIdentity"
+            - type: "null"
+    ReconciliationQuality:
+      type: object
+      required: [status, differences]
+      properties:
+        status:
+          type: string
+          enum: [not_compared, conflict, equivalent_available_metadata]
+        differences:
+          type: array
+          items:
+            type: string
+            enum: [resolution, dynamic_range, video_codec, bitrate, audio_codec, audio_channels, container]
+    ReconciliationResult:
+      type: object
+      required: [classification, matchingStrategy, candidateCount, local, plex, ambiguityCandidates, quality]
+      properties:
+        classification:
+          type: string
+          enum: [matched, local_only, plex_only, duplicate, quality_conflict, uncertain]
+        matchingStrategy:
+          type: string
+          enum: [tv_show_season_episode, movie_title_year, fallback_title_year, checksum, fingerprint, semantic_identity, ambiguous, no_match]
+        candidateCount: { type: number, minimum: 0 }
+        local:
+          oneOf:
+            - $ref: "#/components/schemas/ReconciliationLocalItem"
+            - type: "null"
+        plex:
+          oneOf:
+            - $ref: "#/components/schemas/ReconciliationPlexItem"
+            - type: "null"
+        ambiguityCandidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconciliationPlexItem"
+        quality:
+          $ref: "#/components/schemas/ReconciliationQuality"
     ReconciliationReport:
       type: object
       required: [summary, pagination, results]
       properties:
         summary:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/ReconciliationSummary"
         pagination:
           $ref: "#/components/schemas/ReportPagination"
         results:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/ReconciliationResult"
+    NamingProposalSummary:
+      type: object
+      required: [total, highConfidence, mediumConfidence, lowConfidence, actionable, uncertain, collisions]
+      properties:
+        total: { type: number, minimum: 0 }
+        highConfidence: { type: number, minimum: 0 }
+        mediumConfidence: { type: number, minimum: 0 }
+        lowConfidence: { type: number, minimum: 0 }
+        actionable: { type: number, minimum: 0 }
+        uncertain: { type: number, minimum: 0 }
+        collisions: { type: number, minimum: 0 }
+    NamingCurrentTvIdentity:
+      type: object
+      required: [show, season, episode]
+      properties:
+        show: { type: string }
+        season: { type: number }
+        episode: { type: number }
+    NamingMovieIdentity:
+      type: object
+      required: [title, year]
+      properties:
+        title: { type: string }
+        year: { type: ["number", "null"] }
+    NamingCurrentIdentity:
+      oneOf:
+        - $ref: "#/components/schemas/NamingCurrentTvIdentity"
+        - $ref: "#/components/schemas/NamingMovieIdentity"
+    NamingProposedTvIdentity:
+      type: object
+      required: [show, season, episode, episodes, episodeTitle, ambiguity]
+      properties:
+        show: { type: ["string", "null"] }
+        season: { type: ["number", "null"] }
+        episode: { type: ["number", "null"] }
+        episodes:
+          type: array
+          items: { type: number }
+        episodeTitle: { type: ["string", "null"] }
+        ambiguity:
+          type: string
+          enum: [resolved, compound, ambiguous, unresolved]
+    NamingProposedIdentity:
+      oneOf:
+        - $ref: "#/components/schemas/NamingProposedTvIdentity"
+        - $ref: "#/components/schemas/NamingMovieIdentity"
+    NamingProposalResult:
+      type: object
+      required: [fileRecordId, localIdentityId, sourcePath, proposedPath, sourceFilename, proposedFilename, currentIdentity, proposedIdentity, patternId, confidence, operation, reason, evidence, mediaType, volumeId, archiveRoot, collision]
+      properties:
+        fileRecordId: { type: number }
+        localIdentityId: { type: ["number", "null"] }
+        sourcePath: { type: string }
+        proposedPath: { type: ["string", "null"] }
+        sourceFilename: { type: string }
+        proposedFilename: { type: ["string", "null"] }
+        currentIdentity:
+          oneOf:
+            - $ref: "#/components/schemas/NamingCurrentIdentity"
+            - type: "null"
+        proposedIdentity:
+          oneOf:
+            - $ref: "#/components/schemas/NamingProposedIdentity"
+            - type: "null"
+        patternId: { type: string }
+        confidence:
+          type: string
+          enum: [high, medium, low, uncertain]
+        operation:
+          type: string
+          enum: [rename, restructure, move, uncertain/no_action]
+        reason: { type: string }
+        evidence:
+          type: array
+          items: { type: string }
+        mediaType:
+          type: string
+          enum: [movie, tv]
+        volumeId: { type: string }
+        archiveRoot: { type: string }
+        collision: { type: boolean }
     NamingProposalReport:
       type: object
       required: [summary, pagination, results]
       properties:
         summary:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/NamingProposalSummary"
         pagination:
           $ref: "#/components/schemas/ReportPagination"
         results:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/NamingProposalResult"
+    IdentityAuditTypeCounts:
+      type: object
+      properties:
+        suspicious_year: { type: number, minimum: 0 }
+        numeric_title: { type: number, minimum: 0 }
+        collection_prefix: { type: number, minimum: 0 }
+        missing_year: { type: number, minimum: 0 }
+        year_conflict: { type: number, minimum: 0 }
+        title_conflict: { type: number, minimum: 0 }
+        multiple_candidates: { type: number, minimum: 0 }
+        unresolved: { type: number, minimum: 0 }
+    IdentityAuditConfidenceCounts:
+      type: object
+      properties:
+        high: { type: number, minimum: 0 }
+        medium: { type: number, minimum: 0 }
+        low: { type: number, minimum: 0 }
+    IdentityAuditSummary:
+      type: object
+      required: [totalCandidates, byAuditType, byConfidence]
+      properties:
+        totalCandidates: { type: number, minimum: 0 }
+        byAuditType:
+          $ref: "#/components/schemas/IdentityAuditTypeCounts"
+        byConfidence:
+          $ref: "#/components/schemas/IdentityAuditConfidenceCounts"
+    IdentityAuditLocalIdentity:
+      type: object
+      required: [id, identityKey, title, year, show, season, episode]
+      properties:
+        id: { type: ["number", "null"] }
+        identityKey: { type: ["string", "null"] }
+        title: { type: ["string", "null"] }
+        year: { type: ["number", "null"] }
+        show: { type: ["string", "null"] }
+        season: { type: ["number", "null"] }
+        episode: { type: ["number", "null"] }
+    IdentityAuditExtractedCandidate:
+      type: object
+      required: [title, normalizedTitle, year, source]
+      properties:
+        title: { type: string }
+        normalizedTitle: { type: string }
+        year: { type: ["number", "null"] }
+        source:
+          type: string
+          enum: [filename, media_folder, collection_folder, processing_folder, contextual_folder]
+    IdentityAuditPlexCandidate:
+      type: object
+      required: [title, normalizedTitle, year, ratingKey, itemType]
+      properties:
+        title: { type: string }
+        normalizedTitle: { type: string }
+        year: { type: ["number", "null"] }
+        ratingKey: { type: string }
+        itemType: { type: string }
+    IdentityAuditResult:
+      type: object
+      required: [fileRecordId, path, currentLocalIdentity, extractedCandidates, plexCandidates, reason, auditType, confidence, evidence, recommendedInterpretation, needsReview, mediaType]
+      properties:
+        fileRecordId: { type: number }
+        path: { type: string }
+        currentLocalIdentity:
+          oneOf:
+            - $ref: "#/components/schemas/IdentityAuditLocalIdentity"
+            - type: "null"
+        extractedCandidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdentityAuditExtractedCandidate"
+        plexCandidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdentityAuditPlexCandidate"
+        reason: { type: string }
+        auditType:
+          type: string
+          enum: [suspicious_year, numeric_title, collection_prefix, missing_year, year_conflict, title_conflict, multiple_candidates, unresolved]
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        evidence:
+          type: array
+          items: { type: string }
+        recommendedInterpretation: { type: string }
+        needsReview: { type: boolean }
+        mediaType: { type: ["string", "null"] }
     IdentityAuditReport:
       type: object
       required: [summary, pagination, results]
       properties:
         summary:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/IdentityAuditSummary"
         pagination:
           $ref: "#/components/schemas/ReportPagination"
         results:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: "#/components/schemas/IdentityAuditResult"
     AcquisitionWebhookAccepted:
       type: object
       required: [accepted, status]

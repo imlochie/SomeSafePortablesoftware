@@ -6,4 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type IdentityAuditReportResultsItem = { [key: string]: unknown };
+export interface NamingCurrentTvIdentity {
+  show: string;
+  season: number;
+  episode: number;
+}

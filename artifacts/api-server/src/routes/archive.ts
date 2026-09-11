@@ -1,6 +1,9 @@
 import { Router, type IRouter } from "express";
 import {
   GetArchiveInventoryResponse,
+  GetArchiveIdentityAuditResponse,
+  GetArchiveNamingProposalsResponse,
+  GetArchiveReconciliationResponse,
   GetArchiveRecordParams,
   GetArchiveRecordResponse,
   GetArchiveScanResponse,
@@ -93,11 +96,12 @@ router.get("/archive/reconciliation", async (req, res, next) => {
   try {
     const page = Number(req.query.page);
     const pageSize = Number(req.query.pageSize);
-    res.json(await readReconciliationReport(
+    const report = await readReconciliationReport(
       getAuthenticatedUserId(req),
       Number.isFinite(page) ? page : undefined,
       Number.isFinite(pageSize) ? pageSize : undefined,
-    ));
+    );
+    res.json(GetArchiveReconciliationResponse.parse(report));
   } catch (error) {
     next(error);
   }
@@ -112,7 +116,7 @@ router.get("/archive/naming-proposals", async (req, res, next) => {
     const booleanQuery = req.query.uncertain === undefined
       ? undefined
       : req.query.uncertain === "true";
-    res.json(await readNamingProposals(getAuthenticatedUserId(req), {
+    const report = await readNamingProposals(getAuthenticatedUserId(req), {
       page: numberQuery("page"),
       pageSize: numberQuery("pageSize"),
       confidence: typeof req.query.confidence === "string" ? req.query.confidence : undefined,
@@ -122,7 +126,8 @@ router.get("/archive/naming-proposals", async (req, res, next) => {
       volume: typeof req.query.volume === "string" ? req.query.volume : undefined,
       state: typeof req.query.state === "string" ? req.query.state : undefined,
       uncertain: booleanQuery,
-    }));
+    });
+    res.json(GetArchiveNamingProposalsResponse.parse(report));
   } catch (error) {
     next(error);
   }
@@ -137,14 +142,15 @@ router.get("/archive/identity-audit", async (req, res, next) => {
     const booleanQuery = req.query.needsReview === undefined
       ? undefined
       : req.query.needsReview === "true";
-    res.json(await readIdentityAudit(getAuthenticatedUserId(req), {
+    const report = await readIdentityAudit(getAuthenticatedUserId(req), {
       page: numberQuery("page"),
       pageSize: numberQuery("pageSize"),
       auditType: typeof req.query.auditType === "string" ? req.query.auditType : undefined,
       confidence: typeof req.query.confidence === "string" ? req.query.confidence : undefined,
       mediaType: typeof req.query.mediaType === "string" ? req.query.mediaType : undefined,
       needsReview: booleanQuery,
-    }));
+    });
+    res.json(GetArchiveIdentityAuditResponse.parse(report));
   } catch (error) {
     next(error);
   }

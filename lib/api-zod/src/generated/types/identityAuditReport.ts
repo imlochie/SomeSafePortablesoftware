@@ -5,12 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { IdentityAuditReportResultsItem } from './identityAuditReportResultsItem';
-import type { IdentityAuditReportSummary } from './identityAuditReportSummary';
+import type { IdentityAuditResult } from './identityAuditResult';
+import type { IdentityAuditSummary } from './identityAuditSummary';
 import type { ReportPagination } from './reportPagination';
 
 export interface IdentityAuditReport {
-  summary: IdentityAuditReportSummary;
+  summary: IdentityAuditSummary;
   pagination: ReportPagination;
-  results: IdentityAuditReportResultsItem[];
+  results: IdentityAuditResult[];
 }

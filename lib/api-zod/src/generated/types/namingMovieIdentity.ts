@@ -6,4 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type IdentityAuditReportSummary = { [key: string]: unknown };
+export interface NamingMovieIdentity {
+  title: string;
+  /** @nullable */
+  year: number | null;
+}
