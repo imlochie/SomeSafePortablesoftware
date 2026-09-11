@@ -1,0 +1,62 @@
+Implement the media-integrity classification feature on the current branch
+fix/media-integrity-publication, based on the existing archive scanner and live
+scan architecture at 6c84812.
+
+Scope:
+1. Persist an additive file_record.integrity_classification field with:
+   - corrupt_or_malformed_container
+   - inspection_unavailable
+   - null/unknown
+2. Classify representative FFprobe failures while avoiding false positives.
+3. Preserve FFprobe stderr/exit metadata where practical so classification is
+   based on inspection-stage evidence rather than a single broad regex.
+4. Separate FFprobe inspection from checksum calculation.
+   - FFprobe failure must not become an active healthy record.
+   - checksum failure must become scan_status=error and
+     integrity_classification=inspection_unavailable.
+5. Inventory reads persisted integrity_classification from SQLite.
+   Persisted classification takes precedence over re-deriving it from raw error
+   text.
+6. Make legacy file_record table rebuilds preserve every compatible existing
+   column rather than copying only a small hard-coded subset.
+   Preserve archive_item_id, identity fields, scan status, timestamps,
+   FFprobe metadata, fingerprints, checksums, raw errors, volume/root fields,
+   etc., wherever those columns exist in the legacy schema.
+7. Normalize invalid/unrecognized persisted classification values to null
+   rather than throwing or corrupting inventory generation.
+8. Add regression tests for:
+   - persisted classification precedence
+   - legacy migration metadata preservation
+   - checksum failure health/count behavior
+   - missing ffprobe executable
+   - EACCES/permission failures
+   - timeout
+   - malformed ffprobe JSON
+   - unsupported codec
+   - inaccessible file
+   - operational errors containing corruption-like words
+9. Add archive health summary/UI for integrity classification.
+   Distinguish:
+   - ARCHIVE HEALTH / MEDIA INTEGRITY
+   - ARCHIVE HEALTH / INSPECTION
+10. Keep the existing discovery/concurrency/reconciliation/identity logic,
+    acquisition flow, download flow, Windows fixes, and live SSE scanner
+    unchanged.
+
+Do not modify main or create unrelated architectural changes.
+
+Validation required before commit:
+- full API test suite
+- workspace typecheck
+- API production build
+- frontend production build
+- archive inventory/health smoke test
+- git diff --check
+
+Commit the completed implementation on this branch.
+Report:
+- exact commit SHA
+- files changed
+- tests/results
+- build results
+- confirmation working tree is clean
