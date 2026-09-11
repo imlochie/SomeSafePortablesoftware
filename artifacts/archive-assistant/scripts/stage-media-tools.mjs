@@ -21,12 +21,48 @@ if (process.platform !== "win32") {
   );
 }
 
+function resolveTargetArchitecture() {
+  const targetArchitecture =
+    process.env.TAURI_ENV_ARCH?.trim().toLowerCase() || process.arch;
+  switch (targetArchitecture) {
+    case "x64":
+    case "x86_64":
+    case "amd64":
+      return "x64";
+    case "arm64":
+    case "aarch64":
+      return "arm64";
+    default:
+      throw new Error(
+        `Unsupported Windows architecture "${targetArchitecture}". ` +
+          "The desktop installer supports only x64 (x86_64) and ARM64 (aarch64). " +
+          "Set TAURI_ENV_ARCH to a supported target or build for a supported Windows target.",
+      );
+  }
+}
+
 const projectDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const runtimeDir = join(projectDir, "src-tauri", "runtime");
 const destination = join(runtimeDir, "media-tools");
 const manifest = JSON.parse(
   await readFile(join(projectDir, "scripts", "media-tools-manifest.json"), "utf8"),
 );
+const architecture = resolveTargetArchitecture();
+const target = manifest.architectures?.[architecture];
+if (!target) {
+  throw new Error(
+    `No verified Windows media-tool bundle is configured for architecture "${architecture}". ` +
+      "Add a pinned architecture entry to scripts/media-tools-manifest.json before building.",
+  );
+}
+const selectedManifest = {
+  platform: manifest.platform,
+  architecture,
+  targetTriple: target.targetTriple,
+  releasePolicy: manifest.releasePolicy,
+  tools: target.tools,
+  totalDownloadBytes: target.totalDownloadBytes,
+};
 const temporaryDirectory = join(
   tmpdir(),
   `archive-assistant-media-tools-${process.pid}`,
@@ -98,16 +134,19 @@ try {
 
   const ytDlpPath = join(temporaryDirectory, "yt-dlp.exe");
   await downloadVerified(
-    manifest.tools.ytDlp,
+    selectedManifest.tools.ytDlp,
     ytDlpPath,
   );
   await copyFile(ytDlpPath, join(destination, "yt-dlp.exe"));
 
-  const ffmpegZipPath = join(temporaryDirectory, basename(manifest.tools.ffmpeg.url));
+  const ffmpegZipPath = join(
+    temporaryDirectory,
+    basename(selectedManifest.tools.ffmpeg.url),
+  );
   const ffmpegExtractPath = join(temporaryDirectory, "ffmpeg");
-  await downloadVerified(manifest.tools.ffmpeg, ffmpegZipPath);
+  await downloadVerified(selectedManifest.tools.ffmpeg, ffmpegZipPath);
   await expandZip(ffmpegZipPath, ffmpegExtractPath);
-  for (const executable of manifest.tools.ffmpeg.includes) {
+  for (const executable of selectedManifest.tools.ffmpeg.includes) {
     const source = await findFile(ffmpegExtractPath, executable);
     if (!source) {
       throw new Error(`The FFmpeg archive did not contain ${executable}.`);
@@ -121,10 +160,10 @@ try {
   );
   await writeFile(
     join(destination, "manifest.json"),
-    `${JSON.stringify(manifest, null, 2)}\n`,
+    `${JSON.stringify(selectedManifest, null, 2)}\n`,
   );
   console.log(
-    `Staged yt-dlp ${manifest.tools.ytDlp.version} and FFmpeg ${manifest.tools.ffmpeg.version} for the Windows desktop installer.`,
+    `Staged ${architecture} yt-dlp ${selectedManifest.tools.ytDlp.version} and FFmpeg ${selectedManifest.tools.ffmpeg.version} for the Windows desktop installer.`,
   );
 } finally {
   await rm(temporaryDirectory, { recursive: true, force: true });

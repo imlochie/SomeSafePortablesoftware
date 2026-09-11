@@ -29,16 +29,20 @@ pnpm --filter @workspace/archive-assistant run desktop:build
 ```
 
 Run the build on Windows. It stages the Node executable running the build and
-downloads a pinned, SHA-256 verified portable media-tool bundle into the
-installer resources. The installed app therefore does not require separate
+downloads the pinned, SHA-256 verified portable media-tool bundle matching the
+Tauri target architecture into the installer resources. The supported targets
+are Windows x64 (`x86_64-pc-windows-msvc`) and Windows ARM64
+(`aarch64-pc-windows-msvc`). Unsupported architectures fail before an
+installer is produced. The installed app therefore does not require separate
 Node, FFmpeg, FFprobe, or yt-dlp installs. `ARCHIVE_NODE_PATH`,
 `YT_DLP_PATH`, `FFMPEG_PATH`, and `FFPROBE_PATH` remain explicit diagnostic or
 operator overrides.
 
-The current media bundle adds 187,748,260 bytes (about 179.1 MiB) of verified
-download inputs before installer compression: yt-dlp 2026.07.04 (18,226,085
-bytes) and the FFmpeg n8.1 LGPL Windows x64 archive (169,522,175 bytes).
-Versions, source URLs, licenses, and digests live in
+The x64 media bundle adds 187,748,260 bytes (about 179.1 MiB) of verified
+download inputs before installer compression. The ARM64 bundle adds
+137,996,596 bytes (about 131.6 MiB): yt-dlp 2026.07.04 (22,250,288 bytes) and
+the FFmpeg n8.1 LGPL Windows ARM64 archive (115,746,308 bytes). Versions,
+source URLs, licenses, and digests for both architectures live in
 `scripts/media-tools-manifest.json`; update that manifest and rebuild to
 refresh the bundle. The FFmpeg build is LGPL 2.1-or-later and yt-dlp is
 Unlicensed. The installed copy also includes

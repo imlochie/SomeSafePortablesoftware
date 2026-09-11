@@ -42,7 +42,10 @@ The API runs on port 8080 and the SQLite database path can be overridden with `A
 
 Run `pnpm --filter @workspace/archive-assistant run desktop:build` on Windows.
 The NSIS package includes the Node runtime used for the build, the API bundle,
-and the frontend. Installed desktop launches do not require Node on `PATH`.
+the frontend, and a verified media-tool bundle selected for the Tauri target
+architecture. Windows x64 and ARM64 installers are supported; unsupported
+architectures fail during staging instead of producing an incompatible
+installer. Installed desktop launches do not require Node on `PATH`.
 `ARCHIVE_NODE_PATH` remains available as a diagnostic override.
 
 Desktop defaults place the SQLite database under the application's local data
