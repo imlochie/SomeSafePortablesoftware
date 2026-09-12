@@ -33,6 +33,8 @@ import {
 import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
+import { ArchiveScanPanel } from '@/components/archive-scan-panel';
+import { useArchiveScanEvents } from '@/hooks/use-archive-scan-events';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -769,26 +771,37 @@ export function ArchivePage() {
   const [acquisitionTarget, setAcquisitionTarget] = useState<ArchiveAcquisitionTarget | null>(null);
 
   const [isScanning, setIsScanning] = useState(false);
+  const scanEvents = useArchiveScanEvents({
+    onScanStarted: () => {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+    },
+    onScanFinished: () => {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+    }
+  });
   const { data: scan, isLoading: scanLoading, refetch: refetchScan } = useGetArchiveScan({
     query: {
-      refetchInterval: isScanning ? 2000 : false,
+      // Interval polling is only a fallback while the SSE feed is down; the
+      // live event stream drives updates when connected.
+      refetchInterval: isScanning && !scanEvents.connected ? 2000 : false,
       queryKey: getGetArchiveScanQueryKey()
     }
   });
 
   useEffect(() => {
     const wasScanning = isScanning;
-    const nowScanning = scan?.status === 'scanning';
+    const nowScanning = scan?.status === 'scanning' || scanEvents.status === 'scanning';
     setIsScanning(nowScanning);
 
     if (wasScanning && !nowScanning) {
       queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
     }
-  }, [scan?.status, isScanning, queryClient]);
+  }, [scan?.status, scanEvents.status, isScanning, queryClient]);
 
   const { data: inventory, isLoading: invLoading, isError: invError, refetch: refetchInv } = useGetArchiveInventory({
     query: {
-      refetchInterval: isScanning ? 3000 : false,
+      refetchInterval: isScanning && !scanEvents.connected ? 3000 : false,
       queryKey: getGetArchiveInventoryQueryKey()
     }
   });
@@ -903,6 +916,8 @@ export function ArchivePage() {
           {notice}
         </div>
       )}
+
+      <ArchiveScanPanel live={scanEvents} />
 
       {scan && (
         <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">

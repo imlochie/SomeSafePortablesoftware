@@ -27,6 +27,7 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 - `artifacts/archive-assistant` — React/Vite application and the Phase 1 UI.
 - `artifacts/api-server/src/lib/archive-db.ts` — SQLite initialization, schema foundation, settings, and event storage.
 - `artifacts/api-server/src/routes/` — health, system diagnostics, settings, Plex and Jellyfin configuration, and integration status APIs.
+- `artifacts/api-server/src/services/scan-events.ts` — live archive-scan observability. A pure instrumentation layer over the scanner: it changes no scan, identity, or storage semantics, keeps a small bounded in-memory picture per owner, and fans events out to `GET /api/archive/scan/events` (Server-Sent Events). The persisted `archive_scan` row behind `GET /api/archive/scan` stays the source of truth; this stream is ephemeral and safe to lose. The browser falls back to interval polling whenever the feed is disconnected.
 - `artifacts/api-server/src/integrations/` — abstract media capabilities, adapter registry, Plex and Jellyfin wiring, and explicit disconnected adapters for future integrations.
 - `artifacts/api-server/src/services/acquisition-jobs.ts` — durable provider-backed acquisition lifecycle and transition history; it does not replace the local download engine or mutate archive files automatically.
 - `artifacts/api-server/src/services/media-acquisition.ts` — owner-scoped registry orchestration for media lookup, missing-media discovery, and archive-context acquisition requests.

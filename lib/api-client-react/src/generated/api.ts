@@ -4468,6 +4468,84 @@ export const useReceiveAcquisitionWebhook = <TError = ErrorType<ErrorResponse>,
       return useMutation(getReceiveAcquisitionWebhookMutationOptions(options));
     }
 
+export const getStreamArchiveScanEventsUrl = () => {
+
+
+
+
+  return `/api/archive/scan/events`
+}
+
+/**
+ * Server-Sent Events stream of live scan observability. On connect the server sends a `snapshot` event carrying the persisted scan aggregate and the ephemeral live state, followed by `scan.*` events as the scan progresses. The persisted aggregate from `GET /archive/scan` remains the source of truth; this stream is ephemeral and safe to lose. Events are owner-scoped. Not modelled as a JSON response because the body is an unbounded `text/event-stream`.
+ * @summary Stream live archive scan progress as Server-Sent Events
+ */
+export const streamArchiveScanEvents = async ( options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getStreamArchiveScanEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getStreamArchiveScanEventsQueryKey = () => {
+    return [
+    `/api/archive/scan/events`
+    ] as const;
+    }
+
+
+export const getStreamArchiveScanEventsQueryOptions = <TData = Awaited<ReturnType<typeof streamArchiveScanEvents>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamArchiveScanEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStreamArchiveScanEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof streamArchiveScanEvents>>> = ({ signal }) => streamArchiveScanEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof streamArchiveScanEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type StreamArchiveScanEventsQueryResult = NonNullable<Awaited<ReturnType<typeof streamArchiveScanEvents>>>
+export type StreamArchiveScanEventsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Stream live archive scan progress as Server-Sent Events
+ */
+
+export function useStreamArchiveScanEvents<TData = Awaited<ReturnType<typeof streamArchiveScanEvents>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamArchiveScanEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getStreamArchiveScanEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetArchiveScanUrl = () => {
 
 

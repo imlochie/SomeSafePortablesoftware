@@ -2470,6 +2470,13 @@ export const ReceiveAcquisitionWebhookResponse = zod.object({
 
 
 /**
+ * Server-Sent Events stream of live scan observability. On connect the server sends a `snapshot` event carrying the persisted scan aggregate and the ephemeral live state, followed by `scan.*` events as the scan progresses. The persisted aggregate from `GET /archive/scan` remains the source of truth; this stream is ephemeral and safe to lose. Events are owner-scoped. Not modelled as a JSON response because the body is an unbounded `text/event-stream`.
+ * @summary Stream live archive scan progress as Server-Sent Events
+ */
+export const StreamArchiveScanEventsResponse = zod.unknown()
+
+
+/**
  * @summary Get the current local archive scan state
  */
 export const getArchiveScanResponseScannedFilesMin = 0;

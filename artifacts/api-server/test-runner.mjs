@@ -19,6 +19,7 @@ const testFiles = [
   "control-plane.test.ts",
   "system-dependencies.test.ts",
   "media-integrity.test.ts",
+  "scan-events.test.ts",
   "windows-compat.test.ts",
 ];
 const outputFiles = testFiles.map((file) => path.join(testDir, file.replace(/\.ts$/, ".cjs")));

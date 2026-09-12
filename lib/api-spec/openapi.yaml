@@ -1177,6 +1177,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /archive/scan/events:
+    get:
+      operationId: streamArchiveScanEvents
+      tags: [archive]
+      summary: Stream live archive scan progress as Server-Sent Events
+      description: >-
+        Server-Sent Events stream of live scan observability. On connect the
+        server sends a `snapshot` event carrying the persisted scan aggregate
+        and the ephemeral live state, followed by `scan.*` events as the scan
+        progresses. The persisted aggregate from `GET /archive/scan` remains
+        the source of truth; this stream is ephemeral and safe to lose.
+        Events are owner-scoped. Not modelled as a JSON response because the
+        body is an unbounded `text/event-stream`.
+      responses:
+        "200":
+          description: Owner-scoped Server-Sent Events stream of archive scan progress
+          content:
+            text/event-stream:
+              schema:
+                type: string
   /archive/scan:
     get:
       operationId: getArchiveScan
