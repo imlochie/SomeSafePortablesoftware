@@ -4,6 +4,7 @@
 - [SQLite legacy rebuild preservation](sqlite-legacy-rebuild-preservation.md) — Ownership migrations must project every compatible legacy column, not only the fields needed for the current feature.
 - [SQLite upsert identity lookup](sqlite-upsert-identity-lookup.md) — After an ON CONFLICT upsert, resolve the canonical row by its unique key instead of trusting lastInsertRowid.
 - [Plex sync safety](plex-sync-safety.md) — Reconcile only after a complete fetch; pin approved DNS targets and preserve prior inventory on remote failure.
+- [Archive provider attribution](archive-provider-attribution.md) — Plex and Jellyfin are interchangeable reference providers; findings carry the provider that produced them.
 - [Archive review identity](archive-review-identity.md) — Review decisions follow owner-scoped evidence, not mutable file flags; changed evidence reopens the finding.
 - [Local and hosted auth modes](local-hosted-auth-modes.md) — Desktop-local use resolves a server-owned __local__ identity; Clerk remains an explicit hosted mode.
 - [Desktop sidecar boundary](desktop-sidecar-boundary.md) — Tauri is only a shell; Node owns the API, SQLite, media tools, and runtime paths.

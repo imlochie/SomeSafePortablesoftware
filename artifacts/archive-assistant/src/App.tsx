@@ -33,6 +33,8 @@ import {
 import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
+import { ArchiveScanPanel } from '@/components/archive-scan-panel';
+import { useArchiveScanEvents } from '@/hooks/use-archive-scan-events';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -489,7 +491,7 @@ type FindingRecord = {
   qualitySummary: string;
   qualityDifferences: string[];
   duplicateOfId: number | null;
-  plexMatch: { title: string; year: number | null; qualityDifferences: string[] } | null;
+  plexMatch: { title: string; year: number | null; qualityDifferences: string[]; providerLabel?: string | null } | null;
   reviewStatus: string;
 };
 
@@ -544,15 +546,16 @@ function explainFinding(record: FindingRecord) {
     assessment = 'REVIEW';
   } else if (record.plexMatch && differences.length > 0) {
     const severity = qualityReviewSeverity(differences);
-    finding = `LOCAL is matched to PLEX item "${record.plexMatch.title}"${record.plexMatch.year ? ` (${record.plexMatch.year})` : ''}, with quality differences already reported by the system.`;
+    const provider = (record.plexMatch.providerLabel || 'Plex').toUpperCase();
+    finding = `LOCAL is matched to ${provider} item "${record.plexMatch.title}"${record.plexMatch.year ? ` (${record.plexMatch.year})` : ''}, with quality differences already reported by the system.`;
     if (severity === 'HIGH') {
-      why = 'A high-impact visual or dynamic-range difference exists between LOCAL and PLEX.';
+      why = `A high-impact visual or dynamic-range difference exists between LOCAL and ${provider}.`;
     } else if (severity === 'MEDIUM') {
-      why = 'A codec difference exists between LOCAL and PLEX and may affect compatibility or playback characteristics.';
+      why = `A codec difference exists between LOCAL and ${provider} and may affect compatibility or playback characteristics.`;
     } else {
       why = 'The reported differences are limited to lower-impact technical metadata.';
     }
-    consider = `Review the supplied LOCAL / PLEX differences: ${differences.join('; ')}`;
+    consider = `Review the supplied LOCAL / ${provider} differences: ${differences.join('; ')}`;
     assessment = `${severity} / REVIEW`;
   } else if (record.qualityStatus === 'higher_quality_available') {
     finding = 'A higher-quality local version is available for this media identity.';
@@ -618,7 +621,7 @@ function reviewPriorityLabel(record: Pick<FindingRecord, 'qualityStatus' | 'dupl
   if (priority >= 25) return 'DEFERRED';
   return 'INFO';
 }
-function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }) {
+export function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { data: record, isLoading, isError, refetch } = useGetArchiveRecord(id);
   const updateReview = useUpdateArchiveRecordReview();
@@ -734,7 +737,7 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
 
       {record.plexMatch && (
         <div className="mt-6 border-t border-[#e3e8e7] pt-5">
-           <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194] mb-3">PLEX MATCH</div>
+           <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194] mb-3">{(record.plexMatch.providerLabel || 'PLEX').toUpperCase()} MATCH</div>
            <div className="font-bold text-[#344851] text-[13px]">{record.plexMatch.title} {record.plexMatch.year ? `(${record.plexMatch.year})` : ''}</div>
            {record.plexMatch.qualityDifferences.length > 0 && (
              <div className="mt-3 space-y-2">
@@ -768,26 +771,37 @@ export function ArchivePage() {
   const [acquisitionTarget, setAcquisitionTarget] = useState<ArchiveAcquisitionTarget | null>(null);
 
   const [isScanning, setIsScanning] = useState(false);
+  const scanEvents = useArchiveScanEvents({
+    onScanStarted: () => {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+    },
+    onScanFinished: () => {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+    }
+  });
   const { data: scan, isLoading: scanLoading, refetch: refetchScan } = useGetArchiveScan({
     query: {
-      refetchInterval: isScanning ? 2000 : false,
+      // Interval polling is only a fallback while the SSE feed is down; the
+      // live event stream drives updates when connected.
+      refetchInterval: isScanning && !scanEvents.connected ? 2000 : false,
       queryKey: getGetArchiveScanQueryKey()
     }
   });
 
   useEffect(() => {
     const wasScanning = isScanning;
-    const nowScanning = scan?.status === 'scanning';
+    const nowScanning = scan?.status === 'scanning' || scanEvents.status === 'scanning';
     setIsScanning(nowScanning);
 
     if (wasScanning && !nowScanning) {
       queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
     }
-  }, [scan?.status, isScanning, queryClient]);
+  }, [scan?.status, scanEvents.status, isScanning, queryClient]);
 
   const { data: inventory, isLoading: invLoading, isError: invError, refetch: refetchInv } = useGetArchiveInventory({
     query: {
-      refetchInterval: isScanning ? 3000 : false,
+      refetchInterval: isScanning && !scanEvents.connected ? 3000 : false,
       queryKey: getGetArchiveInventoryQueryKey()
     }
   });
@@ -831,6 +845,9 @@ export function ArchivePage() {
   else if (filter === 'unresolved') displayedRecords = records.filter(r => ['unreviewed', 'unresolved'].includes(r.reviewStatus));
 
   const plexOnly = inventory?.plexOnly ?? [];
+  // The reference media server is operator-selected; label the provider-only
+  // view with whichever server actually produced the inventory.
+  const providerName = (inventory?.providerLabel ?? 'Plex').toUpperCase();
   const showPlex = view === 'plex_only';
   const selectableRecords = displayedRecords.filter(record => record.reviewStatus !== 'not_applicable');
   const selectedSet = new Set(selectedRecordIds);
@@ -900,6 +917,8 @@ export function ArchivePage() {
         </div>
       )}
 
+      <ArchiveScanPanel live={scanEvents} />
+
       {scan && (
         <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <MetricCard icon={FileCheck2} label="ACTIVE FILES" value={String(scan.activeFiles)} note="Verified local media" status={isScanning ? 'processing' : 'ready'} />
@@ -918,7 +937,7 @@ export function ArchivePage() {
               <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
               <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
               <button onClick={() => { setView('naming_proposals'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'naming_proposals' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-naming-proposals">NAMING PROPOSALS</button>
-              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
+              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">{providerName} ONLY ({scan?.plexOnlyCount ?? 0})</button>
               <button onClick={() => { setView('missing_media'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'missing_media' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-missing-media">MISSING MEDIA</button>
             </div>
 

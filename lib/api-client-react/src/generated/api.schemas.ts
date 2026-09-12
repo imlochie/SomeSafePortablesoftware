@@ -488,11 +488,138 @@ export interface PlexInventory {
   items: PlexInventoryItem[];
 }
 
+/**
+ * Media server supplying the reference inventory.
+ */
+export type ArchiveProvider = typeof ArchiveProvider[keyof typeof ArchiveProvider];
+
+
+export const ArchiveProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export interface ArchiveProviderSelection {
+  provider: ArchiveProvider;
+  providerLabel: string;
+  /** Providers that currently hold synchronized inventory. */
+  available: ArchiveProvider[];
+}
+
+export interface ArchiveProviderSelectionUpdate {
+  provider: ArchiveProvider;
+}
+
+export type JellyfinConfigStatus = typeof JellyfinConfigStatus[keyof typeof JellyfinConfigStatus];
+
+
+export const JellyfinConfigStatus = {
+  not_configured: 'not_configured',
+  configured: 'configured',
+  connection_failed: 'connection_failed',
+  connected: 'connected',
+  syncing: 'syncing',
+  synced: 'synced',
+  sync_error: 'sync_error',
+} as const;
+
+export type JellyfinConfigConnectionStatus = typeof JellyfinConfigConnectionStatus[keyof typeof JellyfinConfigConnectionStatus];
+
+
+export const JellyfinConfigConnectionStatus = {
+  not_configured: 'not_configured',
+  configured: 'configured',
+  connection_failed: 'connection_failed',
+  connected: 'connected',
+} as const;
+
+export type JellyfinConfigSyncStatus = typeof JellyfinConfigSyncStatus[keyof typeof JellyfinConfigSyncStatus];
+
+
+export const JellyfinConfigSyncStatus = {
+  idle: 'idle',
+  syncing: 'syncing',
+  synced: 'synced',
+  sync_error: 'sync_error',
+} as const;
+
+export interface JellyfinConfig {
+  serverUrl: string;
+  configured: boolean;
+  hasApiKey: boolean;
+  /** @nullable */
+  userId: string | null;
+  status: JellyfinConfigStatus;
+  connectionStatus: JellyfinConfigConnectionStatus;
+  syncStatus: JellyfinConfigSyncStatus;
+  /** @nullable */
+  lastAttemptedAt: string | null;
+  /** @nullable */
+  lastSuccessfulSyncAt: string | null;
+  /** @nullable */
+  lastError: string | null;
+  /** @nullable */
+  serverName: string | null;
+  /** @minimum 0 */
+  libraryCount: number;
+  /** @minimum 0 */
+  itemCount: number;
+  /** @minimum 0 */
+  mediaCount: number;
+}
+
+export interface JellyfinConfigUpdate {
+  serverUrl?: string;
+  apiKey?: string;
+  userId?: string;
+}
+
+export interface JellyfinLibrary {
+  id: number;
+  key: string;
+  name: string;
+  type: string;
+  serverUrl: string;
+  /** @minimum 0 */
+  itemCount: number;
+  /** @nullable */
+  lastSyncedAt: string | null;
+  syncStatus: string;
+  /** @nullable */
+  syncError: string | null;
+}
+
+export interface JellyfinInventoryItem {
+  id: number;
+  libraryId: number;
+  libraryName: string;
+  itemKey: string;
+  title: string;
+  itemType: string;
+  /** @nullable */
+  year: number | null;
+  thumbPathAvailable: boolean;
+  /** @nullable */
+  addedAt: string | null;
+  /** @nullable */
+  updatedAt: string | null;
+  /** @minimum 0 */
+  mediaCount: number;
+  /** @minimum 0 */
+  partCount: number;
+}
+
+export interface JellyfinInventory {
+  libraries: JellyfinLibrary[];
+  items: JellyfinInventoryItem[];
+}
+
 export type IntegrationStatusId = typeof IntegrationStatusId[keyof typeof IntegrationStatusId];
 
 
 export const IntegrationStatusId = {
   plex: 'plex',
+  jellyfin: 'jellyfin',
   sonarr: 'sonarr',
   radarr: 'radarr',
   prowlarr: 'prowlarr',
@@ -820,6 +947,9 @@ export interface ArchivePlexMatch {
   /** @nullable */
   year: number | null;
   qualityDifferences: string[];
+  provider: ArchiveProvider;
+  /** Operator-facing provider name, for example Plex or Jellyfin. */
+  providerLabel: string;
 }
 
 export interface ArchivePlexOnlyRecord {
@@ -829,6 +959,8 @@ export interface ArchivePlexOnlyRecord {
   /** @nullable */
   year: number | null;
   qualitySummary: string;
+  provider: ArchiveProvider;
+  providerLabel: string;
 }
 
 export type ArchiveInventoryRecordScanStatus = typeof ArchiveInventoryRecordScanStatus[keyof typeof ArchiveInventoryRecordScanStatus];
@@ -935,6 +1067,9 @@ export interface ArchiveInventoryRecord {
 
 export interface ArchiveInventory {
   scan: ArchiveScan;
+  provider: ArchiveProvider;
+  /** Operator-facing name of the active reference provider. */
+  providerLabel: string;
   summary: ArchiveInventorySummary;
   records: ArchiveInventoryRecord[];
   plexOnly: ArchivePlexOnlyRecord[];

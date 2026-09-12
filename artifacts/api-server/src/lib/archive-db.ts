@@ -91,6 +91,54 @@ archiveDb.exec(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (owner_id, rating_key)
   );
+  CREATE TABLE IF NOT EXISTS jellyfin_library (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    server_url TEXT NOT NULL,
+    library_key TEXT NOT NULL DEFAULT '',
+    library_type TEXT NOT NULL DEFAULT 'unknown',
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+    item_count INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
+    sync_status TEXT NOT NULL DEFAULT 'pending',
+    sync_error TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, server_url, library_key)
+  );
+  CREATE TABLE IF NOT EXISTS jellyfin_item (
+    id INTEGER PRIMARY KEY,
+    library_id INTEGER NOT NULL REFERENCES jellyfin_library(id) ON DELETE CASCADE,
+    item_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    year INTEGER,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+    thumb_url TEXT,
+    added_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, item_key)
+  );
+  CREATE TABLE IF NOT EXISTS jellyfin_media (
+    id INTEGER PRIMARY KEY,
+    item_id INTEGER NOT NULL REFERENCES jellyfin_item(id) ON DELETE CASCADE,
+    video_resolution TEXT,
+    video_codec TEXT,
+    audio_codec TEXT,
+    bitrate INTEGER,
+    duration_ms INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS jellyfin_part (
+    id INTEGER PRIMARY KEY,
+    media_id INTEGER NOT NULL REFERENCES jellyfin_media(id) ON DELETE CASCADE,
+    file_path TEXT NOT NULL,
+    size_bytes INTEGER,
+    checksum TEXT
+  );
+  CREATE INDEX IF NOT EXISTS jellyfin_item_library_id_idx ON jellyfin_item(library_id);
+  CREATE INDEX IF NOT EXISTS jellyfin_media_item_id_idx ON jellyfin_media(item_id);
+  CREATE INDEX IF NOT EXISTS jellyfin_part_media_id_idx ON jellyfin_part(media_id);
   CREATE TABLE IF NOT EXISTS archive_item (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL,
@@ -764,7 +812,15 @@ if (eventCount.count === 0) {
 
 export type SettingsRecord = typeof defaultSettings;
 
-const legacyOwnedTables = [
+/**
+ * Every table whose rows carry an `owner_id` that can still hold the legacy
+ * sentinel. A table missing from this list keeps its pre-authentication rows
+ * stranded under LEGACY_OWNER_ID after a claim, where no authenticated user
+ * can ever read them. `legacyOwnedTablesCoverSchema` in the ownership tests
+ * derives the same set from the live schema and fails if the two diverge, so
+ * a new owned table cannot be added without being claimed here.
+ */
+export const legacyOwnedTables = [
   "archive_item",
   "source_record",
   "download_job",
@@ -772,6 +828,10 @@ const legacyOwnedTables = [
   "system_event",
   "plex_library",
   "plex_item",
+  "plex_show",
+  "plex_episode",
+  "jellyfin_library",
+  "jellyfin_item",
   "local_media_identity",
   "file_record",
 ] as const;

@@ -278,4 +278,61 @@ describe("HTTP integration adapters", { concurrency: false }, () => {
         .run(ownerId, otherOwnerId);
     }
   });
+  test("Jellyfin endpoints are mounted, validated, and never leak the stored API key", async () => {
+    const { server, baseUrl } = await startApiServer();
+    const ownerId = runtimeConfig.localOwnerId;
+    try {
+      const initial = await originalFetch(`${baseUrl}/api/jellyfin/config`);
+      assert.equal(initial.status, 200);
+      const initialBody = await initial.json() as Record<string, unknown>;
+      assert.ok("configured" in initialBody);
+      assert.ok("hasApiKey" in initialBody);
+      assert.equal("apiKey" in initialBody, false, "the raw API key must never be serialized");
+
+      // An invalid scheme is an operator-correctable 400, not a 500.
+      const rejected = await originalFetch(`${baseUrl}/api/jellyfin/config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serverUrl: "ftp://example.com" }),
+      });
+      assert.equal(rejected.status, 400);
+      assert.match(((await rejected.json()) as { error: string }).error, /HTTP or HTTPS/);
+
+      const updated = await originalFetch(`${baseUrl}/api/jellyfin/config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serverUrl: "http://127.0.0.1:8096",
+          apiKey: "http-route-secret",
+        }),
+      });
+      assert.equal(updated.status, 200);
+      const updatedBody = await updated.json() as Record<string, unknown>;
+      assert.equal(updatedBody.configured, true);
+      assert.equal(updatedBody.hasApiKey, true);
+      assert.equal(
+        JSON.stringify(updatedBody).includes("http-route-secret"),
+        false,
+        "the configuration response must not echo the API key",
+      );
+
+      // Syncing without a verified connection must not fabricate inventory.
+      const inventory = await originalFetch(`${baseUrl}/api/jellyfin/inventory`);
+      assert.equal(inventory.status, 200);
+      const inventoryBody = await inventory.json() as {
+        libraries: unknown[];
+        items: unknown[];
+      };
+      assert.deepEqual(inventoryBody.libraries, []);
+      assert.deepEqual(inventoryBody.items, []);
+    } finally {
+      await stopApiServer(server);
+      archiveDb
+        .prepare("DELETE FROM user_setting WHERE owner_id = ? AND key LIKE 'jellyfin%'")
+        .run(ownerId);
+      archiveDb
+        .prepare("DELETE FROM system_event WHERE owner_id = ? AND source = 'jellyfin'")
+        .run(ownerId);
+    }
+  });
 });

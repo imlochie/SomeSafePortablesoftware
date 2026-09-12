@@ -2,6 +2,7 @@ import {
   IntegrationUnavailableError,
   type CapabilityContext,
   type CapabilityHandler,
+  type ExternalIntegrationId,
   type IntegrationCapability,
   type IntegrationId,
   type IntegrationStatus,
@@ -12,7 +13,7 @@ import type {
   IntegrationConfiguration,
 } from "./config";
 
-const labels: Record<Exclude<IntegrationId, "plex">, string> = {
+const labels: Record<ExternalIntegrationId, string> = {
   sonarr: "Sonarr",
   radarr: "Radarr",
   prowlarr: "Prowlarr",
@@ -21,7 +22,7 @@ const labels: Record<Exclude<IntegrationId, "plex">, string> = {
   telegram: "Telegram ingestion",
 };
 
-const adapterCapabilities: Record<Exclude<IntegrationId, "plex">, readonly IntegrationCapability[]> = {
+const adapterCapabilities: Record<ExternalIntegrationId, readonly IntegrationCapability[]> = {
   sonarr: ["media_lookup", "missing_media_discovery", "source_inspection", "acquisition_job_creation", "acquisition_job_status"],
   radarr: ["media_lookup", "missing_media_discovery", "source_inspection", "acquisition_job_creation", "acquisition_job_status"],
   prowlarr: ["host_lookup", "source_inspection"],
@@ -62,7 +63,7 @@ function getConfiguredDetail(config: IntegrationConfiguration) {
 }
 
 export function createDisconnectedAdapter(
-  id: Exclude<IntegrationId, "plex">,
+  id: ExternalIntegrationId,
   config: ExternalIntegrationConfiguration[typeof id],
 ): MediaIntegrationAdapter {
   const name = labels[id];

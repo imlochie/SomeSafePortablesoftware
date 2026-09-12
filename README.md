@@ -4,7 +4,7 @@ ARCHIVE ASSISTANT is a Windows-first, local-first personal media archive control
 
 ## Product status
 
-The project is designed to act as a control layer for a personal media archive, with foundations for Plex integration, media acquisition, processing, archive management, and future AI-assisted workflows.
+The project is designed to act as a control layer for a personal media archive, with foundations for Plex and Jellyfin integration, media acquisition, processing, archive management, and future AI-assisted workflows.
 
 ---
 
@@ -16,9 +16,12 @@ The project is designed to act as a control layer for a personal media archive, 
 
 The UI reports unconfigured providers as disconnected and surfaces real provider errors instead of fabricating availability.
 
-Plex synchronization, archive scanning and review, controlled archive
-operations, provider-backed acquisitions, and durable operational history are
-implemented. See [`docs/archive-goals-freeze-review.md`](docs/archive-goals-freeze-review.md)
+Plex and Jellyfin synchronization, archive scanning and review, controlled
+archive operations, provider-backed acquisitions, and durable operational
+history are implemented. Plex and Jellyfin are interchangeable reference
+providers: exactly one is active per owner, selected with the
+`archiveProvider` setting, and archive findings are labelled with the provider
+that produced them. See [`docs/archive-goals-freeze-review.md`](docs/archive-goals-freeze-review.md)
 for the original-goal classification and remaining release work.
 
 The desktop application launches the Node.js API locally as a managed sidecar.
@@ -72,7 +75,7 @@ SOURCES
 HISTORY
 SETTINGS
 
-The application is split into a React/Vite interface and an Express API. The API owns SQLite access, dependency checks, settings, Plex secrets, media extraction, downloads, FFmpeg processing, and archive management. A Tauri shell starts this existing Node engine with its bundled Node runtime as a managed sidecar.
+The application is split into a React/Vite interface and an Express API. The API owns SQLite access, dependency checks, settings, Plex and Jellyfin secrets, media extraction, downloads, FFmpeg processing, and archive management. A Tauri shell starts this existing Node engine with its bundled Node runtime as a managed sidecar.
 
 Local Engine
 
@@ -82,7 +85,7 @@ Current foundations include:
 
 SQLite database access.
 Persistent application settings.
-Plex configuration storage.
+Plex and Jellyfin configuration storage.
 Archive item storage.
 Media metadata structures.
 Source tracking.
@@ -94,7 +97,7 @@ Dependency detection.
 Local mock mode.
 Server-side configuration and secret handling.
 
-The API is responsible for future filesystem operations, media acquisition, processing, Plex integration, and archive actions.
+The API is responsible for future filesystem operations, media acquisition, processing, Plex and Jellyfin integration, and archive actions.
 
 Database
 
@@ -239,7 +242,7 @@ Local desktop runtime.
 Managed API process.
 SQLite persistence.
 Archive state.
-Plex configuration.
+Plex and Jellyfin configuration.
 Media metadata.
 Sources.
 Download and processing jobs.
@@ -252,8 +255,6 @@ Not Yet Fully Implemented
 
 The following areas remain future development work:
 
-Real Plex library synchronization.
-Plex library browsing.
 Media acquisition through yt-dlp.
 Download execution.
 FFmpeg processing pipelines.

@@ -1,5 +1,6 @@
 import { resolveExternalIntegrationConfiguration } from "./config";
 import { createDisconnectedAdapter } from "./disconnected-adapter";
+import { createJellyfinAdapter } from "./jellyfin-adapter";
 import { createPlexAdapter } from "./plex-adapter";
 import { createProwlarrAdapter } from "./prowlarr-adapter";
 import { createQBittorrentAdapter } from "./qbittorrent-adapter";
@@ -157,6 +158,7 @@ export function createDefaultIntegrationRegistry(
   const configuration = resolveExternalIntegrationConfiguration(env);
   return new IntegrationRegistry([
     createPlexAdapter(),
+    createJellyfinAdapter(),
     createSonarrAdapter({
       ...configuration.sonarr,
       webhookSecrets: () => readWebhookSecretCandidates("sonarr", env),

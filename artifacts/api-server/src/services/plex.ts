@@ -1,8 +1,11 @@
-import { lookup } from "node:dns/promises";
-import { request as httpRequest, type IncomingMessage } from "node:http";
-import { request as httpsRequest } from "node:https";
-import { isIP } from "node:net";
 import { archiveDb, addEvent, readSettings, readUserSetting, writeUserSetting } from "../lib/archive-db";
+import {
+  classifyAddress,
+  normalizeServerUrl as normalizeTargetUrl,
+  requestJson as requestTargetJson,
+  validateServerTarget as validateTargetForProvider,
+  type ValidatedTarget,
+} from "../lib/network-target";
 import { invalidateArchiveInventoryCache } from "./archive";
 
 const requestTimeoutMs = 15_000;
@@ -29,6 +32,17 @@ class PlexRequestError extends Error {
   }
 }
 
+/**
+ * Operator-facing provider name and the two error kinds the shared network
+ * helpers raise on Plex's behalf. Routing every message through these keeps
+ * the wording identical to the pre-refactor strings while the SSRF/egress
+ * rules themselves live in exactly one place (lib/network-target.ts), shared
+ * with Jellyfin.
+ */
+const PROVIDER_LABEL = "Plex";
+const plexConfigurationError = (message: string) => new PlexConfigurationError(message);
+const plexRequestError = (message: string) => new PlexRequestError(message);
+
 function asRecord(value: unknown): PlexRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? value as PlexRecord : {};
 }
@@ -48,18 +62,7 @@ function number(value: unknown) {
 }
 
 function normalizeServerUrl(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return "";
-  const candidate = value.trim().replace(/\/+$/, "");
-  let parsed: URL;
-  try {
-    parsed = new URL(candidate);
-  } catch {
-    throw new PlexConfigurationError("Enter a valid Plex server URL.");
-  }
-  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
-    throw new PlexConfigurationError("Plex server URL must use HTTP or HTTPS without embedded credentials.");
-  }
-  return candidate;
+  return normalizeTargetUrl(value, PROVIDER_LABEL, plexConfigurationError);
 }
 
 function readPlexCredentials(ownerId: string) {
@@ -81,112 +84,28 @@ function containerFrom(value: unknown) {
   return asRecord(root.MediaContainer ?? root.mediaContainer ?? root);
 }
 
-type ValidatedTarget = { url: URL; address: string; family: 4 | 6 };
-
 async function requestJson(target: ValidatedTarget, token: string, path: string) {
-  const relative = new URL(path, "http://plex.local");
-  const requestPath = `${target.url.pathname.replace(/\/$/, "")}${relative.pathname}${relative.search}`;
-  return new Promise<unknown>((resolve, reject) => {
-    const options = {
-      hostname: target.address,
-      family: target.family,
-      port: target.url.port || (target.url.protocol === "https:" ? 443 : 80),
-      path: requestPath,
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Host: target.url.host,
-        "X-Plex-Token": token,
-        "X-Plex-Client-Identifier": "archive-assistant",
-        "X-Plex-Product": "Archive Assistant",
-      },
-    };
-    const handleResponse = (response: IncomingMessage) => {
-      const chunks: Buffer[] = [];
-      let byteCount = 0;
-      response.on("data", (chunk: Buffer) => {
-        byteCount += chunk.length;
-        if (byteCount > 64 * 1024 * 1024) {
-          response.destroy(new PlexRequestError("Plex returned a response larger than 64 MB."));
-          return;
-        }
-        chunks.push(chunk);
-      });
-      response.on("error", (error) => reject(error instanceof PlexRequestError
-        ? error
-        : new PlexRequestError(error.message)));
-      response.on("end", () => {
-        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new PlexRequestError(`Plex request failed with HTTP ${response.statusCode ?? 0}.`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown);
-        } catch {
-          reject(new PlexRequestError("Plex returned an unreadable response."));
-        }
-      });
-    };
-    const request = target.url.protocol === "https:"
-      ? httpsRequest({ ...options, servername: target.url.hostname }, handleResponse)
-      : httpRequest(options, handleResponse);
-    request.setTimeout(requestTimeoutMs, () => {
-      request.destroy(new PlexRequestError(`Plex request timed out after ${requestTimeoutMs} ms.`));
-    });
-    request.on("error", (error) => reject(error instanceof PlexRequestError
-      ? error
-      : new PlexRequestError(error.message)));
-    request.end();
+  return requestTargetJson({
+    target,
+    path,
+    label: PROVIDER_LABEL,
+    requestError: plexRequestError,
+    timeoutMs: requestTimeoutMs,
+    headers: {
+      "X-Plex-Token": token,
+      "X-Plex-Client-Identifier": "archive-assistant",
+      "X-Plex-Product": "Archive Assistant",
+    },
   });
 }
 
-function classifyAddress(address: string) {
-  const normalized = address.toLowerCase();
-  if (normalized.startsWith("::ffff:")) return classifyAddress(normalized.slice(7));
-  if (isIP(normalized) === 4) {
-    const octets = normalized.split(".").map(Number);
-    const first = octets[0] ?? 0;
-    const second = octets[1] ?? 0;
-    const unsafe = first === 0 || (first === 169 && second === 254) || first >= 224;
-    const local = first === 10
-      || first === 127
-      || (first === 172 && second >= 16 && second <= 31)
-      || (first === 192 && second === 168)
-      || (first === 100 && second >= 64 && second <= 127);
-    return { unsafe, local };
-  }
-  const unsafe = normalized === "::" || normalized.startsWith("fe8") || normalized.startsWith("fe9")
-    || normalized.startsWith("fea") || normalized.startsWith("feb") || normalized.startsWith("ff");
-  const local = normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd");
-  return { unsafe, local };
-}
-
 async function validateServerTarget(serverUrl: string): Promise<ValidatedTarget> {
-  const networkMode = String(readSettings().networkMode);
-  if (networkMode === "offline") {
-    throw new PlexConfigurationError("Network mode is offline. Enable local network access before contacting Plex.");
-  }
-  const hostname = new URL(serverUrl).hostname.replace(/^\[|\]$/g, "");
-  const addresses = isIP(hostname)
-    ? [{ address: hostname }]
-    : await lookup(hostname, { all: true, verbatim: true }).catch(() => {
-      throw new PlexRequestError("The Plex server hostname could not be resolved.");
-    });
-  if (!addresses.length) throw new PlexRequestError("The Plex server hostname did not resolve to an address.");
-  const classifications = addresses.map(({ address }) => classifyAddress(address));
-  if (classifications.some(({ unsafe }) => unsafe)) {
-    throw new PlexConfigurationError("The Plex server resolved to a blocked link-local, multicast, or unspecified address.");
-  }
-  if (networkMode === "local_only" && classifications.some(({ local }) => !local)) {
-    throw new PlexConfigurationError("Network mode only permits Plex servers on local or private addresses.");
-  }
-  const selected = addresses[0];
-  if (!selected) throw new PlexRequestError("The Plex server hostname did not resolve to an address.");
-  return {
-    url: new URL(serverUrl),
-    address: selected.address,
-    family: isIP(selected.address) as 4 | 6,
-  };
+  return validateTargetForProvider(serverUrl, {
+    label: PROVIDER_LABEL,
+    networkMode: String(readSettings().networkMode),
+    configurationError: plexConfigurationError,
+    requestError: plexRequestError,
+  });
 }
 
 async function readLibraries(target: ValidatedTarget, token: string) {

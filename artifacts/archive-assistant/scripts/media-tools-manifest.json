@@ -1,6 +1,6 @@
 {
   "platform": "windows",
-  "releasePolicy": "Pinned release assets; update this manifest and rebuild to update the desktop bundle.",
+  "releasePolicy": "Pinned immutable release assets; never reference a rolling tag such as FFmpeg-Builds 'latest', whose assets are republished in place and break the pinned size/SHA-256 checks. Update this manifest and rebuild to update the desktop bundle.",
   "architectures": {
     "x64": {
       "targetTriple": "x86_64-pc-windows-msvc",
@@ -15,18 +15,21 @@
           "asset": "yt-dlp.exe"
         },
         "ffmpeg": {
-          "version": "n8.1",
+          "version": "n8.1.2-50-g1a748fe2cd",
           "license": "GNU LGPL v2.1 or later",
-          "source": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest",
-          "releasePublishedAt": "2026-09-11T13:43:15Z",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-8.1.zip",
-          "sha256": "677f350e158f45476bb9d7f8f3de2d050151f4df9d908c8001aef65c3abd9ff6",
-          "downloadBytes": 169522175,
-          "asset": "ffmpeg-n8.1-latest-win64-lgpl-8.1.zip",
-          "includes": ["ffmpeg.exe", "ffprobe.exe"]
+          "source": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-31-13-27",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n8.1.2-50-g1a748fe2cd-win64-lgpl-8.1.zip",
+          "sha256": "f6274bbd9c247f9e90c1bbed066b03ed4a3907cece2fb91be6dd352393936365",
+          "downloadBytes": 146078616,
+          "asset": "ffmpeg-n8.1.2-50-g1a748fe2cd-win64-lgpl-8.1.zip",
+          "includes": [
+            "ffmpeg.exe",
+            "ffprobe.exe"
+          ],
+          "releaseTag": "autobuild-2026-08-31-13-27"
         }
       },
-      "totalDownloadBytes": 187748260
+      "totalDownloadBytes": 164304701
     },
     "arm64": {
       "targetTriple": "aarch64-pc-windows-msvc",
@@ -41,18 +44,21 @@
           "asset": "yt-dlp_arm64.exe"
         },
         "ffmpeg": {
-          "version": "n8.1",
+          "version": "n8.1.2-50-g1a748fe2cd",
           "license": "GNU LGPL v2.1 or later",
-          "source": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest",
-          "releasePublishedAt": "2026-09-11T13:43:15Z",
-          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-winarm64-lgpl-8.1.zip",
-          "sha256": "a72855c6f13260bd772a4dc1e99b186a7c901fe3bd4e621612d36fb38ec98374",
-          "downloadBytes": 115746308,
-          "asset": "ffmpeg-n8.1-latest-winarm64-lgpl-8.1.zip",
-          "includes": ["ffmpeg.exe", "ffprobe.exe"]
+          "source": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-31-13-27",
+          "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n8.1.2-50-g1a748fe2cd-winarm64-lgpl-8.1.zip",
+          "sha256": "0ad4d6e7342d6d77bbae4ac230964ebd51bdd6192414392e5f521d295b39b111",
+          "downloadBytes": 95498313,
+          "asset": "ffmpeg-n8.1.2-50-g1a748fe2cd-winarm64-lgpl-8.1.zip",
+          "includes": [
+            "ffmpeg.exe",
+            "ffprobe.exe"
+          ],
+          "releaseTag": "autobuild-2026-08-31-13-27"
         }
       },
-      "totalDownloadBytes": 137996596
+      "totalDownloadBytes": 117748601
     }
   }
 }
