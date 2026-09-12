@@ -23,3 +23,22 @@ versions and diagnostics.
 media tools during the Tauri build, prefer those packaged resources at launch,
 and retain `ARCHIVE_NODE_PATH`, `YT_DLP_PATH`, `FFMPEG_PATH`, and
 `FFPROBE_PATH` as explicit overrides.
+
+Resource paths in `tauri.conf.json` do not survive packaging verbatim: Tauri v2
+rewrites each leading `..` to `_up_` and an absolute root to `_root_`. So
+`"../../api-server/dist"` installs to
+`$RESOURCE/_up_/_up_/api-server/dist`, while a plain `"runtime"` stays at
+`$RESOURCE/runtime`. A packaged install must never fall back to a system Node;
+a missing bundled runtime is a hard error in release builds.
+
+**Why:** The dev-path probe in `api_entry_path()` masks a wrong packaged path
+during `pnpm dev`, so this class of bug only reproduces in a built installer —
+and a silent `node.exe`-on-PATH fallback turns a broken install into a
+confusing downstream failure while defeating the no-system-Node guarantee.
+
+**How to apply:** Keep the Rust resource lookups and the `bundle.resources`
+config in sync, and let
+`artifacts/archive-assistant/test/packaged-resource-layout.test.ts` pin that
+contract — it is the regression guard available in a Linux workspace where
+`cargo` and the Tauri CLI cannot be installed (rustup and the Debian mirrors
+are both blocked by the network allowlist).
