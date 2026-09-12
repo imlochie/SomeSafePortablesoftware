@@ -1,10 +1,21 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { access, readdir, stat } from "node:fs/promises";
 import { basename, extname, relative, resolve, sep } from "node:path";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia } from "./media";
 import { getArchiveScanRoots } from "./storage";
+import {
+  notifyArchiveScanCompleted,
+  notifyArchiveScanFailed,
+  notifyArchiveScanFileCompleted,
+  notifyArchiveScanFileDiscovered,
+  notifyArchiveScanFileFailed,
+  notifyArchiveScanFileStarted,
+  notifyArchiveScanFileStage,
+  notifyArchiveScanProgress,
+  notifyArchiveScanStarted,
+} from "./scan-events";
 
 const supportedExtensions = new Set([
   ".avi", ".flac", ".m4a", ".m4v", ".mkv", ".mov", ".mp3", ".mp4",
@@ -420,7 +431,14 @@ function upsertArchiveRecord(ownerId: string, filePath: string, root: string, mo
   );
 }
 
-async function inspectFile(filePath: string, root: string, existing: FileRow | undefined, settings: SettingsRecord, archiveScanRoots: string[]) {
+async function inspectFile(
+  filePath: string,
+  root: string,
+  existing: FileRow | undefined,
+  settings: SettingsRecord,
+  archiveScanRoots: string[],
+  onProbe?: () => void,
+) {
   const fileStats = await stat(filePath);
   const unchanged = existing
     && existing.scan_status === "active"
@@ -443,6 +461,7 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
   const fileChecksum: string | null = null;
   let errorMessage: string | null = null;
   try {
+    onProbe?.();
     inspected = await inspectLocalMedia(filePath, settings, archiveScanRoots);
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : "The file could not be inspected.";
@@ -463,6 +482,7 @@ async function scanArchive(ownerId: string) {
   invalidateArchiveInventoryCache(ownerId);
   const settings = readSettings();
   const roots = scanRoots(settings);
+  const sessionId = randomUUID();
   const found = new Set<string>();
   let scannedFiles = 0;
   let failedFiles = 0;
@@ -476,6 +496,7 @@ async function scanArchive(ownerId: string) {
     scanned_files: 0,
     failed_files: 0,
   });
+  notifyArchiveScanStarted(ownerId, sessionId, roots);
 
 const concurrency = Math.max(
   1,
@@ -500,11 +521,13 @@ for (const root of roots) {
       const results = await Promise.all(
         files.map(async (filePath) => {
           found.add(filePath);
+          notifyArchiveScanFileStarted(ownerId, sessionId, filePath, root);
 
           try {
             return {
               filePath,
-              result: await inspectFile(filePath, root, existingByPath.get(filePath), settings, roots),
+              result: await inspectFile(filePath, root, existingByPath.get(filePath), settings, roots,
+                () => notifyArchiveScanFileStage(ownerId, sessionId, filePath, "probe")),
             };
           } catch (error) {
             return {
@@ -530,15 +553,20 @@ for (const root of roots) {
       archiveDb.exec("BEGIN IMMEDIATE");
       try {
         for (const { result } of results) {
+          notifyArchiveScanFileStage(ownerId, sessionId, result.filePath, "register");
+          let fileError: string | null = null;
+          let fileOutcome: "registered" | "unchanged" | null = null;
           if (result.warningMessage) {
             failedFiles += 1;
             warnings.push(result.warningMessage);
+            fileError = result.warningMessage;
           } else {
             try {
               if (result.unchangedRecordId !== null) {
                 archiveDb.prepare(
                   "UPDATE file_record SET last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
                 ).run(result.unchangedRecordId, ownerId);
+                fileOutcome = "unchanged";
               } else {
                 upsertArchiveRecord(
                   ownerId,
@@ -549,21 +577,34 @@ for (const root of roots) {
                   result.fileChecksum,
                   result.errorMessage,
                 );
-                if (result.inspected === null) failedFiles += 1;
+                if (result.inspected === null) {
+                  failedFiles += 1;
+                  fileError = result.errorMessage ?? "The file could not be inspected.";
+                } else {
+                  fileOutcome = "registered";
+                }
               }
             } catch (error) {
               failedFiles += 1;
-              warnings.push(`Archive scan could not inspect ${basename(result.filePath)}: ${
+              const message = `Archive scan could not inspect ${basename(result.filePath)}: ${
                 error instanceof Error ? error.message : "unknown error"
-              }`);
+              }`;
+              warnings.push(message);
+              fileError = message;
             }
           }
           scannedFiles += 1;
+          if (fileOutcome === null) {
+            notifyArchiveScanFileFailed(ownerId, sessionId, result.filePath, fileError!, scannedFiles, failedFiles);
+          } else {
+            notifyArchiveScanFileCompleted(ownerId, sessionId, result.filePath, fileOutcome, scannedFiles, failedFiles);
+          }
         }
         updateScan(ownerId, {
           scanned_files: scannedFiles,
           failed_files: failedFiles,
         });
+        notifyArchiveScanProgress(ownerId, sessionId, scannedFiles, failedFiles);
         archiveDb.exec("COMMIT");
       } catch (error) {
         archiveDb.exec("ROLLBACK");
@@ -576,6 +617,7 @@ for (const root of roots) {
 
     for await (const filePath of walk(root, (message) => traversalWarnings.push(message))) {
       batch.push(filePath);
+      notifyArchiveScanFileDiscovered(ownerId, sessionId, filePath, root);
 
       if (batch.length >= concurrency) {
         await processBatch();
@@ -590,6 +632,7 @@ for (const root of roots) {
     failedFiles += 1;
   }
 }
+  notifyArchiveScanProgress(ownerId, sessionId, scannedFiles, failedFiles, true);
   archiveDb.exec("BEGIN IMMEDIATE");
   try {
     const existing = archiveDb.prepare(
@@ -628,6 +671,11 @@ for (const root of roots) {
     plex_only_count: final.summary.plexOnlyCount,
     local_only_count: final.summary.localOnlyCount,
   });
+  if (rootError) {
+    notifyArchiveScanFailed(ownerId, sessionId, rootError, scannedFiles, failedFiles);
+  } else {
+    notifyArchiveScanCompleted(ownerId, sessionId, scannedFiles, failedFiles, error);
+  }
 }
 
 export function startArchiveScan(ownerId: string) {
@@ -643,6 +691,7 @@ export function startArchiveScan(ownerId: string) {
         last_error: error instanceof Error ? error.message : "Archive scan failed unexpectedly.",
       });
       addEvent("error", "Archive scan failed unexpectedly.", "archive", ownerId);
+      notifyArchiveScanFailed(ownerId, null, error instanceof Error ? error.message : "Archive scan failed unexpectedly.");
     })
     .finally(() => {
       if (scans.get(ownerId) === promise) scans.delete(ownerId);

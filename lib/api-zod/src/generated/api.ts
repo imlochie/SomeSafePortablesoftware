@@ -429,6 +429,13 @@ export const StartArchiveScanResponse = zod.object({
 
 
 /**
+ * Server-sent events for archive scan observability. Sends an initial `snapshot` event with the current scan aggregate and live state, then streams scan lifecycle and per-file events while scans run. Idle connections receive heartbeat comments.
+ * @summary Stream live archive scan events
+ */
+export const StreamArchiveScanEventsResponse = zod.unknown()
+
+
+/**
  * @summary Get local archive inventory and intelligence
  */
 export const getArchiveInventoryResponseScanScannedFilesMin = 0;

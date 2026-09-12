@@ -26,6 +26,9 @@ import type { AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaIns
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { ArchiveScanPanel } from '@/components/archive-scan-panel';
+import { useArchiveScanEvents } from '@/hooks/use-archive-scan-events';
+import { apiBaseUrl } from '@/lib/api-base';
 import NotFound from '@/pages/not-found';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 
@@ -42,10 +45,7 @@ const clerkPubKey = authMode === 'clerk'
   : null;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const desktopApiBaseUrl = (window as Window & {
-  __ARCHIVE_API_BASE_URL__?: string;
-}).__ARCHIVE_API_BASE_URL__;
-setBaseUrl(import.meta.env.VITE_API_BASE_URL?.trim() || desktopApiBaseUrl || null);
+setBaseUrl(apiBaseUrl);
 
 if (authMode === 'clerk' && !clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
@@ -624,26 +624,37 @@ function ArchivePage() {
   const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
 
   const [isScanning, setIsScanning] = useState(false);
+  const scanEvents = useArchiveScanEvents({
+    onScanStarted: () => {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+    },
+    onScanFinished: () => {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+    }
+  });
   const { data: scan, isLoading: scanLoading, refetch: refetchScan } = useGetArchiveScan({
     query: {
-      refetchInterval: isScanning ? 2000 : false,
+      // Interval polling is only a fallback while the SSE feed is down; the
+      // live event stream drives updates when connected.
+      refetchInterval: isScanning && !scanEvents.connected ? 2000 : false,
       queryKey: getGetArchiveScanQueryKey()
     }
   });
 
   useEffect(() => {
     const wasScanning = isScanning;
-    const nowScanning = scan?.status === 'scanning';
+    const nowScanning = scan?.status === 'scanning' || scanEvents.status === 'scanning';
     setIsScanning(nowScanning);
 
     if (wasScanning && !nowScanning) {
       queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
     }
-  }, [scan?.status, isScanning, queryClient]);
+  }, [scan?.status, scanEvents.status, isScanning, queryClient]);
 
   const { data: inventory, isLoading: invLoading, isError: invError, refetch: refetchInv } = useGetArchiveInventory({
     query: {
-      refetchInterval: isScanning ? 3000 : false,
+      refetchInterval: isScanning && !scanEvents.connected ? 3000 : false,
       queryKey: getGetArchiveInventoryQueryKey()
     }
   });
@@ -754,6 +765,8 @@ function ArchivePage() {
           {notice}
         </div>
       )}
+
+      <ArchiveScanPanel live={scanEvents} />
 
       {scan && (
         <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

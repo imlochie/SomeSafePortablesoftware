@@ -23,8 +23,45 @@ import {
 import { readReconciliationReport } from "../services/reconciliation";
 import { readNamingProposals } from "../services/naming-intelligence";
 import { readIdentityAudit } from "../services/identity-audit";
+import {
+  readArchiveScanLiveState,
+  subscribeArchiveScanEvents,
+  type ArchiveScanEvent,
+} from "../services/scan-events";
 
 const router: IRouter = Router();
+
+router.get("/archive/scan/events", (req, res) => {
+  const ownerId = getAuthenticatedUserId(req);
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+  res.on("error", () => {
+    // A dropped client must never bubble a socket error into the process.
+  });
+  // Initial snapshot so a newly connected (or reconnecting) client immediately
+  // knows the current scan state. The persisted aggregate from
+  // GET /api/archive/scan remains the source of truth; the live block is the
+  // ephemeral observability state.
+  res.write(`retry: 3000\n\n`);
+  res.write(`event: snapshot\ndata: ${JSON.stringify({
+    scan: readArchiveScan(ownerId),
+    live: readArchiveScanLiveState(ownerId),
+  })}\n\n`);
+  const unsubscribe = subscribeArchiveScanEvents(ownerId, (event: ArchiveScanEvent) => {
+    if (res.writableEnded || res.destroyed) return;
+    res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  });
+  const heartbeat = setInterval(() => {
+    if (res.writableEnded || res.destroyed) return;
+    res.write(": keep-alive\n\n");
+  }, 15_000);
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+});
 
 router.get("/archive/scan", (req, res) => {
   res.json(GetArchiveScanResponse.parse(readArchiveScan(getAuthenticatedUserId(req))));

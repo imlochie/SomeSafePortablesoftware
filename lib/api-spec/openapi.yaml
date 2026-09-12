@@ -193,6 +193,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ArchiveScan"
+  /archive/scan/events:
+    get:
+      operationId: streamArchiveScanEvents
+      tags: [archive]
+      summary: Stream live archive scan events
+      description: >-
+        Server-sent events for archive scan observability. Sends an initial
+        `snapshot` event with the current scan aggregate and live state, then
+        streams scan lifecycle and per-file events while scans run. Idle
+        connections receive heartbeat comments.
+      responses:
+        "200":
+          description: Server-sent archive scan events
+          content:
+            text/event-stream:
+              schema:
+                type: string
   /archive/inventory:
     get:
       operationId: getArchiveInventory
