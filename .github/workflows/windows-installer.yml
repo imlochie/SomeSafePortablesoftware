@@ -6,6 +6,10 @@ name: Windows installer
 # can actually be validated end to end.
 on:
   workflow_dispatch:
+  # Pull requests run the workflow definition from the PR head, which lets the
+  # installer be validated before these files ever reach the default branch.
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
     paths:
