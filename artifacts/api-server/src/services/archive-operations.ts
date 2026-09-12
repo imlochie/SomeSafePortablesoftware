@@ -1,6 +1,7 @@
 import { constants as fsConstants, promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
+import { moveFile } from "../lib/fs-move";
 import { archiveDb, addEvent, readSettings } from "../lib/archive-db";
 import { inspectLocalMedia, isPathWithin } from "./media";
 import { findArchiveVolumeForPath, getArchiveScanRoots } from "./storage";
@@ -89,7 +90,7 @@ function defaultDependencies(): OperationDependencies {
     stat: (path) => fs.stat(path),
     access: (path, mode) => fs.access(path, mode),
     copyFile: (source, destination, mode) => fs.copyFile(source, destination, mode),
-    rename: (source, destination) => fs.rename(source, destination),
+    rename: (source, destination) => moveFile(source, destination),
     unlink: (path) => fs.unlink(path),
     inspect: (path) => inspectLocalMedia(path, settings),
   };

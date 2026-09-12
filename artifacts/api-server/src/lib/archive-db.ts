@@ -812,7 +812,15 @@ if (eventCount.count === 0) {
 
 export type SettingsRecord = typeof defaultSettings;
 
-const legacyOwnedTables = [
+/**
+ * Every table whose rows carry an `owner_id` that can still hold the legacy
+ * sentinel. A table missing from this list keeps its pre-authentication rows
+ * stranded under LEGACY_OWNER_ID after a claim, where no authenticated user
+ * can ever read them. `legacyOwnedTablesCoverSchema` in the ownership tests
+ * derives the same set from the live schema and fails if the two diverge, so
+ * a new owned table cannot be added without being claimed here.
+ */
+export const legacyOwnedTables = [
   "archive_item",
   "source_record",
   "download_job",
@@ -820,6 +828,10 @@ const legacyOwnedTables = [
   "system_event",
   "plex_library",
   "plex_item",
+  "plex_show",
+  "plex_episode",
+  "jellyfin_library",
+  "jellyfin_item",
   "local_media_identity",
   "file_record",
 ] as const;

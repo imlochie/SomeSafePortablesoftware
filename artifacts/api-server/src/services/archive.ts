@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import { access, readdir, stat } from "node:fs/promises";
 import { basename, extname, relative, resolve, sep } from "node:path";
 import { archiveDb, addEvent, readSettings, readUserSetting, writeUserSetting, type SettingsRecord } from "../lib/archive-db";
+import { expandPath } from "../lib/expand-path";
 import { inspectLocalMedia } from "./media";
 import {
   assessMediaIntegrityFailure,
@@ -124,12 +125,6 @@ type QualityShape = {
   audioChannels: number | null;
   container: string | null;
 };
-
-function expandPath(value: string) {
-  return value.startsWith("~/")
-    ? resolve(process.env.HOME ?? process.cwd(), value.slice(2))
-    : resolve(value);
-}
 
 function parseJsonArray(value: string | null | undefined) {
   if (!value) return [];

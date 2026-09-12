@@ -19,6 +19,7 @@ const testFiles = [
   "control-plane.test.ts",
   "system-dependencies.test.ts",
   "media-integrity.test.ts",
+  "windows-compat.test.ts",
 ];
 const outputFiles = testFiles.map((file) => path.join(testDir, file.replace(/\.ts$/, ".cjs")));
 const databaseFile = path.join(testDir, "ownership.sqlite");
@@ -209,6 +210,7 @@ try {
           NODE_ENV: process.env.NODE_ENV ?? "production",
           ARCHIVE_DB_PATH: databaseFile,
           ARCHIVE_TEST_ROOT: testDir,
+          API_SERVER_SRC: path.join(artifactDir, "src"),
         },
       },
     );
