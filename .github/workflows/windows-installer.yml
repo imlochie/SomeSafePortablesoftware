@@ -1,0 +1,113 @@
+name: Windows installer
+
+# Builds the NSIS desktop installer on a real Windows runner. The staging
+# scripts refuse to run anywhere but win32, and the packaged resource layout
+# only exists in a bundled build, so this is the only place the desktop shell
+# can actually be validated end to end.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "artifacts/archive-assistant/src-tauri/**"
+      - "artifacts/archive-assistant/scripts/**"
+      - "artifacts/api-server/**"
+      - ".github/workflows/windows-installer.yml"
+
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build NSIS installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # The repository has no packageManager field, so pin the pnpm version
+      # explicitly rather than inheriting whatever Corepack defaults to.
+      - name: Enable Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@12.4.1 --activate
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: artifacts/archive-assistant/src-tauri -> target
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Proves the manifest's pinned sizes and SHA-256 hashes still match the
+      # upstream assets before the much slower Tauri build starts. This is the
+      # check that caught the rolling-tag drift.
+      - name: Stage the bundled Node runtime and media tools
+        working-directory: artifacts/archive-assistant
+        run: |
+          node ./scripts/stage-node-runtime.mjs
+          node ./scripts/stage-media-tools.mjs
+
+      - name: Verify the staged runtime and tools
+        working-directory: artifacts/archive-assistant
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($relative in 'runtime/node.exe',
+                                'runtime/media-tools/ffmpeg.exe',
+                                'runtime/media-tools/ffprobe.exe',
+                                'runtime/media-tools/yt-dlp.exe',
+                                'runtime/media-tools/manifest.json') {
+            $path = Join-Path 'src-tauri' $relative
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Staging did not produce $relative"
+            }
+            Write-Host ("{0,-42} {1,12:N0} bytes" -f $relative, (Get-Item -LiteralPath $path).Length)
+          }
+
+      - name: Build the desktop installer
+        working-directory: artifacts/archive-assistant
+        run: pnpm run desktop:build
+
+      # The packaged layout is what the Rust resource lookup depends on, and it
+      # cannot be observed from a dev build. Failing here is far cheaper than
+      # shipping an installer whose sidecar cannot find its API bundle.
+      - name: Verify the packaged resource layout
+        working-directory: artifacts/archive-assistant/src-tauri/target/release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $apiEntry = '_up_/_up_/api-server/dist/index.mjs'
+          foreach ($relative in $apiEntry,
+                                'runtime/node.exe',
+                                'runtime/media-tools/ffmpeg.exe') {
+            $path = Join-Path 'resources' $relative
+            if (-not (Test-Path -LiteralPath $path)) {
+              Write-Host 'Packaged resource tree:'
+              Get-ChildItem -Recurse -File resources |
+                ForEach-Object { Write-Host "  $($_.FullName)" }
+              throw "Packaged resource missing: $relative"
+            }
+            Write-Host "ok  $relative"
+          }
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-assistant-windows-installer
+          path: |
+            artifacts/archive-assistant/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
