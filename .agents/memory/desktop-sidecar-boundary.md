@@ -42,3 +42,21 @@ config in sync, and let
 contract — it is the regression guard available in a Linux workspace where
 `cargo` and the Tauri CLI cannot be installed (rustup and the Debian mirrors
 are both blocked by the network allowlist).
+Bundled media tools must be pinned to immutable release assets. A rolling tag
+(FFmpeg-Builds `latest`, or any `nightly`/`continuous` tag) republishes its
+assets in place, so a pinned `downloadBytes`/`sha256` pair silently stops
+matching and fails the staging guard. Prefer BtbN month-end `autobuild-*` tags:
+daily autobuilds are pruned after roughly two weeks, month-end snapshots are
+retained for over a year.
+
+**Why:** The size and SHA-256 checks are the only thing preventing a mismatched
+binary from being bundled into an installer, so they must never be relaxed to
+accommodate upstream drift — the manifest is what changes.
+
+**How to apply:** When refreshing a tool, read `size` and `digest` from the
+GitHub release API (`gh api repos/OWNER/REPO/releases/tags/TAG`) rather than a
+rolling URL, update `totalDownloadBytes`, and let
+`artifacts/archive-assistant/test/media-tools-manifest.test.ts` reject rolling
+tags in CI. Note that `release-assets.githubusercontent.com` is blocked by the
+workspace network allowlist, so assets cannot be downloaded here for
+independent hashing; the API digest is the available source of truth.
