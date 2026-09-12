@@ -11,6 +11,8 @@ const testDir = await mkdtemp(path.join(tmpdir(), "archive-assistant-tests-"));
 const testFiles = [
   "ownership.test.ts",
   "integrations.test.ts",
+  "jellyfin.test.ts",
+  "archive-provider.test.ts",
   "integration-http.test.ts",
   "acquisition-jobs.test.ts",
   "media-acquisition.test.ts",

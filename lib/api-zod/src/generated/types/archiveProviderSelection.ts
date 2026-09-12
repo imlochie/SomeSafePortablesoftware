@@ -7,13 +7,9 @@
  */
 import type { ArchiveProvider } from './archiveProvider';
 
-export interface ArchivePlexMatch {
-  ratingKey: string;
-  title: string;
-  /** @nullable */
-  year: number | null;
-  qualityDifferences: string[];
+export interface ArchiveProviderSelection {
   provider: ArchiveProvider;
-  /** Operator-facing provider name, for example Plex or Jellyfin. */
   providerLabel: string;
+  /** Providers that currently hold synchronized inventory. */
+  available: ArchiveProvider[];
 }

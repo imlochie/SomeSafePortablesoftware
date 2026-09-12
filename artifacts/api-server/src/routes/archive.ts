@@ -6,6 +6,7 @@ import {
   GetArchiveReconciliationResponse,
   GetArchiveRecordParams,
   GetArchiveRecordResponse,
+  GetArchiveProviderResponse,
   GetArchiveScanResponse,
   DiscoverArchiveMissingMediaQueryParams,
   DiscoverArchiveMissingMediaResponse,
@@ -13,6 +14,8 @@ import {
   LookupArchiveMediaResponse,
   RequestArchiveAcquisitionBody,
   RequestArchiveAcquisitionResponse,
+  SetArchiveProviderBody,
+  SetArchiveProviderResponse,
   StartArchiveScanResponse,
   UpdateArchiveRecordReviewBody,
   UpdateArchiveRecordReviewParams,
@@ -22,6 +25,8 @@ import {
 } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import {
+  readArchiveProviderSelection,
+  setArchiveProvider,
   readArchiveInventory,
   readArchiveRecord,
   readArchiveScan,
@@ -51,6 +56,19 @@ router.get("/archive/scan", (req, res) => {
 router.post("/archive/scan", (req, res) => {
   const result = startArchiveScan(getAuthenticatedUserId(req));
   res.status(202).json(StartArchiveScanResponse.parse(result));
+});
+
+router.get("/archive/provider", (req, res) => {
+  res.json(GetArchiveProviderResponse.parse(
+    readArchiveProviderSelection(getAuthenticatedUserId(req)),
+  ));
+});
+
+router.put("/archive/provider", (req, res) => {
+  const { provider } = SetArchiveProviderBody.parse(req.body ?? {});
+  res.json(SetArchiveProviderResponse.parse(
+    setArchiveProvider(getAuthenticatedUserId(req), provider),
+  ));
 });
 
 router.get("/archive/inventory", (req, res) => {

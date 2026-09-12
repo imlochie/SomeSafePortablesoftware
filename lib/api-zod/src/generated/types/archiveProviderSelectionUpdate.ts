@@ -7,13 +7,6 @@
  */
 import type { ArchiveProvider } from './archiveProvider';
 
-export interface ArchivePlexOnlyRecord {
-  ratingKey: string;
-  title: string;
-  itemType: string;
-  /** @nullable */
-  year: number | null;
-  qualitySummary: string;
+export interface ArchiveProviderSelectionUpdate {
   provider: ArchiveProvider;
-  providerLabel: string;
 }

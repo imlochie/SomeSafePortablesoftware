@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { access, readdir, stat } from "node:fs/promises";
 import { basename, extname, relative, resolve, sep } from "node:path";
-import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
+import { archiveDb, addEvent, readSettings, readUserSetting, writeUserSetting, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia } from "./media";
 import {
   assessMediaIntegrityFailure,
@@ -17,6 +17,17 @@ const supportedExtensions = new Set([
 ]);
 const scans = new Map<string, Promise<void>>();
 const inventoryCache = new Map<string, ReturnType<typeof buildArchiveInventory>>();
+
+/**
+ * Media servers that can supply a reference inventory. Exactly one is active
+ * per owner, selected by the archiveProvider setting.
+ */
+export const archiveProviders = ["plex", "jellyfin"] as const;
+export type ArchiveProvider = (typeof archiveProviders)[number];
+
+export function providerLabel(provider: ArchiveProvider) {
+  return provider === "jellyfin" ? "Jellyfin" : "Plex";
+}
 
 type ScanStatus = "not_scanned" | "scanning" | "completed" | "failed";
 type FileStatus = "active" | "missing" | "error";
@@ -85,6 +96,11 @@ type LocalMediaIdentity = {
   checksum: string | null;
 };
 
+/**
+ * A normalized media-server row. Plex and Jellyfin inventories are projected
+ * into this single shape so identity matching and quality comparison stay
+ * provider-neutral; `provider` is carried through for operator-facing labels.
+ */
 type PlexRow = {
   id: number;
   rating_key: string;
@@ -96,6 +112,7 @@ type PlexRow = {
   video_codec: string | null;
   audio_codec: string | null;
   bitrate: number | null;
+  provider: ArchiveProvider;
 };
 
 type QualityShape = {
@@ -736,14 +753,92 @@ export function readArchiveScan(ownerId: string) {
 }
 
 function readPlexRows(ownerId: string) {
-  return archiveDb.prepare(
+  const rows = archiveDb.prepare(
     `SELECT pi.id, pi.rating_key, pi.title, pi.item_type, pi.year, pi.metadata_json,
             pm.video_resolution, pm.video_codec, pm.audio_codec, pm.bitrate
      FROM plex_item pi
      LEFT JOIN plex_media pm ON pm.item_id = pi.id
      WHERE pi.owner_id = ?
      ORDER BY pi.title COLLATE NOCASE`,
-  ).all(ownerId) as PlexRow[];
+  ).all(ownerId) as Omit<PlexRow, "provider">[];
+  return rows.map((row) => ({ ...row, provider: "plex" as const }));
+}
+
+/**
+ * Read the Jellyfin inventory into the shared comparison row shape. The
+ * Jellyfin item key takes the place of the Plex rating key.
+ */
+function readJellyfinRows(ownerId: string) {
+  const rows = archiveDb.prepare(
+    `SELECT ji.id, ji.item_key AS rating_key, ji.title, ji.item_type, ji.year, ji.metadata_json,
+            jm.video_resolution, jm.video_codec, jm.audio_codec, jm.bitrate
+     FROM jellyfin_item ji
+     LEFT JOIN jellyfin_media jm ON jm.item_id = ji.id
+     WHERE ji.owner_id = ?
+     ORDER BY ji.title COLLATE NOCASE`,
+  ).all(ownerId) as Omit<PlexRow, "provider">[];
+  return rows.map((row) => ({ ...row, provider: "jellyfin" as const }));
+}
+
+/**
+ * Resolve the active reference provider for an owner.
+ *
+ * The stored preference wins when it is valid. Otherwise fall back to whichever
+ * provider actually has inventory, so an operator who only configured Jellyfin
+ * still gets comparisons without first changing a setting.
+ */
+export function resolveArchiveProvider(ownerId: string): ArchiveProvider {
+  const configured = readUserSetting(ownerId, "archiveProvider");
+  if (typeof configured === "string" && archiveProviders.includes(configured as ArchiveProvider)) {
+    return configured as ArchiveProvider;
+  }
+  const jellyfinCount = archiveDb.prepare(
+    "SELECT COUNT(*) AS count FROM jellyfin_item WHERE owner_id = ?",
+  ).get(ownerId) as { count: number };
+  if (Number(jellyfinCount?.count ?? 0) > 0) {
+    const plexCount = archiveDb.prepare(
+      "SELECT COUNT(*) AS count FROM plex_item WHERE owner_id = ?",
+    ).get(ownerId) as { count: number };
+    if (Number(plexCount?.count ?? 0) === 0) return "jellyfin";
+  }
+  return "plex";
+}
+
+function readProviderRows(ownerId: string, provider: ArchiveProvider) {
+  return provider === "jellyfin" ? readJellyfinRows(ownerId) : readPlexRows(ownerId);
+}
+
+/** Providers that currently hold synchronized inventory for this owner. */
+export function availableArchiveProviders(ownerId: string): ArchiveProvider[] {
+  const available: ArchiveProvider[] = [];
+  const plexCount = archiveDb.prepare(
+    "SELECT COUNT(*) AS count FROM plex_item WHERE owner_id = ?",
+  ).get(ownerId) as { count: number };
+  if (Number(plexCount?.count ?? 0) > 0) available.push("plex");
+  const jellyfinCount = archiveDb.prepare(
+    "SELECT COUNT(*) AS count FROM jellyfin_item WHERE owner_id = ?",
+  ).get(ownerId) as { count: number };
+  if (Number(jellyfinCount?.count ?? 0) > 0) available.push("jellyfin");
+  return available;
+}
+
+export function readArchiveProviderSelection(ownerId: string) {
+  const provider = resolveArchiveProvider(ownerId);
+  return {
+    provider,
+    providerLabel: providerLabel(provider),
+    available: availableArchiveProviders(ownerId),
+  };
+}
+
+export function setArchiveProvider(ownerId: string, provider: ArchiveProvider) {
+  if (!archiveProviders.includes(provider)) {
+    throw new Error("The selected archive provider is not supported.");
+  }
+  writeUserSetting(ownerId, "archiveProvider", provider);
+  // The cached inventory was built against the previous provider.
+  invalidateArchiveInventoryCache(ownerId);
+  return readArchiveProviderSelection(ownerId);
 }
 
 type EpisodeIdentity = {
@@ -773,11 +868,16 @@ function plexEpisodeIndex(plexRows: PlexRow[]) {
   for (const row of plexRows) {
     if (row.item_type !== "episode") continue;
     const metadata = asRecord(parseMetadata(row.metadata_json));
-    const show = typeof metadata.grandparentTitle === "string"
-      ? normalizeTitle(metadata.grandparentTitle)
-      : "";
-    const season = Number(metadata.parentIndex);
-    const episode = Number(metadata.index);
+    // Plex and Jellyfin name the show/season/episode fields differently; read
+    // whichever set the row's provider supplied.
+    const showTitle = typeof metadata.grandparentTitle === "string"
+      ? metadata.grandparentTitle
+      : typeof metadata.seriesName === "string"
+        ? metadata.seriesName
+        : "";
+    const show = showTitle ? normalizeTitle(showTitle) : "";
+    const season = Number(metadata.parentIndex ?? metadata.seasonNumber);
+    const episode = Number(metadata.index ?? metadata.episodeNumber);
     if (!show || !Number.isInteger(season) || season < 1 || !Number.isInteger(episode) || episode < 1) continue;
     const key = episodeIdentityKey({ show, season, episode });
     if (!index.has(key)) index.set(key, row);
@@ -866,9 +966,10 @@ function plexMatch(row: FileRow, indexes: PlexTitleIndexes, episodeIndex: Map<st
   }, candidates[0]) : undefined;
 }
 
-function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, plexTitleIndex: PlexTitleIndexes, reviews: Map<string, ReviewRow>, localIdentity?: LocalMediaIdentity) {
+function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, plexTitleIndex: PlexTitleIndexes, reviews: Map<string, ReviewRow>, provider: ArchiveProvider, localIdentity?: LocalMediaIdentity) {
   const integrityClassification = integrityClassificationFor(row);
   const integritySummary = mediaIntegritySummary(integrityClassification);
+  const label = providerLabel(provider);
   const identityKey = localIdentity?.identity_key
     ?? `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
   const sameIdentity = (indexes.identity.get(identityKey) ?? []).filter((candidate) => candidate.id !== row.id);
@@ -888,7 +989,7 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     ? "The file was not present during the latest completed scan."
     : row.scan_status === "error"
       ? integritySummary ?? "FFprobe could not provide reliable metadata for this file."
-      : "No matching Plex item was found.";
+      : `No matching ${label} item was found.`;
   let qualityDifferences: string[] = [];
   if (row.scan_status === "active" && (exactDuplicate || fingerprintDuplicate)) {
     qualityStatus = "duplicate";
@@ -906,33 +1007,33 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
   } else if (row.scan_status === "active" && match) {
     const differences = qualityDifferencesFor(row, match);
     const localQuality = qualityShape(row);
-    const plexQuality = plexQualityShape(match);
+    const providerQuality = plexQualityShape(match);
     const localRank = qualityRank(localQuality);
-    const plexRank = qualityRank(plexQuality);
+    const providerRank = qualityRank(providerQuality);
     const resolutionDiffers =
       localQuality.height !== null &&
-      plexQuality.height !== null &&
-      localQuality.height !== plexQuality.height;
+      providerQuality.height !== null &&
+      localQuality.height !== providerQuality.height;
     const localHasHigherResolution =
-      resolutionDiffers && localQuality.height! > plexQuality.height!;
-    const localHasHdr = localQuality.hdr && !plexQuality.hdr;
-    const plexHasHdr = plexQuality.hdr && !localQuality.hdr;
+      resolutionDiffers && localQuality.height! > providerQuality.height!;
+    const localHasHdr = localQuality.hdr && !providerQuality.hdr;
+    const providerHasHdr = providerQuality.hdr && !localQuality.hdr;
     const materialTradeoff =
       resolutionDiffers &&
-      (localHasHigherResolution ? plexHasHdr : localHasHdr);
+      (localHasHigherResolution ? providerHasHdr : localHasHdr);
     qualityDifferences = differences;
     if (!differences.length) {
       qualityStatus = "plex_version_exists";
-      qualitySummary = "A matching Plex item exists with equivalent available quality metadata.";
+      qualitySummary = `A matching ${label} item exists with equivalent available quality metadata.`;
     } else if (materialTradeoff) {
       qualityStatus = "needs_review";
-      qualitySummary = "The local and Plex versions make a material resolution-versus-HDR tradeoff.";
-    } else if (localRank > plexRank) {
+      qualitySummary = `The local and ${label} versions make a material resolution-versus-HDR tradeoff.`;
+    } else if (localRank > providerRank) {
       qualityStatus = "higher_quality_available";
-      qualitySummary = "The local file ranks higher than the matched Plex version on available metadata.";
+      qualitySummary = `The local file ranks higher than the matched ${label} version on available metadata.`;
     } else {
       qualityStatus = "lower_quality_version";
-      qualitySummary = "The matched Plex version ranks higher on available metadata.";
+      qualitySummary = `The matched ${label} version ranks higher on available metadata.`;
     }
   }
   const duplicateOfId = exactDuplicate?.id ?? fingerprintDuplicate?.id ?? null;
@@ -941,6 +1042,8 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     title: match.title,
     year: match.year,
     qualityDifferences,
+    provider: match.provider,
+    providerLabel: providerLabel(match.provider),
   } : null;
   const evidenceKey = reviewEvidenceKey({
     qualityStatus,
@@ -1014,7 +1117,8 @@ function buildArchiveInventory(ownerId: string) {
      WHERE owner_id = ?`,
   ).all(ownerId) as LocalMediaIdentity[];
   const identities = new Map(identityRows.map((identity) => [identity.id, identity]));
-  const plexRows = readPlexRows(ownerId);
+  const provider = resolveArchiveProvider(ownerId);
+  const plexRows = readProviderRows(ownerId, provider);
   const episodeIndex = plexEpisodeIndex(plexRows);
   const plexTitleIndex = plexTitleIndexes(plexRows);
   const indexes: InventoryIndexes = {
@@ -1068,6 +1172,7 @@ function buildArchiveInventory(ownerId: string) {
     episodeIndex,
     plexTitleIndex,
     reviews,
+    provider,
     row.local_identity_id === null || row.local_identity_id === undefined
       ? undefined
       : identities.get(row.local_identity_id),
@@ -1080,7 +1185,9 @@ function buildArchiveInventory(ownerId: string) {
       title: plex.title,
       itemType: plex.item_type,
       year: plex.year,
-      qualitySummary: "Plex contains this item, but no matching local file was found.",
+      provider: plex.provider,
+      providerLabel: providerLabel(plex.provider),
+      qualitySummary: `${providerLabel(plex.provider)} contains this item, but no matching local file was found.`,
     }));
   const scan = readArchiveScan(ownerId);
   const integrityFailureCount = records.filter(
@@ -1091,6 +1198,8 @@ function buildArchiveInventory(ownerId: string) {
   ).length;
   return {
     scan,
+    provider,
+    providerLabel: providerLabel(provider),
     summary: {
       activeFiles: records.filter((record) => record.scanStatus === "active").length,
       failedFiles: records.filter((record) => record.scanStatus === "error").length,
