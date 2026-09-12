@@ -54,53 +54,93 @@ fn configured_path(name: &str, fallback: impl FnOnce() -> PathBuf) -> String {
         .unwrap_or_else(|| fallback().to_string_lossy().into_owned())
 }
 
-fn api_entry_path(app: &AppHandle) -> PathBuf {
-    let development_path = workspace_root()
+/// Resource-relative locations that may hold the bundled API entry point.
+///
+/// `tauri.conf.json` declares `../../api-server/dist` as a bundled resource.
+/// When Tauri packages a resource whose path escapes the `src-tauri` directory
+/// it rewrites every leading `..` component to `_up_`, so the canonical
+/// installed location is `$RESOURCE/_up_/_up_/api-server/dist/index.mjs`.
+/// The remaining entries keep flattened and legacy layouts working.
+const API_ENTRY_RESOURCE_CANDIDATES: [&[&str]; 4] = [
+    &["_up_", "_up_", "api-server", "dist", "index.mjs"],
+    &["_up_", "api-server", "dist", "index.mjs"],
+    &["api-server", "dist", "index.mjs"],
+    &["dist", "index.mjs"],
+];
+
+fn api_entry_candidates(app: &AppHandle) -> Vec<PathBuf> {
+    let mut candidates = vec![workspace_root()
         .join("artifacts")
         .join("api-server")
         .join("dist")
-        .join("index.mjs");
-    if development_path.exists() {
-        return development_path;
-    }
+        .join("index.mjs")];
 
     let resource_dir = app
         .path()
         .resource_dir()
         .unwrap_or_else(|_| workspace_root());
-    let packaged_path = resource_dir.join("dist").join("index.mjs");
-    if packaged_path.exists() {
-        return packaged_path;
+    for segments in API_ENTRY_RESOURCE_CANDIDATES {
+        let mut candidate = resource_dir.clone();
+        for segment in segments {
+            candidate = candidate.join(segment);
+        }
+        candidates.push(candidate);
     }
-    resource_dir
-        .join("api-server")
-        .join("dist")
-        .join("index.mjs")
+
+    candidates
 }
 
-fn node_command(app: &AppHandle) -> PathBuf {
-    if let Some(configured) = env::var_os("ARCHIVE_NODE_PATH").filter(|value| !value.is_empty()) {
-        return configured.into();
+fn api_entry_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let candidates = api_entry_candidates(app);
+    if let Some(found) = candidates.iter().find(|candidate| candidate.exists()) {
+        return Ok(found.clone());
     }
 
-    if let Ok(resource_dir) = app.path().resource_dir() {
-        let bundled = resource_dir.join("runtime").join("node.exe");
+    let probed = candidates
+        .iter()
+        .map(|candidate| candidate.display().to_string())
+        .collect::<Vec<_>>()
+        .join("\n  ");
+    Err(format!(
+        "The API bundle was not found. Build the API before launching the desktop shell. Probed:\n  {probed}"
+    ))
+}
+
+#[cfg(windows)]
+const BUNDLED_NODE_FILE_NAME: &str = "node.exe";
+#[cfg(not(windows))]
+const BUNDLED_NODE_FILE_NAME: &str = "node";
+
+fn node_command(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(configured) = env::var_os("ARCHIVE_NODE_PATH").filter(|value| !value.is_empty()) {
+        return Ok(configured.into());
+    }
+
+    let bundled = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|resource_dir| resource_dir.join("runtime").join(BUNDLED_NODE_FILE_NAME));
+    if let Some(bundled) = bundled.as_ref() {
         if bundled.exists() {
-            return bundled;
+            return Ok(bundled.clone());
         }
     }
 
-    env::var("ARCHIVE_NODE_PATH")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            if cfg!(windows) {
-                PathBuf::from("node.exe")
-            } else {
-                PathBuf::from("node")
-            }
-        })
+    // A packaged install must stay self-contained. Silently falling back to a
+    // system Node here would defeat the "no system Node required" guarantee and
+    // run the API on an unverified runtime, so release builds fail loudly
+    // instead. Development builds may still fall back to Node on PATH.
+    if !cfg!(debug_assertions) {
+        let location = bundled
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "the application resource directory".to_string());
+        return Err(format!(
+            "The bundled Node runtime is missing from this installation (expected at {location}). Reinstall ARCHIVE ASSISTANT, or set ARCHIVE_NODE_PATH to a Node executable for diagnostics."
+        ));
+    }
+
+    Ok(PathBuf::from(BUNDLED_NODE_FILE_NAME))
 }
 
 fn bundled_media_tools_path(app: &AppHandle) -> Option<PathBuf> {
@@ -125,16 +165,10 @@ fn sidecar_command(app: &AppHandle) -> Result<Command, String> {
     let database_path = configured_path("ARCHIVE_DB_PATH", || {
         app_data.join("archive-assistant.sqlite")
     });
-    let api_entry = api_entry_path(app);
+    let api_entry = api_entry_path(app)?;
     let media_tools_dir = bundled_media_tools_path(app);
-    if !api_entry.exists() {
-        return Err(format!(
-            "The API bundle was not found at {}. Build the API before launching the desktop shell.",
-            api_entry.display()
-        ));
-    }
 
-    let mut command = Command::new(node_command(app));
+    let mut command = Command::new(node_command(app)?);
     command
         .arg("--enable-source-maps")
         .arg(api_entry)
