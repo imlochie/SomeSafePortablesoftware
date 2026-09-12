@@ -68,6 +68,47 @@ describe("native media tool manifest", () => {
     },
   );
 
+  test.each(["x64", "arm64"])(
+    "pins every %s tool to an immutable release asset",
+    (architecture) => {
+      const selected = selectTargetManifest(manifest, architecture);
+
+      for (const [toolName, tool] of Object.entries(selected.tools)) {
+        const { pathname } = new URL(tool.url);
+        const downloadTag = pathname.split("/").at(-2);
+
+        // A rolling tag republishes its assets in place, so the pinned
+        // downloadBytes/sha256 silently stop matching and the staging guard
+        // fails the build. BtbN's "latest" did exactly this: the win64 zip
+        // went from 169,522,175 to 169,522,154 bytes -- a 21-byte drift --
+        // between two builds from an unchanged URL.
+        assert.ok(
+          !/^(latest|nightly|continuous|edge|dev|stable|rolling)$/i.test(
+            downloadTag ?? "",
+          ),
+          `${architecture}/${toolName} must pin an immutable release tag, not the rolling "${downloadTag}" tag`,
+        );
+        assert.ok(
+          !/(^|[-/])latest([-.]|$)/i.test(tool.asset),
+          `${architecture}/${toolName} asset "${tool.asset}" looks like a rolling build; pin a versioned asset`,
+        );
+      }
+    },
+  );
+
+  test.each(["x64", "arm64"])(
+    "keeps the %s total download size consistent with its tools",
+    (architecture) => {
+      const target = manifest.architectures[architecture];
+      const sum = Object.values(target.tools).reduce(
+        (total, tool) => total + tool.downloadBytes,
+        0,
+      );
+
+      expect(target.totalDownloadBytes).toBe(sum);
+    },
+  );
+
   test("rejects unsupported architectures before any release asset download", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
