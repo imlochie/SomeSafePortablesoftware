@@ -66,8 +66,18 @@ function stripVerbatimPrefix(value: string): string {
     remainder.charAt(1) === ':' &&
     (remainder.length === 2 || remainder.charAt(2) === '\\');
 
-  return isDrivePath ? remainder : value;
+  if (!isDrivePath) return value;
+  // `C:` alone is drive-relative; the root separator must be preserved.
+  return remainder.length === 2 ? `${remainder}\\` : remainder;
 }
+
+/**
+ * Node's real `splitRoot` from lib/fs.js, used by `realpathSync` -- which is
+ * what `resolveMainPath` calls on the main module. Whatever this returns is the
+ * first path Node stats, so it is the precise predictor of `lstat 'C:'`.
+ */
+const splitRootRe = /^(?:[a-zA-Z]:|[\\/]{2}[^\\/]+[\\/][^\\/]+)?[\\/]*/;
+const nodeLstatTarget = (value: string): string => splitRootRe.exec(value)![0];
 
 /** The structural facts the port above depends on, as written in main.rs. */
 function pinsRustImplementation(): void {
@@ -82,7 +92,11 @@ function pinsRustImplementation(): void {
   expect(rust).toContain(String.raw`Some(':')`);
   expect(rust).toContain(String.raw`None | Some('\\')`);
   // Only the drive form is rewritten; everything else is returned as-is.
-  expect(rust).toMatch(/if is_drive_path \{\s*PathBuf::from\(remainder\)\s*\} else \{\s*path\s*\}/);
+  expect(rust).toMatch(/if !is_drive_path \{\s*return path;\s*\}/);
+  // A bare `X:` gains the root separator instead of staying drive-relative.
+  expect(rust).toContain('if remainder.len() == 2 {');
+  expect(rust).toContain(String.raw`return PathBuf::from(format!("{remainder}\\"));`);
+  expect(rust).toMatch(/PathBuf::from\(remainder\)\s*\}/);
 }
 
 describe('packaged resource layout', () => {
@@ -206,7 +220,9 @@ describe('release build path selection', () => {
       '\\\\?\\C:\\Users\\lochi\\AppData\\Local\\ARCHIVE ASSISTANT\\_up_\\_up_\\api-server\\dist\\index.mjs',
       'C:\\Users\\lochi\\AppData\\Local\\ARCHIVE ASSISTANT\\_up_\\_up_\\api-server\\dist\\index.mjs',
     ],
-    ['a bare drive specifier', '\\\\?\\C:', 'C:'],
+    // Regression: this previously produced a bare "C:", which is
+    // drive-relative and is exactly what Node lstats.
+    ['a bare drive specifier', '\\\\?\\C:', 'C:\\'],
     ['a lowercase drive letter', '\\\\?\\d:\\Movies', 'd:\\Movies'],
     // Already-plain paths must pass through untouched.
     ['a plain drive path', 'C:\\Users\\lochi\\app.exe', 'C:\\Users\\lochi\\app.exe'],
@@ -216,6 +232,46 @@ describe('release build path selection', () => {
     ['a plain UNC path', '\\\\server\\share\\f.mjs', '\\\\server\\share\\f.mjs'],
   ])('normalises %s', (_label, input, expected) => {
     expect(stripVerbatimPrefix(input)).toBe(expected);
+  });
+
+  // The previous suite asserted only that the verbatim prefix was removed, so
+  // it passed while the shipped code emitted a bare "C:" -- the precise shape
+  // that crashes. These cases assert against Node's own resolver instead.
+  it.each([
+    ['\\\\?\\C:', 'a canonicalised drive root'],
+    ['\\\\?\\C:\\', 'a canonicalised drive root with separator'],
+    ['\\\\?\\C:\\Projects\\app\\dist\\index.mjs', 'a canonicalised source path'],
+    [
+      '\\\\?\\C:\\Users\\lochi\\AppData\\Local\\ARCHIVE ASSISTANT\\_up_\\_up_\\api-server\\dist\\index.mjs',
+      'a canonicalised packaged resource path',
+    ],
+  ])('never yields a drive-relative path from %s (%s)', (input) => {
+    const normalised = stripVerbatimPrefix(input);
+
+    // A drive-relative path is "C:" or "C:foo" -- a drive with no root
+    // separator. Node stats the bare root component and raises EISDIR.
+    expect(normalised).not.toMatch(/^[A-Za-z]:(?![\\/])/);
+    expect(nodeLstatTarget(normalised)).not.toBe('C:');
+    expect(win32.isAbsolute(normalised)).toBe(true);
+  });
+
+  it('pins the exact shape that caused the reported crash', () => {
+    // Bare "C:" is what Node reported lstat'ing. Confirm our understanding of
+    // the failure is correct, then confirm the fix cannot produce it.
+    expect(nodeLstatTarget('C:')).toBe('C:');
+    expect(nodeLstatTarget('C:Projects\\index.mjs')).toBe('C:');
+    expect(nodeLstatTarget('C:\\Projects\\index.mjs')).toBe('C:\\');
+
+    expect(stripVerbatimPrefix('\\\\?\\C:')).toBe('C:\\');
+    expect(nodeLstatTarget(stripVerbatimPrefix('\\\\?\\C:'))).toBe('C:\\');
+  });
+
+  it('guards the sidecar against a drive-relative entry path', () => {
+    // Defence in depth: if normalisation ever regresses, the shell must report
+    // the offending value rather than let Node fail with an opaque stack.
+    expect(mainRs).toMatch(/fn reject_drive_relative/);
+    expect(mainRs).toMatch(/reject_drive_relative\(found, "API bundle path"\)\?/);
+    expect(mainRs).toMatch(/drive-relative path/);
   });
 
   it('produces a path Node resolves to a file rather than a drive root', () => {

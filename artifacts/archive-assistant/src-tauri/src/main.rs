@@ -5,7 +5,7 @@ use std::{
     env,
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, ChildStderr, ChildStdout, Command, Stdio},
     sync::{mpsc, Mutex},
     thread,
@@ -79,11 +79,21 @@ fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
         && matches!(characters.next(), Some(':'))
         && matches!(characters.next(), None | Some('\\'));
 
-    if is_drive_path {
-        PathBuf::from(remainder)
-    } else {
-        path
+    if !is_drive_path {
+        return path;
     }
+
+    // `\\?\C:` must become `C:\`, never a bare `C:`. On Windows `C:` is
+    // *drive-relative* -- it means "the current directory on drive C" rather
+    // than the root of C. Node resolves such a path to the root component `C:`
+    // and stats it, which is a directory, producing
+    // `EISDIR: illegal operation on a directory, lstat 'C:'`. Appending the
+    // separator keeps the path absolute, and `C:\` is already correct.
+    if remainder.len() == 2 {
+        return PathBuf::from(format!("{remainder}\\"));
+    }
+
+    PathBuf::from(remainder)
 }
 
 /// Resolves a configured path, always yielding a Node-safe plain form.
@@ -150,9 +160,35 @@ fn api_entry_candidates(app: &AppHandle) -> Vec<PathBuf> {
     candidates
 }
 
+/// Rejects a path Node cannot use as a main module.
+///
+/// A drive-relative path such as `C:` or `C:foo` means "relative to the current
+/// directory on that drive". Node resolves it to the bare root component and
+/// stats that directory, failing with `EISDIR ... lstat 'C:'` before any user
+/// code runs. Catching it here turns an opaque Node stack trace into a message
+/// that names the offending value.
+fn reject_drive_relative(path: &Path, label: &str) -> Result<(), String> {
+    let Some(text) = path.to_str() else {
+        return Ok(());
+    };
+    let mut characters = text.chars();
+    let looks_drive_relative =
+        matches!(characters.next(), Some(drive) if drive.is_ascii_alphabetic())
+            && matches!(characters.next(), Some(':'))
+            && !matches!(characters.next(), None | Some('\\') | Some('/'));
+
+    if looks_drive_relative || text.len() == 2 && text.ends_with(':') {
+        return Err(format!(
+            "The {label} resolved to the drive-relative path {text:?}, which Node cannot execute. This indicates a path normalisation bug in the desktop shell."
+        ));
+    }
+    Ok(())
+}
+
 fn api_entry_path(app: &AppHandle) -> Result<PathBuf, String> {
     let candidates = api_entry_candidates(app);
     if let Some(found) = candidates.iter().find(|candidate| candidate.exists()) {
+        reject_drive_relative(found, "API bundle path")?;
         return Ok(found.clone());
     }
 
