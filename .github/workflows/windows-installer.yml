@@ -94,10 +94,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $apiEntry = '_up_/_up_/api-server/dist/index.mjs'
-          foreach ($relative in $apiEntry,
+          # These are the exact paths main.rs resolves. runtime/node.exe is
+          # listed because a bare "runtime" resource entry once packaged
+          # nothing, producing an app that found its API bundle and then could
+          # not start it.
+          foreach ($relative in 'api-server/dist/index.mjs',
                                 'runtime/node.exe',
-                                'runtime/media-tools/ffmpeg.exe') {
+                                'runtime/media-tools/ffmpeg.exe',
+                                'runtime/media-tools/ffprobe.exe',
+                                'runtime/media-tools/yt-dlp.exe') {
             $path = Join-Path 'resources' $relative
             if (-not (Test-Path -LiteralPath $path)) {
               Write-Host 'Packaged resource tree:'

@@ -115,15 +115,15 @@ fn configured_path(name: &str, fallback: impl FnOnce() -> PathBuf) -> String {
 
 /// Resource-relative locations that may hold the bundled API entry point.
 ///
-/// `tauri.conf.json` declares `../../api-server/dist` as a bundled resource.
-/// When Tauri packages a resource whose path escapes the `src-tauri` directory
-/// it rewrites every leading `..` component to `_up_`, so the canonical
-/// installed location is `$RESOURCE/_up_/_up_/api-server/dist/index.mjs`.
-/// The remaining entries keep flattened and legacy layouts working.
+/// `tauri.conf.json` maps `../../api-server/dist/` to the explicit destination
+/// `api-server/dist/`, so the canonical installed location is
+/// `$RESOURCE/api-server/dist/index.mjs`. The `_up_` entries remain because the
+/// array form of `resources` rewrites each leading `..` to `_up_`; keeping them
+/// means an installer produced from an older configuration still resolves.
 const API_ENTRY_RESOURCE_CANDIDATES: [&[&str]; 4] = [
+    &["api-server", "dist", "index.mjs"],
     &["_up_", "_up_", "api-server", "dist", "index.mjs"],
     &["_up_", "api-server", "dist", "index.mjs"],
-    &["api-server", "dist", "index.mjs"],
     &["dist", "index.mjs"],
 ];
 
@@ -207,6 +207,50 @@ const BUNDLED_NODE_FILE_NAME: &str = "node.exe";
 #[cfg(not(windows))]
 const BUNDLED_NODE_FILE_NAME: &str = "node";
 
+/// Lists the packaged resource tree, two levels deep.
+///
+/// Used only on a failure path, to report which resources actually shipped.
+fn describe_resource_tree(app: &AppHandle) -> String {
+    let Ok(resource_dir) = app.path().resource_dir().map(strip_verbatim_prefix) else {
+        return "The application resource directory could not be resolved.".to_string();
+    };
+
+    let mut lines = vec![format!("Resource directory: {}", resource_dir.display())];
+    let Ok(entries) = std::fs::read_dir(&resource_dir) else {
+        lines.push("  <unreadable>".to_string());
+        return lines.join("\n");
+    };
+
+    let mut names: Vec<_> = entries.flatten().map(|entry| entry.path()).collect();
+    names.sort();
+    if names.is_empty() {
+        lines.push("  <empty>".to_string());
+    }
+    for path in names {
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if path.is_dir() {
+            let children: Vec<String> = std::fs::read_dir(&path)
+                .map(|entries| {
+                    let mut children: Vec<String> = entries
+                        .flatten()
+                        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                        .collect();
+                    children.sort();
+                    children.truncate(12);
+                    children
+                })
+                .unwrap_or_default();
+            lines.push(format!("  {name}/ -> {}", children.join(", ")));
+        } else {
+            lines.push(format!("  {name}"));
+        }
+    }
+    lines.join("\n")
+}
+
 fn node_command(app: &AppHandle) -> Result<PathBuf, String> {
     if let Some(configured) = env::var_os("ARCHIVE_NODE_PATH").filter(|value| !value.is_empty()) {
         return Ok(configured.into());
@@ -232,8 +276,13 @@ fn node_command(app: &AppHandle) -> Result<PathBuf, String> {
         let location = bundled
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| "the application resource directory".to_string());
+        // A missing bundled runtime means a resource failed to ship, which is a
+        // packaging fault rather than anything the user did. Listing what the
+        // resource directory actually contains turns that into a single
+        // self-diagnosing report instead of a round trip.
         return Err(format!(
-            "The bundled Node runtime is missing from this installation (expected at {location}). Reinstall ARCHIVE ASSISTANT, or set ARCHIVE_NODE_PATH to a Node executable for diagnostics."
+            "The bundled Node runtime is missing from this installation (expected at {location}). Reinstall ARCHIVE ASSISTANT, or set ARCHIVE_NODE_PATH to a Node executable for diagnostics.\n\n{}",
+            describe_resource_tree(app)
         ));
     }
 

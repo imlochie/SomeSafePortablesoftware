@@ -102,24 +102,69 @@ function pinsRustImplementation(): void {
 describe('packaged resource layout', () => {
   const resources = tauriConfig.bundle?.resources;
 
-  it('declares the API bundle and runtime as bundled resources', () => {
-    expect(Array.isArray(resources)).toBe(true);
-    expect(resources).toContain('runtime');
-    expect(
-      (resources as string[]).some((resource) => resource.endsWith('api-server/dist')),
-    ).toBe(true);
+  /**
+   * Tauri's documented source-path syntax gives a bare directory name no
+   * defined meaning: only `dir/` (recursive), `dir/*` (non-recursive) and
+   * explicit globs are specified. A bare `runtime` entry produced an installer
+   * whose `runtime/` directory never shipped -- the app started, found the API
+   * bundle, then failed on the missing Node runtime. Every source entry must
+   * therefore carry a trailing slash or a glob.
+   * https://v2.tauri.app/develop/resources/
+   */
+  it('uses the map form so each resource has an explicit destination', () => {
+    expect(Array.isArray(resources)).toBe(false);
+    expect(typeof resources).toBe('object');
   });
 
-  it('probes the exact location Tauri unpacks the API bundle to', () => {
-    const apiResource = (resources as string[]).find((resource) =>
-      resource.endsWith('api-server/dist'),
-    )!;
-    const expected = `${packagedResourcePath(apiResource)}/index.mjs`;
+  it.each([
+    ['the API bundle', '../../api-server/dist/', 'api-server/dist/'],
+    ['the bundled runtime', 'runtime/', 'runtime/'],
+  ])('ships %s at an explicit destination', (_label, source, destination) => {
+    const map = resources as Record<string, string>;
+    expect(Object.keys(map)).toContain(source);
+    expect(map[source]).toBe(destination);
+  });
 
-    // "../../api-server/dist" must be probed as
-    // "_up_/_up_/api-server/dist/index.mjs", not "api-server/dist/index.mjs".
-    expect(expected).toBe('_up_/_up_/api-server/dist/index.mjs');
+  it.each(Object.keys((tauriConfig.bundle?.resources ?? {}) as Record<string, string>))(
+    'declares source %s with recursive directory syntax',
+    (source) => {
+      // A bare directory name is not documented syntax and silently shipped
+      // nothing. Require a trailing slash or an explicit glob.
+      expect(source.endsWith('/') || source.includes('*')).toBe(true);
+    },
+  );
+
+  it('probes the exact location Tauri unpacks the API bundle to', () => {
+    const map = resources as Record<string, string>;
+    const destination = map['../../api-server/dist/'];
+    const expected = `${destination.replace(/\/$/, '')}/index.mjs`;
+
+    // The map form pins the destination, so no `_up_` rewriting applies.
+    expect(expected).toBe('api-server/dist/index.mjs');
     expect(declaredApiEntryCandidates()).toContain(expected);
+  });
+
+  it('probes the API bundle destination before any legacy location', () => {
+    const candidates = declaredApiEntryCandidates();
+    const legacy = candidates.findIndex((candidate) => candidate.startsWith('_up_'));
+    expect(candidates[0]).toBe('api-server/dist/index.mjs');
+    // Older installers remain resolvable, just at lower priority.
+    expect(legacy).toBeGreaterThan(0);
+  });
+
+  it('keeps the runtime destination aligned with the Rust lookup', () => {
+    const map = resources as Record<string, string>;
+    const runtimeDestination = map['runtime/'].replace(/\/$/, '');
+
+    // main.rs joins resource_dir with "runtime" for both node.exe and the
+    // media tools, so the packaged destination must be exactly that.
+    expect(runtimeDestination).toBe('runtime');
+    expect(mainRs).toMatch(
+      new RegExp(`join\\("${runtimeDestination}"\\)\\.join\\(BUNDLED_NODE_FILE_NAME\\)`),
+    );
+    expect(mainRs).toMatch(
+      new RegExp(`join\\("${runtimeDestination}"\\)\\.join\\("media-tools"\\)`),
+    );
   });
 
   it('resolves the API entry from a Result so a miss reports every probed path', () => {
