@@ -1,10 +1,3 @@
-// TEMPORARY: side-effect import, deliberately first. ESM hoists every import
-// above surrounding statements, so calling an installer here would run *after*
-// the modules below had already been evaluated -- and module-scope path
-// resolution is the prime suspect. Importing for side effects instead makes
-// this the first module evaluated in the graph.
-import "./lib/launch-diagnostics";
-
 import app from "./app";
 import { logger } from "./lib/logger";
 import { runtimeConfig } from "./lib/runtime-config";

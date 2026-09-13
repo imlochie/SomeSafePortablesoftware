@@ -16,11 +16,7 @@ use tauri::{AppHandle, Manager, RunEvent, WebviewWindow};
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
 const READY_PREFIX: &str = "ARCHIVE_ASSISTANT_READY ";
-// TEMPORARY: raised from 20 for the launch investigation. The API server's
-// launch context is ~14 lines and is re-emitted alongside a fatal error with a
-// stack trace, which would otherwise evict the context from this ring buffer
-// and leave only the error -- the exact signal we are trying to capture.
-const DIAGNOSTIC_LINES: usize = 80;
+const DIAGNOSTIC_LINES: usize = 20;
 
 struct SidecarState {
     child: Mutex<Option<Child>>,
@@ -45,17 +41,66 @@ impl SidecarState {
 }
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."))
+    strip_verbatim_prefix(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")),
+    )
 }
 
+/// Removes Windows' extended-length (`\\?\`) prefix from a path.
+///
+/// `Path::canonicalize` on Windows returns a "verbatim" path such as
+/// `\\?\C:\dir\file`. Rust and the Win32 API handle that form fine, but Node
+/// does not: it parses `\\?\C:\...` as a UNC path with server `?` and share
+/// `C:`, so `resolveMainPath` -> `toRealPath` -> `realpathSync` stats the
+/// share component and fails with
+/// `EISDIR: illegal operation on a directory, lstat 'C:'` before any user code
+/// runs. Anything handed to the Node sidecar -- the script path, and every
+/// path passed through the environment -- must therefore be in plain form.
+///
+/// Only the `\\?\C:\`-style drive form is unwrapped. A `\\?\UNC\server\share`
+/// path is left untouched, because rewriting it correctly means restoring the
+/// leading `\\` and that is not a safe blind string edit.
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    const VERBATIM_PREFIX: &str = r"\\?\";
+
+    let Some(text) = path.to_str() else {
+        return path;
+    };
+    let Some(remainder) = text.strip_prefix(VERBATIM_PREFIX) else {
+        return path;
+    };
+
+    // Accept only `X:\...` or a bare `X:` drive specifier.
+    let mut characters = remainder.chars();
+    let is_drive_path = matches!(characters.next(), Some(drive) if drive.is_ascii_alphabetic())
+        && matches!(characters.next(), Some(':'))
+        && matches!(characters.next(), None | Some('\\'));
+
+    if is_drive_path {
+        PathBuf::from(remainder)
+    } else {
+        path
+    }
+}
+
+/// Resolves a configured path, always yielding a Node-safe plain form.
+///
+/// Every value produced here is handed to the sidecar through the environment
+/// and resolved by Node, so a verbatim `\\?\` path would be misparsed the same
+/// way the API entry path was. Derived defaults inherit the prefix from
+/// `workspace_root`/`app_local_data_dir`, so the strip is applied to the final
+/// value rather than only at the source.
 fn configured_path(name: &str, fallback: impl FnOnce() -> PathBuf) -> String {
-    env::var(name)
+    let value = env::var(name)
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| fallback().to_string_lossy().into_owned())
+        .map(PathBuf::from)
+        .unwrap_or_else(fallback);
+
+    strip_verbatim_prefix(value).to_string_lossy().into_owned()
 }
 
 /// Resource-relative locations that may hold the bundled API entry point.
@@ -73,15 +118,26 @@ const API_ENTRY_RESOURCE_CANDIDATES: [&[&str]; 4] = [
 ];
 
 fn api_entry_candidates(app: &AppHandle) -> Vec<PathBuf> {
-    let mut candidates = vec![workspace_root()
-        .join("artifacts")
-        .join("api-server")
-        .join("dist")
-        .join("index.mjs")];
+    let mut candidates = Vec::new();
+
+    // The source-tree bundle is a development convenience only. It must never
+    // be considered by an installed build: CARGO_MANIFEST_DIR is baked in at
+    // compile time, so on the machine that produced the installer that
+    // directory still exists and this candidate wins over the real packaged
+    // resource -- pointing the sidecar at the developer's source tree.
+    #[cfg(debug_assertions)]
+    candidates.push(
+        workspace_root()
+            .join("artifacts")
+            .join("api-server")
+            .join("dist")
+            .join("index.mjs"),
+    );
 
     let resource_dir = app
         .path()
         .resource_dir()
+        .map(strip_verbatim_prefix)
         .unwrap_or_else(|_| workspace_root());
     for segments in API_ENTRY_RESOURCE_CANDIDATES {
         let mut candidate = resource_dir.clone();
@@ -124,6 +180,7 @@ fn node_command(app: &AppHandle) -> Result<PathBuf, String> {
         .path()
         .resource_dir()
         .ok()
+        .map(strip_verbatim_prefix)
         .map(|resource_dir| resource_dir.join("runtime").join(BUNDLED_NODE_FILE_NAME));
     if let Some(bundled) = bundled.as_ref() {
         if bundled.exists() {
@@ -151,56 +208,9 @@ fn bundled_media_tools_path(app: &AppHandle) -> Option<PathBuf> {
     app.path()
         .resource_dir()
         .ok()
+        .map(strip_verbatim_prefix)
         .map(|resource_dir| resource_dir.join("runtime").join("media-tools"))
         .filter(|path| path.is_dir())
-}
-
-/// TEMPORARY launch instrumentation for the packaged Windows shell.
-///
-/// The release binary is a GUI-subsystem process with no console, so `eprintln!`
-/// output is discarded entirely. The only diagnostics that reach the user are
-/// the ones folded into the startup error string, so the launch context is
-/// captured here and appended when startup fails -- including when the spawn
-/// itself fails and the child never runs to report its own view.
-///
-/// Remove alongside the API server's launch-diagnostics module.
-fn describe_launch_context(app: &AppHandle, command: &Command) -> String {
-    let resource_dir = app
-        .path()
-        .resource_dir()
-        .map(|path| format!("{}", path.display()))
-        .unwrap_or_else(|error| format!("<unavailable: {error}>"));
-
-    let mut lines = vec![
-        "Launch context:".to_string(),
-        format!("  node executable: {:?}", command.get_program()),
-        format!(
-            "  API entry: {:?}",
-            command.get_args().collect::<Vec<_>>()
-        ),
-        format!("  resource directory: {resource_dir}"),
-        format!("  workspace root: {}", workspace_root().display()),
-        format!(
-            "  media tools: {}",
-            bundled_media_tools_path(app)
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "<none>".to_string())
-        ),
-    ];
-
-    for (key, value) in command.get_envs() {
-        let key = key.to_string_lossy();
-        if key.starts_with("ARCHIVE_") || key == "PORT" || key == "API_HOST" {
-            lines.push(format!(
-                "  {key}: {}",
-                value
-                    .map(|value| format!("{value:?}"))
-                    .unwrap_or_else(|| "<removed>".to_string())
-            ));
-        }
-    }
-
-    lines.join("\n")
 }
 
 fn sidecar_command(app: &AppHandle) -> Result<Command, String> {
@@ -208,10 +218,12 @@ fn sidecar_command(app: &AppHandle) -> Result<Command, String> {
     let app_data = app
         .path()
         .app_local_data_dir()
+        .map(strip_verbatim_prefix)
         .unwrap_or_else(|_| root.join("data"));
     let archive_root = app
         .path()
         .home_dir()
+        .map(strip_verbatim_prefix)
         .unwrap_or_else(|_| app_data.clone())
         .join("ARCHIVE");
     let database_path = configured_path("ARCHIVE_DB_PATH", || {
@@ -414,38 +426,31 @@ fn show_startup_error(window: &WebviewWindow, message: &str) {
 }
 
 fn start_sidecar(app: &AppHandle, window: &WebviewWindow) -> Result<SidecarState, String> {
-    let mut command = sidecar_command(app)?;
-    // TEMPORARY: captured before the spawn so it is available even if the
-    // spawn itself fails.
-    let launch_context = describe_launch_context(app, &command);
-    let with_context = |error: String| format!("{error}\n\n{launch_context}");
-
-    let mut child = command.spawn().map_err(|error| {
-        with_context(format!(
+    let mut child = sidecar_command(app)?.spawn().map_err(|error| {
+        format!(
             "Could not start the bundled local API runtime. ARCHIVE_NODE_PATH may override it for diagnostics: {error}"
-        ))
+        )
     })?;
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| with_context("Could not capture local API output.".to_string()))?;
+        .ok_or_else(|| "Could not capture local API output.".to_string())?;
     let stderr = child
         .stderr
         .take()
-        .ok_or_else(|| with_context("Could not capture local API diagnostics.".to_string()))?;
+        .ok_or_else(|| "Could not capture local API diagnostics.".to_string())?;
     let port = match wait_for_ready(&mut child, stdout, stderr) {
         Ok((port, _)) => port,
         Err(error) => {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(with_context(error));
+            return Err(error);
         }
     };
     let state = SidecarState::new(child);
 
     if let Err(error) = wait_for_health(port) {
         state.shutdown();
-        let error = with_context(error);
         show_startup_error(window, &error);
         return Err(error);
     }

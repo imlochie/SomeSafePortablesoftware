@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { win32 } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -45,6 +46,43 @@ function declaredApiEntryCandidates(): string[] {
       .map((segment) => segment[1])
       .join('/'),
   );
+}
+
+/**
+ * Port of `strip_verbatim_prefix` from main.rs. Rust's `Path::canonicalize`
+ * returns `\\?\C:\...` on Windows.
+ *
+ * A hand-written mirror of the Rust would happily keep passing while the real
+ * implementation was broken, so `pinsRustImplementation` below asserts that the
+ * shipped Rust still has the shape this port assumes. The two must fail
+ * together.
+ */
+function stripVerbatimPrefix(value: string): string {
+  const remainder = value.startsWith('\\\\?\\') ? value.slice(4) : null;
+  if (remainder === null) return value;
+
+  const isDrivePath =
+    /^[A-Za-z]$/.test(remainder.charAt(0)) &&
+    remainder.charAt(1) === ':' &&
+    (remainder.length === 2 || remainder.charAt(2) === '\\');
+
+  return isDrivePath ? remainder : value;
+}
+
+/** The structural facts the port above depends on, as written in main.rs. */
+function pinsRustImplementation(): void {
+  const rust = mainRs.match(/fn strip_verbatim_prefix[\s\S]*?\n}/)![0];
+
+  // Prefix is the four characters \\?\ and is matched exactly, with
+  // non-matches returned unchanged.
+  expect(rust).toContain(String.raw`const VERBATIM_PREFIX: &str = r"\\?\";`);
+  expect(rust).toMatch(/strip_prefix\(VERBATIM_PREFIX\) else \{\s*return path;/);
+  // Drive-letter shape: alphabetic, ':', then end-of-string or a separator.
+  expect(rust).toContain('is_ascii_alphabetic()');
+  expect(rust).toContain(String.raw`Some(':')`);
+  expect(rust).toContain(String.raw`None | Some('\\')`);
+  // Only the drive form is rewritten; everything else is returned as-is.
+  expect(rust).toMatch(/if is_drive_path \{\s*PathBuf::from\(remainder\)\s*\} else \{\s*path\s*\}/);
 }
 
 describe('packaged resource layout', () => {
@@ -94,5 +132,106 @@ describe('packaged resource layout', () => {
 
   it('still honours ARCHIVE_NODE_PATH as an escape hatch', () => {
     expect(mainRs).toMatch(/env::var_os\("ARCHIVE_NODE_PATH"\)/);
+  });
+});
+
+/**
+ * Regression cover for the packaged launch failure:
+ *
+ *   Error: EISDIR: illegal operation on a directory, lstat 'C:'
+ *       at Object.realpathSync ... at resolveMainPath
+ *
+ * An installed build selected the source-tree API bundle -- the candidate
+ * derived from the compile-time CARGO_MANIFEST_DIR, which still exists on the
+ * machine that produced the installer -- and handed Node the canonicalized
+ * form `\\?\C:\Projects\...\index.mjs`.
+ */
+describe('release build path selection', () => {
+  it('excludes the source-tree API bundle from release builds', () => {
+    const candidates = mainRs.match(/fn api_entry_candidates[\s\S]*?\n}/)![0];
+
+    // The workspace candidate must sit behind #[cfg(debug_assertions)].
+    const guardIndex = candidates.indexOf('#[cfg(debug_assertions)]');
+    const workspaceIndex = candidates.indexOf('workspace_root()');
+    expect(guardIndex).toBeGreaterThanOrEqual(0);
+    expect(workspaceIndex).toBeGreaterThan(guardIndex);
+
+    // Nothing may push an unguarded workspace candidate ahead of the packaged
+    // resource candidates.
+    expect(candidates).not.toMatch(
+      /let mut candidates = vec!\[workspace_root\(\)/,
+    );
+  });
+
+  it('strips the verbatim prefix from every path handed to the sidecar', () => {
+    expect(mainRs).toMatch(/fn strip_verbatim_prefix\(path: PathBuf\) -> PathBuf/);
+
+    // canonicalize() is the source of the prefix, so its result must be wrapped.
+    expect(mainRs).toMatch(/strip_verbatim_prefix\([\s\S]{0,200}canonicalize\(\)/);
+
+    // Each resource_dir consumer, and the environment values, must be covered.
+    const stripCallCount = (mainRs.match(/strip_verbatim_prefix/g) ?? []).length;
+    expect(stripCallCount).toBeGreaterThanOrEqual(6);
+  });
+
+  it('matches the shipped Rust implementation', () => {
+    // Guards the port above from drifting away from main.rs.
+    pinsRustImplementation();
+  });
+
+  it.each([
+    ['resource_dir feeding the API entry candidates', /fn api_entry_candidates[\s\S]*?\n}/],
+    ['resource_dir feeding the Node runtime lookup', /fn node_command[\s\S]*?\n}/],
+    ['resource_dir feeding the media-tools lookup', /fn bundled_media_tools_path[\s\S]*?\n}/],
+    // Every ARCHIVE_* value is resolved by Node in the sidecar, so a verbatim
+    // path here fails the same way the entry path did -- just later, and with a
+    // far less obvious error.
+    ['environment values built by configured_path', /fn configured_path[\s\S]*?\n}/],
+    ['the app data directory', /let app_data = app[\s\S]*?;/],
+    ['the home directory used for the archive root', /let archive_root = app[\s\S]*?;/],
+  ])('normalises %s', (_label, pattern) => {
+    const block = mainRs.match(pattern);
+    expect(block, 'block must exist in main.rs').not.toBeNull();
+    expect(block![0]).toMatch(/strip_verbatim_prefix/);
+  });
+
+  it.each([
+    [
+      'the exact path from the failing installer',
+      '\\\\?\\C:\\Projects\\SomeSafePortablesoftware\\artifacts\\api-server\\dist\\index.mjs',
+      'C:\\Projects\\SomeSafePortablesoftware\\artifacts\\api-server\\dist\\index.mjs',
+    ],
+    [
+      'a packaged resource path',
+      '\\\\?\\C:\\Users\\lochi\\AppData\\Local\\ARCHIVE ASSISTANT\\_up_\\_up_\\api-server\\dist\\index.mjs',
+      'C:\\Users\\lochi\\AppData\\Local\\ARCHIVE ASSISTANT\\_up_\\_up_\\api-server\\dist\\index.mjs',
+    ],
+    ['a bare drive specifier', '\\\\?\\C:', 'C:'],
+    ['a lowercase drive letter', '\\\\?\\d:\\Movies', 'd:\\Movies'],
+    // Already-plain paths must pass through untouched.
+    ['a plain drive path', 'C:\\Users\\lochi\\app.exe', 'C:\\Users\\lochi\\app.exe'],
+    // A verbatim UNC path is deliberately left alone: unwrapping it correctly
+    // requires restoring the leading "\\", which is not a safe blind edit.
+    ['a verbatim UNC path', '\\\\?\\UNC\\server\\share\\f.mjs', '\\\\?\\UNC\\server\\share\\f.mjs'],
+    ['a plain UNC path', '\\\\server\\share\\f.mjs', '\\\\server\\share\\f.mjs'],
+  ])('normalises %s', (_label, input, expected) => {
+    expect(stripVerbatimPrefix(input)).toBe(expected);
+  });
+
+  it('produces a path Node resolves to a file rather than a drive root', () => {
+    const verbatim =
+      '\\\\?\\C:\\Projects\\SomeSafePortablesoftware\\artifacts\\api-server\\dist\\index.mjs';
+
+    // Node parses "\\?\C:\..." as a UNC path: server "?", share "C:". Its
+    // module resolver then stats the share component, which is the directory
+    // "C:" -- producing EISDIR ... lstat 'C:'.
+    expect(win32.parse(verbatim).root).toBe('\\\\?\\C:\\');
+
+    // After stripping, the root is an ordinary drive and the basename is the
+    // entry file, so resolveMainPath stats a real file.
+    const stripped = stripVerbatimPrefix(verbatim);
+    expect(win32.parse(stripped).root).toBe('C:\\');
+    expect(win32.basename(stripped)).toBe('index.mjs');
+    expect(win32.isAbsolute(stripped)).toBe(true);
   });
 });
