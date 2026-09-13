@@ -16,7 +16,11 @@ use tauri::{AppHandle, Manager, RunEvent, WebviewWindow};
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
 const READY_PREFIX: &str = "ARCHIVE_ASSISTANT_READY ";
-const DIAGNOSTIC_LINES: usize = 20;
+// TEMPORARY: raised from 20 for the launch investigation. The API server's
+// launch context is ~14 lines and is re-emitted alongside a fatal error with a
+// stack trace, which would otherwise evict the context from this ring buffer
+// and leave only the error -- the exact signal we are trying to capture.
+const DIAGNOSTIC_LINES: usize = 80;
 
 struct SidecarState {
     child: Mutex<Option<Child>>,
@@ -149,6 +153,54 @@ fn bundled_media_tools_path(app: &AppHandle) -> Option<PathBuf> {
         .ok()
         .map(|resource_dir| resource_dir.join("runtime").join("media-tools"))
         .filter(|path| path.is_dir())
+}
+
+/// TEMPORARY launch instrumentation for the packaged Windows shell.
+///
+/// The release binary is a GUI-subsystem process with no console, so `eprintln!`
+/// output is discarded entirely. The only diagnostics that reach the user are
+/// the ones folded into the startup error string, so the launch context is
+/// captured here and appended when startup fails -- including when the spawn
+/// itself fails and the child never runs to report its own view.
+///
+/// Remove alongside the API server's launch-diagnostics module.
+fn describe_launch_context(app: &AppHandle, command: &Command) -> String {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map(|path| format!("{}", path.display()))
+        .unwrap_or_else(|error| format!("<unavailable: {error}>"));
+
+    let mut lines = vec![
+        "Launch context:".to_string(),
+        format!("  node executable: {:?}", command.get_program()),
+        format!(
+            "  API entry: {:?}",
+            command.get_args().collect::<Vec<_>>()
+        ),
+        format!("  resource directory: {resource_dir}"),
+        format!("  workspace root: {}", workspace_root().display()),
+        format!(
+            "  media tools: {}",
+            bundled_media_tools_path(app)
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "<none>".to_string())
+        ),
+    ];
+
+    for (key, value) in command.get_envs() {
+        let key = key.to_string_lossy();
+        if key.starts_with("ARCHIVE_") || key == "PORT" || key == "API_HOST" {
+            lines.push(format!(
+                "  {key}: {}",
+                value
+                    .map(|value| format!("{value:?}"))
+                    .unwrap_or_else(|| "<removed>".to_string())
+            ));
+        }
+    }
+
+    lines.join("\n")
 }
 
 fn sidecar_command(app: &AppHandle) -> Result<Command, String> {
@@ -362,31 +414,38 @@ fn show_startup_error(window: &WebviewWindow, message: &str) {
 }
 
 fn start_sidecar(app: &AppHandle, window: &WebviewWindow) -> Result<SidecarState, String> {
-    let mut child = sidecar_command(app)?.spawn().map_err(|error| {
-        format!(
+    let mut command = sidecar_command(app)?;
+    // TEMPORARY: captured before the spawn so it is available even if the
+    // spawn itself fails.
+    let launch_context = describe_launch_context(app, &command);
+    let with_context = |error: String| format!("{error}\n\n{launch_context}");
+
+    let mut child = command.spawn().map_err(|error| {
+        with_context(format!(
             "Could not start the bundled local API runtime. ARCHIVE_NODE_PATH may override it for diagnostics: {error}"
-        )
+        ))
     })?;
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| "Could not capture local API output.".to_string())?;
+        .ok_or_else(|| with_context("Could not capture local API output.".to_string()))?;
     let stderr = child
         .stderr
         .take()
-        .ok_or_else(|| "Could not capture local API diagnostics.".to_string())?;
+        .ok_or_else(|| with_context("Could not capture local API diagnostics.".to_string()))?;
     let port = match wait_for_ready(&mut child, stdout, stderr) {
         Ok((port, _)) => port,
         Err(error) => {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(error);
+            return Err(with_context(error));
         }
     };
     let state = SidecarState::new(child);
 
     if let Err(error) = wait_for_health(port) {
         state.shutdown();
+        let error = with_context(error);
         show_startup_error(window, &error);
         return Err(error);
     }
