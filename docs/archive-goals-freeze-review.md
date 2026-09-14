@@ -95,16 +95,30 @@ Archive filesystem operations satisfy the accepted boundary: a recommendation
 does not mutate a file, approval alone does not mutate a file, and execution
 requires confirmation.
 
-`POST /archive/acquisitions` is not equivalent to a filesystem mutation, but it
-currently starts provider work immediately. Its contract calls it a “request”
-and accepts optional policy metadata without proving an approved review or an
-explicit operator confirmation. Before this endpoint is presented as an
-approved archive action, its owner must either:
+Acquisition satisfies the same boundary. Option 1 was taken: acquisition is an
+archive operation, not a side door around the operation model. Provider work
+spends bandwidth, reaches a remote indexer or download client, and ends in a
+file destined for the archive, so it requires an approved owner-scoped
+`acquisition_recommendation` review.
 
-1. require and validate an approved owner-scoped review decision plus explicit
-   confirmation, or
-2. rename and document it as an immediate provider request with authorization
-   enforced in the UI and API contract.
+`assertAcquisitionApproval` in `services/acquisition-approval.ts` is the single
+gate, called from `startProvider`, which is the one function that contacts a
+provider. That places the check on every route into provider work rather than
+on one endpoint:
+
+- `POST /archive/acquisitions` already resolved an approved recommendation and
+  still does.
+- `POST /acquisition-jobs` with `start: true` was the actual gap. It accepted a
+  free-form body and began provider work with no approval; it is now refused
+  unless the job carries an approved review.
+- `retryAcquisitionJob` was the second, quieter gap: a job approved once could
+  be replayed after the approval was withdrawn. The approval is re-read on every
+  start, so it cannot.
+
+Planning is still unrestricted: `start: false` persists a `planned` job without
+contacting a provider, which is the intended place for an unapproved request to
+wait. A refusal leaves the job `planned` rather than `failed`, so it is never
+mistaken for a provider error or replayed by retry.
 
 ### Provider honesty
 
@@ -163,14 +177,20 @@ replaced by broader roadmap items:
 - Webhook counting, redacted history, hosted privacy, retention, and pagination.
 - Reliable API type checks.
 
-The review identified three additional, bounded follow-ups. The third is now
-closed; two remain open:
+The review identified three additional, bounded follow-ups. The second and
+third are now closed; one remains open:
 
 1. **Contract owner:** reconcile public Express routes, OpenAPI, and generated
    clients; add a release check that detects drift.
-2. **Archive acquisition owner:** make immediate provider-start semantics
+2. ~~**Archive acquisition owner:** make immediate provider-start semantics
    explicit, or enforce approved owner-scoped review plus confirmation before
-   starting provider work.
+   starting provider work.~~ **Closed.** Acquisition is treated as an archive
+   operation rather than an immediate request. `assertAcquisitionApproval` is
+   the single gate in front of provider work and is called from `startProvider`,
+   so job creation with `start: true`, retry, and the orchestrated path from an
+   approved recommendation all require an approved, owner-scoped
+   `acquisition_recommendation` review. The approval is re-read at start time,
+   and a refusal leaves the job `planned` rather than `failed`.
 3. ~~**Desktop release owner:** package a Windows-safe Node sidecar, normalize
    default paths, remove the port reservation race, and retain redacted launch
    diagnostics.~~ **Closed.** The Node runtime and media tools ship as packaged
