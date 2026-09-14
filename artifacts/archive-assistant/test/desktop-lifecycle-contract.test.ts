@@ -38,6 +38,31 @@ describe('desktop lifecycle foundation', () => {
     expect(source).toContain('download_and_install');
   });
 
+  it('prevents native window close from exiting the resident process', async () => {
+    const shell = await read('src-tauri/src/main.rs');
+    expect(shell).toContain('window.on_window_event');
+    expect(shell).toContain('WindowEvent::CloseRequested');
+    expect(shell).toContain('api.prevent_close()');
+    expect(shell).toContain('close_window.hide()');
+    expect(shell).toContain('app.manage(state)');
+    expect(shell).toContain('state.shutdown()');
+    // Shutdown is reserved for an actual application exit, not the window X.
+    expect(shell).not.toMatch(/CloseRequested[\s\S]{0,500}state\.shutdown\(\)/);
+  });
+
+  it('keeps the same sidecar-backed API available to reopen and tray actions', async () => {
+    const shell = await read('src-tauri/src/main.rs');
+    const app = await read('src/App.tsx');
+    expect(shell).toContain('fn open_archive_assistant');
+    expect(shell).toContain('window.show()');
+    expect(shell).toContain('window.set_focus()');
+    expect(app).toContain("listen<string>('tray://action'");
+    expect(app).toContain("fetch(apiUrl('/api/archive/scan'), { method: 'POST' })");
+    expect(app).toContain("fetch(apiUrl('/api/plex/sync'), { method: 'POST' })");
+    expect(shell).toContain('app.exit(0)');
+    expect(shell).toContain('if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit)');
+  });
+
   it('keeps startup opt-in and boot launches minimized', async () => {
     const db = await read('../api-server/src/lib/archive-db.ts');
     const shell = await read('src-tauri/src/main.rs');

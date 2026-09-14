@@ -703,6 +703,21 @@ fn main() {
                 .get_webview_window("main")
                 .ok_or_else(|| "The main desktop window is missing.".to_string())?;
             install_tray(&app.handle()).map_err(|error| error.to_string())?;
+
+            // Handle the native close request on the window itself. Tauri's
+            // window callback runs before the platform close is committed;
+            // preventing it here is what keeps the event loop and sidecar
+            // alive on Windows. Handling this only from RunEvent is too late
+            // for some Windows window-manager paths and can leave a stale tray
+            // menu after the sidecar has exited.
+            let close_window = window.clone();
+            window.on_window_event(move |event| {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = close_window.hide();
+                }
+            });
+
             match start_sidecar(&app.handle(), &window) {
                 Ok(state) => {
                     app.manage(state);
@@ -718,13 +733,6 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building ARCHIVE ASSISTANT")
         .run(|app, event| {
-            if let RunEvent::WindowEvent { event: WindowEvent::CloseRequested { api, .. }, .. } = &event {
-                api.prevent_close();
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
-                }
-                return;
-            }
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                 if let Some(state) = app.try_state::<SidecarState>() {
                     state.shutdown();
