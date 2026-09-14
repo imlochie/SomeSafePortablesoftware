@@ -63,15 +63,16 @@ describe('ArchiveScanPanel', () => {
     expect(screen.getByText(/START A SCAN TO WATCH THE PIPELINE/i)).toBeInTheDocument();
   });
 
-  it('reports progress against discovery and keeps counting while discovery runs', () => {
+  it('counts scanned and discovered separately while discovery runs', () => {
     render(<ArchiveScanPanel live={scanning({ discovered: 400, scanned: 100, failed: 3 })} />);
     expect(screen.getByTestId('status-archive-scan-live')).toHaveTextContent('SCANNING');
-    expect(screen.getByText('100')).toBeInTheDocument();
-    expect(screen.getByText(/\/ 400/)).toBeInTheDocument();
-    expect(screen.getByText(/STILL DISCOVERING/)).toBeInTheDocument();
+    expect(screen.getByTestId('text-scan-counter').textContent).toContain('100');
+    expect(screen.getByTestId('text-scan-counter').textContent).toContain('400');
+    expect(screen.getByText(/DISCOVERING ARCHIVE/)).toBeInTheDocument();
     expect(screen.getByText('FAILURES 3')).toBeInTheDocument();
-    // 100/400 = 25%: the bar reports real progress, not an animation.
-    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
+    // `discovered` is still moving, so 100/400 is not 25% of the work: the
+    // real total was unknown at this point. No percentage may be published.
+    expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow');
   });
 
   it('shows the current file with the scanner\'s real stages', () => {
@@ -343,5 +344,103 @@ describe('useArchiveScanEvents', () => {
     expect(source.closed).toBe(false);
     unmount();
     expect(source.closed).toBe(true);
+  });
+});
+
+/**
+ * Scan counter semantics.
+ *
+ * Discovery and scanning run concurrently, so `discovered` keeps climbing
+ * while files are scanned. The panel used to render `scanned / discovered`
+ * with a percentage bar computed from that moving denominator, which showed
+ * "432 / 436" — a 99% bar — on an archive whose real total turned out to be
+ * 37,739. These tests pin the honest presentation in both states.
+ */
+describe('ArchiveScanPanel progress semantics', () => {
+  it('reports scanned and discovered separately while discovery is still running', () => {
+    render(
+      <ArchiveScanPanel
+        live={scanning({ discovered: 436, scanned: 432, discoveryComplete: false })}
+        scanning
+      />,
+    );
+
+    const counter = screen.getByTestId('text-scan-counter');
+
+    // Both numbers must be present and explicitly labelled.
+    expect(counter.textContent).toContain('432');
+    expect(counter.textContent).toContain('scanned');
+    expect(counter.textContent).toContain('436');
+    expect(counter.textContent).toContain('discovered');
+
+    // The "432 / 436" fraction is exactly the misleading form. It must be gone.
+    expect(counter.textContent).not.toMatch(/432\s*\/\s*436/);
+
+    // The state line must say the total is not yet known.
+    expect(screen.getByTestId('text-scan-discovery-state').textContent).toMatch(
+      /NOT YET KNOWN|DISCOVERING/,
+    );
+
+    // No determinate percentage may be published while discovery is active:
+    // the indeterminate bar carries no aria-valuenow at all.
+    const bar = screen.getByTestId('progress-archive-scan-indeterminate');
+    expect(bar.getAttribute('aria-valuenow')).toBeNull();
+    expect(screen.queryByTestId('progress-archive-scan')).toBeNull();
+  });
+
+  it('shows a real fraction and percentage once discovery has completed', () => {
+    render(
+      <ArchiveScanPanel
+        live={scanning({ discovered: 37_739, scanned: 432, discoveryComplete: true })}
+        scanning
+      />,
+    );
+
+    // With a fixed denominator the fraction is meaningful again.
+    const counter = screen.getByTestId('text-scan-counter');
+    expect(counter.textContent).toContain('432');
+    expect(counter.textContent).toContain('37,739');
+    expect(counter.textContent).toMatch(/432\s*\/\s*37,739/);
+
+    expect(screen.getByTestId('text-scan-discovery-state').textContent).toContain(
+      'DISCOVERY COMPLETE',
+    );
+
+    // 432 of 37,739 is 1%, not the 99% the old moving denominator implied.
+    const bar = screen.getByTestId('progress-archive-scan');
+    expect(bar.getAttribute('aria-valuenow')).toBe('1');
+    expect(screen.queryByTestId('progress-archive-scan-indeterminate')).toBeNull();
+  });
+
+  it('does not imply completion when discovery has found nothing yet', () => {
+    render(
+      <ArchiveScanPanel
+        live={scanning({ discovered: 0, scanned: 0, discoveryComplete: false })}
+        scanning
+      />,
+    );
+
+    // discovered === 0 must not render a bare "0 / 0" or a 0-of-0 percentage.
+    expect(screen.getByTestId('text-scan-counter').textContent).not.toContain('/');
+    expect(screen.getByTestId('progress-archive-scan-indeterminate')).toBeTruthy();
+  });
+
+  it('keeps the live event feed prominent during a scan', () => {
+    render(
+      <ArchiveScanPanel
+        live={scanning({
+          discovered: 436,
+          scanned: 432,
+          discoveryComplete: false,
+          currentItem: activeItem(),
+          activeItems: [activeItem()],
+        })}
+        scanning
+      />,
+    );
+
+    // The feed is the useful part of this panel and must survive the counter fix.
+    expect(screen.getByTestId('panel-archive-scan')).toBeTruthy();
+    expect(screen.getAllByText(/The\.Matrix\.1999/).length).toBeGreaterThan(0);
   });
 });

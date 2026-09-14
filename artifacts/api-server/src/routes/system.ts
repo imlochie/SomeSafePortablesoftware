@@ -3,12 +3,14 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { Router, type IRouter } from "express";
 import {
+  GetStorageDiagnosticsResponse,
   GetSystemDependenciesResponse,
   GetSystemEventsResponse,
   GetSystemOverviewResponse,
 } from "@workspace/api-zod";
 import { archiveDb, pruneSystemEvents, readEvents, readSettings } from "../lib/archive-db";
 import { runtimeConfig } from "../lib/runtime-config";
+import { readStorageDiagnostics } from "../services/storage-diagnostics";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import { getArchiveVolumes } from "../services/storage";
 import {
@@ -111,6 +113,10 @@ router.get("/system/dependencies", (_req, res) => {
       mediaBundle: runtimeConfig.mediaBundle,
     }),
   );
+});
+
+router.get("/system/storage-diagnostics", (_req, res) => {
+  res.json(GetStorageDiagnosticsResponse.parse(readStorageDiagnostics()));
 });
 
 router.get("/system/events", (req, res) => {

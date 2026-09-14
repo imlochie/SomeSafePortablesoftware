@@ -82,6 +82,7 @@ import type {
   ReviewItem,
   ReviewSyncResult,
   RotateWebhookSecretBody,
+  StorageDiagnostics,
   SystemDependencies,
   SystemEvent,
   SystemOverview,
@@ -336,6 +337,83 @@ export function useGetSystemDependencies<TData = Awaited<ReturnType<typeof getSy
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetSystemDependenciesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStorageDiagnosticsUrl = () => {
+
+
+
+
+  return `/api/system/storage-diagnostics`
+}
+
+/**
+ * @summary Report which database this process has open and what it contains
+ */
+export const getStorageDiagnostics = async ( options?: Parameters<typeof customFetch>[1]): Promise<StorageDiagnostics> => {
+
+  return customFetch<StorageDiagnostics>(getGetStorageDiagnosticsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStorageDiagnosticsQueryKey = () => {
+    return [
+    `/api/system/storage-diagnostics`
+    ] as const;
+    }
+
+
+export const getGetStorageDiagnosticsQueryOptions = <TData = Awaited<ReturnType<typeof getStorageDiagnostics>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStorageDiagnostics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStorageDiagnosticsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStorageDiagnostics>>> = ({ signal }) => getStorageDiagnostics({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStorageDiagnostics>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStorageDiagnosticsQueryResult = NonNullable<Awaited<ReturnType<typeof getStorageDiagnostics>>>
+export type GetStorageDiagnosticsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Report which database this process has open and what it contains
+ */
+
+export function useGetStorageDiagnostics<TData = Awaited<ReturnType<typeof getStorageDiagnostics>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStorageDiagnostics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStorageDiagnosticsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

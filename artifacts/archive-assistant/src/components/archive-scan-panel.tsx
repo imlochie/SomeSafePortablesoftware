@@ -94,8 +94,20 @@ export function ArchiveScanPanel({ live }: { live: ScanLiveState }) {
     );
   }
 
+  // Discovery and scanning run concurrently, so `discovered` keeps growing
+  // while files are being scanned. Rendering "432 / 436" against a moving
+  // denominator reads as a nearly-finished fixed-total progress bar when the
+  // real total is still unknown — on a large archive that "436" became 37,739.
+  //
+  // A percentage is only honest once discovery has finished and the
+  // denominator has stopped moving. Until then the two numbers are reported
+  // side by side as what they actually are.
+  const discoveryFinished = live.discoveryComplete;
   const denominator = live.discovered;
-  const percent = denominator > 0 ? Math.min(100, Math.round((live.scanned / denominator) * 100)) : 0;
+  const hasTrustworthyTotal = discoveryFinished && denominator > 0;
+  const percent = hasTrustworthyTotal
+    ? Math.min(100, Math.round((live.scanned / denominator) * 100))
+    : null;
   const statusLabel = scanning ? 'SCANNING' : live.status === 'failed' ? 'FAILED' : 'COMPLETED';
   const statusTone = scanning ? 'bg-[#dcebe7] text-[#39736e]' : live.status === 'failed' ? 'bg-[#fcedea] text-[#994b43]' : 'bg-[#eaf3ef] text-[#39736e]';
   const current = live.currentItem;
@@ -124,12 +136,31 @@ export function ArchiveScanPanel({ live }: { live: ScanLiveState }) {
         <div data-testid="panel-archive-scan-progress">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <div className="archive-display text-[30px] font-extrabold leading-none text-[#2b3d46]">
-                {live.scanned.toLocaleString()}
-                <span className="text-[18px] font-bold text-[#8a9b9e]"> / {denominator > 0 ? denominator.toLocaleString() : '—'}</span>
+              <div className="archive-display text-[30px] font-extrabold leading-none text-[#2b3d46]" data-testid="text-scan-counter">
+                {hasTrustworthyTotal ? (
+                  <>
+                    {live.scanned.toLocaleString()}
+                    <span className="text-[18px] font-bold text-[#8a9b9e]"> / {denominator.toLocaleString()}</span>
+                  </>
+                ) : (
+                  <>
+                    {live.scanned.toLocaleString()}
+                    <span className="text-[18px] font-bold text-[#8a9b9e]"> scanned</span>
+                    {denominator > 0 && (
+                      <span className="text-[18px] font-bold text-[#8a9b9e]">
+                        {' · '}
+                        {denominator.toLocaleString()} discovered
+                      </span>
+                    )}
+                  </>
+                )}
               </div>
-              <div className="archive-mono mt-2 text-[9px] tracking-[.1em] text-[#7f9194]">
-                FILES SCANNED {scanning && !live.discoveryComplete ? '/ STILL DISCOVERING' : '/ DISCOVERY COMPLETE'}
+              <div className="archive-mono mt-2 text-[9px] tracking-[.1em] text-[#7f9194]" data-testid="text-scan-discovery-state">
+                {hasTrustworthyTotal
+                  ? 'FILES SCANNED / DISCOVERY COMPLETE'
+                  : denominator > 0
+                    ? 'DISCOVERING ARCHIVE / TOTAL NOT YET KNOWN'
+                    : 'DISCOVERING ARCHIVE'}
               </div>
             </div>
             <div className="archive-mono text-right text-[9px] leading-5 tracking-[.08em]">
@@ -137,12 +168,32 @@ export function ArchiveScanPanel({ live }: { live: ScanLiveState }) {
               <div className="text-[#7f9194]">IN FLIGHT {live.activeItems.length}</div>
             </div>
           </div>
-          <div className="mt-4 h-2 w-full bg-[#e3e8e7]" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
+          {percent === null ? (
+            // An indeterminate bar: work is happening, but no fraction of it
+            // is known. Reporting a percentage here would be a guess.
             <div
-              className={`h-full bg-[#39736e] transition-[width] duration-300 ${scanning ? 'animate-pulse' : ''}`}
-              style={{ width: `${percent}%` }}
-            />
-          </div>
+              className="mt-4 h-2 w-full overflow-hidden bg-[#e3e8e7]"
+              role="progressbar"
+              aria-label="Discovering archive files"
+              data-testid="progress-archive-scan-indeterminate"
+            >
+              <div className={`h-full w-1/3 bg-[#39736e] ${scanning ? 'animate-pulse' : ''}`} />
+            </div>
+          ) : (
+            <div
+              className="mt-4 h-2 w-full bg-[#e3e8e7]"
+              role="progressbar"
+              aria-valuenow={percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              data-testid="progress-archive-scan"
+            >
+              <div
+                className={`h-full bg-[#39736e] transition-[width] duration-300 ${scanning ? 'animate-pulse' : ''}`}
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          )}
           {live.lastError && (
             <div className={`mt-4 border-l-2 p-3 text-[11px] leading-5 ${live.status === 'failed' ? 'border-[#c85b51] bg-[#fcedea] text-[#994b43]' : 'border-[#d9bd77] bg-[#fff8e7] text-[#80652e]'}`} data-testid="status-archive-scan-error">
               {live.lastError}

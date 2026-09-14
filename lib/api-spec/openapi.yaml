@@ -70,6 +70,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemDependencies"
+  /system/storage-diagnostics:
+    get:
+      operationId: getStorageDiagnostics
+      tags: [system]
+      summary: Report which database this process has open and what it contains
+      responses:
+        "200":
+          description: Storage diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageDiagnostics"
   /system/events:
     get:
       operationId: getSystemEvents
@@ -1821,6 +1833,43 @@ components:
           oneOf:
             - $ref: "#/components/schemas/MediaBundleStatus"
             - type: "null"
+    StorageDiagnostics:
+      type: object
+      required:
+        [databasePath, databasePathSource, databasePathIsAbsolute, workingDirectory,
+         databaseSizeBytes, counts, plexConfigured, journalMode, walSidecars]
+      properties:
+        databasePath: { type: string }
+        databasePathSource:
+          type: string
+          enum: [ARCHIVE_DB_PATH, working_directory_fallback]
+        databasePathIsAbsolute: { type: boolean }
+        workingDirectory: { type: string }
+        databaseSizeBytes:
+          oneOf:
+            - type: number
+            - type: "null"
+        counts:
+          type: object
+          required:
+            [fileRecords, activeFileRecords, plexItems, jellyfinItems, reviewItems,
+             archiveOperations, settings]
+          properties:
+            fileRecords: { type: number }
+            activeFileRecords: { type: number }
+            plexItems: { type: number }
+            jellyfinItems: { type: number }
+            reviewItems: { type: number }
+            archiveOperations: { type: number }
+            settings: { type: number }
+        plexConfigured: { type: boolean }
+        journalMode:
+          oneOf:
+            - type: string
+            - type: "null"
+        walSidecars:
+          type: array
+          items: { type: string }
     SystemEvent:
       type: object
       required: [id, level, message, timestamp, source, operatorId, retentionClass]

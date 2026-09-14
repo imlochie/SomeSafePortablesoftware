@@ -229,6 +229,36 @@ export interface SystemDependencies {
   mediaBundle: MediaBundleStatus | null;
 }
 
+export type StorageDiagnosticsDatabasePathSource = typeof StorageDiagnosticsDatabasePathSource[keyof typeof StorageDiagnosticsDatabasePathSource];
+
+
+export const StorageDiagnosticsDatabasePathSource = {
+  ARCHIVE_DB_PATH: 'ARCHIVE_DB_PATH',
+  working_directory_fallback: 'working_directory_fallback',
+} as const;
+
+export type StorageDiagnosticsCounts = {
+  fileRecords: number;
+  activeFileRecords: number;
+  plexItems: number;
+  jellyfinItems: number;
+  reviewItems: number;
+  archiveOperations: number;
+  settings: number;
+};
+
+export interface StorageDiagnostics {
+  databasePath: string;
+  databasePathSource: StorageDiagnosticsDatabasePathSource;
+  databasePathIsAbsolute: boolean;
+  workingDirectory: string;
+  databaseSizeBytes: number | null;
+  counts: StorageDiagnosticsCounts;
+  plexConfigured: boolean;
+  journalMode: string | null;
+  walSidecars: string[];
+}
+
 export type AppSettingsLogLevel = typeof AppSettingsLogLevel[keyof typeof AppSettingsLogLevel];
 
 

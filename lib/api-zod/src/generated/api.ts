@@ -76,6 +76,30 @@ export const GetSystemDependenciesResponse = zod.object({
 
 
 /**
+ * @summary Report which database this process has open and what it contains
+ */
+export const GetStorageDiagnosticsResponse = zod.object({
+  "databasePath": zod.string(),
+  "databasePathSource": zod.enum(['ARCHIVE_DB_PATH', 'working_directory_fallback']),
+  "databasePathIsAbsolute": zod.boolean(),
+  "workingDirectory": zod.string(),
+  "databaseSizeBytes": zod.union([zod.number(),zod.null()]),
+  "counts": zod.object({
+  "fileRecords": zod.number(),
+  "activeFileRecords": zod.number(),
+  "plexItems": zod.number(),
+  "jellyfinItems": zod.number(),
+  "reviewItems": zod.number(),
+  "archiveOperations": zod.number(),
+  "settings": zod.number()
+}),
+  "plexConfigured": zod.boolean(),
+  "journalMode": zod.union([zod.string(),zod.null()]),
+  "walSidecars": zod.array(zod.string())
+})
+
+
+/**
  * @summary Get recent system events
  */
 export const GetSystemEventsResponseItem = zod.object({
