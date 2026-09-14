@@ -613,6 +613,7 @@ fn open_archive_assistant(app: AppHandle) -> Result<(), String> {
 async fn check_for_update(app: AppHandle) -> Result<UpdateStatus, String> {
     let update = app
         .updater()
+        .map_err(|error| error.to_string())?
         .check()
         .await
         .map_err(|error| error.to_string())?;
@@ -631,6 +632,7 @@ async fn check_for_update(app: AppHandle) -> Result<UpdateStatus, String> {
 async fn install_update(app: AppHandle) -> Result<(), String> {
     let update = app
         .updater()
+        .map_err(|error| error.to_string())?
         .check()
         .await
         .map_err(|error| error.to_string())?
