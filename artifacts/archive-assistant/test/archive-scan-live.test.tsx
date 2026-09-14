@@ -444,3 +444,75 @@ describe('ArchiveScanPanel progress semantics', () => {
     expect(screen.getAllByText(/The\.Matrix\.1999/).length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Live feed wiring.
+ *
+ * The feed was reported missing in a packaged build. The wiring was in fact
+ * intact -- what is absent between scans is the detailed feed body, because
+ * the server holds live scan state in memory and reports `idle` after a
+ * restart. These tests pin the wiring itself so a genuine disappearance
+ * (an unmounted panel, a dropped subscription, a relative SSE URL) fails
+ * here rather than on Windows.
+ */
+describe('live feed wiring', () => {
+  it('subscribes to the scan event stream through the resolved API base URL', async () => {
+    // A relative URL resolves against the webview origin in the packaged app,
+    // which serves assets and has no API behind it. That regression is exactly
+    // what this asserts against.
+    const { apiUrl } = await import('../src/lib/desktop-api-base-url');
+    const target = { __ARCHIVE_API_BASE_URL__: 'http://127.0.0.1:51234' } as unknown as Window;
+    expect(apiUrl('/api/archive/scan/events', target)).toBe(
+      'http://127.0.0.1:51234/api/archive/scan/events',
+    );
+  });
+
+  it('keeps the panel mounted and announces the feed before any scan exists', () => {
+    // Between scans the server reports idle, so only this strip renders. It
+    // must still be present and must still report connection state, otherwise
+    // the operator cannot tell a working feed from a broken one.
+    render(<ArchiveScanPanel live={{ ...IDLE, connected: true }} />);
+    const panel = screen.getByTestId('panel-archive-scan');
+    expect(panel).toBeInTheDocument();
+    expect(panel.textContent).toContain('LIVE FEED CONNECTED');
+  });
+
+  it('distinguishes a connected feed from one still connecting', () => {
+    render(<ArchiveScanPanel live={{ ...IDLE, connected: false }} />);
+    expect(screen.getByTestId('panel-archive-scan').textContent).toContain('LIVE FEED');
+    expect(screen.getByTestId('panel-archive-scan').textContent).not.toContain('CONNECTED');
+  });
+
+  it('renders the full feed body once a session is live', () => {
+    // The detailed feed is gated on there being a session at all. This is the
+    // property that makes the feed look "gone" after a restart, and it must
+    // hold the moment a scan starts.
+    render(
+      <ArchiveScanPanel
+        live={scanning({
+          currentItem: activeItem(),
+          activeItems: [activeItem()],
+          recentItems: [
+            {
+              path: 'D:/archive/movies/Heat.1995.mkv',
+              filename: 'Heat.1995.mkv',
+              title: 'Heat.1995',
+              root: 'D:/archive/movies',
+              mediaType: 'movie' as const,
+              status: 'completed' as const,
+              at: new Date().toISOString(),
+            } as never,
+          ],
+        })}
+        scanning
+      />,
+    );
+
+    expect(screen.getByTestId('panel-archive-scan-current')).toBeInTheDocument();
+    expect(screen.getByTestId('panel-archive-scan-progress')).toBeInTheDocument();
+    // The real scanner stages must still be labelled.
+    expect(screen.getByText('INSPECT')).toBeInTheDocument();
+    expect(screen.getByText('FFPROBE')).toBeInTheDocument();
+    expect(screen.getByText('REGISTER')).toBeInTheDocument();
+  });
+});
