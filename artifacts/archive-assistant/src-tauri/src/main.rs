@@ -16,6 +16,19 @@ use tauri::{AppHandle, Manager, RunEvent, WebviewWindow};
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
 const READY_PREFIX: &str = "ARCHIVE_ASSISTANT_READY ";
+
+/// How many recent sidecar output lines to keep for a startup failure report.
+///
+/// This buffer is permanent, not scaffolding. A packaged launch has no console
+/// (`windows_subsystem = "windows"` discards `eprintln!`) and no attached
+/// terminal, so without it a sidecar that dies during startup surfaces as a
+/// bare timeout with no way to tell a crash from a slow boot. Keeping the tail
+/// of stdout/stderr is what made the packaged failures in this area
+/// diagnosable from a single screenshot instead of a rebuild cycle.
+///
+/// It only ever runs on the failure path, and every line passes through
+/// `redact_diagnostic` first, so a healthy launch pays nothing and no secret
+/// reaches the window.
 const DIAGNOSTIC_LINES: usize = 20;
 
 struct SidecarState {

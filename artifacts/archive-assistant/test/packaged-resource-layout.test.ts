@@ -234,6 +234,23 @@ describe('packaged resource layout', () => {
       expect(workflow).toContain("Test-Path -LiteralPath $relative");
     });
 
+    it('does not document the disproven bare-directory packaging rule', () => {
+      // The sidecar memory note previously asserted that a plain "runtime"
+      // entry "stays at $RESOURCE/runtime". That claim is what produced an
+      // installer with no runtime directory at all, so it must not come back.
+      const note = readFileSync(
+        path.resolve(import.meta.dirname, '..', '..', '..', '.agents', 'memory', 'desktop-sidecar-boundary.md'),
+        'utf8',
+      );
+
+      expect(note).not.toContain('a plain `"runtime"` stays at');
+      // Normalise wrapping so the assertion pins the claim, not the line breaks.
+      const prose = note.replace(/\s+/g, ' ');
+      expect(prose).toContain('bare directory name has no defined meaning');
+      // And it must record the Windows resource root, the other wrong belief.
+      expect(prose).toContain('no `resources` segment');
+    });
+
     it('asserts the bundled runtime and every media tool in the packaged layout', () => {
       const workflow = readFileSync(windowsWorkflowPath, 'utf8');
 

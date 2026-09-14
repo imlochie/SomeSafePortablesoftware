@@ -24,17 +24,48 @@ media tools during the Tauri build, prefer those packaged resources at launch,
 and retain `ARCHIVE_NODE_PATH`, `YT_DLP_PATH`, `FFMPEG_PATH`, and
 `FFPROBE_PATH` as explicit overrides.
 
-Resource paths in `tauri.conf.json` do not survive packaging verbatim: Tauri v2
-rewrites each leading `..` to `_up_` and an absolute root to `_root_`. So
-`"../../api-server/dist"` installs to
-`$RESOURCE/_up_/_up_/api-server/dist`, while a plain `"runtime"` stays at
-`$RESOURCE/runtime`. A packaged install must never fall back to a system Node;
-a missing bundled runtime is a hard error in release builds.
+Declare `bundle.resources` in the map form, `{"source/": "destination/"}`, with
+a trailing slash on both sides. Tauri v2's source syntax defines `dir/`
+(recursive), `dir/*` (non-recursive) and explicit globs; a **bare directory
+name has no defined meaning**. A plain `"runtime"` entry packaged nothing while
+the build still reported success, so `node.exe` was staged and then never
+copied into the installer. The map form also pins an explicit destination,
+which avoids relying on the array form's `..` → `_up_` and absolute → `_root_`
+rewriting.
+
+On Windows `resource_dir()` is the directory containing the executable — in
+`tauri-utils`, `resolve_resource_dir` returns `exe_dir` directly under
+`cfg!(target_os = "windows")`. There is **no `resources` segment**; that is the
+macOS layout (`${exe_dir}/../Resources`). So resources sit beside the exe:
+`target/release/<resource>` for a local build, and `$INSTDIR/<resource>` once
+NSIS installs. Verifying a `resources/` subdirectory checks a path the
+application never reads.
+
+A packaged install must never fall back to a system Node; a missing bundled
+runtime is a hard error in release builds.
+
+Startup failures must stay self-reporting. A packaged launch has no console, so
+the sidecar's recent stdout/stderr and — when a resource is missing — the actual
+packaged resource tree are included in the error shown in the window.
 
 **Why:** The dev-path probe in `api_entry_path()` masks a wrong packaged path
 during `pnpm dev`, so this class of bug only reproduces in a built installer —
 and a silent `node.exe`-on-PATH fallback turns a broken install into a
 confusing downstream failure while defeating the no-system-Node guarantee.
+Worse, a resource that fails to package is not a build error: the bundler
+reports success either way, so only an assertion against the built layout
+catches it.
+
+The desktop frontend must resolve its API base URL before React mounts. Rust
+starts the sidecar with `PORT=0` and injects `window.__ARCHIVE_API_BASE_URL__`
+only after the readiness and health handshake, whereas the webview begins
+loading `index.html` immediately — so reading that global at module scope
+always loses the race and leaves requests as relative `/api` paths against the
+webview origin. `EventSource` bypasses the generated client's `setBaseUrl`
+entirely and needs the same treatment. The API's CORS allowlist must accept
+every desktop webview origin: `tauri://localhost` on macOS/Linux **and**
+`http://tauri.localhost` on Windows WebView2, whose hostname is not `localhost`
+and whose protocol is not `tauri:`.
 
 **How to apply:** Keep the Rust resource lookups and the `bundle.resources`
 config in sync, and let
