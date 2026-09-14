@@ -12,7 +12,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tauri::{AppHandle, Manager, RunEvent, WebviewWindow};
+use tauri::{
+    menu::{MenuBuilder, MenuItemBuilder},
+    tray::{TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, Manager, RunEvent, WebviewWindow, WindowEvent,
+};
+use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_updater::UpdaterExt;
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
 const READY_PREFIX: &str = "ARCHIVE_ASSISTANT_READY ";
@@ -565,18 +571,126 @@ fn start_sidecar(app: &AppHandle, window: &WebviewWindow) -> Result<SidecarState
     window
         .eval(&script)
         .map_err(|error| format!("Could not configure the desktop API base URL: {error}"))?;
-    window
-        .show()
-        .map_err(|error| format!("Could not reveal the desktop window: {error}"))?;
+    // Autostart passes --minimized. Normal launches reveal the window; boot
+    // launches remain tray-only until the user chooses Open.
+    if !env::args().any(|argument| argument == "--minimized") {
+        window
+            .show()
+            .map_err(|error| format!("Could not reveal the desktop window: {error}"))?;
+    }
     Ok(state)
+}
+
+#[derive(serde::Serialize)]
+struct UpdateStatus {
+    available: bool,
+    version: Option<String>,
+    date: Option<String>,
+    body: Option<String>,
+}
+
+#[tauri::command]
+fn set_start_with_windows(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    let manager = app.autolaunch();
+    if enabled {
+        manager.enable().map_err(|error| error.to_string())?;
+    } else {
+        manager.disable().map_err(|error| error.to_string())?;
+    }
+    manager.is_enabled().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn open_archive_assistant(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "The main desktop window is missing.".to_string())?;
+    window.show().map_err(|error| error.to_string())?;
+    window.set_focus().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn check_for_update(app: AppHandle) -> Result<UpdateStatus, String> {
+    let update = app
+        .updater()
+        .check()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(match update {
+        Some(update) => UpdateStatus {
+            available: true,
+            version: Some(update.version),
+            date: update.date,
+            body: update.body,
+        },
+        None => UpdateStatus { available: false, version: None, date: None, body: None },
+    })
+}
+
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    let update = app
+        .updater()
+        .check()
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "No signed release update is available.".to_string())?;
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|error| error.to_string())?;
+    app.restart();
+}
+
+fn install_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let open = MenuItemBuilder::with_id("open", "Open Archive Assistant").build(app)?;
+    let scan = MenuItemBuilder::with_id("scan", "Start/resume archive scan").build(app)?;
+    let plex = MenuItemBuilder::with_id("plex", "Sync Plex").build(app)?;
+    let activity = MenuItemBuilder::with_id("activity", "View Activity").build(app)?;
+    let settings = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+    let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+    let menu = MenuBuilder::new(app)
+        .items(&[&open, &scan, &plex, &activity, &settings, &quit])
+        .build()?;
+
+    TrayIconBuilder::with_id("archive-assistant")
+        .menu(&menu)
+        .tooltip("ARCHIVE ASSISTANT")
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == "quit" {
+                app.exit(0);
+                return;
+            }
+            let _ = app.emit("tray://action", event.id().as_ref());
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::DoubleClick { .. } = event {
+                if let Some(window) = tray.app_handle().get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        })
+        .build(app)?;
+    Ok(())
 }
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::Builder::new().args(["--minimized"]).build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![
+            set_start_with_windows,
+            open_archive_assistant,
+            check_for_update,
+            install_update,
+        ])
         .setup(|app| {
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| "The main desktop window is missing.".to_string())?;
+            install_tray(&app.handle()).map_err(|error| error.to_string())?;
             match start_sidecar(&app.handle(), &window) {
                 Ok(state) => {
                     app.manage(state);
@@ -592,6 +706,13 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building ARCHIVE ASSISTANT")
         .run(|app, event| {
+            if let RunEvent::WindowEvent { event: WindowEvent::CloseRequested { api, .. }, .. } = &event {
+                api.prevent_close();
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
+                return;
+            }
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                 if let Some(state) = app.try_state::<SidecarState>() {
                     state.shutdown();

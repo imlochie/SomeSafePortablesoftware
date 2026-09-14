@@ -1,5 +1,40 @@
 import { basename } from "node:path";
 
+export type ArchiveScanMetrics = {
+  files: number;
+  totalFileBytes: number;
+  unchangedFiles: number;
+  inspect: { count: number; durationMs: number };
+  ffprobe: { invocations: number; durationMs: number };
+  checksum: { invocations: number; durationMs: number; bytesHashed: number };
+  registration: { files: number; durationMs: number; sqliteStatements: number };
+  finalInventory: { rebuilds: number; durationMs: number };
+};
+
+export function emptyArchiveScanMetrics(): ArchiveScanMetrics {
+  return {
+    files: 0,
+    totalFileBytes: 0,
+    unchangedFiles: 0,
+    inspect: { count: 0, durationMs: 0 },
+    ffprobe: { invocations: 0, durationMs: 0 },
+    checksum: { invocations: 0, durationMs: 0, bytesHashed: 0 },
+    registration: { files: 0, durationMs: 0, sqliteStatements: 0 },
+    finalInventory: { rebuilds: 0, durationMs: 0 },
+  };
+}
+
+export type ArchiveScanMetricSample = {
+  fileBytes: number | null;
+  unchanged: boolean;
+  inspectDurationMs: number;
+  ffprobeInvoked: boolean;
+  ffprobeDurationMs: number;
+  checksumInvoked: boolean;
+  checksumDurationMs: number;
+  checksumBytes: number;
+};
+
 /**
  * Live archive scan observability.
  *
@@ -75,6 +110,7 @@ export type ArchiveScanEvent =
       scanned: number;
       failed: number;
       durationMs: number;
+      fileBytes?: number | null;
     })
   | (ArchiveScanEventBase & {
       type: "scan.file.failed";
@@ -133,6 +169,7 @@ export type ArchiveScanRecentItemView = {
   error: string | null;
   completedAt: string;
   durationMs: number | null;
+  fileBytes?: number | null;
 };
 
 export type ArchiveScanLiveStateView = {
@@ -151,6 +188,7 @@ export type ArchiveScanLiveStateView = {
   activeItems: ArchiveScanActiveItemView[];
   recentItems: ArchiveScanRecentItemView[];
   lastError: string | null;
+  metrics: ArchiveScanMetrics;
 };
 
 /** Bounded recent-item history surfaced to the UI and late SSE clients. */
@@ -190,6 +228,7 @@ type ScanLiveState = {
   activeOrder: string[];
   recent: ScanRecentItem[];
   lastError: string | null;
+  metrics: ArchiveScanMetrics;
 };
 
 type Subscriber = {
@@ -215,6 +254,7 @@ function emptyState(): ScanLiveState {
     activeOrder: [],
     recent: [],
     lastError: null,
+    metrics: emptyArchiveScanMetrics(),
   };
 }
 
@@ -278,6 +318,7 @@ function toView(state: ScanLiveState): ArchiveScanLiveStateView {
     // front); the public view is newest first for direct UI rendering.
     recentItems: [...state.recent].reverse().map((item) => ({ ...item })),
     lastError: state.lastError,
+    metrics: structuredClone(state.metrics),
   };
 }
 
@@ -324,6 +365,7 @@ function finishActive(
   path: string,
   outcome: ArchiveScanFileOutcome,
   error: string | null,
+  fileBytes: number | null = null,
 ): ScanRecentItem {
   const active = state.active.get(path);
   const now = new Date();
@@ -336,6 +378,7 @@ function finishActive(
     error,
     completedAt: now.toISOString(),
     durationMs: active ? now.getTime() - active.startedAtMs : null,
+    fileBytes,
   };
   if (active) {
     completeStages(active);
@@ -344,6 +387,33 @@ function finishActive(
   }
   pushRecent(state, recent);
   return recent;
+}
+
+export function recordArchiveScanMetrics(ownerId: string, sample: ArchiveScanMetricSample) {
+  const metrics = stateFor(ownerId).metrics;
+  metrics.files += 1;
+  if (sample.fileBytes !== null) metrics.totalFileBytes += sample.fileBytes;
+  if (sample.unchanged) metrics.unchangedFiles += 1;
+  metrics.inspect.count += 1;
+  metrics.inspect.durationMs += sample.inspectDurationMs;
+  metrics.ffprobe.invocations += sample.ffprobeInvoked ? 1 : 0;
+  metrics.ffprobe.durationMs += sample.ffprobeDurationMs;
+  metrics.checksum.invocations += sample.checksumInvoked ? 1 : 0;
+  metrics.checksum.durationMs += sample.checksumDurationMs;
+  metrics.checksum.bytesHashed += sample.checksumBytes;
+}
+
+export function recordArchiveScanRegistration(ownerId: string, durationMs: number, sqliteStatements: number) {
+  const metrics = stateFor(ownerId).metrics;
+  metrics.registration.files += 1;
+  metrics.registration.durationMs += durationMs;
+  metrics.registration.sqliteStatements += sqliteStatements;
+}
+
+export function recordArchiveScanInventoryRebuild(ownerId: string, durationMs: number) {
+  const metrics = stateFor(ownerId).metrics;
+  metrics.finalInventory.rebuilds += 1;
+  metrics.finalInventory.durationMs += durationMs;
 }
 
 // ---------------------------------------------------------------------------
@@ -365,6 +435,7 @@ export function notifyArchiveScanStarted(ownerId: string, sessionId: string, roo
   state.activeOrder = [];
   state.recent = [];
   state.lastError = null;
+  state.metrics = emptyArchiveScanMetrics();
   emit(ownerId, { type: "scan.started", sessionId, timestamp: new Date().toISOString(), roots: [...roots] });
 }
 
@@ -453,11 +524,12 @@ export function notifyArchiveScanFileCompleted(
   outcome: "registered" | "unchanged",
   scanned: number,
   failed: number,
+  fileBytes: number | null = null,
 ) {
   const state = stateFor(ownerId);
   state.scanned = Math.max(state.scanned, scanned);
   state.failed = Math.max(state.failed, failed);
-  const recent = finishActive(state, filePath, outcome, null);
+  const recent = finishActive(state, filePath, outcome, null, fileBytes);
   emit(ownerId, {
     type: "scan.file.completed",
     sessionId,

@@ -793,6 +793,8 @@ const defaultSettings = {
   archiveScanConcurrency: 4,
   warningFreePercent: 15,
   criticalFreePercent: 5,
+  // Existing installs remain opt-in for Windows startup.
+  startWithWindows: false,
 } as const;
 
 const settingStatement = archiveDb.prepare(

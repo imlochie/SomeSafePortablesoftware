@@ -127,6 +127,46 @@ describe('ArchiveScanPanel', () => {
     expect(screen.getAllByTestId('row-archive-scan-recent')).toHaveLength(3);
   });
 
+  it('renders temporary scan diagnostics and the recent file sample when metrics are present', () => {
+    const live = scanning({
+      metrics: {
+        files: 500,
+        totalFileBytes: 8_589_934_592,
+        unchangedFiles: 42,
+        inspect: { count: 500, durationMs: 1_250 },
+        ffprobe: { invocations: 458, durationMs: 246_000 },
+        checksum: { invocations: 458, durationMs: 312_000, bytesHashed: 8_000_000_000 },
+        registration: { files: 500, durationMs: 8_500, sqliteStatements: 2_750 },
+        finalInventory: { rebuilds: 1, durationMs: 900 },
+      },
+      recentItems: [
+        {
+          path: 'D:/archive/large.mkv',
+          filename: 'large.mkv',
+          title: 'large',
+          mediaType: 'movie',
+          outcome: 'registered',
+          error: null,
+          completedAt: new Date().toISOString(),
+          durationMs: 12_345,
+          fileBytes: 8_589_934_592,
+        },
+      ],
+    });
+    render(<ArchiveScanPanel live={live} />);
+    const diagnostics = screen.getByTestId('scan-diagnostics');
+    expect(diagnostics).toHaveTextContent('SCAN DIAGNOSTICS');
+    expect(diagnostics).toHaveTextContent('500');
+    expect(diagnostics).toHaveTextContent('UNCHANGED FILES');
+    expect(diagnostics).toHaveTextContent('458 calls · 246000 ms');
+    expect(diagnostics).toHaveTextContent('312000 ms');
+    expect(diagnostics).toHaveTextContent('2,750');
+    expect(diagnostics).toHaveTextContent('large.mkv');
+    expect(diagnostics).toHaveTextContent('8,589,934,592 B');
+    expect(diagnostics).toHaveTextContent('00:12');
+    expect(diagnostics).toHaveTextContent('REGISTERED');
+  });
+
   it('surfaces a scan failure reason', () => {
     render(<ArchiveScanPanel live={scanning({ status: 'failed', lastError: 'D:/archive: directory could not be read' })} />);
     expect(screen.getByTestId('status-archive-scan-live')).toHaveTextContent('FAILED');

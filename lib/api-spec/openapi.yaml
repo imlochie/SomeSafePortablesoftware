@@ -1893,7 +1893,7 @@ components:
           enum: [operational, security]
     AppSettings:
       type: object
-      required: [mockMode, dataDirectory, downloadDirectory, archiveDirectory, temporaryDirectory, ytDlpPath, ffmpegPath, ffprobePath, logLevel, hardwareAcceleration, hardwareAccelerationMode, networkMode, concurrentDownloads, maxRetries, bandwidthLimit, outputContainer, inspectionCacheMinutes, warningFreePercent, criticalFreePercent]
+      required: [mockMode, dataDirectory, downloadDirectory, archiveDirectory, temporaryDirectory, ytDlpPath, ffmpegPath, ffprobePath, logLevel, hardwareAcceleration, hardwareAccelerationMode, networkMode, concurrentDownloads, maxRetries, bandwidthLimit, outputContainer, inspectionCacheMinutes, warningFreePercent, criticalFreePercent, startWithWindows]
       properties:
         mockMode:
           type: boolean
@@ -1948,6 +1948,8 @@ components:
           type: number
           minimum: 1
           maximum: 25
+        startWithWindows:
+          type: boolean
     AppSettingsUpdate:
       type: object
       properties:
@@ -2004,6 +2006,8 @@ components:
           type: number
           minimum: 1
           maximum: 25
+        startWithWindows:
+          type: boolean
     PlexConfig:
       type: object
       required: [serverUrl, configured, hasToken, status, connectionStatus, syncStatus, lastAttemptedAt, lastSuccessfulSyncAt, lastError, serverName, libraryCount, itemCount, mediaCount]

@@ -309,6 +309,17 @@ describe("archive scan events", { concurrency: false }, () => {
     assert.equal(live.discovered, 5);
     assert.equal(live.currentItem, null, "the current item clears once the scan drains");
     assert.equal(live.activeCount, 0);
+    assert.equal(live.metrics.files, 5);
+    assert.equal(live.metrics.unchangedFiles, 0);
+    assert.equal(live.metrics.ffprobe.invocations, 5);
+    assert.equal(live.metrics.checksum.invocations, 4);
+    assert.equal(live.metrics.checksum.bytesHashed, 44);
+    assert.ok(live.metrics.inspect.durationMs >= 0);
+    assert.ok(live.metrics.ffprobe.durationMs >= 0);
+    assert.ok(live.metrics.checksum.durationMs >= 0);
+    assert.equal(live.metrics.registration.files, 5);
+    assert.ok(live.metrics.registration.sqliteStatements >= 5);
+    assert.equal(live.metrics.finalInventory.rebuilds, 1);
   });
 
   test("live state tracks the current item, its stages, and a bounded recent history", async () => {

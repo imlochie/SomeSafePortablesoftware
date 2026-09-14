@@ -151,7 +151,8 @@ export const GetSettingsResponse = zod.object({
   "outputContainer": zod.enum(['mp4', 'mkv', 'webm']),
   "inspectionCacheMinutes": zod.number().min(1).max(getSettingsResponseInspectionCacheMinutesMax),
   "warningFreePercent": zod.number().min(1).max(getSettingsResponseWarningFreePercentMax),
-  "criticalFreePercent": zod.number().min(1).max(getSettingsResponseCriticalFreePercentMax)
+  "criticalFreePercent": zod.number().min(1).max(getSettingsResponseCriticalFreePercentMax),
+  "startWithWindows": zod.boolean()
 })
 
 
@@ -192,7 +193,8 @@ export const UpdateSettingsBody = zod.object({
   "outputContainer": zod.enum(['mp4', 'mkv', 'webm']).optional(),
   "inspectionCacheMinutes": zod.number().min(1).max(updateSettingsBodyInspectionCacheMinutesMax).optional(),
   "warningFreePercent": zod.number().min(1).max(updateSettingsBodyWarningFreePercentMax).optional(),
-  "criticalFreePercent": zod.number().min(1).max(updateSettingsBodyCriticalFreePercentMax).optional()
+  "criticalFreePercent": zod.number().min(1).max(updateSettingsBodyCriticalFreePercentMax).optional(),
+  "startWithWindows": zod.boolean().optional()
 })
 
 export const updateSettingsResponseConcurrentDownloadsMax = 5;
@@ -229,7 +231,8 @@ export const UpdateSettingsResponse = zod.object({
   "outputContainer": zod.enum(['mp4', 'mkv', 'webm']),
   "inspectionCacheMinutes": zod.number().min(1).max(updateSettingsResponseInspectionCacheMinutesMax),
   "warningFreePercent": zod.number().min(1).max(updateSettingsResponseWarningFreePercentMax),
-  "criticalFreePercent": zod.number().min(1).max(updateSettingsResponseCriticalFreePercentMax)
+  "criticalFreePercent": zod.number().min(1).max(updateSettingsResponseCriticalFreePercentMax),
+  "startWithWindows": zod.boolean()
 })
 
 

@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
@@ -1285,15 +1287,46 @@ function ArchiveMissingMediaView({
   );
 }
 
-const settingsGroups = [{ name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel'] }, { name: 'Downloads', icon: Download, fields: ['downloadDirectory', 'temporaryDirectory', 'concurrentDownloads', 'maxRetries', 'bandwidthLimit'] }, { name: 'Archive', icon: Archive, fields: ['archiveDirectory', 'outputContainer', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'] }, { name: 'Plex', icon: PlaySquare, fields: [] }, { name: 'AI', icon: Sparkles, fields: [] }, { name: 'Local Model', icon: Cpu, fields: [] }, { name: 'OpenAI', icon: Zap, fields: [] }, { name: 'Local Engine', icon: Terminal, fields: ['ytDlpPath', 'ffmpegPath', 'ffprobePath'] }, { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration', 'hardwareAccelerationMode'] }, { name: 'Network', icon: Network, fields: ['networkMode'] }, { name: 'Security', icon: ShieldCheck, fields: [] }, { name: 'Logging', icon: Terminal, fields: [] }];
+const settingsGroups = [{ name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel', 'startWithWindows'] }, { name: 'Downloads', icon: Download, fields: ['downloadDirectory', 'temporaryDirectory', 'concurrentDownloads', 'maxRetries', 'bandwidthLimit'] }, { name: 'Archive', icon: Archive, fields: ['archiveDirectory', 'outputContainer', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'] }, { name: 'Plex', icon: PlaySquare, fields: [] }, { name: 'AI', icon: Sparkles, fields: [] }, { name: 'Local Model', icon: Cpu, fields: [] }, { name: 'OpenAI', icon: Zap, fields: [] }, { name: 'Local Engine', icon: Terminal, fields: ['ytDlpPath', 'ffmpegPath', 'ffprobePath'] }, { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration', 'hardwareAccelerationMode'] }, { name: 'Network', icon: Network, fields: ['networkMode'] }, { name: 'Security', icon: ShieldCheck, fields: [] }, { name: 'Logging', icon: Terminal, fields: [] }];
+type UpdateStatus = { available: boolean; version: string | null; date: string | null; body: string | null };
+
+function UpdaterPanel() {
+  const [status, setStatus] = useState<'idle' | 'checking' | 'available' | 'current' | 'error' | 'installing'>('idle');
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [message, setMessage] = useState('Release updates are checked only when requested.');
+  const check = async () => {
+    setStatus('checking');
+    try {
+      const result = await invoke<UpdateStatus>('check_for_update');
+      setUpdate(result);
+      setStatus(result.available ? 'available' : 'current');
+      setMessage(result.available ? `Signed release ${result.version ?? ''} is ready for review.` : 'This release is up to date.');
+    } catch {
+      setStatus('error');
+      setMessage('Update checks are unavailable in this build or the release endpoint did not answer.');
+    }
+  };
+  const install = async () => {
+    setStatus('installing');
+    setMessage('Downloading the approved signed release. The app will restart after installation.');
+    try {
+      await invoke('install_update');
+    } catch {
+      setStatus('error');
+      setMessage('The signed update was not installed. The current app and local data remain unchanged.');
+    }
+  };
+  return <section className="archive-panel p-5 md:p-6" data-testid="panel-updater"><div className="flex items-start justify-between gap-4"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">RELEASE CHANNEL / SIGNED</div><h2 className="archive-display mt-1 text-lg font-extrabold">Application updates</h2><p className="mt-2 text-[11px] leading-5 text-[#879599]">Updates come from signed GitHub releases. Nothing installs without operator approval.</p></div><RefreshCw size={17} className={status === 'checking' ? 'animate-spin text-[#39736e]' : 'text-[#7f9194]'} /></div><div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={check} disabled={status === 'checking' || status === 'installing'} className="border border-[#4e9690] bg-[#eaf3ef] px-3 py-2 text-[10px] font-bold tracking-[.08em] text-[#39736e] disabled:opacity-50" data-testid="button-check-updates">CHECK FOR UPDATES</button>{status === 'available' && <button type="button" onClick={install} className="bg-[#39736e] px-3 py-2 text-[10px] font-bold tracking-[.08em] text-white" data-testid="button-install-update">INSTALL {update?.version ?? 'UPDATE'}</button>}</div><div className={`mt-3 text-[10px] leading-5 ${status === 'error' ? 'text-[#994b43]' : 'text-[#71858a]'}`} data-testid="status-updater">{message}</div></section>;
+}
+
 function SettingsPage() {
   const queryClient = useQueryClient(); const { data, isLoading, isError, refetch } = useGetSettings(); const { data: dependencyStatus } = useGetSystemDependencies(); const mutation = useUpdateSettings(); const [form, setForm] = useState<Partial<AppSettings>>({}); const [notice, setNotice] = useState('');
   useEffect(() => { if (data) setForm(data); }, [data]);
   const update = (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => setForm((current) => ({ ...current, [key]: value }));
-  const save = () => { setNotice(''); mutation.mutate({ data: form as AppSettingsUpdate }, { onSuccess: (result) => { setForm(result); setNotice('Settings saved to the local node.'); queryClient.setQueryData(getGetSettingsQueryKey(), result); }, onError: () => setNotice('Settings could not be saved. The local node did not accept the update.') }); };
+  const save = () => { setNotice(''); mutation.mutate({ data: form as AppSettingsUpdate }, { onSuccess: async (result) => { setForm(result); setNotice('Settings saved to the local node.'); queryClient.setQueryData(getGetSettingsQueryKey(), result); try { await invoke('set_start_with_windows', { enabled: result.startWithWindows }); } catch { setNotice('Settings saved, but Windows startup could not be updated in this build.'); } }, onError: () => setNotice('Settings could not be saved. The local node did not accept the update.') }); };
   if (isLoading) return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Loading editable local preferences." /><Skeleton className="h-[520px]" /></>;
   if (isError || !data) return <ErrorState title="Settings unavailable" message="Preferences could not be read from the local node." onRetry={() => refetch()} testId="button-retry-settings" />;
-  return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Persistent preferences for the local-first control room. Changes are sent to the real settings API." action={<div className="flex items-center gap-3">{notice && <span className={`hidden text-[11px] sm:inline ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save">{notice}</span>}<button onClick={save} disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-settings"><Save size={14} /> {mutation.isPending ? 'SAVING' : 'SAVE CHANGES'}</button></div>} />{notice && <div className={`mb-4 text-[11px] sm:hidden ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save-mobile">{notice}</div>}<StorageDiagnosticsPanel /><WebhookSecretPanel /><div className="grid gap-5 xl:grid-cols-[1fr_280px]"><div className="space-y-4">{settingsGroups.map(({ name, icon: Icon, fields }) => <SettingsGroup key={name} name={name} icon={Icon} fields={fields} form={form} update={update} />)}</div><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL DEPENDENCIES</div><h2 className="archive-display mt-1 text-lg font-extrabold">Capability check</h2>{dependencyStatus?.mediaBundle ? <div className="mt-5 border border-[#c9dfd9] bg-[#f1f9f5] p-3" data-testid="panel-media-bundle"><div className="flex items-center justify-between gap-3"><div className="archive-mono text-[9px] font-bold tracking-[.12em] text-[#39736e]">NATIVE MEDIA BUNDLE</div><span className="archive-mono bg-[#dcebe7] px-1.5 py-1 text-[9px] font-bold text-[#39736e]" data-testid="text-media-bundle-architecture">{dependencyStatus.mediaBundle.architecture.toUpperCase()}</span></div><div className="mt-2 text-[11px] font-semibold text-[#53656b]">{dependencyStatus.mediaBundle.targetTriple}</div><div className="mt-1 archive-mono text-[9px] text-[#799094]">yt-dlp {dependencyStatus.mediaBundle.ytDlpVersion} / FFmpeg {dependencyStatus.mediaBundle.ffmpegVersion}</div><div className="mt-2 text-[10px] leading-4 text-[#6e8583]">Managed native tools selected for this desktop build.</div></div> : <div className="mt-5 border border-[#e5e9e7] bg-[#f8faf8] p-3 text-[10px] leading-4 text-[#879599]" data-testid="panel-media-bundle-empty">No managed media bundle was detected. System tools or operator overrides may be in use.</div>}<div className="mt-5 space-y-3">{dependencyStatus?.dependencies?.length ? dependencyStatus.dependencies.map((dep) => <div key={dep.name} className="flex items-center gap-3" data-testid={`row-dependency-${dep.name}`}><span className={`status-dot ${dep.status === 'available' ? 'ready' : dep.status === 'missing' ? 'error' : 'warning'}`} /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><div className="truncate text-[11px] font-semibold text-[#53656b]">{dep.name}</div><span className={`archive-mono px-1 py-0.5 text-[8px] font-bold tracking-[.08em] ${dep.source === 'override' ? 'bg-[#fff0c9] text-[#8d681d]' : dep.source === 'bundled' ? 'bg-[#dcebe7] text-[#39736e]' : 'bg-[#eef1f0] text-[#879599]'}`} data-testid={`badge-dependency-source-${dep.name}`}>{dep.source.toUpperCase()}</span></div><div className="archive-mono text-[9px] text-[#96a3a5]">{dep.version ?? dep.status}</div></div></div>) : <p className="text-[11px] leading-5 text-[#879599]">No dependency data returned yet.</p>}</div><div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[10px] leading-5 text-[#879599]">Only versions, architecture, and source labels are shown here; filesystem paths are intentionally omitted.</div></aside></div></>;
+  return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Persistent preferences for the local-first control room. Changes are sent to the real settings API." action={<div className="flex items-center gap-3">{notice && <span className={`hidden text-[11px] sm:inline ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save">{notice}</span>}<button onClick={save} disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-settings"><Save size={14} /> {mutation.isPending ? 'SAVING' : 'SAVE CHANGES'}</button></div>} />{notice && <div className={`mb-4 text-[11px] sm:hidden ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save-mobile">{notice}</div>}<StorageDiagnosticsPanel /><UpdaterPanel /><WebhookSecretPanel /><div className="grid gap-5 xl:grid-cols-[1fr_280px]"><div className="space-y-4">{settingsGroups.map(({ name, icon: Icon, fields }) => <SettingsGroup key={name} name={name} icon={Icon} fields={fields} form={form} update={update} />)}</div><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL DEPENDENCIES</div><h2 className="archive-display mt-1 text-lg font-extrabold">Capability check</h2>{dependencyStatus?.mediaBundle ? <div className="mt-5 border border-[#c9dfd9] bg-[#f1f9f5] p-3" data-testid="panel-media-bundle"><div className="flex items-center justify-between gap-3"><div className="archive-mono text-[9px] font-bold tracking-[.12em] text-[#39736e]">NATIVE MEDIA BUNDLE</div><span className="archive-mono bg-[#dcebe7] px-1.5 py-1 text-[9px] font-bold text-[#39736e]" data-testid="text-media-bundle-architecture">{dependencyStatus.mediaBundle.architecture.toUpperCase()}</span></div><div className="mt-2 text-[11px] font-semibold text-[#53656b]">{dependencyStatus.mediaBundle.targetTriple}</div><div className="mt-1 archive-mono text-[9px] text-[#799094]">yt-dlp {dependencyStatus.mediaBundle.ytDlpVersion} / FFmpeg {dependencyStatus.mediaBundle.ffmpegVersion}</div><div className="mt-2 text-[10px] leading-4 text-[#6e8583]">Managed native tools selected for this desktop build.</div></div> : <div className="mt-5 border border-[#e5e9e7] bg-[#f8faf8] p-3 text-[10px] leading-4 text-[#879599]" data-testid="panel-media-bundle-empty">No managed media bundle was detected. System tools or operator overrides may be in use.</div>}<div className="mt-5 space-y-3">{dependencyStatus?.dependencies?.length ? dependencyStatus.dependencies.map((dep) => <div key={dep.name} className="flex items-center gap-3" data-testid={`row-dependency-${dep.name}`}><span className={`status-dot ${dep.status === 'available' ? 'ready' : dep.status === 'missing' ? 'error' : 'warning'}`} /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><div className="truncate text-[11px] font-semibold text-[#53656b]">{dep.name}</div><span className={`archive-mono px-1 py-0.5 text-[8px] font-bold tracking-[.08em] ${dep.source === 'override' ? 'bg-[#fff0c9] text-[#8d681d]' : dep.source === 'bundled' ? 'bg-[#dcebe7] text-[#39736e]' : 'bg-[#eef1f0] text-[#879599]'}`} data-testid={`badge-dependency-source-${dep.name}`}>{dep.source.toUpperCase()}</span></div><div className="archive-mono text-[9px] text-[#96a3a5]">{dep.version ?? dep.status}</div></div></div>) : <p className="text-[11px] leading-5 text-[#879599]">No dependency data returned yet.</p>}</div><div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[10px] leading-5 text-[#879599]">Only versions, architecture, and source labels are shown here; filesystem paths are intentionally omitted.</div></aside></div></>;
 }
 
 type WebhookForm = {
@@ -1400,7 +1433,7 @@ function SettingsGroup({ name, icon: Icon, fields, form, update }: { name: strin
 }
 function SettingField({ field, form, update }: { field: string; form: Partial<AppSettings>; update: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => void }) {
   const key = field as keyof AppSettings; const value = form[key];
-  if (field === 'mockMode' || field === 'hardwareAcceleration') return <label className="flex items-center justify-between gap-4 border border-[#e2e8e6] bg-white/50 px-3 py-3"><span><span className="block text-[11px] font-semibold text-[#53656b]">{field === 'mockMode' ? 'Mock mode' : 'Hardware acceleration'}</span><span className="mt-1 block text-[10px] text-[#94a1a3]">{field === 'mockMode' ? 'Use backend-provided demo data' : 'Allow accelerated media work'}</span></span><input type="checkbox" checked={Boolean(value)} onChange={(event) => update(key, event.target.checked)} className="h-4 w-4 accent-[#4e9690]" data-testid={`input-setting-${field}`} /></label>;
+  if (field === 'mockMode' || field === 'hardwareAcceleration' || field === 'startWithWindows') return <label className="flex items-center justify-between gap-4 border border-[#e2e8e6] bg-white/50 px-3 py-3"><span><span className="block text-[11px] font-semibold text-[#53656b]">{field === 'mockMode' ? 'Mock mode' : field === 'hardwareAcceleration' ? 'Hardware acceleration' : 'Start Archive Assistant with Windows'}</span><span className="mt-1 block text-[10px] text-[#94a1a3]">{field === 'mockMode' ? 'Use backend-provided demo data' : field === 'hardwareAcceleration' ? 'Allow accelerated media work' : 'Launch quietly to the system tray. Existing installs stay disabled until enabled.'}</span></span><input type="checkbox" checked={Boolean(value)} onChange={(event) => update(key, event.target.checked)} className="h-4 w-4 accent-[#4e9690]" data-testid={`input-setting-${field}`} /></label>;
   const selectOptions: Record<string, string[]> = { logLevel: ['info', 'debug', 'warn', 'error'], networkMode: ['offline', 'local_only', 'allow_network'], hardwareAccelerationMode: ['auto', 'disabled'], outputContainer: ['mp4', 'mkv', 'webm'] };
    const labels: Record<string, string> = { dataDirectory: 'DATA DIRECTORY', downloadDirectory: 'DOWNLOAD DIRECTORY', archiveDirectory: 'ARCHIVE DIRECTORY', temporaryDirectory: 'TEMPORARY DIRECTORY', ytDlpPath: 'YT-DLP EXECUTABLE', ffmpegPath: 'FFMPEG EXECUTABLE', ffprobePath: 'FFPROBE EXECUTABLE', concurrentDownloads: 'CONCURRENT DOWNLOADS', maxRetries: 'MAX RETRIES', bandwidthLimit: 'BANDWIDTH LIMIT (BYTES / SEC)', inspectionCacheMinutes: 'INSPECTION CACHE (MINUTES)', warningFreePercent: 'WARNING FREE (%)', criticalFreePercent: 'CRITICAL FREE (%)' };
   if (selectOptions[field]) return <label><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">{labels[field] ?? field.toUpperCase()}</span><select value={String(value ?? '')} onChange={(event) => update(key, event.target.value)} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2.5 text-[12px] outline-none" data-testid={`select-setting-${field}`}>{selectOptions[field].map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
@@ -1422,6 +1455,32 @@ function SignInPage() {
 
 function SignUpPage() {
   return <div className="flex min-h-[100dvh] items-center justify-center bg-[#f3f5f4] px-4 py-8"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>;
+}
+
+function DesktopLifecycleBridge() {
+  const [, setLocation] = useLocation();
+  const client = useQueryClient();
+  useEffect(() => {
+    let dispose: (() => void) | undefined;
+    listen<string>('tray://action', async (event) => {
+      switch (event.payload) {
+        case 'open': await invoke('open_archive_assistant').catch(() => undefined); break;
+        case 'scan':
+          await fetch(apiUrl('/api/archive/scan'), { method: 'POST' }).catch(() => undefined);
+          client.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+          break;
+        case 'plex':
+          await fetch(apiUrl('/api/plex/sync'), { method: 'POST' }).catch(() => undefined);
+          client.invalidateQueries({ queryKey: getGetPlexConfigQueryKey() });
+          client.invalidateQueries({ queryKey: getGetPlexInventoryQueryKey() });
+          break;
+        case 'activity': setLocation('/history'); break;
+        case 'settings': setLocation('/settings'); break;
+      }
+    }).then((unlisten) => { dispose = unlisten; }).catch(() => undefined);
+    return () => dispose?.();
+  }, [client, setLocation]);
+  return null;
 }
 
 function QueryCacheInvalidator() {
@@ -1465,7 +1524,7 @@ function ClerkApp() {
 }
 
 function ApplicationProviders() {
-  return <QueryClientProvider client={queryClient}><QueryCacheInvalidator /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><QueryCacheInvalidator /><DesktopLifecycleBridge /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>;
 }
 
 function LocalApp() {

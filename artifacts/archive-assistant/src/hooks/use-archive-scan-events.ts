@@ -16,6 +16,16 @@ export type ScanMediaType = 'movie' | 'tv';
 export type ScanLiveStatus = 'idle' | 'scanning' | 'completed' | 'failed';
 
 export type ScanStage = { stage: ScanStageName; status: 'active' | 'done'; at: string };
+export type ScanMetrics = {
+  files: number;
+  totalFileBytes: number;
+  unchangedFiles: number;
+  inspect: { count: number; durationMs: number };
+  ffprobe: { invocations: number; durationMs: number };
+  checksum: { invocations: number; durationMs: number; bytesHashed: number };
+  registration: { files: number; durationMs: number; sqliteStatements: number };
+  finalInventory: { rebuilds: number; durationMs: number };
+};
 
 export type ScanActiveItem = {
   path: string;
@@ -36,6 +46,7 @@ export type ScanRecentItem = {
   error: string | null;
   completedAt: string;
   durationMs: number | null;
+  fileBytes?: number | null;
 };
 
 type ScanEvent =
@@ -43,7 +54,7 @@ type ScanEvent =
   | { type: 'scan.file.discovered'; sessionId: string; timestamp: string; path: string; filename: string; title: string; root: string | null; mediaType: ScanMediaType | null; discovered: number }
   | { type: 'scan.file.started'; sessionId: string; timestamp: string; path: string; filename: string; title: string; root: string | null; mediaType: ScanMediaType | null }
   | { type: 'scan.file.stage'; sessionId: string; timestamp: string; path: string; filename: string; stage: ScanStageName }
-  | { type: 'scan.file.completed'; sessionId: string; timestamp: string; path: string; filename: string; outcome: 'registered' | 'unchanged'; scanned: number; failed: number; durationMs: number }
+  | { type: 'scan.file.completed'; sessionId: string; timestamp: string; path: string; filename: string; outcome: 'registered' | 'unchanged'; scanned: number; failed: number; durationMs: number; fileBytes?: number | null }
   | { type: 'scan.file.failed'; sessionId: string; timestamp: string; path: string; filename: string; error: string; scanned: number; failed: number }
   | { type: 'scan.progress'; sessionId: string; timestamp: string; scanned: number; failed: number; discovered: number; discoveryComplete: boolean }
   | { type: 'scan.completed'; sessionId: string; timestamp: string; scanned: number; failed: number; discovered: number; durationMs: number; lastError: string | null }
@@ -64,6 +75,7 @@ export type ScanLiveState = {
   currentItem: ScanActiveItem | null;
   recentItems: ScanRecentItem[];
   lastError: string | null;
+  metrics?: ScanMetrics;
 };
 
 const RECENT_LIMIT = 20;
@@ -116,6 +128,7 @@ function finishFile(
   outcome: ScanFileOutcome,
   error: string | null,
   durationMs: number | null,
+  fileBytes?: number | null,
 ) {
   const active = state.activeItems.find((item) => item.path === event.path);
   const recent: ScanRecentItem = {
@@ -127,6 +140,7 @@ function finishFile(
     error,
     completedAt: event.timestamp,
     durationMs: active ? (durationMs ?? Date.parse(event.timestamp) - Date.parse(active.startedAt)) : durationMs,
+    fileBytes,
   };
   state.activeItems = state.activeItems.filter((item) => item.path !== event.path);
   state.currentItem = state.activeItems.length ? state.activeItems[state.activeItems.length - 1] : null;
@@ -149,6 +163,7 @@ function applySnapshot(state: ScanLiveState, snapshot: { live?: Partial<ScanLive
   state.currentItem = live.currentItem ?? null;
   state.recentItems = (live.recentItems ?? []).slice(0, RECENT_LIMIT);
   state.lastError = live.lastError ?? null;
+  state.metrics = live.metrics;
 }
 
 function applyEvent(state: ScanLiveState, event: ScanEvent): 'finished' | 'started' | null {
@@ -193,7 +208,7 @@ function applyEvent(state: ScanLiveState, event: ScanEvent): 'finished' | 'start
     case 'scan.file.completed':
       state.scanned = Math.max(state.scanned, event.scanned);
       state.failed = Math.max(state.failed, event.failed);
-      finishFile(state, event, event.outcome, null, event.durationMs);
+      finishFile(state, event, event.outcome, null, event.durationMs, event.fileBytes);
       return null;
     case 'scan.file.failed':
       state.scanned = Math.max(state.scanned, event.scanned);

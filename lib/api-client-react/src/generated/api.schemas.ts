@@ -336,6 +336,7 @@ export interface AppSettings {
      * @maximum 25
      */
   criticalFreePercent: number;
+  startWithWindows: boolean;
 }
 
 export type AppSettingsUpdateLogLevel = typeof AppSettingsUpdateLogLevel[keyof typeof AppSettingsUpdateLogLevel];
@@ -415,6 +416,7 @@ export interface AppSettingsUpdate {
      * @maximum 25
      */
   criticalFreePercent?: number;
+  startWithWindows?: boolean;
 }
 
 export type PlexConfigStatus = typeof PlexConfigStatus[keyof typeof PlexConfigStatus];

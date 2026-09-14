@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { performance } from "node:perf_hooks";
 import { access, readdir, stat } from "node:fs/promises";
 import { basename, extname, relative, resolve, sep } from "node:path";
 import { archiveDb, addEvent, readSettings, readUserSetting, writeUserSetting, type SettingsRecord } from "../lib/archive-db";
@@ -14,6 +15,9 @@ import {
   notifyArchiveScanFileStage,
   notifyArchiveScanProgress,
   notifyArchiveScanStarted,
+  recordArchiveScanInventoryRebuild,
+  recordArchiveScanMetrics,
+  recordArchiveScanRegistration,
 } from "./scan-events";
 import { inspectLocalMedia } from "./media";
 import {
@@ -305,8 +309,12 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 async function checksum(filePath: string) {
   const hash = createHash("sha256");
-  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
-  return hash.digest("hex");
+  let bytesHashed = 0;
+  for await (const chunk of createReadStream(filePath)) {
+    hash.update(chunk);
+    bytesHashed += chunk.length;
+  }
+  return { digest: hash.digest("hex"), bytesHashed };
 }
 
 async function* walk(root: string, onWarning: (message: string) => void): AsyncGenerator<string> {
@@ -353,7 +361,12 @@ function upsertArchiveRecord(
   errorMessage: string | null,
   integrityClassification: MediaIntegrityClassification | null,
   scanRunId: string | null = null,
+  onStatement?: () => void,
 ) {
+  const prepare = (sql: string) => {
+    onStatement?.();
+    return archiveDb.prepare(sql);
+  };
   const filename = basename(filePath);
   const relativePath = relative(root, filePath);
   const title = filename.replace(/\.[^.]+$/, "");
@@ -368,7 +381,7 @@ function upsertArchiveRecord(
     ].join("|")
     : null;
   const localIdentity = localIdentityFor(filename, root, inspected?.filesize ?? null, fingerprint, fileChecksum);
-  archiveDb.prepare(`
+  prepare(`
     INSERT INTO local_media_identity
       (owner_id, identity_key, media_type, normalized_title, year, show_identity,
        season_number, episode_number, size_bytes, fingerprint, checksum, updated_at)
@@ -397,22 +410,22 @@ function upsertArchiveRecord(
     localIdentity.fingerprint,
     localIdentity.checksum,
   );
-  const localIdentityId = Number((archiveDb.prepare(
+  const localIdentityId = Number((prepare(
     "SELECT id FROM local_media_identity WHERE owner_id = ? AND identity_key = ?",
   ).get(ownerId, localIdentity.identityKey) as { id: number }).id);
 
-  const existingItem = archiveDb.prepare(
+  const existingItem = prepare(
     "SELECT id FROM archive_item WHERE owner_id = ? AND archive_path = ?",
   ).get(ownerId, filePath) as { id: number } | undefined;
-  const archiveItemId = existingItem?.id ?? Number(archiveDb.prepare(
+  const archiveItemId = existingItem?.id ?? Number(prepare(
     "INSERT INTO archive_item (title, status, archive_path, owner_id) VALUES (?, 'inventory', ?, ?)",
   ).run(title, filePath, ownerId).lastInsertRowid);
   if (existingItem) {
-    archiveDb.prepare(
+    prepare(
       "UPDATE archive_item SET title = ?, status = 'inventory', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
     ).run(title, existingItem.id, ownerId);
   }
-  archiveDb.prepare(
+  prepare(
     `INSERT INTO file_record
         (path, size_bytes, checksum, media_type, owner_id, archive_item_id, filename, relative_path,
          local_identity_id, volume_id, archive_root,
@@ -473,6 +486,7 @@ function upsertArchiveRecord(
 }
 
 async function inspectFile(filePath: string, root: string, existing: FileRow | undefined, settings: SettingsRecord, archiveScanRoots: string[], onProbe?: () => void) {
+  const inspectStartedAt = performance.now();
   let fileStats;
   try {
     fileStats = await stat(filePath);
@@ -488,6 +502,13 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
       integrityClassification: assessMediaIntegrityFailure(errorMessage, "operational").classification,
       unchangedRecordId: null,
       warningMessage: undefined,
+      fileBytes: null,
+      inspectDurationMs: performance.now() - inspectStartedAt,
+      ffprobeInvoked: false,
+      ffprobeDurationMs: 0,
+      checksumInvoked: false,
+      checksumDurationMs: 0,
+      checksumBytes: 0,
     };
   }
   const unchanged = existing
@@ -505,6 +526,13 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
       integrityClassification: null,
       unchangedRecordId: existing.id,
       warningMessage: undefined,
+      fileBytes: fileStats.size,
+      inspectDurationMs: performance.now() - inspectStartedAt,
+      ffprobeInvoked: false,
+      ffprobeDurationMs: 0,
+      checksumInvoked: false,
+      checksumDurationMs: 0,
+      checksumBytes: 0,
     };
   }
 
@@ -512,17 +540,31 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
   let fileChecksum: string | null = null;
   let errorMessage: string | null = null;
   let integrityClassification: MediaIntegrityClassification | null = null;
+  let ffprobeInvoked = true;
+  let ffprobeDurationMs = 0;
+  let checksumInvoked = false;
+  let checksumDurationMs = 0;
+  let checksumBytes = 0;
+  const probeStartedAt = performance.now();
   try {
     onProbe?.();
     inspected = await inspectLocalMedia(filePath, settings, archiveScanRoots);
+    ffprobeDurationMs = performance.now() - probeStartedAt;
   } catch (error) {
+    ffprobeDurationMs = performance.now() - probeStartedAt;
     errorMessage = error instanceof Error ? error.message : "The file could not be inspected.";
     integrityClassification = assessMediaIntegrityFailure(errorMessage).classification;
   }
   if (inspected) {
+    const checksumStartedAt = performance.now();
+    checksumInvoked = true;
     try {
-      fileChecksum = await checksum(filePath);
+      const result = await checksum(filePath);
+      checksumDurationMs = performance.now() - checksumStartedAt;
+      fileChecksum = result.digest;
+      checksumBytes = result.bytesHashed;
     } catch (error) {
+      checksumDurationMs = performance.now() - checksumStartedAt;
       inspected = null;
       errorMessage = error instanceof Error ? error.message : "The file could not be checksummed.";
       integrityClassification = assessMediaIntegrityFailure(errorMessage, "operational").classification;
@@ -538,6 +580,13 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
     integrityClassification,
     unchangedRecordId: null,
     warningMessage: undefined,
+    fileBytes: fileStats.size,
+    inspectDurationMs: performance.now() - inspectStartedAt,
+    ffprobeInvoked,
+    ffprobeDurationMs,
+    checksumInvoked,
+    checksumDurationMs,
+    checksumBytes,
   };
 }
 
@@ -702,6 +751,13 @@ for (const root of roots) {
                 warningMessage: `Archive scan could not inspect ${basename(filePath)}: ${
                   error instanceof Error ? error.message : "unknown error"
                 }`,
+                fileBytes: null,
+                inspectDurationMs: 0,
+                ffprobeInvoked: false,
+                ffprobeDurationMs: 0,
+                checksumInvoked: false,
+                checksumDurationMs: 0,
+                checksumBytes: 0,
               },
             };
           }
@@ -713,6 +769,18 @@ for (const root of roots) {
       try {
         for (const { result } of results) {
           notifyArchiveScanFileStage(ownerId, sessionId, result.filePath, "register");
+          recordArchiveScanMetrics(ownerId, {
+            fileBytes: result.fileBytes,
+            unchanged: result.unchangedRecordId !== null,
+            inspectDurationMs: result.inspectDurationMs,
+            ffprobeInvoked: result.ffprobeInvoked,
+            ffprobeDurationMs: result.ffprobeDurationMs,
+            checksumInvoked: result.checksumInvoked,
+            checksumDurationMs: result.checksumDurationMs,
+            checksumBytes: result.checksumBytes,
+          });
+          const registrationStartedAt = performance.now();
+          let sqliteStatements = 0;
           let fileError: string | null = null;
           let fileOutcome: "registered" | "unchanged" | null = null;
           if (result.warningMessage) {
@@ -723,28 +791,31 @@ for (const root of roots) {
             // in-memory `found` set included these, and the vanished-file sweep
             // must keep treating them as seen. Without this stamp an unreadable
             // file would be silently reclassified as `missing`.
+            sqliteStatements += 1;
             archiveDb.prepare(
               "UPDATE file_record SET last_scan_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE owner_id = ? AND path = ?",
             ).run(scanRunId, ownerId, result.filePath);
           } else {
             try {
               if (result.unchangedRecordId !== null) {
+                sqliteStatements += 1;
                 archiveDb.prepare(
                   "UPDATE file_record SET last_seen_at = CURRENT_TIMESTAMP, last_scan_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
                 ).run(scanRunId, result.unchangedRecordId, ownerId);
                 fileOutcome = "unchanged";
               } else {
-                upsertArchiveRecord(
-                  ownerId,
-                  result.filePath,
-                  result.root,
-                  result.modifiedAtMs,
-                  result.inspected,
-                  result.fileChecksum,
-                  result.errorMessage,
-                  result.integrityClassification,
-                  scanRunId,
-                );
+                  upsertArchiveRecord(
+                    ownerId,
+                    result.filePath,
+                    result.root,
+                    result.modifiedAtMs,
+                    result.inspected,
+                    result.fileChecksum,
+                    result.errorMessage,
+                    result.integrityClassification,
+                    scanRunId,
+                    () => { sqliteStatements += 1; },
+                  );
                 if (result.inspected === null) {
                   failedFiles += 1;
                   fileError = result.errorMessage ?? "The file could not be inspected.";
@@ -761,11 +832,16 @@ for (const root of roots) {
               fileError = message;
             }
           }
+          recordArchiveScanRegistration(
+            ownerId,
+            performance.now() - registrationStartedAt,
+            sqliteStatements,
+          );
           scannedFiles += 1;
           if (fileOutcome === null) {
             notifyArchiveScanFileFailed(ownerId, sessionId, result.filePath, fileError!, scannedFiles, failedFiles);
           } else {
-            notifyArchiveScanFileCompleted(ownerId, sessionId, result.filePath, fileOutcome, scannedFiles, failedFiles);
+            notifyArchiveScanFileCompleted(ownerId, sessionId, result.filePath, fileOutcome, scannedFiles, failedFiles, result.fileBytes);
           }
         }
         updateScan(ownerId, {
@@ -839,7 +915,9 @@ for (const root of roots) {
   }
 
   invalidateArchiveInventoryCache(ownerId);
+  const inventoryStartedAt = performance.now();
   const final = readArchiveInventory(ownerId);
+  recordArchiveScanInventoryRebuild(ownerId, performance.now() - inventoryStartedAt);
   const error = rootError ?? (failedFiles ? `Scan completed with ${failedFiles} file${failedFiles === 1 ? "" : "s"} that could not be inspected.` : null);
   updateScan(ownerId, {
     status: rootError ? "failed" : "completed",

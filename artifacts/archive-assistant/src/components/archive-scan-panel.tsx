@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Activity, Check, X } from 'lucide-react';
-import type { ScanActiveItem, ScanLiveState, ScanStageName } from '@/hooks/use-archive-scan-events';
+import type { ScanActiveItem, ScanLiveState, ScanMetrics, ScanStageName } from '@/hooks/use-archive-scan-events';
 
 // ---------------------------------------------------------------------------
 // Live archive scan panel
@@ -70,6 +70,71 @@ function StageRow({ index, label, status }: { index: number; label: string; stat
       <span className={`archive-mono flex-1 text-[9px] tracking-[.1em] ${status === 'pending' ? 'text-[#a0afaf]' : 'text-[#53656b]'}`}>{label}</span>
       <span className="grid h-4 w-4 place-items-center">{marker}</span>
     </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = units[0];
+  for (const candidate of units) {
+    value /= 1024;
+    unit = candidate;
+    if (value < 1024 || candidate === units.at(-1)) break;
+  }
+  return `${value.toFixed(value >= 10 ? 1 : 2)} ${unit}`;
+}
+
+function formatMetricDuration(ms: number): string {
+  return `${Number.isFinite(ms) ? Math.round(ms) : 0} ms`;
+}
+
+function ScanDiagnostics({ live, metrics }: { live: ScanLiveState; metrics: ScanMetrics }) {
+  return (
+    <details className="border-t border-[#e3e8e7] bg-[#fbfcfa]" data-testid="scan-diagnostics">
+      <summary className="archive-mono cursor-pointer list-none px-4 py-3 text-[9px] font-bold tracking-[.14em] text-[#8a9b9e] md:px-6">
+        SCAN DIAGNOSTICS <span className="ml-2 font-normal tracking-[.08em] text-[#a0afaf]">TEMPORARY</span>
+      </summary>
+      <div className="border-t border-[#edf1ef] px-4 pb-5 pt-4 md:px-6">
+        <div className="grid gap-x-6 gap-y-2 text-[10px] text-[#53656b] sm:grid-cols-2 lg:grid-cols-3">
+          <div><span className="archive-mono text-[8px] text-[#8a9b9e]">FILES PROCESSED</span><div>{metrics.files.toLocaleString()}</div></div>
+          <div><span className="archive-mono text-[8px] text-[#8a9b9e]">TOTAL BYTES</span><div>{formatBytes(metrics.totalFileBytes)} <span className="text-[#a0afaf]">({metrics.totalFileBytes.toLocaleString()} B)</span></div></div>
+          <div><span className="archive-mono text-[8px] text-[#8a9b9e]">UNCHANGED FILES</span><div>{metrics.unchangedFiles.toLocaleString()}</div></div>
+          <div><span className="archive-mono text-[8px] text-[#8a9b9e]">STAT / INSPECT</span><div>{metrics.inspect.count.toLocaleString()} calls · {formatMetricDuration(metrics.inspect.durationMs)}</div></div>
+          <div><span className="archive-mono text-[8px] text-[#8a9b9e]">FFPROBE</span><div>{metrics.ffprobe.invocations.toLocaleString()} calls · {formatMetricDuration(metrics.ffprobe.durationMs)}</div></div>
+          <div><span className="archive-mono text-[8px] text-[#8a9b9e]">CHECKSUM</span><div>{metrics.checksum.invocations.toLocaleString()} calls · {formatMetricDuration(metrics.checksum.durationMs)} · {formatBytes(metrics.checksum.bytesHashed)} hashed</div></div>
+          <div><span className="archive-mono text-[8px] text-[#8a9b9e]">REGISTRATION</span><div>{metrics.registration.files.toLocaleString()} files · {formatMetricDuration(metrics.registration.durationMs)}</div></div>
+          <div><span className="archive-mono text-[8px] text-[#8a9b9e]">SQLITE STATEMENTS</span><div>{metrics.registration.sqliteStatements.toLocaleString()}</div></div>
+          <div><span className="archive-mono text-[8px] text-[#8a9b9e]">FINAL INVENTORY</span><div>{metrics.finalInventory.rebuilds.toLocaleString()} rebuilds · {formatMetricDuration(metrics.finalInventory.durationMs)}</div></div>
+        </div>
+        <div className="mt-5">
+          <div className="archive-mono text-[8px] font-bold tracking-[.12em] text-[#8a9b9e]">RECENT FILE SAMPLE</div>
+          {live.recentItems.length === 0 ? (
+            <div className="archive-mono mt-2 text-[9px] text-[#a0afaf]">NO RECENT FILES</div>
+          ) : (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left text-[10px] text-[#53656b]" data-testid="scan-diagnostics-recent">
+                <thead className="archive-mono text-[8px] tracking-[.08em] text-[#a0afaf]">
+                  <tr><th className="pb-1 pr-3 font-normal">FILENAME</th><th className="pb-1 pr-3 font-normal">FILE BYTES</th><th className="pb-1 pr-3 font-normal">DURATION</th><th className="pb-1 font-normal">OUTCOME</th></tr>
+                </thead>
+                <tbody>
+                  {live.recentItems.map((item) => (
+                    <tr key={`${item.path}-${item.completedAt}`} className="border-t border-[#edf1ef]">
+                      <td className="max-w-[260px] truncate py-1.5 pr-3" title={item.filename}>{item.filename}</td>
+                      <td className="archive-mono py-1.5 pr-3">{item.fileBytes == null ? '—' : `${item.fileBytes.toLocaleString()} B`}</td>
+                      <td className="archive-mono py-1.5 pr-3">{formatDuration(item.durationMs)}</td>
+                      <td className="archive-mono py-1.5">{item.outcome.toUpperCase()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -269,6 +334,7 @@ export function ArchiveScanPanel({ live }: { live: ScanLiveState }) {
           </div>
         )}
       </div>
+      {live.metrics && <ScanDiagnostics live={live} metrics={live.metrics} />}
     </section>
   );
 }
