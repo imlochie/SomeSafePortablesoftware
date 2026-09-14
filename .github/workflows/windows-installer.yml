@@ -94,19 +94,24 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # These are the exact paths main.rs resolves. runtime/node.exe is
-          # listed because a bare "runtime" resource entry once packaged
-          # nothing, producing an app that found its API bundle and then could
-          # not start it.
+          # On Windows resource_dir() is the directory containing the exe, with
+          # no "resources" segment -- tauri-utils returns exe_dir directly under
+          # cfg!(target_os = "windows"). So resources sit beside the exe here in
+          # target/release, and beside it again in $INSTDIR once installed.
+          # Checking a "resources" subdirectory would look somewhere the app
+          # never reads and pass or fail for the wrong reason.
+          #
+          # runtime/node.exe is listed because a bare "runtime" resource entry
+          # once packaged nothing, producing an app that found its API bundle
+          # and then could not start it.
           foreach ($relative in 'api-server/dist/index.mjs',
                                 'runtime/node.exe',
                                 'runtime/media-tools/ffmpeg.exe',
                                 'runtime/media-tools/ffprobe.exe',
                                 'runtime/media-tools/yt-dlp.exe') {
-            $path = Join-Path 'resources' $relative
-            if (-not (Test-Path -LiteralPath $path)) {
-              Write-Host 'Packaged resource tree:'
-              Get-ChildItem -Recurse -File resources |
+            if (-not (Test-Path -LiteralPath $relative)) {
+              Write-Host 'Packaged resource tree (two levels):'
+              Get-ChildItem -Recurse -Depth 2 -File . |
                 ForEach-Object { Write-Host "  $($_.FullName)" }
               throw "Packaged resource missing: $relative"
             }

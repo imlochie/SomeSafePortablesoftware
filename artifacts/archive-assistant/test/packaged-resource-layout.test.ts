@@ -15,6 +15,15 @@ import { describe, expect, it } from 'vitest';
  */
 
 const srcTauriDir = path.resolve(import.meta.dirname, '..', 'src-tauri');
+const windowsWorkflowPath = path.resolve(
+  import.meta.dirname,
+  '..',
+  '..',
+  '..',
+  '.github',
+  'workflows',
+  'windows-installer.yml',
+);
 const tauriConfig = JSON.parse(
   readFileSync(path.join(srcTauriDir, 'tauri.conf.json'), 'utf8'),
 ) as { bundle?: { resources?: string[] | Record<string, string> } };
@@ -191,6 +200,68 @@ describe('packaged resource layout', () => {
 
   it('still honours ARCHIVE_NODE_PATH as an escape hatch', () => {
     expect(mainRs).toMatch(/env::var_os\("ARCHIVE_NODE_PATH"\)/);
+  });
+
+  // On Windows, tauri-utils resolve_resource_dir returns exe_dir directly:
+  //
+  //   if cfg!(target_os = "windows") || (... cargo output dir ...) {
+  //     return Ok(exe_dir.to_path_buf());
+  //   }
+  //
+  // There is no "resources" segment on Windows -- that is the macOS layout
+  // (${exe_dir}/../Resources). So resources land beside the exe, which is
+  // target/release/<resource> for a local build and $INSTDIR/<resource> once
+  // NSIS installs (its Install section does SetOutPath $INSTDIR then writes
+  // each resource to a relative /oname). A dir listing showing
+  // target/release/runtime/node.exe is therefore the CORRECT layout, not a
+  // misplaced file, and target/release/resources/ is expected NOT to exist.
+  describe('windows resource root', () => {
+    it('joins the runtime onto resource_dir with no "resources" segment', () => {
+      // A literal "resources" join would look one level too deep on Windows
+      // and would never find the runtime, regardless of what shipped.
+      expect(mainRs).not.toMatch(/join\("resources"\)/);
+      expect(mainRs).toMatch(/resource_dir\(\)/);
+    });
+
+    it('verifies the packaged layout at the exe directory, not a resources subdirectory', () => {
+      const workflow = readFileSync(windowsWorkflowPath, 'utf8');
+
+      // The check runs in target/release, which IS the resource root on
+      // Windows. Rooting it at a "resources" subdirectory would probe a path
+      // the application never reads.
+      expect(workflow).toContain('working-directory: artifacts/archive-assistant/src-tauri/target/release');
+      expect(workflow).not.toContain("Join-Path 'resources' $relative");
+      expect(workflow).toContain("Test-Path -LiteralPath $relative");
+    });
+
+    it('asserts the bundled runtime and every media tool in the packaged layout', () => {
+      const workflow = readFileSync(windowsWorkflowPath, 'utf8');
+
+      // These are exactly what node_command and bundled_media_tools_path
+      // resolve. Dropping any one of them reopens the silent-packaging gap.
+      // Scoped to the packaged-layout step only. The earlier staging step
+      // lists the same filenames, so searching the whole file would let an
+      // assertion be deleted here and still be satisfied by the other block.
+      const packagedStep = workflow.slice(workflow.indexOf('Verify the packaged resource layout'));
+      expect(packagedStep).not.toBe('');
+
+      // Matched as whole quoted list entries: a bare substring check would let
+      // 'runtime/node.exe' be satisfied by 'runtime/media-tools/...'.
+      const entries = Array.from(
+        packagedStep.matchAll(/'([\w.-]+(?:\/[\w.-]+)+)'/g),
+        (match) => match[1],
+      );
+
+      for (const relative of [
+        'api-server/dist/index.mjs',
+        'runtime/node.exe',
+        'runtime/media-tools/ffmpeg.exe',
+        'runtime/media-tools/ffprobe.exe',
+        'runtime/media-tools/yt-dlp.exe',
+      ]) {
+        expect(entries).toContain(relative);
+      }
+    });
   });
 });
 
