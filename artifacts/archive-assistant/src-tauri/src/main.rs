@@ -645,6 +645,15 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
 }
 
 fn install_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    // The application icon configured in tauri.conf.json is embedded into the
+    // generated Tauri context, but tray icons are not inferred from it. An
+    // explicit icon is required or Windows can create a functioning tray
+    // object with no visible notification-area glyph.
+    let tray_icon = app
+        .default_window_icon()
+        .cloned()
+        .ok_or("The bundled application icon is unavailable for the tray")?;
+
     let open = MenuItemBuilder::with_id("open", "Open Archive Assistant").build(app)?;
     let scan = MenuItemBuilder::with_id("scan", "Start/resume archive scan").build(app)?;
     let plex = MenuItemBuilder::with_id("plex", "Sync Plex").build(app)?;
@@ -656,6 +665,7 @@ fn install_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     TrayIconBuilder::with_id("archive-assistant")
+        .icon(tray_icon)
         .menu(&menu)
         .tooltip("ARCHIVE ASSISTANT")
         .on_menu_event(|app, event| {

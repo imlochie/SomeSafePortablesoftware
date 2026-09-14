@@ -26,7 +26,12 @@ const windowsWorkflowPath = path.resolve(
 );
 const tauriConfig = JSON.parse(
   readFileSync(path.join(srcTauriDir, 'tauri.conf.json'), 'utf8'),
-) as { bundle?: { resources?: string[] | Record<string, string> } };
+) as {
+  bundle?: {
+    icon?: string[];
+    resources?: string[] | Record<string, string>;
+  };
+};
 const mainRs = readFileSync(path.join(srcTauriDir, 'src', 'main.rs'), 'utf8');
 
 /**
@@ -110,6 +115,23 @@ function pinsRustImplementation(): void {
 
 describe('packaged resource layout', () => {
   const resources = tauriConfig.bundle?.resources;
+
+  it('pins a real tray icon asset and explicit tray loading', () => {
+    const configuredIcons = tauriConfig.bundle?.icon ?? [];
+    expect(configuredIcons).toContain('icons/icon.png');
+    expect(mainRs).toContain('default_window_icon()');
+    expect(mainRs).toMatch(/TrayIconBuilder::with_id\([\s\S]*?\.icon\(tray_icon\)/);
+
+    const iconPath = path.join(srcTauriDir, 'icons', 'icon.png');
+    const icon = readFileSync(iconPath);
+    expect(icon.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+    // PNG IHDR: 512x512 RGBA. This is large enough for Tauri to derive the
+    // 16/20/24px Windows notification-area representation while preserving
+    // transparency if the artwork later gains transparent edges.
+    expect(icon.readUInt32BE(16)).toBeGreaterThanOrEqual(32);
+    expect(icon.readUInt32BE(20)).toBeGreaterThanOrEqual(32);
+    expect(icon[25]).toBe(6);
+  });
 
   /**
    * Tauri's documented source-path syntax gives a bare directory name no
