@@ -621,7 +621,7 @@ async fn check_for_update(app: AppHandle) -> Result<UpdateStatus, String> {
         Some(update) => UpdateStatus {
             available: true,
             version: Some(update.version),
-            date: update.date,
+            date: update.date.map(|date| date.to_string()),
             body: update.body,
         },
         None => UpdateStatus { available: false, version: None, date: None, body: None },
