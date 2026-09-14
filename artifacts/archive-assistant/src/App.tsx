@@ -30,7 +30,7 @@ import {
   useRollbackArchiveOperation, useGetAcquisitionJobs, useLinkAcquisitionDownload,
   usePlanApprovedAcquisitionImport, useRefreshAcquisitionJob,
 } from '@workspace/api-client-react';
-import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
+import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, ReviewSyncResult, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
 import { apiUrl } from '@/lib/desktop-api-base-url';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
@@ -276,6 +276,27 @@ function HistoryPage() {
 const placeholderCopy: Record<string, { title: string; description: string; icon: typeof Activity; eyebrow: string }> = { ASSISTANT: { eyebrow: 'WORKSPACE / RESERVED', title: 'Assistant console', description: 'Reserved for collection-aware questions and guided actions.', icon: Bot }, ARCHIVE: { eyebrow: 'WORKSPACE / RESERVED', title: 'Archive browser', description: 'Reserved for a searchable browser of verified media.', icon: Archive } };
 function PlaceholderPage({ section }: { section: keyof typeof placeholderCopy }) { const copy = placeholderCopy[section]; const Icon = copy.icon; return <><PageIntro eyebrow={copy.eyebrow} title={copy.title} description={copy.description} /><div className="archive-panel relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden p-8 text-center"><div className="absolute left-0 top-0 h-1 w-24 bg-[#f4b942]" /><div className="absolute right-8 top-8 archive-mono text-[9px] tracking-[.16em] text-[#a2adae]">RESERVED / NO CLAIMS</div><div className="grid h-16 w-16 place-items-center border border-[#d6dfdc] bg-[#eaf0ed] text-[#4e9690]"><Icon size={27} strokeWidth={1.4} /></div><h2 className="archive-display mt-6 text-[25px] font-extrabold text-[#2b3d46]">Surface is reserved</h2><p className="mt-2 max-w-md text-[13px] leading-6 text-[#7c8a8d]">This workspace is intentionally honest about its current state. No records or capabilities are fabricated in this preview.</p><div className="mt-7 flex items-center gap-2 border border-[#e1e7e5] bg-[#f8faf8] px-3 py-2 archive-mono text-[9px] tracking-[.1em] text-[#799094]"><CircleHelp size={13} /> SAFE TO EXPLORE</div></div></>; }
 
+/**
+ * The review sync used to report a single total, which conflated observations
+ * with decisions and produced numbers in the tens of thousands on a real
+ * archive. Report what the operator actually has to act on, and keep the
+ * observations visible as context rather than as a backlog.
+ */
+export function summariseReviewSync(result: ReviewSyncResult): string {
+  const { severity } = result;
+  const counts = severity.bySeverity;
+  const escalated = (['critical', 'high', 'medium', 'low'] as const)
+    .filter((level) => counts[level] > 0)
+    .map((level) => `${counts[level]} ${level}`)
+    .join(', ');
+  const decisions = `${result.archiveFindingItems.toLocaleString()} finding${result.archiveFindingItems === 1 ? '' : 's'} need review`;
+  const observations = `${result.informationalFindings.toLocaleString()} informational`;
+  const naming = `${result.namingItems.toLocaleString()} naming proposal${result.namingItems === 1 ? '' : 's'}`;
+  return escalated
+    ? `${decisions} (${escalated}) · ${observations} · ${naming}.`
+    : `${decisions} · ${observations} · ${naming}.`;
+}
+
 function AssistantPage() {
   const recommendations = useListAcquisitionRecommendations({ status: 'active' });
   const reviews = useListReviewItems();
@@ -352,7 +373,7 @@ function AssistantPage() {
       eyebrow="CONTROL PLANE / ASSISTANT"
       title="Review before action"
       description="Current archive evidence, provider health, approvals, acquisition jobs, and filesystem operations. Nothing is auto-approved or moved."
-      action={<button disabled={busy} onClick={async () => { await generate.mutateAsync(); const result = await syncReviews.mutateAsync(); setNotice(`Evaluated recommendations and synchronized ${result.total} review items.`); await refresh(); }} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.11em] text-white disabled:opacity-50" data-testid="button-generate-recommendations"><Sparkles size={14} /> EVALUATE CURRENT STATE</button>}
+      action={<button disabled={busy} onClick={async () => { await generate.mutateAsync(); const result = await syncReviews.mutateAsync(); setNotice(summariseReviewSync(result)); await refresh(); }} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.11em] text-white disabled:opacity-50" data-testid="button-generate-recommendations"><Sparkles size={14} /> EVALUATE CURRENT STATE</button>}
     />
     {notice && <div className="mb-5 border-l-2 border-[#4e9690] bg-[#eaf3ef] px-4 py-3 text-[11px] text-[#39736e]">{notice}</div>}
     <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

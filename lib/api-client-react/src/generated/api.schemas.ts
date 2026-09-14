@@ -1723,9 +1723,37 @@ export interface PlanAcquisitionImport {
   dryRun?: boolean;
 }
 
+export type FindingSeverity = typeof FindingSeverity[keyof typeof FindingSeverity];
+
+
+export const FindingSeverity = {
+  info: 'info',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  critical: 'critical',
+} as const;
+
+export type SeverityBreakdownBySeverity = {
+  info: number;
+  low: number;
+  medium: number;
+  high: number;
+  critical: number;
+};
+
+export interface SeverityBreakdown {
+  total: number;
+  reviewRequired: number;
+  informational: number;
+  bySeverity: SeverityBreakdownBySeverity;
+}
+
 export interface ReviewSyncResult {
   namingItems: number;
   archiveFindingItems: number;
+  informationalFindings: number;
+  severity: SeverityBreakdown;
   total: number;
 }
 

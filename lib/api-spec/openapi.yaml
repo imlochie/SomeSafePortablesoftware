@@ -3338,12 +3338,33 @@ components:
       properties:
         destinationPath: { type: string, minLength: 1 }
         dryRun: { type: boolean, default: false }
+    FindingSeverity:
+      type: string
+      enum: [info, low, medium, high, critical]
+    SeverityBreakdown:
+      type: object
+      required: [total, reviewRequired, informational, bySeverity]
+      properties:
+        total: { type: number }
+        reviewRequired: { type: number }
+        informational: { type: number }
+        bySeverity:
+          type: object
+          required: [info, low, medium, high, critical]
+          properties:
+            info: { type: number }
+            low: { type: number }
+            medium: { type: number }
+            high: { type: number }
+            critical: { type: number }
     ReviewSyncResult:
       type: object
-      required: [namingItems, archiveFindingItems, total]
+      required: [namingItems, archiveFindingItems, informationalFindings, severity, total]
       properties:
         namingItems: { type: number }
         archiveFindingItems: { type: number }
+        informationalFindings: { type: number }
+        severity: { $ref: "#/components/schemas/SeverityBreakdown" }
         total: { type: number }
     ReportPagination:
       type: object

@@ -1234,6 +1234,19 @@ export const CreateReviewItemResponse = zod.object({
 export const SyncControlPlaneReviewItemsResponse = zod.object({
   "namingItems": zod.number(),
   "archiveFindingItems": zod.number(),
+  "informationalFindings": zod.number(),
+  "severity": zod.object({
+  "total": zod.number(),
+  "reviewRequired": zod.number(),
+  "informational": zod.number(),
+  "bySeverity": zod.object({
+  "info": zod.number(),
+  "low": zod.number(),
+  "medium": zod.number(),
+  "high": zod.number(),
+  "critical": zod.number()
+})
+}),
   "total": zod.number()
 })
 
