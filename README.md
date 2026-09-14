@@ -12,9 +12,17 @@ The project is designed to act as a control layer for a personal media archive, 
 
 - Production AI assistant responses and local-model integration.
 - Autonomous archive actions.
-- Bundled media-tool packaging (FFmpeg, FFprobe, and yt-dlp).
 
 The UI reports unconfigured providers as disconnected and surfaces real provider errors instead of fabricating availability.
+
+The Windows desktop package is self-contained. The installer ships a bundled
+Node runtime and pinned FFmpeg, FFprobe, and yt-dlp binaries, so a released
+build does not require an installed Node or media tools on the target machine.
+Media tools are staged from `scripts/media-tools-manifest.json` during the
+release build and verified by size and SHA-256 against pinned immutable
+release assets. This has been verified by installing and launching a real
+Windows build; it is not yet covered by continuous integration, because the
+Windows workflow has never run.
 
 Plex and Jellyfin synchronization, archive scanning and review, controlled
 archive operations, provider-backed acquisitions, and durable operational
@@ -255,17 +263,21 @@ Not Yet Fully Implemented
 
 The following areas remain future development work:
 
-Media acquisition through yt-dlp.
-Download execution.
-FFmpeg processing pipelines.
-Hardware-accelerated transcoding.
-Filesystem monitoring.
-Duplicate detection.
-Archive automation.
-Real job execution.
+Hardware-accelerated transcoding. FFmpeg hardware support is detected and
+reported as a capability, but processing does not select an accelerated
+encoder.
+Filesystem monitoring. Archive scanning is on demand and incremental; nothing
+watches the archive roots for changes between scans.
 AI provider connections.
 AI assistant responses.
-Automated archive workflows.
+
+Media acquisition through yt-dlp, download execution, FFmpeg processing,
+duplicate detection, and durable job execution are implemented and run real
+tools; earlier revisions of this list were stale. Archive automation and
+automated archive workflows are not pending work: they were deliberately
+replaced by the evidence, review, approval, and confirmation boundary, under
+which a finding may recommend a change but only a confirmed operation mutates a
+file.
 
 The application should continue to show unfinished systems honestly rather than presenting them as connected functionality.
 

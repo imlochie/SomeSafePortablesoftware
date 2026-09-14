@@ -67,7 +67,8 @@ They did not replace the local engine or approval boundary.
 | Archive recommendations and review synchronization | Complete | `acquisition-intelligence.ts` and `review-sync.ts` preserve evidence and review context without autonomous mutations. |
 | Local single-user mode plus retained Clerk multi-user mode | Complete | Identity is resolved server-side as `__local__` or the authenticated Clerk user; existing owned data is not silently reassigned. |
 | Tauri shell that starts and monitors the Node API | Complete as an architecture boundary | `src-tauri` launches the API bundle and points the UI at its health-checked port. |
-| Self-contained Windows desktop packaging | Intentionally deferred | The current shell depends on an installed Node runtime or `ARCHIVE_NODE_PATH`; bundling a runtime, installer diagnostics, and Windows path hardening are separate release work. |
+| Self-contained Windows desktop packaging | Complete | The installer bundles a Node runtime and pinned media tools as Tauri resources, resolves them from the packaged layout, normalizes default paths to `USERPROFILE`, lets the operating system assign the sidecar port, and retains redacted launch diagnostics. Verified by installing and launching a real Windows build; not yet covered by continuous integration. |
+| Bundled media-tool packaging (FFmpeg, FFprobe, yt-dlp) | Complete | `scripts/stage-media-tools.mjs` stages pinned release assets during the release build and verifies each by size and SHA-256; the manifest forbids rolling tags. |
 | Autonomous AI decisions or archive changes | No longer applicable | Later requirements deliberately replaced autonomy with evidence, review, approval, and confirmation. |
 | Automatic duplicate deletion, replacement, or reorganization | No longer applicable | These conflict with the accepted approval boundary. Findings may recommend; only confirmed operations mutate files. |
 | Filename-only identity matching | No longer applicable | Identity is evidence-based and uncertain results require review. |
@@ -162,16 +163,23 @@ replaced by broader roadmap items:
 - Webhook counting, redacted history, hosted privacy, retention, and pagination.
 - Reliable API type checks.
 
-The review identifies three additional, bounded follow-ups:
+The review identified three additional, bounded follow-ups. The third is now
+closed; two remain open:
 
 1. **Contract owner:** reconcile public Express routes, OpenAPI, and generated
    clients; add a release check that detects drift.
 2. **Archive acquisition owner:** make immediate provider-start semantics
    explicit, or enforce approved owner-scoped review plus confirmation before
    starting provider work.
-3. **Desktop release owner:** package a Windows-safe Node sidecar, normalize
+3. ~~**Desktop release owner:** package a Windows-safe Node sidecar, normalize
    default paths, remove the port reservation race, and retain redacted launch
-   diagnostics.
+   diagnostics.~~ **Closed.** The Node runtime and media tools ship as packaged
+   resources, path resolution matches the installed Windows layout, the sidecar
+   binds port `0` so the operating system assigns it, and redacted startup
+   diagnostics are retained as a supported feature rather than temporary
+   instrumentation. Closure rests on a real installed Windows build, not on
+   continuous integration; the Windows workflow has never run and the Rust
+   shell has never been compiled by CI.
 
 The stale product-status sections in `README.md` and `replit.md` were corrected
 as part of this review. That drift was documentation-only, not a product
@@ -182,9 +190,10 @@ architecture change.
 - **Complete:** original Phase 1 shell and local engine; archive inventory and
   intelligence; owner-scoped review; confirmed archive operations; Plex and
   provider capability boundaries; durable acquisition lifecycle; local/hosted
-  identity modes; generated-contract architecture.
-- **Intentionally deferred:** production AI providers and local models,
-  autonomous assistant behavior, and a self-contained Windows desktop package.
+  identity modes; generated-contract architecture; self-contained Windows
+  desktop packaging with a bundled Node runtime and pinned media tools.
+- **Intentionally deferred:** production AI providers and local models, and
+  autonomous assistant behavior.
 - **No longer applicable:** autonomous or automatic archive mutation,
   filename-only identity, opaque quality scoring, and a second hosted control
   plane for local use.
