@@ -27,13 +27,15 @@ import {
   useCreateApprovedAcquisitionJob, useListArchiveOperations, useGetIntegrationStatuses,
   useSyncControlPlaneReviewItems, useCreateArchiveOperation, usePreflightArchiveOperation,
   useExecuteArchiveOperation, useCancelArchiveOperation, useRetryArchiveOperation,
-  useRollbackArchiveOperation,
+  useRollbackArchiveOperation, useGetAcquisitionJobs, useLinkAcquisitionDownload,
+  usePlanApprovedAcquisitionImport, useRefreshAcquisitionJob,
 } from '@workspace/api-client-react';
 import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
 import { apiUrl } from '@/lib/desktop-api-base-url';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
 import { ArchiveScanPanel } from '@/components/archive-scan-panel';
+import { AcquisitionJobsPanel } from '@/components/acquisition-jobs-panel';
 import { useArchiveScanEvents } from '@/hooks/use-archive-scan-events';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -292,12 +294,19 @@ function AssistantPage() {
   const cancelOperation = useCancelArchiveOperation();
   const retryOperation = useRetryArchiveOperation();
   const rollbackOperation = useRollbackArchiveOperation();
+  const acquisitionJobs = useGetAcquisitionJobs();
+  const downloads = useGetDownloads();
+  const linkDownload = useLinkAcquisitionDownload();
+  const planImport = usePlanApprovedAcquisitionImport();
+  const refreshAcquisition = useRefreshAcquisitionJob();
   const [notice, setNotice] = useState('');
   const refresh = async () => Promise.all([
     recommendations.refetch(),
     reviews.refetch(),
     operations.refetch(),
     providers.refetch(),
+    acquisitionJobs.refetch(),
+    downloads.refetch(),
   ]);
   const decide = async (itemId: number, next: 'approve' | 'reject' | 'defer' | 'reopen') => {
     const mutation = { approve, reject, defer, reopen }[next];
@@ -317,6 +326,18 @@ function AssistantPage() {
       if (next === 'retry') await retryOperation.mutateAsync({ id: operationId });
       if (next === 'rollback') await rollbackOperation.mutateAsync({ id: operationId, data: { confirmed: true } });
       setNotice(`Operation #${operationId} ${next} completed.`);
+      await refresh();
+    } catch (error) {
+      setNotice(errorText(error));
+    }
+  };
+  // The acquisition back half. Linking and planning are separate deliberate
+  // steps, and planning stops at a planned operation: the import is executed
+  // through the same preflight and confirmation path as every other mutation.
+  const acquire = async (action: () => Promise<unknown>, describe: (result: unknown) => string) => {
+    try {
+      const result = await action();
+      setNotice(describe(result));
       await refresh();
     } catch (error) {
       setNotice(errorText(error));
@@ -373,6 +394,23 @@ function AssistantPage() {
       <div className="space-y-5">
         <section className="archive-panel p-5" data-testid="panel-recommendation-evidence"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">RECOMMENDATION EVIDENCE</div><div className="mt-4 space-y-4">{(recommendations.data ?? []).map((recommendation) => <article key={recommendation.id} className="border-t border-[#e3e8e7] pt-3"><div className="flex justify-between gap-3"><div className="text-[11px] font-bold text-[#42545b]">{recommendation.title}</div><span className="archive-mono text-[9px] uppercase text-[#80652e]">{recommendation.priority} / {recommendation.confidence}</span></div><p className="mt-2 text-[10px] leading-5 text-[#66787d]">{String(recommendation.evidence.reason ?? 'Evidence is recorded in the recommendation payload.')}</p>{recommendation.blockers.length > 0 && <ul className="mt-2 list-disc pl-4 text-[10px] leading-5 text-[#9b514a]">{recommendation.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul>}<p className="mt-2 border-l-2 border-[#4e9690] pl-2 text-[10px] leading-5 text-[#39736e]">{recommendation.recommendedAction}</p></article>)}{!(recommendations.data ?? []).length && <p className="text-[11px] text-[#829095]">Evaluate current state to generate deterministic recommendations.</p>}</div></section>
         <section className="archive-panel p-5" data-testid="panel-provider-health"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">PROVIDER HEALTH</div><div className="mt-4 space-y-3">{providerItems.map((provider) => <div key={provider.id} className="flex items-center justify-between gap-3 border-t border-[#e3e8e7] pt-3"><div><div className="text-[11px] font-bold text-[#42545b]">{provider.name}</div><div className="mt-1 text-[9px] text-[#8b999c]">{provider.detail}</div></div><StatusPill status={provider.state} /></div>)}</div></section>
+        <AcquisitionJobsPanel
+          jobs={acquisitionJobs.data ?? []}
+          downloads={downloads.data ?? []}
+          busy={linkDownload.isPending || planImport.isPending || refreshAcquisition.isPending}
+          onLinkDownload={(jobId, downloadJobId) => acquire(
+            () => linkDownload.mutateAsync({ id: jobId, data: { downloadJobId } }),
+            () => `Acquisition job #${jobId} linked to download #${downloadJobId}.`,
+          )}
+          onPlanImport={(jobId, destinationPath) => acquire(
+            () => planImport.mutateAsync({ id: jobId, data: { destinationPath } }),
+            (operation) => `Planned import operation #${(operation as { id: number }).id}. It requires preflight and explicit execution confirmation.`,
+          )}
+          onRefreshJob={(jobId) => acquire(
+            () => refreshAcquisition.mutateAsync({ id: jobId }),
+            () => `Refreshed acquisition job #${jobId} from its provider.`,
+          )}
+        />
         <section className="archive-panel p-5" data-testid="panel-operation-history"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">SAFE OPERATIONS</div><div className="mt-4 space-y-3">{(operations.data ?? []).slice(0, 8).map((operation) => <div key={operation.id} className="border-t border-[#e3e8e7] pt-3"><div className="flex items-center justify-between"><span className="text-[11px] font-bold uppercase text-[#42545b]">{operation.action} #{operation.id}</span><StatusPill status={operation.status} /></div><div className="mt-1 truncate text-[9px] text-[#8b999c]">{operation.destinationPath}</div>{operation.errorMessage && <div className="mt-2 text-[10px] text-[#a24d46]">{operation.errorMessage}</div>}<div className="mt-2 flex flex-wrap gap-1">{operation.status === 'planned' && <button onClick={() => operate(operation.id, 'preflight')} className="border px-2 py-1 text-[8px] font-bold">PREFLIGHT</button>}{operation.status === 'ready' && <button onClick={() => operate(operation.id, 'execute')} className="bg-[#1d2b38] px-2 py-1 text-[8px] font-bold text-white">EXECUTE</button>}{['planned', 'preflight', 'ready', 'failed'].includes(operation.status) && <button onClick={() => operate(operation.id, 'cancel')} className="border px-2 py-1 text-[8px] font-bold">CANCEL</button>}{['failed', 'cancelled'].includes(operation.status) && operation.retryCount < operation.maxRetries && <button onClick={() => operate(operation.id, 'retry')} className="border px-2 py-1 text-[8px] font-bold">RETRY</button>}{operation.status === 'completed' && <button onClick={() => operate(operation.id, 'rollback')} className="border border-[#d79a94] px-2 py-1 text-[8px] font-bold text-[#9b514a]">ROLLBACK</button>}</div>{operation.events.length > 0 && <details className="mt-2 text-[9px] text-[#75868a]"><summary>{operation.events.length} audit events</summary>{operation.events.map(event => <div key={event.id} className="mt-1">{formatTime(event.createdAt)} · {event.detail}</div>)}</details>}</div>)}{!(operations.data ?? []).length && <p className="text-[11px] leading-5 text-[#829095]">No operations have been planned. Filesystem mutation remains disabled.</p>}</div></section>
       </div>
     </div>
