@@ -38,6 +38,7 @@ import { ArchiveScanPanel } from '@/components/archive-scan-panel';
 import { StorageDiagnosticsPanel } from './components/storage-diagnostics-panel';
 import { AcquisitionJobsPanel } from '@/components/acquisition-jobs-panel';
 import { useArchiveScanEvents } from '@/hooks/use-archive-scan-events';
+import { resolveScanLifecycle } from '@/lib/scan-lifecycle';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -848,15 +849,26 @@ export function ArchivePage() {
     }
   });
 
+  // A connected live feed is authoritative about whether a scan is running; a
+  // persisted `scanning` with no live session is interrupted residue, not an
+  // active scan. Merging the two with OR let the stale record win forever.
+  const scanLifecycle = resolveScanLifecycle({
+    persistedStatus: scan?.status,
+    liveStatus: scanEvents.status,
+    liveConnected: scanEvents.connected,
+    liveHasSession: Boolean(scanEvents.sessionId),
+  });
+  const scanInterrupted = scanLifecycle === 'interrupted';
+
   useEffect(() => {
     const wasScanning = isScanning;
-    const nowScanning = scan?.status === 'scanning' || scanEvents.status === 'scanning';
+    const nowScanning = scanLifecycle === 'scanning';
     setIsScanning(nowScanning);
 
     if (wasScanning && !nowScanning) {
       queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
     }
-  }, [scan?.status, scanEvents.status, isScanning, queryClient]);
+  }, [scanLifecycle, isScanning, queryClient]);
 
   const { data: inventory, isLoading: invLoading, isError: invError, refetch: refetchInv } = useGetArchiveInventory({
     query: {
@@ -973,6 +985,16 @@ export function ArchivePage() {
       {notice && (
         <div className={`mb-5 border-l-2 p-3 text-[11px] leading-5 ${notice.includes('failed') || notice.includes('could not') ? 'border-[#c85b51] bg-[#fcedea] text-[#994b43]' : 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]'}`} data-testid="status-archive-scan">
           {notice}
+        </div>
+      )}
+
+      {scanInterrupted && (
+        <div
+          className="mb-5 border-l-2 border-[#d9bd77] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]"
+          data-testid="status-archive-scan-interrupted"
+        >
+          The last archive scan stopped before it finished, most likely because the application was
+          closed while it was running. Files already recorded were kept. Start a new scan to continue.
         </div>
       )}
 

@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { databasePathSource } from "./services/storage-diagnostics";
 import { runtimeConfig } from "./lib/runtime-config";
+import { reconcileInterruptedScans } from "./services/archive";
 import { startAcquisitionJobPolling } from "./services/acquisition-jobs";
 
 const server = app.listen(runtimeConfig.port, runtimeConfig.host, (err) => {
@@ -34,6 +35,18 @@ const server = app.listen(runtimeConfig.port, runtimeConfig.host, (err) => {
     },
     "Server listening",
   );
+
+  // A scan record left in `scanning` by a process that died mid-scan would
+  // otherwise survive forever and block every future scan. The in-memory scan
+  // map is empty in a new process, so any such row is interrupted by
+  // definition. Recorded progress and failures are preserved.
+  const interruptedScans = reconcileInterruptedScans();
+  if (interruptedScans > 0) {
+    logger.warn(
+      { interruptedScans },
+      "Closed out archive scan records left running by a previous process. Recorded files and failures were kept.",
+    );
+  }
 
   if (databasePathSource() === "working_directory_fallback") {
     logger.warn(

@@ -763,6 +763,54 @@ export function startArchiveScan(ownerId: string) {
   return readArchiveScan(ownerId);
 }
 
+/**
+ * Clears scan records left in `scanning` by a process that died mid-scan.
+ *
+ * `scanArchive` writes `status: "scanning"` when it begins and only writes a
+ * terminal status from its own completion or catch path. If the process exits
+ * before that -- a crash, a restart, or the user quitting during a scan -- the
+ * row stays `scanning` forever. Nothing else reconciles it, and the
+ * consequences are not cosmetic:
+ *
+ *   - `startArchiveScan` returns early while the status is `scanning`, so the
+ *     operator is locked out of ever starting another scan.
+ *   - The REST view keeps reporting an active scan while the in-memory live
+ *     feed, which does not survive a restart, correctly reports `idle`. The UI
+ *     then shows "SCANNING" and "start a scan" at the same time.
+ *
+ * Running at startup makes this sound without any heuristic: the in-memory
+ * `scans` map is empty in a new process, so a persisted `scanning` row cannot
+ * correspond to a live scan. Every such row is interrupted by definition.
+ *
+ * Recorded progress is deliberately preserved. `scanned_files`, `failed_files`
+ * and every `file_record` row stay exactly as the dead scan left them -- the
+ * files it did examine were really examined, and the failures it found are
+ * real evidence. Only the lifecycle status is corrected, and `last_error`
+ * states why.
+ */
+export function reconcileInterruptedScans(): number {
+  const interrupted = archiveDb
+    .prepare("SELECT owner_id FROM archive_scan WHERE status = 'scanning'")
+    .all() as Array<{ owner_id: string }>;
+
+  for (const { owner_id: ownerId } of interrupted) {
+    updateScan(ownerId, {
+      status: "failed",
+      completed_at: new Date().toISOString(),
+      last_error:
+        "The archive scan was interrupted before it finished, because the application stopped while it was running. Files already recorded were kept; start a new scan to continue.",
+    });
+    addEvent(
+      "warning",
+      "An archive scan was interrupted before it finished and has been closed out. Start a new scan to continue.",
+      "archive",
+      ownerId,
+    );
+  }
+
+  return interrupted.length;
+}
+
 export function readArchiveScan(ownerId: string) {
   const row = archiveDb.prepare(
     "SELECT status, started_at, completed_at, last_error, scanned_files, active_files, failed_files, duplicate_count, missing_count, quality_conflict_count, plex_only_count, local_only_count FROM archive_scan WHERE owner_id = ?",
