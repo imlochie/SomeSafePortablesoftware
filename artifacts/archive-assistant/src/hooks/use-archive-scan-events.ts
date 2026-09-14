@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { apiUrl } from '@/lib/desktop-api-base-url';
 
 // ---------------------------------------------------------------------------
 // Archive scan event stream (Server-Sent Events)
@@ -245,7 +246,7 @@ export function useArchiveScanEvents(options?: { onScanFinished?: () => void; on
     // polyfill). Staying disconnected is the correct degradation: the caller
     // already falls back to interval polling whenever `connected` is false.
     if (typeof EventSource === 'undefined') return;
-    const source = new EventSource('/api/archive/scan/events');
+    const source = new EventSource(apiUrl('/api/archive/scan/events'));
     let disposed = false;
 
     const scheduleFlush = () => {

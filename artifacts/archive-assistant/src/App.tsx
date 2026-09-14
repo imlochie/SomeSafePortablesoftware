@@ -28,9 +28,9 @@ import {
   useSyncControlPlaneReviewItems, useCreateArchiveOperation, usePreflightArchiveOperation,
   useExecuteArchiveOperation, useCancelArchiveOperation, useRetryArchiveOperation,
   useRollbackArchiveOperation,
-  setBaseUrl,
 } from '@workspace/api-client-react';
 import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
+import { apiUrl } from '@/lib/desktop-api-base-url';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
 import { ArchiveScanPanel } from '@/components/archive-scan-panel';
@@ -53,10 +53,9 @@ const clerkPubKey = authMode === 'clerk'
   : null;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const desktopApiBaseUrl = (window as Window & {
-  __ARCHIVE_API_BASE_URL__?: string;
-}).__ARCHIVE_API_BASE_URL__;
-setBaseUrl(import.meta.env.VITE_API_BASE_URL?.trim() || desktopApiBaseUrl || null);
+// The API base URL is configured in main.tsx before this module is imported.
+// It cannot be read at module scope here: the desktop shell injects it only
+// after its sidecar is ready, which is long after these modules evaluate.
 
 if (authMode === 'clerk' && !clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
@@ -248,7 +247,7 @@ function InspectionResult({ inspection, selected, setSelected, onPrepare, pendin
 function QueuePage() {
   const queryClient = useQueryClient(); const { data: jobs, isLoading, isError, refetch } = useGetDownloads(); const [notice, setNotice] = useState('');
   const start = useStartDownload(); const pause = usePauseDownload(); const resume = useResumeDownload(); const cancel = useCancelDownload(); const retry = useRetryDownload(); const remove = useDeleteDownload(); const inspect = useInspectMediaSource(); const create = useCreateDownload();
-  useEffect(() => { const source = new EventSource('/api/downloads/events'); const invalidate = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }; ['message', 'download', 'job.created', 'job.updated', 'job.completed', 'job.finished'].forEach((eventName) => source.addEventListener(eventName, invalidate)); source.onerror = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); }; return () => source.close(); }, [queryClient]);
+  useEffect(() => { const source = new EventSource(apiUrl('/api/downloads/events')); const invalidate = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }; ['message', 'download', 'job.created', 'job.updated', 'job.completed', 'job.finished'].forEach((eventName) => source.addEventListener(eventName, invalidate)); source.onerror = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); }; return () => source.close(); }, [queryClient]);
   const persist = (mutation: { mutate: (data: { id: number }, options: { onSuccess: () => void; onError: (error: unknown) => void }) => void }, id: number, message: string) => mutation.mutate({ id }, { onSuccess: () => { setNotice(message); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(errorText(error)) });
   const createDemo = () => { setNotice('Inspecting the demo source…'); inspect.mutate({ data: { url: 'https://demo.local/archive-assistant/sample', forceRefresh: true } }, { onSuccess: (source) => { const format = source.formats.find((item) => item.usable); if (!format) { setNotice('Demo source returned no usable format.'); return; } create.mutate({ data: { sourceUrl: source.metadata.webpageUrl, title: source.metadata.title, sourceSite: source.metadata.extractor, selectedFormatId: format.formatId, selectedVideoFormatId: source.recommendedVideoFormatId, selectedAudioFormatId: source.recommendedAudioFormatId, outputContainer: 'mkv', finalFilename: source.metadata.title } }, { onSuccess: (job) => { start.mutate({ id: job.id }, { onSuccess: () => { setNotice('Demo job created and started.'); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(`Demo job created, but start failed: ${errorText(error)}`) }); }, onError: (error) => setNotice(errorText(error)) }); }, onError: (error) => setNotice(`Demo inspection failed: ${errorText(error)}`) }); };
   const action = (job: DownloadJob, kind: 'start' | 'pause' | 'resume' | 'cancel' | 'retry' | 'delete') => { if (kind === 'delete') { if (window.confirm(`Delete job #${job.id}? This only removes the job record.`)) persist(remove, job.id, `Job #${job.id} deleted.`); return; } if (kind === 'start') persist(start, job.id, `Job #${job.id} started.`); if (kind === 'pause') persist(pause, job.id, `Job #${job.id} paused.`); if (kind === 'resume') persist(resume, job.id, `Job #${job.id} resumed.`); if (kind === 'cancel') persist(cancel, job.id, `Job #${job.id} cancelled.`); if (kind === 'retry') persist(retry, job.id, `Job #${job.id} queued for retry.`); };

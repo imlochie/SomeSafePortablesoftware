@@ -541,8 +541,12 @@ fn start_sidecar(app: &AppHandle, window: &WebviewWindow) -> Result<SidecarState
     }
 
     let base_url = format!("http://127.0.0.1:{port}");
+    // The frontend waits for this value before it mounts, because the port is
+    // only known once the sidecar is listening. Dispatch an event as well as
+    // setting the global so the wait ends immediately rather than on the next
+    // poll tick.
     let script = format!(
-        "window.__ARCHIVE_API_BASE_URL__ = {};",
+        "window.__ARCHIVE_API_BASE_URL__ = {}; window.dispatchEvent(new Event('archive:api-base-url'));",
         serde_json::to_string(&base_url).unwrap_or_else(|_| "\"http://127.0.0.1:8080\"".into())
     );
     window
