@@ -1,5 +1,6 @@
 export const integrationIds = [
   "plex",
+  "jellyfin",
   "sonarr",
   "radarr",
   "prowlarr",
@@ -9,6 +10,17 @@ export const integrationIds = [
 ] as const;
 
 export type IntegrationId = (typeof integrationIds)[number];
+
+/**
+ * Adapters backed by a first-party service with owner-scoped credentials
+ * stored in settings, rather than by process environment configuration.
+ */
+export const serviceBackedIntegrationIds = ["plex", "jellyfin"] as const;
+
+export type ServiceBackedIntegrationId = (typeof serviceBackedIntegrationIds)[number];
+
+/** Adapters configured from the process environment. */
+export type ExternalIntegrationId = Exclude<IntegrationId, ServiceBackedIntegrationId>;
 
 export type IntegrationCapability =
   | "archive_search"

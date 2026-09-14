@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess, execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { basename, join } from "node:path";
+import { moveFile } from "../lib/fs-move";
 import { promisify } from "node:util";
 import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
 import { inspectLocalMedia, prepareDownload, validateFormatId } from "./media";
@@ -132,7 +133,7 @@ async function verifyAndMove(id: number, ownerId: string, inputPath: string, job
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  await fs.rename(inputPath, finalPath);
+  await moveFile(inputPath, finalPath);
   setStatus(id, ownerId, "complete", {
     progress: 100,
     final_path: finalPath,

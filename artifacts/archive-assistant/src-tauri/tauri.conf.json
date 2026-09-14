@@ -30,6 +30,9 @@
     "active": true,
     "targets": ["nsis"],
     "icon": ["icons/icon.png"],
-    "resources": ["../../api-server/dist", "runtime"]
+    "resources": {
+      "../../api-server/dist/": "api-server/dist/",
+      "runtime/": "runtime/"
+    }
   }
 }

@@ -229,6 +229,36 @@ export interface SystemDependencies {
   mediaBundle: MediaBundleStatus | null;
 }
 
+export type StorageDiagnosticsDatabasePathSource = typeof StorageDiagnosticsDatabasePathSource[keyof typeof StorageDiagnosticsDatabasePathSource];
+
+
+export const StorageDiagnosticsDatabasePathSource = {
+  ARCHIVE_DB_PATH: 'ARCHIVE_DB_PATH',
+  working_directory_fallback: 'working_directory_fallback',
+} as const;
+
+export type StorageDiagnosticsCounts = {
+  fileRecords: number;
+  activeFileRecords: number;
+  plexItems: number;
+  jellyfinItems: number;
+  reviewItems: number;
+  archiveOperations: number;
+  settings: number;
+};
+
+export interface StorageDiagnostics {
+  databasePath: string;
+  databasePathSource: StorageDiagnosticsDatabasePathSource;
+  databasePathIsAbsolute: boolean;
+  workingDirectory: string;
+  databaseSizeBytes: number | null;
+  counts: StorageDiagnosticsCounts;
+  plexConfigured: boolean;
+  journalMode: string | null;
+  walSidecars: string[];
+}
+
 export type AppSettingsLogLevel = typeof AppSettingsLogLevel[keyof typeof AppSettingsLogLevel];
 
 
@@ -488,11 +518,138 @@ export interface PlexInventory {
   items: PlexInventoryItem[];
 }
 
+/**
+ * Media server supplying the reference inventory.
+ */
+export type ArchiveProvider = typeof ArchiveProvider[keyof typeof ArchiveProvider];
+
+
+export const ArchiveProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export interface ArchiveProviderSelection {
+  provider: ArchiveProvider;
+  providerLabel: string;
+  /** Providers that currently hold synchronized inventory. */
+  available: ArchiveProvider[];
+}
+
+export interface ArchiveProviderSelectionUpdate {
+  provider: ArchiveProvider;
+}
+
+export type JellyfinConfigStatus = typeof JellyfinConfigStatus[keyof typeof JellyfinConfigStatus];
+
+
+export const JellyfinConfigStatus = {
+  not_configured: 'not_configured',
+  configured: 'configured',
+  connection_failed: 'connection_failed',
+  connected: 'connected',
+  syncing: 'syncing',
+  synced: 'synced',
+  sync_error: 'sync_error',
+} as const;
+
+export type JellyfinConfigConnectionStatus = typeof JellyfinConfigConnectionStatus[keyof typeof JellyfinConfigConnectionStatus];
+
+
+export const JellyfinConfigConnectionStatus = {
+  not_configured: 'not_configured',
+  configured: 'configured',
+  connection_failed: 'connection_failed',
+  connected: 'connected',
+} as const;
+
+export type JellyfinConfigSyncStatus = typeof JellyfinConfigSyncStatus[keyof typeof JellyfinConfigSyncStatus];
+
+
+export const JellyfinConfigSyncStatus = {
+  idle: 'idle',
+  syncing: 'syncing',
+  synced: 'synced',
+  sync_error: 'sync_error',
+} as const;
+
+export interface JellyfinConfig {
+  serverUrl: string;
+  configured: boolean;
+  hasApiKey: boolean;
+  /** @nullable */
+  userId: string | null;
+  status: JellyfinConfigStatus;
+  connectionStatus: JellyfinConfigConnectionStatus;
+  syncStatus: JellyfinConfigSyncStatus;
+  /** @nullable */
+  lastAttemptedAt: string | null;
+  /** @nullable */
+  lastSuccessfulSyncAt: string | null;
+  /** @nullable */
+  lastError: string | null;
+  /** @nullable */
+  serverName: string | null;
+  /** @minimum 0 */
+  libraryCount: number;
+  /** @minimum 0 */
+  itemCount: number;
+  /** @minimum 0 */
+  mediaCount: number;
+}
+
+export interface JellyfinConfigUpdate {
+  serverUrl?: string;
+  apiKey?: string;
+  userId?: string;
+}
+
+export interface JellyfinLibrary {
+  id: number;
+  key: string;
+  name: string;
+  type: string;
+  serverUrl: string;
+  /** @minimum 0 */
+  itemCount: number;
+  /** @nullable */
+  lastSyncedAt: string | null;
+  syncStatus: string;
+  /** @nullable */
+  syncError: string | null;
+}
+
+export interface JellyfinInventoryItem {
+  id: number;
+  libraryId: number;
+  libraryName: string;
+  itemKey: string;
+  title: string;
+  itemType: string;
+  /** @nullable */
+  year: number | null;
+  thumbPathAvailable: boolean;
+  /** @nullable */
+  addedAt: string | null;
+  /** @nullable */
+  updatedAt: string | null;
+  /** @minimum 0 */
+  mediaCount: number;
+  /** @minimum 0 */
+  partCount: number;
+}
+
+export interface JellyfinInventory {
+  libraries: JellyfinLibrary[];
+  items: JellyfinInventoryItem[];
+}
+
 export type IntegrationStatusId = typeof IntegrationStatusId[keyof typeof IntegrationStatusId];
 
 
 export const IntegrationStatusId = {
   plex: 'plex',
+  jellyfin: 'jellyfin',
   sonarr: 'sonarr',
   radarr: 'radarr',
   prowlarr: 'prowlarr',
@@ -663,6 +820,7 @@ export type ArchiveScanStatus = typeof ArchiveScanStatus[keyof typeof ArchiveSca
 export const ArchiveScanStatus = {
   not_scanned: 'not_scanned',
   scanning: 'scanning',
+  interrupted: 'interrupted',
   completed: 'completed',
   failed: 'failed',
 } as const;
@@ -691,6 +849,13 @@ export interface ArchiveScan {
   plexOnlyCount: number;
   /** @minimum 0 */
   localOnlyCount: number;
+  /**
+     * How many times the current or most recent scan pass was resumed.
+     * @minimum 0
+     */
+  resumedCount: number;
+  /** Whether starting a scan will continue an interrupted pass. */
+  resumable: boolean;
 }
 
 export type ArchiveInventorySummaryHealthStatus = typeof ArchiveInventorySummaryHealthStatus[keyof typeof ArchiveInventorySummaryHealthStatus];
@@ -820,6 +985,9 @@ export interface ArchivePlexMatch {
   /** @nullable */
   year: number | null;
   qualityDifferences: string[];
+  provider: ArchiveProvider;
+  /** Operator-facing provider name, for example Plex or Jellyfin. */
+  providerLabel: string;
 }
 
 export interface ArchivePlexOnlyRecord {
@@ -829,6 +997,8 @@ export interface ArchivePlexOnlyRecord {
   /** @nullable */
   year: number | null;
   qualitySummary: string;
+  provider: ArchiveProvider;
+  providerLabel: string;
 }
 
 export type ArchiveInventoryRecordScanStatus = typeof ArchiveInventoryRecordScanStatus[keyof typeof ArchiveInventoryRecordScanStatus];
@@ -935,6 +1105,9 @@ export interface ArchiveInventoryRecord {
 
 export interface ArchiveInventory {
   scan: ArchiveScan;
+  provider: ArchiveProvider;
+  /** Operator-facing name of the active reference provider. */
+  providerLabel: string;
   summary: ArchiveInventorySummary;
   records: ArchiveInventoryRecord[];
   plexOnly: ArchivePlexOnlyRecord[];
@@ -1588,9 +1761,37 @@ export interface PlanAcquisitionImport {
   dryRun?: boolean;
 }
 
+export type FindingSeverity = typeof FindingSeverity[keyof typeof FindingSeverity];
+
+
+export const FindingSeverity = {
+  info: 'info',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  critical: 'critical',
+} as const;
+
+export type SeverityBreakdownBySeverity = {
+  info: number;
+  low: number;
+  medium: number;
+  high: number;
+  critical: number;
+};
+
+export interface SeverityBreakdown {
+  total: number;
+  reviewRequired: number;
+  informational: number;
+  bySeverity: SeverityBreakdownBySeverity;
+}
+
 export interface ReviewSyncResult {
   namingItems: number;
   archiveFindingItems: number;
+  informationalFindings: number;
+  severity: SeverityBreakdown;
   total: number;
 }
 

@@ -16,6 +16,8 @@ tags:
     description: Local application settings
   - name: plex
     description: Plex connection configuration
+  - name: jellyfin
+    description: Jellyfin connection configuration
   - name: integrations
     description: External media integration adapter status
   - name: acquisition
@@ -68,6 +70,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemDependencies"
+  /system/storage-diagnostics:
+    get:
+      operationId: getStorageDiagnostics
+      tags: [system]
+      summary: Report which database this process has open and what it contains
+      responses:
+        "200":
+          description: Storage diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageDiagnostics"
   /system/events:
     get:
       operationId: getSystemEvents
@@ -176,6 +190,100 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PlexInventory"
+  /jellyfin/config:
+    get:
+      operationId: getJellyfinConfig
+      tags: [jellyfin]
+      summary: Get Jellyfin configuration status
+      responses:
+        "200":
+          description: Jellyfin configuration without secrets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JellyfinConfig"
+    patch:
+      operationId: updateJellyfinConfig
+      tags: [jellyfin]
+      summary: Update Jellyfin configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JellyfinConfigUpdate"
+      responses:
+        "200":
+          description: Updated Jellyfin configuration status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JellyfinConfig"
+  /jellyfin/test-connection:
+    post:
+      operationId: testJellyfinConnection
+      tags: [jellyfin]
+      summary: Verify the configured Jellyfin server
+      responses:
+        "200":
+          description: Actual Jellyfin connection result without credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JellyfinConfig"
+  /jellyfin/sync:
+    post:
+      operationId: startJellyfinSync
+      tags: [jellyfin]
+      summary: Start synchronizing the configured Jellyfin inventory
+      responses:
+        "202":
+          description: Jellyfin synchronization started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JellyfinConfig"
+  /jellyfin/inventory:
+    get:
+      operationId: getJellyfinInventory
+      tags: [jellyfin]
+      summary: Get the synchronized Jellyfin inventory
+      responses:
+        "200":
+          description: Owner-scoped Jellyfin libraries and items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JellyfinInventory"
+  /archive/provider:
+    get:
+      operationId: getArchiveProvider
+      tags: [archive]
+      summary: Get the active archive reference provider
+      responses:
+        "200":
+          description: The media server currently supplying reference inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveProviderSelection"
+    put:
+      operationId: setArchiveProvider
+      tags: [archive]
+      summary: Select the archive reference provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveProviderSelectionUpdate"
+      responses:
+        "200":
+          description: The updated reference provider selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveProviderSelection"
   /integrations/status:
     get:
       operationId: getIntegrationStatuses
@@ -1081,6 +1189,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /archive/scan/events:
+    get:
+      operationId: streamArchiveScanEvents
+      tags: [archive]
+      summary: Stream live archive scan progress as Server-Sent Events
+      description: >-
+        Server-Sent Events stream of live scan observability. On connect the
+        server sends a `snapshot` event carrying the persisted scan aggregate
+        and the ephemeral live state, followed by `scan.*` events as the scan
+        progresses. The persisted aggregate from `GET /archive/scan` remains
+        the source of truth; this stream is ephemeral and safe to lose.
+        Events are owner-scoped. Not modelled as a JSON response because the
+        body is an unbounded `text/event-stream`.
+      responses:
+        "200":
+          description: Owner-scoped Server-Sent Events stream of archive scan progress
+          content:
+            text/event-stream:
+              schema:
+                type: string
   /archive/scan:
     get:
       operationId: getArchiveScan
@@ -1705,6 +1833,43 @@ components:
           oneOf:
             - $ref: "#/components/schemas/MediaBundleStatus"
             - type: "null"
+    StorageDiagnostics:
+      type: object
+      required:
+        [databasePath, databasePathSource, databasePathIsAbsolute, workingDirectory,
+         databaseSizeBytes, counts, plexConfigured, journalMode, walSidecars]
+      properties:
+        databasePath: { type: string }
+        databasePathSource:
+          type: string
+          enum: [ARCHIVE_DB_PATH, working_directory_fallback]
+        databasePathIsAbsolute: { type: boolean }
+        workingDirectory: { type: string }
+        databaseSizeBytes:
+          oneOf:
+            - type: number
+            - type: "null"
+        counts:
+          type: object
+          required:
+            [fileRecords, activeFileRecords, plexItems, jellyfinItems, reviewItems,
+             archiveOperations, settings]
+          properties:
+            fileRecords: { type: number }
+            activeFileRecords: { type: number }
+            plexItems: { type: number }
+            jellyfinItems: { type: number }
+            reviewItems: { type: number }
+            archiveOperations: { type: number }
+            settings: { type: number }
+        plexConfigured: { type: boolean }
+        journalMode:
+          oneOf:
+            - type: string
+            - type: "null"
+        walSidecars:
+          type: array
+          items: { type: string }
     SystemEvent:
       type: object
       required: [id, level, message, timestamp, source, operatorId, retentionClass]
@@ -1948,6 +2113,138 @@ components:
         partCount:
           type: number
           minimum: 0
+    ArchiveProviderSelection:
+      type: object
+      required: [provider, providerLabel, available]
+      properties:
+        provider:
+          $ref: "#/components/schemas/ArchiveProvider"
+        providerLabel:
+          type: string
+        available:
+          type: array
+          description: Providers that currently hold synchronized inventory.
+          items:
+            $ref: "#/components/schemas/ArchiveProvider"
+    ArchiveProviderSelectionUpdate:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          $ref: "#/components/schemas/ArchiveProvider"
+    JellyfinConfig:
+      type: object
+      required: [serverUrl, configured, hasApiKey, userId, status, connectionStatus, syncStatus, lastAttemptedAt, lastSuccessfulSyncAt, lastError, serverName, libraryCount, itemCount, mediaCount]
+      properties:
+        serverUrl:
+          type: string
+        configured:
+          type: boolean
+        hasApiKey:
+          type: boolean
+        userId:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [not_configured, configured, connection_failed, connected, syncing, synced, sync_error]
+        connectionStatus:
+          type: string
+          enum: [not_configured, configured, connection_failed, connected]
+        syncStatus:
+          type: string
+          enum: [idle, syncing, synced, sync_error]
+        lastAttemptedAt:
+          type: [string, "null"]
+        lastSuccessfulSyncAt:
+          type: [string, "null"]
+        lastError:
+          type: [string, "null"]
+        serverName:
+          type: [string, "null"]
+        libraryCount:
+          type: number
+          minimum: 0
+        itemCount:
+          type: number
+          minimum: 0
+        mediaCount:
+          type: number
+          minimum: 0
+    JellyfinConfigUpdate:
+      type: object
+      properties:
+        serverUrl:
+          type: string
+        apiKey:
+          type: string
+          writeOnly: true
+        userId:
+          type: string
+    JellyfinInventory:
+      type: object
+      required: [libraries, items]
+      properties:
+        libraries:
+          type: array
+          items:
+            $ref: "#/components/schemas/JellyfinLibrary"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/JellyfinInventoryItem"
+    JellyfinLibrary:
+      type: object
+      required: [id, key, name, type, serverUrl, itemCount, lastSyncedAt, syncStatus, syncError]
+      properties:
+        id:
+          type: number
+        key:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        serverUrl:
+          type: string
+        itemCount:
+          type: number
+          minimum: 0
+        lastSyncedAt:
+          type: [string, "null"]
+        syncStatus:
+          type: string
+        syncError:
+          type: [string, "null"]
+    JellyfinInventoryItem:
+      type: object
+      required: [id, libraryId, libraryName, itemKey, title, itemType, year, thumbPathAvailable, addedAt, updatedAt, mediaCount, partCount]
+      properties:
+        id:
+          type: number
+        libraryId:
+          type: number
+        libraryName:
+          type: string
+        itemKey:
+          type: string
+        title:
+          type: string
+        itemType:
+          type: string
+        year:
+          type: [number, "null"]
+        thumbPathAvailable:
+          type: boolean
+        addedAt:
+          type: [string, "null"]
+        updatedAt:
+          type: [string, "null"]
+        mediaCount:
+          type: number
+          minimum: 0
+        partCount:
+          type: number
+          minimum: 0
     IntegrationStatusResponse:
       type: object
       required: [integrations]
@@ -2040,7 +2337,7 @@ components:
       properties:
         id:
           type: string
-          enum: [plex, sonarr, radarr, prowlarr, qbittorrent, mpilot, telegram]
+          enum: [plex, jellyfin, sonarr, radarr, prowlarr, qbittorrent, mpilot, telegram]
         name:
           type: string
         state:
@@ -2114,11 +2411,11 @@ components:
             $ref: "#/components/schemas/MissingMediaItem"
     ArchiveScan:
       type: object
-      required: [status, startedAt, completedAt, lastError, scannedFiles, activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount]
+      required: [status, startedAt, completedAt, lastError, scannedFiles, activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount, resumedCount, resumable]
       properties:
         status:
           type: string
-          enum: [not_scanned, scanning, completed, failed]
+          enum: [not_scanned, scanning, interrupted, completed, failed]
         startedAt:
           type: [string, "null"]
         completedAt:
@@ -2149,6 +2446,13 @@ components:
         localOnlyCount:
           type: number
           minimum: 0
+        resumedCount:
+          type: number
+          minimum: 0
+          description: How many times the current or most recent scan pass was resumed.
+        resumable:
+          type: boolean
+          description: Whether starting a scan will continue an interrupted pass.
     ArchiveInventorySummary:
       type: object
       required: [activeFiles, failedFiles, integrityFailureCount, inspectionFailureCount, healthStatus, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount, reviewedCount, unresolvedCount]
@@ -2271,9 +2575,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ArchiveBulkReviewResult"
+    ArchiveProvider:
+      type: string
+      description: Media server supplying the reference inventory.
+      enum: [plex, jellyfin]
     ArchivePlexMatch:
       type: object
-      required: [ratingKey, title, year, qualityDifferences]
+      required: [ratingKey, title, year, qualityDifferences, provider, providerLabel]
       properties:
         ratingKey:
           type: string
@@ -2285,9 +2593,14 @@ components:
           type: array
           items:
             type: string
+        provider:
+          $ref: "#/components/schemas/ArchiveProvider"
+        providerLabel:
+          type: string
+          description: Operator-facing provider name, for example Plex or Jellyfin.
     ArchivePlexOnlyRecord:
       type: object
-      required: [ratingKey, title, itemType, year, qualitySummary]
+      required: [ratingKey, title, itemType, year, qualitySummary, provider, providerLabel]
       properties:
         ratingKey:
           type: string
@@ -2298,6 +2611,10 @@ components:
         year:
           type: [number, "null"]
         qualitySummary:
+          type: string
+        provider:
+          $ref: "#/components/schemas/ArchiveProvider"
+        providerLabel:
           type: string
     ArchiveInventoryRecord:
       type: object
@@ -2383,10 +2700,15 @@ components:
           type: [string, "null"]
     ArchiveInventory:
       type: object
-      required: [scan, summary, records, plexOnly]
+      required: [scan, provider, providerLabel, summary, records, plexOnly]
       properties:
         scan:
           $ref: "#/components/schemas/ArchiveScan"
+        provider:
+          $ref: "#/components/schemas/ArchiveProvider"
+        providerLabel:
+          type: string
+          description: Operator-facing name of the active reference provider.
         summary:
           $ref: "#/components/schemas/ArchiveInventorySummary"
         records:
@@ -3072,12 +3394,33 @@ components:
       properties:
         destinationPath: { type: string, minLength: 1 }
         dryRun: { type: boolean, default: false }
+    FindingSeverity:
+      type: string
+      enum: [info, low, medium, high, critical]
+    SeverityBreakdown:
+      type: object
+      required: [total, reviewRequired, informational, bySeverity]
+      properties:
+        total: { type: number }
+        reviewRequired: { type: number }
+        informational: { type: number }
+        bySeverity:
+          type: object
+          required: [info, low, medium, high, critical]
+          properties:
+            info: { type: number }
+            low: { type: number }
+            medium: { type: number }
+            high: { type: number }
+            critical: { type: number }
     ReviewSyncResult:
       type: object
-      required: [namingItems, archiveFindingItems, total]
+      required: [namingItems, archiveFindingItems, informationalFindings, severity, total]
       properties:
         namingItems: { type: number }
         archiveFindingItems: { type: number }
+        informationalFindings: { type: number }
+        severity: { $ref: "#/components/schemas/SeverityBreakdown" }
         total: { type: number }
     ReportPagination:
       type: object

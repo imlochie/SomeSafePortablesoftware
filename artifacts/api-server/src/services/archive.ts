@@ -1,8 +1,20 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { access, readdir, stat } from "node:fs/promises";
 import { basename, extname, relative, resolve, sep } from "node:path";
-import { archiveDb, addEvent, readSettings, type SettingsRecord } from "../lib/archive-db";
+import { archiveDb, addEvent, readSettings, readUserSetting, writeUserSetting, type SettingsRecord } from "../lib/archive-db";
+import { expandPath } from "../lib/expand-path";
+import {
+  notifyArchiveScanCompleted,
+  notifyArchiveScanFailed,
+  notifyArchiveScanFileCompleted,
+  notifyArchiveScanFileDiscovered,
+  notifyArchiveScanFileFailed,
+  notifyArchiveScanFileStarted,
+  notifyArchiveScanFileStage,
+  notifyArchiveScanProgress,
+  notifyArchiveScanStarted,
+} from "./scan-events";
 import { inspectLocalMedia } from "./media";
 import {
   assessMediaIntegrityFailure,
@@ -18,7 +30,24 @@ const supportedExtensions = new Set([
 const scans = new Map<string, Promise<void>>();
 const inventoryCache = new Map<string, ReturnType<typeof buildArchiveInventory>>();
 
-type ScanStatus = "not_scanned" | "scanning" | "completed" | "failed";
+/**
+ * Media servers that can supply a reference inventory. Exactly one is active
+ * per owner, selected by the archiveProvider setting.
+ */
+export const archiveProviders = ["plex", "jellyfin"] as const;
+export type ArchiveProvider = (typeof archiveProviders)[number];
+
+export function providerLabel(provider: ArchiveProvider) {
+  return provider === "jellyfin" ? "Jellyfin" : "Plex";
+}
+
+type ScanStatus =
+  | "not_scanned"
+  | "scanning"
+  /** Stopped before finishing; a later scan can continue this same pass. */
+  | "interrupted"
+  | "completed"
+  | "failed";
 type FileStatus = "active" | "missing" | "error";
 type QualityStatus =
   | "best_local_version"
@@ -85,6 +114,11 @@ type LocalMediaIdentity = {
   checksum: string | null;
 };
 
+/**
+ * A normalized media-server row. Plex and Jellyfin inventories are projected
+ * into this single shape so identity matching and quality comparison stay
+ * provider-neutral; `provider` is carried through for operator-facing labels.
+ */
 type PlexRow = {
   id: number;
   rating_key: string;
@@ -96,6 +130,7 @@ type PlexRow = {
   video_codec: string | null;
   audio_codec: string | null;
   bitrate: number | null;
+  provider: ArchiveProvider;
 };
 
 type QualityShape = {
@@ -107,12 +142,6 @@ type QualityShape = {
   audioChannels: number | null;
   container: string | null;
 };
-
-function expandPath(value: string) {
-  return value.startsWith("~/")
-    ? resolve(process.env.HOME ?? process.cwd(), value.slice(2))
-    : resolve(value);
-}
 
 function parseJsonArray(value: string | null | undefined) {
   if (!value) return [];
@@ -323,6 +352,7 @@ function upsertArchiveRecord(
   fileChecksum: string | null,
   errorMessage: string | null,
   integrityClassification: MediaIntegrityClassification | null,
+  scanRunId: string | null = null,
 ) {
   const filename = basename(filePath);
   const relativePath = relative(root, filePath);
@@ -388,12 +418,12 @@ function upsertArchiveRecord(
          local_identity_id, volume_id, archive_root,
          scan_status, last_seen_at, modified_at_ms, extension, duration_seconds, video_codec, audio_codec,
          width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages,
-          subtitle_languages, fingerprint, error_message, integrity_classification, updated_at)
+          subtitle_languages, fingerprint, error_message, integrity_classification, last_scan_run_id, updated_at)
        VALUES (
          ?, ?, ?, ?, ?, ?, ?, ?,
          ?, ?, ?,
          ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
        )
        ON CONFLICT(owner_id, path) DO UPDATE SET
          size_bytes = excluded.size_bytes, checksum = excluded.checksum, media_type = excluded.media_type,
@@ -406,6 +436,7 @@ function upsertArchiveRecord(
          audio_channels = excluded.audio_channels, audio_languages = excluded.audio_languages,
          subtitle_languages = excluded.subtitle_languages, fingerprint = excluded.fingerprint,
           error_message = excluded.error_message, integrity_classification = excluded.integrity_classification,
+          last_scan_run_id = excluded.last_scan_run_id,
           updated_at = CURRENT_TIMESTAMP`,
   ).run(
    filePath,
@@ -437,10 +468,11 @@ function upsertArchiveRecord(
    fingerprint,
    errorMessage,
     integrityClassification,
+    scanRunId,
   );
 }
 
-async function inspectFile(filePath: string, root: string, existing: FileRow | undefined, settings: SettingsRecord, archiveScanRoots: string[]) {
+async function inspectFile(filePath: string, root: string, existing: FileRow | undefined, settings: SettingsRecord, archiveScanRoots: string[], onProbe?: () => void) {
   let fileStats;
   try {
     fileStats = await stat(filePath);
@@ -481,6 +513,7 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
   let errorMessage: string | null = null;
   let integrityClassification: MediaIntegrityClassification | null = null;
   try {
+    onProbe?.();
     inspected = await inspectLocalMedia(filePath, settings, archiveScanRoots);
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : "The file could not be inspected.";
@@ -508,23 +541,115 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
   };
 }
 
+/**
+ * Decides whether the next scan continues an interrupted pass or starts fresh.
+ *
+ * A pass is resumable when the previous one was interrupted -- recorded as
+ * `interrupted` by startup reconciliation -- and it still has a run id. Any
+ * other terminal state means the archive was fully walked, so the next scan
+ * must start a new pass; continuing a completed pass would skip every file and
+ * report an instant, meaningless "scan".
+ */
+export function planScanResumption(ownerId: string) {
+  const row = archiveDb
+    .prepare(
+      "SELECT status, scan_run_id, started_at, scanned_files, failed_files, resumed_count FROM archive_scan WHERE owner_id = ?",
+    )
+    .get(ownerId) as
+    | {
+        status: ScanStatus;
+        scan_run_id: string | null;
+        started_at: string | null;
+        scanned_files: number;
+        failed_files: number;
+        resumed_count: number;
+      }
+    | undefined;
+
+  const resumable = row?.status === "interrupted" && typeof row.scan_run_id === "string" && row.scan_run_id !== "";
+
+  if (!resumable) {
+    return {
+      resuming: false as const,
+      scanRunId: randomUUID(),
+      startedAt: new Date().toISOString(),
+      scannedFiles: 0,
+      failedFiles: 0,
+      resumedCount: 0,
+    };
+  }
+
+  return {
+    resuming: true as const,
+    scanRunId: row!.scan_run_id as string,
+    startedAt: row!.started_at ?? new Date().toISOString(),
+    scannedFiles: row!.scanned_files,
+    failedFiles: row!.failed_files,
+    resumedCount: row!.resumed_count,
+  };
+}
+
+/**
+ * Paths already visited by a given pass, read from the database.
+ *
+ * This is the durable replacement for the in-memory set the scan used to keep.
+ * It is what allows a resumed pass to skip completed work and, critically, to
+ * run the vanished-file sweep without mistaking unvisited files for missing
+ * ones.
+ */
+export function readVisitedPaths(ownerId: string, scanRunId: string): Set<string> {
+  const rows = archiveDb
+    .prepare("SELECT path FROM file_record WHERE owner_id = ? AND last_scan_run_id = ?")
+    .all(ownerId, scanRunId) as Array<{ path: string }>;
+  return new Set(rows.map((row) => row.path));
+}
+
 async function scanArchive(ownerId: string) {
   invalidateArchiveInventoryCache(ownerId);
+  const sessionId = randomUUID();
   const settings = readSettings();
   const roots = scanRoots(settings);
-  const found = new Set<string>();
-  let scannedFiles = 0;
-  let failedFiles = 0;
+
+  // A resumable pass is identified by `scan_run_id`. If the previous pass was
+  // interrupted we adopt its id and continue it; otherwise this is a fresh
+  // pass with a new id. `file_record.last_scan_run_id` then tells us which
+  // files that pass already visited, which is both the skip list and -- more
+  // importantly -- the durable replacement for the in-memory `found` set the
+  // vanished-file sweep used to depend on.
+  const resumption = planScanResumption(ownerId);
+  const scanRunId = resumption.scanRunId;
+  const resuming = resumption.resuming;
+
+  // Files already visited by this pass. On a fresh pass this is empty.
+  const alreadyVisited = resuming ? readVisitedPaths(ownerId, scanRunId) : new Set<string>();
+
+  // Progress carries over so the operator sees one continuous count rather
+  // than a counter that resets to zero on every resume.
+  let scannedFiles = resuming ? resumption.scannedFiles : 0;
+  let failedFiles = resuming ? resumption.failedFiles : 0;
+  let resumedSkips = 0;
   let rootError: string | null = null;
   const traversalWarnings: string[] = [];
   updateScan(ownerId, {
     status: "scanning",
-    started_at: new Date().toISOString(),
+    started_at: resuming ? resumption.startedAt : new Date().toISOString(),
     completed_at: null,
     last_error: null,
-    scanned_files: 0,
-    failed_files: 0,
+    scan_run_id: scanRunId,
+    resumed_count: resuming ? resumption.resumedCount + 1 : 0,
+    scanned_files: scannedFiles,
+    failed_files: failedFiles,
   });
+
+  if (resuming) {
+    addEvent(
+      "info",
+      `Resuming the interrupted archive scan: ${alreadyVisited.size.toLocaleString()} file${alreadyVisited.size === 1 ? "" : "s"} already examined will be skipped.`,
+      "archive",
+      ownerId,
+    );
+  }
+  notifyArchiveScanStarted(ownerId, sessionId, roots);
 
 const concurrency = Math.max(
   1,
@@ -548,12 +673,19 @@ for (const root of roots) {
 
       const results = await Promise.all(
         files.map(async (filePath) => {
-          found.add(filePath);
+          notifyArchiveScanFileStarted(ownerId, sessionId, filePath, root);
 
           try {
             return {
               filePath,
-              result: await inspectFile(filePath, root, existingByPath.get(filePath), settings, roots),
+              result: await inspectFile(
+                filePath,
+                root,
+                existingByPath.get(filePath),
+                settings,
+                roots,
+                () => notifyArchiveScanFileStage(ownerId, sessionId, filePath, "probe"),
+              ),
             };
           } catch (error) {
             return {
@@ -580,15 +712,27 @@ for (const root of roots) {
       archiveDb.exec("BEGIN IMMEDIATE");
       try {
         for (const { result } of results) {
+          notifyArchiveScanFileStage(ownerId, sessionId, result.filePath, "register");
+          let fileError: string | null = null;
+          let fileOutcome: "registered" | "unchanged" | null = null;
           if (result.warningMessage) {
             failedFiles += 1;
             warnings.push(result.warningMessage);
+            fileError = result.warningMessage;
+            // The file could not be read, but it is present on disk -- the old
+            // in-memory `found` set included these, and the vanished-file sweep
+            // must keep treating them as seen. Without this stamp an unreadable
+            // file would be silently reclassified as `missing`.
+            archiveDb.prepare(
+              "UPDATE file_record SET last_scan_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE owner_id = ? AND path = ?",
+            ).run(scanRunId, ownerId, result.filePath);
           } else {
             try {
               if (result.unchangedRecordId !== null) {
                 archiveDb.prepare(
-                  "UPDATE file_record SET last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
-                ).run(result.unchangedRecordId, ownerId);
+                  "UPDATE file_record SET last_seen_at = CURRENT_TIMESTAMP, last_scan_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+                ).run(scanRunId, result.unchangedRecordId, ownerId);
+                fileOutcome = "unchanged";
               } else {
                 upsertArchiveRecord(
                   ownerId,
@@ -599,22 +743,36 @@ for (const root of roots) {
                   result.fileChecksum,
                   result.errorMessage,
                   result.integrityClassification,
+                  scanRunId,
                 );
-                if (result.inspected === null) failedFiles += 1;
+                if (result.inspected === null) {
+                  failedFiles += 1;
+                  fileError = result.errorMessage ?? "The file could not be inspected.";
+                } else {
+                  fileOutcome = "registered";
+                }
               }
             } catch (error) {
               failedFiles += 1;
-              warnings.push(`Archive scan could not inspect ${basename(result.filePath)}: ${
+              const message = `Archive scan could not inspect ${basename(result.filePath)}: ${
                 error instanceof Error ? error.message : "unknown error"
-              }`);
+              }`;
+              warnings.push(message);
+              fileError = message;
             }
           }
           scannedFiles += 1;
+          if (fileOutcome === null) {
+            notifyArchiveScanFileFailed(ownerId, sessionId, result.filePath, fileError!, scannedFiles, failedFiles);
+          } else {
+            notifyArchiveScanFileCompleted(ownerId, sessionId, result.filePath, fileOutcome, scannedFiles, failedFiles);
+          }
         }
         updateScan(ownerId, {
           scanned_files: scannedFiles,
           failed_files: failedFiles,
         });
+        notifyArchiveScanProgress(ownerId, sessionId, scannedFiles, failedFiles);
         archiveDb.exec("COMMIT");
       } catch (error) {
         archiveDb.exec("ROLLBACK");
@@ -626,7 +784,16 @@ for (const root of roots) {
     };
 
     for await (const filePath of walk(root, (message) => traversalWarnings.push(message))) {
+      // Already examined by an earlier segment of this same pass. Skipping here
+      // is what makes resumption worth having: it avoids re-running FFprobe and
+      // a full SHA-256 read over files that were already done.
+      if (alreadyVisited.has(filePath)) {
+        resumedSkips += 1;
+        continue;
+      }
+
       batch.push(filePath);
+      notifyArchiveScanFileDiscovered(ownerId, sessionId, filePath, root);
 
       if (batch.length >= concurrency) {
         await processBatch();
@@ -641,13 +808,21 @@ for (const root of roots) {
     failedFiles += 1;
   }
 }
+  notifyArchiveScanProgress(ownerId, sessionId, scannedFiles, failedFiles, true);
+
   archiveDb.exec("BEGIN IMMEDIATE");
   try {
+    // Which files this pass saw is read back from the database rather than an
+    // in-memory set. A resumed pass cannot reconstruct what an earlier segment
+    // saw, and using an incomplete set here would mark perfectly present files
+    // as `missing` -- the single most destructive thing a resumable scan could
+    // get wrong.
+    const visited = readVisitedPaths(ownerId, scanRunId);
     const existing = archiveDb.prepare(
       "SELECT id, path FROM file_record WHERE owner_id = ?",
     ).all(ownerId) as Array<{ id: number; path: string }>;
     for (const row of existing) {
-      if (roots.some((root) => row.path === root || row.path.startsWith(`${root}${sep}`)) && !found.has(row.path)) {
+      if (roots.some((root) => row.path === root || row.path.startsWith(`${root}${sep}`)) && !visited.has(row.path)) {
         archiveDb.prepare(
           "UPDATE file_record SET scan_status = 'missing', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
         ).run(row.id, ownerId);
@@ -670,6 +845,9 @@ for (const root of roots) {
     status: rootError ? "failed" : "completed",
     completed_at: new Date().toISOString(),
     last_error: error,
+    // The pass is over. Clearing the run id means the next scan starts a new
+    // pass rather than "resuming" a walk that already covered the archive.
+    scan_run_id: null,
     scanned_files: scannedFiles,
     active_files: final.summary.activeFiles,
     failed_files: failedFiles,
@@ -679,6 +857,11 @@ for (const root of roots) {
     plex_only_count: final.summary.plexOnlyCount,
     local_only_count: final.summary.localOnlyCount,
   });
+  if (rootError) {
+    notifyArchiveScanFailed(ownerId, sessionId, rootError, scannedFiles, failedFiles);
+  } else {
+    notifyArchiveScanCompleted(ownerId, sessionId, scannedFiles, failedFiles, error);
+  }
 }
 
 export function startArchiveScan(ownerId: string) {
@@ -693,6 +876,7 @@ export function startArchiveScan(ownerId: string) {
         completed_at: new Date().toISOString(),
         last_error: error instanceof Error ? error.message : "Archive scan failed unexpectedly.",
       });
+      notifyArchiveScanFailed(ownerId, null, error instanceof Error ? error.message : "Archive scan failed unexpectedly.");
       addEvent("error", "Archive scan failed unexpectedly.", "archive", ownerId);
     })
     .finally(() => {
@@ -702,9 +886,57 @@ export function startArchiveScan(ownerId: string) {
   return readArchiveScan(ownerId);
 }
 
+/**
+ * Clears scan records left in `scanning` by a process that died mid-scan.
+ *
+ * `scanArchive` writes `status: "scanning"` when it begins and only writes a
+ * terminal status from its own completion or catch path. If the process exits
+ * before that -- a crash, a restart, or the user quitting during a scan -- the
+ * row stays `scanning` forever. Nothing else reconciles it, and the
+ * consequences are not cosmetic:
+ *
+ *   - `startArchiveScan` returns early while the status is `scanning`, so the
+ *     operator is locked out of ever starting another scan.
+ *   - The REST view keeps reporting an active scan while the in-memory live
+ *     feed, which does not survive a restart, correctly reports `idle`. The UI
+ *     then shows "SCANNING" and "start a scan" at the same time.
+ *
+ * Running at startup makes this sound without any heuristic: the in-memory
+ * `scans` map is empty in a new process, so a persisted `scanning` row cannot
+ * correspond to a live scan. Every such row is interrupted by definition.
+ *
+ * Recorded progress is deliberately preserved. `scanned_files`, `failed_files`
+ * and every `file_record` row stay exactly as the dead scan left them -- the
+ * files it did examine were really examined, and the failures it found are
+ * real evidence. Only the lifecycle status is corrected, and `last_error`
+ * states why.
+ */
+export function reconcileInterruptedScans(): number {
+  const interrupted = archiveDb
+    .prepare("SELECT owner_id FROM archive_scan WHERE status = 'scanning'")
+    .all() as Array<{ owner_id: string }>;
+
+  for (const { owner_id: ownerId } of interrupted) {
+    updateScan(ownerId, {
+      status: "interrupted",
+      completed_at: new Date().toISOString(),
+      last_error:
+        "The archive scan was interrupted before it finished, because the application stopped while it was running. Files already examined were kept; starting a scan will continue where it stopped.",
+    });
+    addEvent(
+      "warning",
+      "An archive scan was interrupted before it finished. Starting a scan will resume it from where it stopped.",
+      "archive",
+      ownerId,
+    );
+  }
+
+  return interrupted.length;
+}
+
 export function readArchiveScan(ownerId: string) {
   const row = archiveDb.prepare(
-    "SELECT status, started_at, completed_at, last_error, scanned_files, active_files, failed_files, duplicate_count, missing_count, quality_conflict_count, plex_only_count, local_only_count FROM archive_scan WHERE owner_id = ?",
+    "SELECT status, started_at, completed_at, last_error, scanned_files, active_files, failed_files, duplicate_count, missing_count, quality_conflict_count, plex_only_count, local_only_count, scan_run_id, resumed_count FROM archive_scan WHERE owner_id = ?",
   ).get(ownerId) as {
     status: ScanStatus;
     started_at: string | null;
@@ -718,6 +950,8 @@ export function readArchiveScan(ownerId: string) {
     quality_conflict_count: number;
     plex_only_count: number;
     local_only_count: number;
+    scan_run_id: string | null;
+    resumed_count: number;
   } | undefined;
   return {
     status: row?.status ?? "not_scanned" as const,
@@ -732,18 +966,100 @@ export function readArchiveScan(ownerId: string) {
     qualityConflictCount: row?.quality_conflict_count ?? 0,
     plexOnlyCount: row?.plex_only_count ?? 0,
     localOnlyCount: row?.local_only_count ?? 0,
+    resumedCount: row?.resumed_count ?? 0,
+    // Whether pressing "start scan" will continue the previous pass rather
+    // than walk the archive from the beginning.
+    resumable: row?.status === "interrupted" && Boolean(row?.scan_run_id),
   };
 }
 
 function readPlexRows(ownerId: string) {
-  return archiveDb.prepare(
+  const rows = archiveDb.prepare(
     `SELECT pi.id, pi.rating_key, pi.title, pi.item_type, pi.year, pi.metadata_json,
             pm.video_resolution, pm.video_codec, pm.audio_codec, pm.bitrate
      FROM plex_item pi
      LEFT JOIN plex_media pm ON pm.item_id = pi.id
      WHERE pi.owner_id = ?
      ORDER BY pi.title COLLATE NOCASE`,
-  ).all(ownerId) as PlexRow[];
+  ).all(ownerId) as Omit<PlexRow, "provider">[];
+  return rows.map((row) => ({ ...row, provider: "plex" as const }));
+}
+
+/**
+ * Read the Jellyfin inventory into the shared comparison row shape. The
+ * Jellyfin item key takes the place of the Plex rating key.
+ */
+function readJellyfinRows(ownerId: string) {
+  const rows = archiveDb.prepare(
+    `SELECT ji.id, ji.item_key AS rating_key, ji.title, ji.item_type, ji.year, ji.metadata_json,
+            jm.video_resolution, jm.video_codec, jm.audio_codec, jm.bitrate
+     FROM jellyfin_item ji
+     LEFT JOIN jellyfin_media jm ON jm.item_id = ji.id
+     WHERE ji.owner_id = ?
+     ORDER BY ji.title COLLATE NOCASE`,
+  ).all(ownerId) as Omit<PlexRow, "provider">[];
+  return rows.map((row) => ({ ...row, provider: "jellyfin" as const }));
+}
+
+/**
+ * Resolve the active reference provider for an owner.
+ *
+ * The stored preference wins when it is valid. Otherwise fall back to whichever
+ * provider actually has inventory, so an operator who only configured Jellyfin
+ * still gets comparisons without first changing a setting.
+ */
+export function resolveArchiveProvider(ownerId: string): ArchiveProvider {
+  const configured = readUserSetting(ownerId, "archiveProvider");
+  if (typeof configured === "string" && archiveProviders.includes(configured as ArchiveProvider)) {
+    return configured as ArchiveProvider;
+  }
+  const jellyfinCount = archiveDb.prepare(
+    "SELECT COUNT(*) AS count FROM jellyfin_item WHERE owner_id = ?",
+  ).get(ownerId) as { count: number };
+  if (Number(jellyfinCount?.count ?? 0) > 0) {
+    const plexCount = archiveDb.prepare(
+      "SELECT COUNT(*) AS count FROM plex_item WHERE owner_id = ?",
+    ).get(ownerId) as { count: number };
+    if (Number(plexCount?.count ?? 0) === 0) return "jellyfin";
+  }
+  return "plex";
+}
+
+function readProviderRows(ownerId: string, provider: ArchiveProvider) {
+  return provider === "jellyfin" ? readJellyfinRows(ownerId) : readPlexRows(ownerId);
+}
+
+/** Providers that currently hold synchronized inventory for this owner. */
+export function availableArchiveProviders(ownerId: string): ArchiveProvider[] {
+  const available: ArchiveProvider[] = [];
+  const plexCount = archiveDb.prepare(
+    "SELECT COUNT(*) AS count FROM plex_item WHERE owner_id = ?",
+  ).get(ownerId) as { count: number };
+  if (Number(plexCount?.count ?? 0) > 0) available.push("plex");
+  const jellyfinCount = archiveDb.prepare(
+    "SELECT COUNT(*) AS count FROM jellyfin_item WHERE owner_id = ?",
+  ).get(ownerId) as { count: number };
+  if (Number(jellyfinCount?.count ?? 0) > 0) available.push("jellyfin");
+  return available;
+}
+
+export function readArchiveProviderSelection(ownerId: string) {
+  const provider = resolveArchiveProvider(ownerId);
+  return {
+    provider,
+    providerLabel: providerLabel(provider),
+    available: availableArchiveProviders(ownerId),
+  };
+}
+
+export function setArchiveProvider(ownerId: string, provider: ArchiveProvider) {
+  if (!archiveProviders.includes(provider)) {
+    throw new Error("The selected archive provider is not supported.");
+  }
+  writeUserSetting(ownerId, "archiveProvider", provider);
+  // The cached inventory was built against the previous provider.
+  invalidateArchiveInventoryCache(ownerId);
+  return readArchiveProviderSelection(ownerId);
 }
 
 type EpisodeIdentity = {
@@ -773,11 +1089,16 @@ function plexEpisodeIndex(plexRows: PlexRow[]) {
   for (const row of plexRows) {
     if (row.item_type !== "episode") continue;
     const metadata = asRecord(parseMetadata(row.metadata_json));
-    const show = typeof metadata.grandparentTitle === "string"
-      ? normalizeTitle(metadata.grandparentTitle)
-      : "";
-    const season = Number(metadata.parentIndex);
-    const episode = Number(metadata.index);
+    // Plex and Jellyfin name the show/season/episode fields differently; read
+    // whichever set the row's provider supplied.
+    const showTitle = typeof metadata.grandparentTitle === "string"
+      ? metadata.grandparentTitle
+      : typeof metadata.seriesName === "string"
+        ? metadata.seriesName
+        : "";
+    const show = showTitle ? normalizeTitle(showTitle) : "";
+    const season = Number(metadata.parentIndex ?? metadata.seasonNumber);
+    const episode = Number(metadata.index ?? metadata.episodeNumber);
     if (!show || !Number.isInteger(season) || season < 1 || !Number.isInteger(episode) || episode < 1) continue;
     const key = episodeIdentityKey({ show, season, episode });
     if (!index.has(key)) index.set(key, row);
@@ -866,9 +1187,10 @@ function plexMatch(row: FileRow, indexes: PlexTitleIndexes, episodeIndex: Map<st
   }, candidates[0]) : undefined;
 }
 
-function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, plexTitleIndex: PlexTitleIndexes, reviews: Map<string, ReviewRow>, localIdentity?: LocalMediaIdentity) {
+function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexRows: PlexRow[], episodeIndex: Map<string, PlexRow>, plexTitleIndex: PlexTitleIndexes, reviews: Map<string, ReviewRow>, provider: ArchiveProvider, localIdentity?: LocalMediaIdentity) {
   const integrityClassification = integrityClassificationFor(row);
   const integritySummary = mediaIntegritySummary(integrityClassification);
+  const label = providerLabel(provider);
   const identityKey = localIdentity?.identity_key
     ?? `${normalizeTitle(row.filename)}:${titleYear(row.filename) ?? ""}`;
   const sameIdentity = (indexes.identity.get(identityKey) ?? []).filter((candidate) => candidate.id !== row.id);
@@ -888,7 +1210,7 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     ? "The file was not present during the latest completed scan."
     : row.scan_status === "error"
       ? integritySummary ?? "FFprobe could not provide reliable metadata for this file."
-      : "No matching Plex item was found.";
+      : `No matching ${label} item was found.`;
   let qualityDifferences: string[] = [];
   if (row.scan_status === "active" && (exactDuplicate || fingerprintDuplicate)) {
     qualityStatus = "duplicate";
@@ -906,33 +1228,33 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
   } else if (row.scan_status === "active" && match) {
     const differences = qualityDifferencesFor(row, match);
     const localQuality = qualityShape(row);
-    const plexQuality = plexQualityShape(match);
+    const providerQuality = plexQualityShape(match);
     const localRank = qualityRank(localQuality);
-    const plexRank = qualityRank(plexQuality);
+    const providerRank = qualityRank(providerQuality);
     const resolutionDiffers =
       localQuality.height !== null &&
-      plexQuality.height !== null &&
-      localQuality.height !== plexQuality.height;
+      providerQuality.height !== null &&
+      localQuality.height !== providerQuality.height;
     const localHasHigherResolution =
-      resolutionDiffers && localQuality.height! > plexQuality.height!;
-    const localHasHdr = localQuality.hdr && !plexQuality.hdr;
-    const plexHasHdr = plexQuality.hdr && !localQuality.hdr;
+      resolutionDiffers && localQuality.height! > providerQuality.height!;
+    const localHasHdr = localQuality.hdr && !providerQuality.hdr;
+    const providerHasHdr = providerQuality.hdr && !localQuality.hdr;
     const materialTradeoff =
       resolutionDiffers &&
-      (localHasHigherResolution ? plexHasHdr : localHasHdr);
+      (localHasHigherResolution ? providerHasHdr : localHasHdr);
     qualityDifferences = differences;
     if (!differences.length) {
       qualityStatus = "plex_version_exists";
-      qualitySummary = "A matching Plex item exists with equivalent available quality metadata.";
+      qualitySummary = `A matching ${label} item exists with equivalent available quality metadata.`;
     } else if (materialTradeoff) {
       qualityStatus = "needs_review";
-      qualitySummary = "The local and Plex versions make a material resolution-versus-HDR tradeoff.";
-    } else if (localRank > plexRank) {
+      qualitySummary = `The local and ${label} versions make a material resolution-versus-HDR tradeoff.`;
+    } else if (localRank > providerRank) {
       qualityStatus = "higher_quality_available";
-      qualitySummary = "The local file ranks higher than the matched Plex version on available metadata.";
+      qualitySummary = `The local file ranks higher than the matched ${label} version on available metadata.`;
     } else {
       qualityStatus = "lower_quality_version";
-      qualitySummary = "The matched Plex version ranks higher on available metadata.";
+      qualitySummary = `The matched ${label} version ranks higher on available metadata.`;
     }
   }
   const duplicateOfId = exactDuplicate?.id ?? fingerprintDuplicate?.id ?? null;
@@ -941,6 +1263,8 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
     title: match.title,
     year: match.year,
     qualityDifferences,
+    provider: match.provider,
+    providerLabel: providerLabel(match.provider),
   } : null;
   const evidenceKey = reviewEvidenceKey({
     qualityStatus,
@@ -1014,7 +1338,8 @@ function buildArchiveInventory(ownerId: string) {
      WHERE owner_id = ?`,
   ).all(ownerId) as LocalMediaIdentity[];
   const identities = new Map(identityRows.map((identity) => [identity.id, identity]));
-  const plexRows = readPlexRows(ownerId);
+  const provider = resolveArchiveProvider(ownerId);
+  const plexRows = readProviderRows(ownerId, provider);
   const episodeIndex = plexEpisodeIndex(plexRows);
   const plexTitleIndex = plexTitleIndexes(plexRows);
   const indexes: InventoryIndexes = {
@@ -1068,6 +1393,7 @@ function buildArchiveInventory(ownerId: string) {
     episodeIndex,
     plexTitleIndex,
     reviews,
+    provider,
     row.local_identity_id === null || row.local_identity_id === undefined
       ? undefined
       : identities.get(row.local_identity_id),
@@ -1080,7 +1406,9 @@ function buildArchiveInventory(ownerId: string) {
       title: plex.title,
       itemType: plex.item_type,
       year: plex.year,
-      qualitySummary: "Plex contains this item, but no matching local file was found.",
+      provider: plex.provider,
+      providerLabel: providerLabel(plex.provider),
+      qualitySummary: `${providerLabel(plex.provider)} contains this item, but no matching local file was found.`,
     }));
   const scan = readArchiveScan(ownerId);
   const integrityFailureCount = records.filter(
@@ -1091,6 +1419,8 @@ function buildArchiveInventory(ownerId: string) {
   ).length;
   return {
     scan,
+    provider,
+    providerLabel: providerLabel(provider),
     summary: {
       activeFiles: records.filter((record) => record.scanStatus === "active").length,
       failedFiles: records.filter((record) => record.scanStatus === "error").length,

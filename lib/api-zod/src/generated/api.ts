@@ -76,6 +76,30 @@ export const GetSystemDependenciesResponse = zod.object({
 
 
 /**
+ * @summary Report which database this process has open and what it contains
+ */
+export const GetStorageDiagnosticsResponse = zod.object({
+  "databasePath": zod.string(),
+  "databasePathSource": zod.enum(['ARCHIVE_DB_PATH', 'working_directory_fallback']),
+  "databasePathIsAbsolute": zod.boolean(),
+  "workingDirectory": zod.string(),
+  "databaseSizeBytes": zod.union([zod.number(),zod.null()]),
+  "counts": zod.object({
+  "fileRecords": zod.number(),
+  "activeFileRecords": zod.number(),
+  "plexItems": zod.number(),
+  "jellyfinItems": zod.number(),
+  "reviewItems": zod.number(),
+  "archiveOperations": zod.number(),
+  "settings": zod.number()
+}),
+  "plexConfigured": zod.boolean(),
+  "journalMode": zod.union([zod.string(),zod.null()]),
+  "walSidecars": zod.array(zod.string())
+})
+
+
+/**
  * @summary Get recent system events
  */
 export const GetSystemEventsResponseItem = zod.object({
@@ -367,11 +391,197 @@ export const GetPlexInventoryResponse = zod.object({
 
 
 /**
+ * @summary Get Jellyfin configuration status
+ */
+export const getJellyfinConfigResponseLibraryCountMin = 0;
+
+export const getJellyfinConfigResponseItemCountMin = 0;
+
+export const getJellyfinConfigResponseMediaCountMin = 0;
+
+
+
+export const GetJellyfinConfigResponse = zod.object({
+  "serverUrl": zod.string(),
+  "configured": zod.boolean(),
+  "hasApiKey": zod.boolean(),
+  "userId": zod.string().nullable(),
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(getJellyfinConfigResponseLibraryCountMin),
+  "itemCount": zod.number().min(getJellyfinConfigResponseItemCountMin),
+  "mediaCount": zod.number().min(getJellyfinConfigResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Update Jellyfin configuration
+ */
+export const UpdateJellyfinConfigBody = zod.object({
+  "serverUrl": zod.string().optional(),
+  "apiKey": zod.string().optional(),
+  "userId": zod.string().optional()
+})
+
+export const updateJellyfinConfigResponseLibraryCountMin = 0;
+
+export const updateJellyfinConfigResponseItemCountMin = 0;
+
+export const updateJellyfinConfigResponseMediaCountMin = 0;
+
+
+
+export const UpdateJellyfinConfigResponse = zod.object({
+  "serverUrl": zod.string(),
+  "configured": zod.boolean(),
+  "hasApiKey": zod.boolean(),
+  "userId": zod.string().nullable(),
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(updateJellyfinConfigResponseLibraryCountMin),
+  "itemCount": zod.number().min(updateJellyfinConfigResponseItemCountMin),
+  "mediaCount": zod.number().min(updateJellyfinConfigResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Verify the configured Jellyfin server
+ */
+export const testJellyfinConnectionResponseLibraryCountMin = 0;
+
+export const testJellyfinConnectionResponseItemCountMin = 0;
+
+export const testJellyfinConnectionResponseMediaCountMin = 0;
+
+
+
+export const TestJellyfinConnectionResponse = zod.object({
+  "serverUrl": zod.string(),
+  "configured": zod.boolean(),
+  "hasApiKey": zod.boolean(),
+  "userId": zod.string().nullable(),
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(testJellyfinConnectionResponseLibraryCountMin),
+  "itemCount": zod.number().min(testJellyfinConnectionResponseItemCountMin),
+  "mediaCount": zod.number().min(testJellyfinConnectionResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Start synchronizing the configured Jellyfin inventory
+ */
+export const startJellyfinSyncResponseLibraryCountMin = 0;
+
+export const startJellyfinSyncResponseItemCountMin = 0;
+
+export const startJellyfinSyncResponseMediaCountMin = 0;
+
+
+
+export const StartJellyfinSyncResponse = zod.object({
+  "serverUrl": zod.string(),
+  "configured": zod.boolean(),
+  "hasApiKey": zod.boolean(),
+  "userId": zod.string().nullable(),
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(startJellyfinSyncResponseLibraryCountMin),
+  "itemCount": zod.number().min(startJellyfinSyncResponseItemCountMin),
+  "mediaCount": zod.number().min(startJellyfinSyncResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Get the synchronized Jellyfin inventory
+ */
+export const getJellyfinInventoryResponseLibrariesItemItemCountMin = 0;
+
+export const getJellyfinInventoryResponseItemsItemMediaCountMin = 0;
+
+export const getJellyfinInventoryResponseItemsItemPartCountMin = 0;
+
+
+
+export const GetJellyfinInventoryResponse = zod.object({
+  "libraries": zod.array(zod.object({
+  "id": zod.number(),
+  "key": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "serverUrl": zod.string(),
+  "itemCount": zod.number().min(getJellyfinInventoryResponseLibrariesItemItemCountMin),
+  "lastSyncedAt": zod.string().nullable(),
+  "syncStatus": zod.string(),
+  "syncError": zod.string().nullable()
+})),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "libraryId": zod.number(),
+  "libraryName": zod.string(),
+  "itemKey": zod.string(),
+  "title": zod.string(),
+  "itemType": zod.string(),
+  "year": zod.number().nullable(),
+  "thumbPathAvailable": zod.boolean(),
+  "addedAt": zod.string().nullable(),
+  "updatedAt": zod.string().nullable(),
+  "mediaCount": zod.number().min(getJellyfinInventoryResponseItemsItemMediaCountMin),
+  "partCount": zod.number().min(getJellyfinInventoryResponseItemsItemPartCountMin)
+}))
+})
+
+
+/**
+ * @summary Get the active archive reference provider
+ */
+export const GetArchiveProviderResponse = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string(),
+  "available": zod.array(zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.')).describe('Providers that currently hold synchronized inventory.')
+})
+
+
+/**
+ * @summary Select the archive reference provider
+ */
+export const SetArchiveProviderBody = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.')
+})
+
+export const SetArchiveProviderResponse = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string(),
+  "available": zod.array(zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.')).describe('Providers that currently hold synchronized inventory.')
+})
+
+
+/**
  * @summary Get external integration adapter status
  */
 export const GetIntegrationStatusesResponse = zod.object({
   "integrations": zod.array(zod.object({
-  "id": zod.enum(['plex', 'sonarr', 'radarr', 'prowlarr', 'qbittorrent', 'mpilot', 'telegram']),
+  "id": zod.enum(['plex', 'jellyfin', 'sonarr', 'radarr', 'prowlarr', 'qbittorrent', 'mpilot', 'telegram']),
   "name": zod.string(),
   "state": zod.enum(['disconnected', 'configured', 'reachable', 'operational', 'error']),
   "configured": zod.boolean(),
@@ -1048,6 +1258,19 @@ export const CreateReviewItemResponse = zod.object({
 export const SyncControlPlaneReviewItemsResponse = zod.object({
   "namingItems": zod.number(),
   "archiveFindingItems": zod.number(),
+  "informationalFindings": zod.number(),
+  "severity": zod.object({
+  "total": zod.number(),
+  "reviewRequired": zod.number(),
+  "informational": zod.number(),
+  "bySeverity": zod.object({
+  "info": zod.number(),
+  "low": zod.number(),
+  "medium": zod.number(),
+  "high": zod.number(),
+  "critical": zod.number()
+})
+}),
   "total": zod.number()
 })
 
@@ -2284,6 +2507,13 @@ export const ReceiveAcquisitionWebhookResponse = zod.object({
 
 
 /**
+ * Server-Sent Events stream of live scan observability. On connect the server sends a `snapshot` event carrying the persisted scan aggregate and the ephemeral live state, followed by `scan.*` events as the scan progresses. The persisted aggregate from `GET /archive/scan` remains the source of truth; this stream is ephemeral and safe to lose. Events are owner-scoped. Not modelled as a JSON response because the body is an unbounded `text/event-stream`.
+ * @summary Stream live archive scan progress as Server-Sent Events
+ */
+export const StreamArchiveScanEventsResponse = zod.unknown()
+
+
+/**
  * @summary Get the current local archive scan state
  */
 export const getArchiveScanResponseScannedFilesMin = 0;
@@ -2302,10 +2532,12 @@ export const getArchiveScanResponsePlexOnlyCountMin = 0;
 
 export const getArchiveScanResponseLocalOnlyCountMin = 0;
 
+export const getArchiveScanResponseResumedCountMin = 0;
+
 
 
 export const GetArchiveScanResponse = zod.object({
-  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "status": zod.enum(['not_scanned', 'scanning', 'interrupted', 'completed', 'failed']),
   "startedAt": zod.string().nullable(),
   "completedAt": zod.string().nullable(),
   "lastError": zod.string().nullable(),
@@ -2316,7 +2548,9 @@ export const GetArchiveScanResponse = zod.object({
   "missingCount": zod.number().min(getArchiveScanResponseMissingCountMin),
   "qualityConflictCount": zod.number().min(getArchiveScanResponseQualityConflictCountMin),
   "plexOnlyCount": zod.number().min(getArchiveScanResponsePlexOnlyCountMin),
-  "localOnlyCount": zod.number().min(getArchiveScanResponseLocalOnlyCountMin)
+  "localOnlyCount": zod.number().min(getArchiveScanResponseLocalOnlyCountMin),
+  "resumedCount": zod.number().min(getArchiveScanResponseResumedCountMin).describe('How many times the current or most recent scan pass was resumed.'),
+  "resumable": zod.boolean().describe('Whether starting a scan will continue an interrupted pass.')
 })
 
 
@@ -2339,10 +2573,12 @@ export const startArchiveScanResponsePlexOnlyCountMin = 0;
 
 export const startArchiveScanResponseLocalOnlyCountMin = 0;
 
+export const startArchiveScanResponseResumedCountMin = 0;
+
 
 
 export const StartArchiveScanResponse = zod.object({
-  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "status": zod.enum(['not_scanned', 'scanning', 'interrupted', 'completed', 'failed']),
   "startedAt": zod.string().nullable(),
   "completedAt": zod.string().nullable(),
   "lastError": zod.string().nullable(),
@@ -2353,7 +2589,9 @@ export const StartArchiveScanResponse = zod.object({
   "missingCount": zod.number().min(startArchiveScanResponseMissingCountMin),
   "qualityConflictCount": zod.number().min(startArchiveScanResponseQualityConflictCountMin),
   "plexOnlyCount": zod.number().min(startArchiveScanResponsePlexOnlyCountMin),
-  "localOnlyCount": zod.number().min(startArchiveScanResponseLocalOnlyCountMin)
+  "localOnlyCount": zod.number().min(startArchiveScanResponseLocalOnlyCountMin),
+  "resumedCount": zod.number().min(startArchiveScanResponseResumedCountMin).describe('How many times the current or most recent scan pass was resumed.'),
+  "resumable": zod.boolean().describe('Whether starting a scan will continue an interrupted pass.')
 })
 
 
@@ -2375,6 +2613,8 @@ export const getArchiveInventoryResponseScanQualityConflictCountMin = 0;
 export const getArchiveInventoryResponseScanPlexOnlyCountMin = 0;
 
 export const getArchiveInventoryResponseScanLocalOnlyCountMin = 0;
+
+export const getArchiveInventoryResponseScanResumedCountMin = 0;
 
 export const getArchiveInventoryResponseSummaryActiveFilesMin = 0;
 
@@ -2402,7 +2642,7 @@ export const getArchiveInventoryResponseSummaryUnresolvedCountMin = 0;
 
 export const GetArchiveInventoryResponse = zod.object({
   "scan": zod.object({
-  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "status": zod.enum(['not_scanned', 'scanning', 'interrupted', 'completed', 'failed']),
   "startedAt": zod.string().nullable(),
   "completedAt": zod.string().nullable(),
   "lastError": zod.string().nullable(),
@@ -2413,8 +2653,12 @@ export const GetArchiveInventoryResponse = zod.object({
   "missingCount": zod.number().min(getArchiveInventoryResponseScanMissingCountMin),
   "qualityConflictCount": zod.number().min(getArchiveInventoryResponseScanQualityConflictCountMin),
   "plexOnlyCount": zod.number().min(getArchiveInventoryResponseScanPlexOnlyCountMin),
-  "localOnlyCount": zod.number().min(getArchiveInventoryResponseScanLocalOnlyCountMin)
+  "localOnlyCount": zod.number().min(getArchiveInventoryResponseScanLocalOnlyCountMin),
+  "resumedCount": zod.number().min(getArchiveInventoryResponseScanResumedCountMin).describe('How many times the current or most recent scan pass was resumed.'),
+  "resumable": zod.boolean().describe('Whether starting a scan will continue an interrupted pass.')
 }),
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string().describe('Operator-facing name of the active reference provider.'),
   "summary": zod.object({
   "activeFiles": zod.number().min(getArchiveInventoryResponseSummaryActiveFilesMin),
   "failedFiles": zod.number().min(getArchiveInventoryResponseSummaryFailedFilesMin),
@@ -2463,7 +2707,9 @@ export const GetArchiveInventoryResponse = zod.object({
   "ratingKey": zod.string(),
   "title": zod.string(),
   "year": zod.number().nullable(),
-  "qualityDifferences": zod.array(zod.string())
+  "qualityDifferences": zod.array(zod.string()),
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string().describe('Operator-facing provider name, for example Plex or Jellyfin.')
 }),zod.null()]),
   "reviewStatus": zod.enum(['not_applicable', 'unreviewed', 'reviewed', 'deferred', 'unresolved']),
   "reviewNote": zod.string().nullable(),
@@ -2474,7 +2720,9 @@ export const GetArchiveInventoryResponse = zod.object({
   "title": zod.string(),
   "itemType": zod.string(),
   "year": zod.number().nullable(),
-  "qualitySummary": zod.string()
+  "qualitySummary": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string()
 }))
 })
 
@@ -2523,7 +2771,9 @@ export const GetArchiveRecordResponse = zod.object({
   "ratingKey": zod.string(),
   "title": zod.string(),
   "year": zod.number().nullable(),
-  "qualityDifferences": zod.array(zod.string())
+  "qualityDifferences": zod.array(zod.string()),
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string().describe('Operator-facing provider name, for example Plex or Jellyfin.')
 }),zod.null()]),
   "reviewStatus": zod.enum(['not_applicable', 'unreviewed', 'reviewed', 'deferred', 'unresolved']),
   "reviewNote": zod.string().nullable(),
