@@ -2411,11 +2411,11 @@ components:
             $ref: "#/components/schemas/MissingMediaItem"
     ArchiveScan:
       type: object
-      required: [status, startedAt, completedAt, lastError, scannedFiles, activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount]
+      required: [status, startedAt, completedAt, lastError, scannedFiles, activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount, resumedCount, resumable]
       properties:
         status:
           type: string
-          enum: [not_scanned, scanning, completed, failed]
+          enum: [not_scanned, scanning, interrupted, completed, failed]
         startedAt:
           type: [string, "null"]
         completedAt:
@@ -2446,6 +2446,13 @@ components:
         localOnlyCount:
           type: number
           minimum: 0
+        resumedCount:
+          type: number
+          minimum: 0
+          description: How many times the current or most recent scan pass was resumed.
+        resumable:
+          type: boolean
+          description: Whether starting a scan will continue an interrupted pass.
     ArchiveInventorySummary:
       type: object
       required: [activeFiles, failedFiles, integrityFailureCount, inspectionFailureCount, healthStatus, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount, reviewedCount, unresolvedCount]

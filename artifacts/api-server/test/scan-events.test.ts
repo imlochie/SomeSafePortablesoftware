@@ -47,6 +47,10 @@ const ARCHIVE_SCAN_CONTRACT_KEYS = [
   "qualityConflictCount",
   "plexOnlyCount",
   "localOnlyCount",
+  // Added with resumable scanning: how many times the current pass was
+  // continued, and whether starting a scan resumes rather than restarts.
+  "resumedCount",
+  "resumable",
 ];
 
 const server: Server = createServer(app);

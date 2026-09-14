@@ -820,6 +820,7 @@ export type ArchiveScanStatus = typeof ArchiveScanStatus[keyof typeof ArchiveSca
 export const ArchiveScanStatus = {
   not_scanned: 'not_scanned',
   scanning: 'scanning',
+  interrupted: 'interrupted',
   completed: 'completed',
   failed: 'failed',
 } as const;
@@ -848,6 +849,13 @@ export interface ArchiveScan {
   plexOnlyCount: number;
   /** @minimum 0 */
   localOnlyCount: number;
+  /**
+     * How many times the current or most recent scan pass was resumed.
+     * @minimum 0
+     */
+  resumedCount: number;
+  /** Whether starting a scan will continue an interrupted pass. */
+  resumable: boolean;
 }
 
 export type ArchiveInventorySummaryHealthStatus = typeof ArchiveInventorySummaryHealthStatus[keyof typeof ArchiveInventorySummaryHealthStatus];

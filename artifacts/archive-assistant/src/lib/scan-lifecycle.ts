@@ -25,7 +25,13 @@
  */
 
 /** Status reported by the persisted REST scan record. */
-export type PersistedScanStatus = 'not_scanned' | 'scanning' | 'completed' | 'failed';
+export type PersistedScanStatus =
+  | 'not_scanned'
+  | 'scanning'
+  /** Stopped before finishing; starting a scan continues that same pass. */
+  | 'interrupted'
+  | 'completed'
+  | 'failed';
 
 /** Status reported by the in-memory live scan feed. */
 export type LiveScanStatus = 'idle' | 'scanning' | 'completed' | 'failed';
@@ -57,6 +63,11 @@ export function resolveScanLifecycle({
 }: ScanLifecycleInput): ScanLifecycle {
   // The live feed observes the running scan directly. While it is connected it
   // is the only source that can be trusted about "now".
+  // The API records interruption explicitly at startup now, so this no longer
+  // has to be inferred from a stale `scanning`. The inference below is kept as
+  // a safety net for a process that dies while the browser stays open.
+  if (persistedStatus === 'interrupted' && liveStatus !== 'scanning') return 'interrupted';
+
   if (liveConnected) {
     if (liveStatus === 'scanning') return 'scanning';
 

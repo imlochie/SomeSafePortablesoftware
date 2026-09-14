@@ -2532,10 +2532,12 @@ export const getArchiveScanResponsePlexOnlyCountMin = 0;
 
 export const getArchiveScanResponseLocalOnlyCountMin = 0;
 
+export const getArchiveScanResponseResumedCountMin = 0;
+
 
 
 export const GetArchiveScanResponse = zod.object({
-  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "status": zod.enum(['not_scanned', 'scanning', 'interrupted', 'completed', 'failed']),
   "startedAt": zod.string().nullable(),
   "completedAt": zod.string().nullable(),
   "lastError": zod.string().nullable(),
@@ -2546,7 +2548,9 @@ export const GetArchiveScanResponse = zod.object({
   "missingCount": zod.number().min(getArchiveScanResponseMissingCountMin),
   "qualityConflictCount": zod.number().min(getArchiveScanResponseQualityConflictCountMin),
   "plexOnlyCount": zod.number().min(getArchiveScanResponsePlexOnlyCountMin),
-  "localOnlyCount": zod.number().min(getArchiveScanResponseLocalOnlyCountMin)
+  "localOnlyCount": zod.number().min(getArchiveScanResponseLocalOnlyCountMin),
+  "resumedCount": zod.number().min(getArchiveScanResponseResumedCountMin).describe('How many times the current or most recent scan pass was resumed.'),
+  "resumable": zod.boolean().describe('Whether starting a scan will continue an interrupted pass.')
 })
 
 
@@ -2569,10 +2573,12 @@ export const startArchiveScanResponsePlexOnlyCountMin = 0;
 
 export const startArchiveScanResponseLocalOnlyCountMin = 0;
 
+export const startArchiveScanResponseResumedCountMin = 0;
+
 
 
 export const StartArchiveScanResponse = zod.object({
-  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "status": zod.enum(['not_scanned', 'scanning', 'interrupted', 'completed', 'failed']),
   "startedAt": zod.string().nullable(),
   "completedAt": zod.string().nullable(),
   "lastError": zod.string().nullable(),
@@ -2583,7 +2589,9 @@ export const StartArchiveScanResponse = zod.object({
   "missingCount": zod.number().min(startArchiveScanResponseMissingCountMin),
   "qualityConflictCount": zod.number().min(startArchiveScanResponseQualityConflictCountMin),
   "plexOnlyCount": zod.number().min(startArchiveScanResponsePlexOnlyCountMin),
-  "localOnlyCount": zod.number().min(startArchiveScanResponseLocalOnlyCountMin)
+  "localOnlyCount": zod.number().min(startArchiveScanResponseLocalOnlyCountMin),
+  "resumedCount": zod.number().min(startArchiveScanResponseResumedCountMin).describe('How many times the current or most recent scan pass was resumed.'),
+  "resumable": zod.boolean().describe('Whether starting a scan will continue an interrupted pass.')
 })
 
 
@@ -2605,6 +2613,8 @@ export const getArchiveInventoryResponseScanQualityConflictCountMin = 0;
 export const getArchiveInventoryResponseScanPlexOnlyCountMin = 0;
 
 export const getArchiveInventoryResponseScanLocalOnlyCountMin = 0;
+
+export const getArchiveInventoryResponseScanResumedCountMin = 0;
 
 export const getArchiveInventoryResponseSummaryActiveFilesMin = 0;
 
@@ -2632,7 +2642,7 @@ export const getArchiveInventoryResponseSummaryUnresolvedCountMin = 0;
 
 export const GetArchiveInventoryResponse = zod.object({
   "scan": zod.object({
-  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "status": zod.enum(['not_scanned', 'scanning', 'interrupted', 'completed', 'failed']),
   "startedAt": zod.string().nullable(),
   "completedAt": zod.string().nullable(),
   "lastError": zod.string().nullable(),
@@ -2643,7 +2653,9 @@ export const GetArchiveInventoryResponse = zod.object({
   "missingCount": zod.number().min(getArchiveInventoryResponseScanMissingCountMin),
   "qualityConflictCount": zod.number().min(getArchiveInventoryResponseScanQualityConflictCountMin),
   "plexOnlyCount": zod.number().min(getArchiveInventoryResponseScanPlexOnlyCountMin),
-  "localOnlyCount": zod.number().min(getArchiveInventoryResponseScanLocalOnlyCountMin)
+  "localOnlyCount": zod.number().min(getArchiveInventoryResponseScanLocalOnlyCountMin),
+  "resumedCount": zod.number().min(getArchiveInventoryResponseScanResumedCountMin).describe('How many times the current or most recent scan pass was resumed.'),
+  "resumable": zod.boolean().describe('Whether starting a scan will continue an interrupted pass.')
 }),
   "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
   "providerLabel": zod.string().describe('Operator-facing name of the active reference provider.'),

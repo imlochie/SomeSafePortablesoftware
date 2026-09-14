@@ -725,6 +725,28 @@ archiveDb.exec(`
   CREATE INDEX IF NOT EXISTS local_media_identity_owner_type_idx ON local_media_identity(owner_id, media_type);
 `);
 ensureColumn("archive_scan", "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
+
+// Resumable scanning.
+//
+// `scan_run_id` identifies one logical pass over the archive. A pass that is
+// interrupted keeps its id, so the next scan can recognise it and continue
+// rather than restarting from the first file.
+//
+// `file_record.last_scan_run_id` records which pass last visited a file. That
+// is what makes resumption safe: the end-of-scan sweep that marks vanished
+// files `missing` previously relied on an in-memory set of paths seen during
+// the run, which a resumed scan cannot reconstruct for the files an earlier
+// segment already handled. Persisting the run id per file turns "was this file
+// seen during this pass?" into a durable question.
+//
+// `resumed_count` is operator-facing: how many times this pass was continued.
+ensureColumn("archive_scan", "scan_run_id", "TEXT");
+ensureColumn("archive_scan", "resumed_count", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("file_record", "last_scan_run_id", "TEXT");
+archiveDb.exec(`
+  CREATE INDEX IF NOT EXISTS file_record_scan_run_idx
+    ON file_record(owner_id, last_scan_run_id);
+`);
 for (const table of ["archive_item", "source_record", "download_job", "assistant_conversation", "system_event", "plex_library", "plex_item"]) {
   ensureColumn(table, "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
 }

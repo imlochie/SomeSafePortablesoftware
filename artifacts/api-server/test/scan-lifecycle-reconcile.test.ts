@@ -40,7 +40,9 @@ test("an interrupted scan is closed out at startup without losing evidence", asy
 
   // The lifecycle status must no longer claim to be running.
   assert.notEqual(after.status, "scanning");
-  assert.equal(after.status, "failed");
+  // `interrupted` rather than `failed`: the pass can be continued, and the
+  // distinction is what lets the next scan resume instead of restarting.
+  assert.equal(after.status, "interrupted");
   assert.ok(after.completedAt, "a terminal state must record when it was closed out");
 
   // The reason must be stated, not left null for the operator to guess at.

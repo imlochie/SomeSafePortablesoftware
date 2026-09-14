@@ -977,7 +977,7 @@ export function ArchivePage() {
             data-testid="button-start-archive-scan"
           >
             {isScanning || startScan.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-            {isScanning ? 'SCANNING' : 'START INVENTORY SCAN'}
+            {isScanning ? 'SCANNING' : scanInterrupted ? 'RESUME INVENTORY SCAN' : 'START INVENTORY SCAN'}
           </button>
         }
       />
@@ -994,7 +994,8 @@ export function ArchivePage() {
           data-testid="status-archive-scan-interrupted"
         >
           The last archive scan stopped before it finished, most likely because the application was
-          closed while it was running. Files already recorded were kept. Start a new scan to continue.
+          closed while it was running. {scan?.scannedFiles ? `${scan.scannedFiles.toLocaleString()} files were already examined and ` : 'Files already examined were kept, and '}
+          starting a scan will resume from where it stopped rather than beginning again.
         </div>
       )}
 

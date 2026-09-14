@@ -41,7 +41,13 @@ export function providerLabel(provider: ArchiveProvider) {
   return provider === "jellyfin" ? "Jellyfin" : "Plex";
 }
 
-type ScanStatus = "not_scanned" | "scanning" | "completed" | "failed";
+type ScanStatus =
+  | "not_scanned"
+  | "scanning"
+  /** Stopped before finishing; a later scan can continue this same pass. */
+  | "interrupted"
+  | "completed"
+  | "failed";
 type FileStatus = "active" | "missing" | "error";
 type QualityStatus =
   | "best_local_version"
@@ -346,6 +352,7 @@ function upsertArchiveRecord(
   fileChecksum: string | null,
   errorMessage: string | null,
   integrityClassification: MediaIntegrityClassification | null,
+  scanRunId: string | null = null,
 ) {
   const filename = basename(filePath);
   const relativePath = relative(root, filePath);
@@ -411,12 +418,12 @@ function upsertArchiveRecord(
          local_identity_id, volume_id, archive_root,
          scan_status, last_seen_at, modified_at_ms, extension, duration_seconds, video_codec, audio_codec,
          width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages,
-          subtitle_languages, fingerprint, error_message, integrity_classification, updated_at)
+          subtitle_languages, fingerprint, error_message, integrity_classification, last_scan_run_id, updated_at)
        VALUES (
          ?, ?, ?, ?, ?, ?, ?, ?,
          ?, ?, ?,
          ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
        )
        ON CONFLICT(owner_id, path) DO UPDATE SET
          size_bytes = excluded.size_bytes, checksum = excluded.checksum, media_type = excluded.media_type,
@@ -429,6 +436,7 @@ function upsertArchiveRecord(
          audio_channels = excluded.audio_channels, audio_languages = excluded.audio_languages,
          subtitle_languages = excluded.subtitle_languages, fingerprint = excluded.fingerprint,
           error_message = excluded.error_message, integrity_classification = excluded.integrity_classification,
+          last_scan_run_id = excluded.last_scan_run_id,
           updated_at = CURRENT_TIMESTAMP`,
   ).run(
    filePath,
@@ -460,6 +468,7 @@ function upsertArchiveRecord(
    fingerprint,
    errorMessage,
     integrityClassification,
+    scanRunId,
   );
 }
 
@@ -532,24 +541,114 @@ async function inspectFile(filePath: string, root: string, existing: FileRow | u
   };
 }
 
+/**
+ * Decides whether the next scan continues an interrupted pass or starts fresh.
+ *
+ * A pass is resumable when the previous one was interrupted -- recorded as
+ * `interrupted` by startup reconciliation -- and it still has a run id. Any
+ * other terminal state means the archive was fully walked, so the next scan
+ * must start a new pass; continuing a completed pass would skip every file and
+ * report an instant, meaningless "scan".
+ */
+export function planScanResumption(ownerId: string) {
+  const row = archiveDb
+    .prepare(
+      "SELECT status, scan_run_id, started_at, scanned_files, failed_files, resumed_count FROM archive_scan WHERE owner_id = ?",
+    )
+    .get(ownerId) as
+    | {
+        status: ScanStatus;
+        scan_run_id: string | null;
+        started_at: string | null;
+        scanned_files: number;
+        failed_files: number;
+        resumed_count: number;
+      }
+    | undefined;
+
+  const resumable = row?.status === "interrupted" && typeof row.scan_run_id === "string" && row.scan_run_id !== "";
+
+  if (!resumable) {
+    return {
+      resuming: false as const,
+      scanRunId: randomUUID(),
+      startedAt: new Date().toISOString(),
+      scannedFiles: 0,
+      failedFiles: 0,
+      resumedCount: 0,
+    };
+  }
+
+  return {
+    resuming: true as const,
+    scanRunId: row!.scan_run_id as string,
+    startedAt: row!.started_at ?? new Date().toISOString(),
+    scannedFiles: row!.scanned_files,
+    failedFiles: row!.failed_files,
+    resumedCount: row!.resumed_count,
+  };
+}
+
+/**
+ * Paths already visited by a given pass, read from the database.
+ *
+ * This is the durable replacement for the in-memory set the scan used to keep.
+ * It is what allows a resumed pass to skip completed work and, critically, to
+ * run the vanished-file sweep without mistaking unvisited files for missing
+ * ones.
+ */
+export function readVisitedPaths(ownerId: string, scanRunId: string): Set<string> {
+  const rows = archiveDb
+    .prepare("SELECT path FROM file_record WHERE owner_id = ? AND last_scan_run_id = ?")
+    .all(ownerId, scanRunId) as Array<{ path: string }>;
+  return new Set(rows.map((row) => row.path));
+}
+
 async function scanArchive(ownerId: string) {
   invalidateArchiveInventoryCache(ownerId);
   const sessionId = randomUUID();
   const settings = readSettings();
   const roots = scanRoots(settings);
-  const found = new Set<string>();
-  let scannedFiles = 0;
-  let failedFiles = 0;
+
+  // A resumable pass is identified by `scan_run_id`. If the previous pass was
+  // interrupted we adopt its id and continue it; otherwise this is a fresh
+  // pass with a new id. `file_record.last_scan_run_id` then tells us which
+  // files that pass already visited, which is both the skip list and -- more
+  // importantly -- the durable replacement for the in-memory `found` set the
+  // vanished-file sweep used to depend on.
+  const resumption = planScanResumption(ownerId);
+  const scanRunId = resumption.scanRunId;
+  const resuming = resumption.resuming;
+
+  // Files already visited by this pass. On a fresh pass this is empty.
+  const alreadyVisited = resuming ? readVisitedPaths(ownerId, scanRunId) : new Set<string>();
+
+  // Progress carries over so the operator sees one continuous count rather
+  // than a counter that resets to zero on every resume.
+  let scannedFiles = resuming ? resumption.scannedFiles : 0;
+  let failedFiles = resuming ? resumption.failedFiles : 0;
+  let resumedSkips = 0;
   let rootError: string | null = null;
   const traversalWarnings: string[] = [];
   updateScan(ownerId, {
     status: "scanning",
-    started_at: new Date().toISOString(),
+    started_at: resuming ? resumption.startedAt : new Date().toISOString(),
     completed_at: null,
     last_error: null,
-    scanned_files: 0,
-    failed_files: 0,
+    scan_run_id: scanRunId,
+    resumed_count: resuming ? resumption.resumedCount + 1 : 0,
+    scanned_files: scannedFiles,
+    failed_files: failedFiles,
   });
+
+  if (resuming) {
+    addEvent(
+      "info",
+      `Resuming the interrupted archive scan: ${alreadyVisited.size.toLocaleString()} file${alreadyVisited.size === 1 ? "" : "s"} already examined will be skipped.`,
+      "archive",
+      ownerId,
+    );
+  }
   notifyArchiveScanStarted(ownerId, sessionId, roots);
 
 const concurrency = Math.max(
@@ -574,7 +673,6 @@ for (const root of roots) {
 
       const results = await Promise.all(
         files.map(async (filePath) => {
-          found.add(filePath);
           notifyArchiveScanFileStarted(ownerId, sessionId, filePath, root);
 
           try {
@@ -621,12 +719,19 @@ for (const root of roots) {
             failedFiles += 1;
             warnings.push(result.warningMessage);
             fileError = result.warningMessage;
+            // The file could not be read, but it is present on disk -- the old
+            // in-memory `found` set included these, and the vanished-file sweep
+            // must keep treating them as seen. Without this stamp an unreadable
+            // file would be silently reclassified as `missing`.
+            archiveDb.prepare(
+              "UPDATE file_record SET last_scan_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE owner_id = ? AND path = ?",
+            ).run(scanRunId, ownerId, result.filePath);
           } else {
             try {
               if (result.unchangedRecordId !== null) {
                 archiveDb.prepare(
-                  "UPDATE file_record SET last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
-                ).run(result.unchangedRecordId, ownerId);
+                  "UPDATE file_record SET last_seen_at = CURRENT_TIMESTAMP, last_scan_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+                ).run(scanRunId, result.unchangedRecordId, ownerId);
                 fileOutcome = "unchanged";
               } else {
                 upsertArchiveRecord(
@@ -638,6 +743,7 @@ for (const root of roots) {
                   result.fileChecksum,
                   result.errorMessage,
                   result.integrityClassification,
+                  scanRunId,
                 );
                 if (result.inspected === null) {
                   failedFiles += 1;
@@ -678,6 +784,14 @@ for (const root of roots) {
     };
 
     for await (const filePath of walk(root, (message) => traversalWarnings.push(message))) {
+      // Already examined by an earlier segment of this same pass. Skipping here
+      // is what makes resumption worth having: it avoids re-running FFprobe and
+      // a full SHA-256 read over files that were already done.
+      if (alreadyVisited.has(filePath)) {
+        resumedSkips += 1;
+        continue;
+      }
+
       batch.push(filePath);
       notifyArchiveScanFileDiscovered(ownerId, sessionId, filePath, root);
 
@@ -698,11 +812,17 @@ for (const root of roots) {
 
   archiveDb.exec("BEGIN IMMEDIATE");
   try {
+    // Which files this pass saw is read back from the database rather than an
+    // in-memory set. A resumed pass cannot reconstruct what an earlier segment
+    // saw, and using an incomplete set here would mark perfectly present files
+    // as `missing` -- the single most destructive thing a resumable scan could
+    // get wrong.
+    const visited = readVisitedPaths(ownerId, scanRunId);
     const existing = archiveDb.prepare(
       "SELECT id, path FROM file_record WHERE owner_id = ?",
     ).all(ownerId) as Array<{ id: number; path: string }>;
     for (const row of existing) {
-      if (roots.some((root) => row.path === root || row.path.startsWith(`${root}${sep}`)) && !found.has(row.path)) {
+      if (roots.some((root) => row.path === root || row.path.startsWith(`${root}${sep}`)) && !visited.has(row.path)) {
         archiveDb.prepare(
           "UPDATE file_record SET scan_status = 'missing', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
         ).run(row.id, ownerId);
@@ -725,6 +845,9 @@ for (const root of roots) {
     status: rootError ? "failed" : "completed",
     completed_at: new Date().toISOString(),
     last_error: error,
+    // The pass is over. Clearing the run id means the next scan starts a new
+    // pass rather than "resuming" a walk that already covered the archive.
+    scan_run_id: null,
     scanned_files: scannedFiles,
     active_files: final.summary.activeFiles,
     failed_files: failedFiles,
@@ -795,14 +918,14 @@ export function reconcileInterruptedScans(): number {
 
   for (const { owner_id: ownerId } of interrupted) {
     updateScan(ownerId, {
-      status: "failed",
+      status: "interrupted",
       completed_at: new Date().toISOString(),
       last_error:
-        "The archive scan was interrupted before it finished, because the application stopped while it was running. Files already recorded were kept; start a new scan to continue.",
+        "The archive scan was interrupted before it finished, because the application stopped while it was running. Files already examined were kept; starting a scan will continue where it stopped.",
     });
     addEvent(
       "warning",
-      "An archive scan was interrupted before it finished and has been closed out. Start a new scan to continue.",
+      "An archive scan was interrupted before it finished. Starting a scan will resume it from where it stopped.",
       "archive",
       ownerId,
     );
@@ -813,7 +936,7 @@ export function reconcileInterruptedScans(): number {
 
 export function readArchiveScan(ownerId: string) {
   const row = archiveDb.prepare(
-    "SELECT status, started_at, completed_at, last_error, scanned_files, active_files, failed_files, duplicate_count, missing_count, quality_conflict_count, plex_only_count, local_only_count FROM archive_scan WHERE owner_id = ?",
+    "SELECT status, started_at, completed_at, last_error, scanned_files, active_files, failed_files, duplicate_count, missing_count, quality_conflict_count, plex_only_count, local_only_count, scan_run_id, resumed_count FROM archive_scan WHERE owner_id = ?",
   ).get(ownerId) as {
     status: ScanStatus;
     started_at: string | null;
@@ -827,6 +950,8 @@ export function readArchiveScan(ownerId: string) {
     quality_conflict_count: number;
     plex_only_count: number;
     local_only_count: number;
+    scan_run_id: string | null;
+    resumed_count: number;
   } | undefined;
   return {
     status: row?.status ?? "not_scanned" as const,
@@ -841,6 +966,10 @@ export function readArchiveScan(ownerId: string) {
     qualityConflictCount: row?.quality_conflict_count ?? 0,
     plexOnlyCount: row?.plex_only_count ?? 0,
     localOnlyCount: row?.local_only_count ?? 0,
+    resumedCount: row?.resumed_count ?? 0,
+    // Whether pressing "start scan" will continue the previous pass rather
+    // than walk the archive from the beginning.
+    resumable: row?.status === "interrupted" && Boolean(row?.scan_run_id),
   };
 }
 

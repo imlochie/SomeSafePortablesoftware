@@ -143,3 +143,62 @@ describe('resolveScanLifecycle', () => {
     expect(afterReconciliation).not.toBe('interrupted');
   });
 });
+
+/**
+ * Resumable scanning, UI side.
+ *
+ * The API now records an interrupted pass explicitly rather than leaving a
+ * stale `scanning` behind, and starting a scan continues that pass.
+ */
+describe('resolveScanLifecycle with explicit interruption', () => {
+  it('reports interrupted when the API says so', () => {
+    expect(
+      resolveScanLifecycle({
+        persistedStatus: 'interrupted',
+        liveStatus: 'idle',
+        liveConnected: true,
+        liveHasSession: false,
+      }),
+    ).toBe('interrupted');
+  });
+
+  it('reports interrupted even when the live feed is disconnected', () => {
+    // The old inference needed a connected feed to distinguish stale from
+    // running. An explicit `interrupted` needs no such evidence.
+    expect(
+      resolveScanLifecycle({
+        persistedStatus: 'interrupted',
+        liveStatus: 'idle',
+        liveConnected: false,
+        liveHasSession: false,
+      }),
+    ).toBe('interrupted');
+  });
+
+  it('stops reporting interrupted once the resumed scan is running', () => {
+    // The persisted row still reads `interrupted` until the resumed pass
+    // writes `scanning`, so the live feed must win here or the banner would
+    // linger over a scan that is visibly running.
+    expect(
+      resolveScanLifecycle({
+        persistedStatus: 'interrupted',
+        liveStatus: 'scanning',
+        liveConnected: true,
+        liveHasSession: true,
+      }),
+    ).toBe('scanning');
+  });
+
+  it('still catches a stale scanning record as interrupted', () => {
+    // Safety net for a process that dies while the browser stays open, before
+    // startup reconciliation has had a chance to run.
+    expect(
+      resolveScanLifecycle({
+        persistedStatus: 'scanning',
+        liveStatus: 'idle',
+        liveConnected: true,
+        liveHasSession: false,
+      }),
+    ).toBe('interrupted');
+  });
+});
