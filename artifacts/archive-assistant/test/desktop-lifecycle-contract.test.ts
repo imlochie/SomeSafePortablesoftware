@@ -15,6 +15,14 @@ describe('desktop lifecycle foundation', () => {
     expect(app).toContain('panel-assistant-overview');
     expect(app).toContain('Evidence-backed recommendations');
   });
+
+  it('does not present blocked acquisition rows as ordinary approval work', async () => {
+    const app = await read('src/App.tsx');
+    expect(app).toContain('blockedRecommendationIds');
+    expect(app).toContain('actionableReviews');
+    expect(app).toContain('panel-blocked-review-items');
+    expect(app).toContain('approval is not meaningful until their provider or source blocker is resolved');
+  });
   it('keeps the tray as a thin router over existing control-plane actions', async () => {
     const source = await read('src-tauri/src/main.rs');
     expect(source).toContain('Start/resume archive scan');
