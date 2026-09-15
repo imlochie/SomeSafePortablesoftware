@@ -16,7 +16,7 @@ export interface AssistantRecommendation {
   explanation: string;
   evidence: string[];
   recommendedAction: string;
-  state: string;
+  state: "actionable" | "blocked" | "uncertain" | "informational" | "resolved";
   reviewItemId: number | null;
 }
 
@@ -35,7 +35,7 @@ function integrityRecommendation(record: any): AssistantRecommendation | null {
       explanation: "Container inspection failed in a way that is consistent with a malformed or corrupt media file.",
       evidence: [record.integritySummary ?? "Media inspection classified this file as corrupt or malformed."],
       recommendedAction: "Compare with another copy before replacing it.",
-      state: record.reviewStatus,
+      state: "actionable",
       reviewItemId: null,
     };
   }
@@ -49,7 +49,7 @@ function integrityRecommendation(record: any): AssistantRecommendation | null {
       explanation: "The local node could not reliably inspect this file; this does not by itself prove corruption.",
       evidence: [record.integritySummary ?? "Media inspection was unavailable."],
       recommendedAction: "Check the file path, permissions, and media tools before deciding what to do.",
-      state: record.reviewStatus,
+      state: "actionable",
       reviewItemId: null,
     };
   }
@@ -81,7 +81,7 @@ export async function readAssistantOverview(ownerId: string) {
         ...(item.blockers.length ? item.blockers : [item.recommendedAction]),
       ],
       recommendedAction: item.recommendedAction,
-      state: item.status,
+      state: item.blockers.length ? "blocked" : "actionable",
       reviewItemId: item.reviewItemId,
     });
   }
@@ -105,14 +105,16 @@ export async function readAssistantOverview(ownerId: string) {
       recommendedAction: proposal.proposedPath
         ? `Review the proposed path: ${proposal.proposedPath}`
         : "Leave unchanged until the naming ambiguity is resolved.",
-      state: proposal.collision ? "blocked" : "proposal",
+      state: proposal.collision ? "blocked" : confidence === "low" || confidence === "uncertain" ? "uncertain" : "actionable",
       reviewItemId: null,
     });
   }
 
   recommendations.sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority));
-  const attention = recommendations.filter((item) => item.priority !== "info").slice(0, 20);
-  const counts = recommendations.reduce<Record<AssistantPriority, number>>(
+  const blocked = recommendations.filter((item) => item.state === "blocked");
+  const uncertain = recommendations.filter((item) => item.state === "uncertain");
+  const attention = recommendations.filter((item) => item.state === "actionable" && item.priority !== "info").slice(0, 20);
+  const counts = attention.reduce<Record<AssistantPriority, number>>(
     (result, item) => ({ ...result, [item.priority]: result[item.priority] + 1 }),
     { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
   );
@@ -123,11 +125,15 @@ export async function readAssistantOverview(ownerId: string) {
       health: counts.critical || counts.high ? "attention_required" : recommendations.length ? "mostly_healthy" : "healthy",
       attentionCount: attention.length,
       counts,
+      blockedCount: blocked.length,
+      uncertainCount: uncertain.length,
       lastScan: scan.completedAt,
       freshness: scan.status === "scanning" ? "scanning" : scan.completedAt ? "known" : "unknown",
     },
     attention,
     recommendations,
+    blocked,
+    uncertain,
     informational: [
       ...(scan.status === "scanning" ? ["An archive scan is currently running."] : []),
       ...(activeWork.count ? [`${activeWork.count} acquisition job(s) are active.`] : []),

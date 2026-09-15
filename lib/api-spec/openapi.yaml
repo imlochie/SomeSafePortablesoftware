@@ -1770,7 +1770,7 @@ components:
         reviewItemId: { type: [number, "null"] }
     AssistantOverviewSummary:
       type: object
-      required: [health, attentionCount, counts, lastScan, freshness]
+      required: [health, attentionCount, counts, blockedCount, uncertainCount, lastScan, freshness]
       properties:
         health:
           type: string
@@ -1785,11 +1785,13 @@ components:
             medium: { type: number, minimum: 0 }
             low: { type: number, minimum: 0 }
             info: { type: number, minimum: 0 }
+        blockedCount: { type: number, minimum: 0 }
+        uncertainCount: { type: number, minimum: 0 }
         lastScan: { type: [string, "null"] }
         freshness: { type: string }
     AssistantOverview:
       type: object
-      required: [summary, attention, recommendations, informational, activeWork]
+      required: [summary, attention, recommendations, blocked, uncertain, informational, activeWork]
       properties:
         summary:
           $ref: "#/components/schemas/AssistantOverviewSummary"
@@ -1798,6 +1800,14 @@ components:
           items:
             $ref: "#/components/schemas/AssistantRecommendation"
         recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantRecommendation"
+        blocked:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantRecommendation"
+        uncertain:
           type: array
           items:
             $ref: "#/components/schemas/AssistantRecommendation"

@@ -711,12 +711,17 @@ fn main() {
             // for some Windows window-manager paths and can leave a stale tray
             // menu after the sidecar has exited.
             let close_window = window.clone();
-            window.on_window_event(move |event| {
+            // Tauri returns a drop guard for window listeners. It must live for
+            // the lifetime of the app; dropping it at the end of setup silently
+            // unregisters the close handler, which lets Windows destroy the
+            // webview and leaves only a stale-looking tray icon behind.
+            let close_handler = window.on_window_event(move |event| {
                 if let WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = close_window.hide();
                 }
             });
+            std::mem::forget(close_handler);
 
             match start_sidecar(&app.handle(), &window) {
                 Ok(state) => {

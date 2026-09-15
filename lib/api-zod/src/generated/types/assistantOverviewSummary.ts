@@ -13,6 +13,10 @@ export interface AssistantOverviewSummary {
   /** @minimum 0 */
   attentionCount: number;
   counts: AssistantOverviewSummaryCounts;
+  /** @minimum 0 */
+  blockedCount: number;
+  /** @minimum 0 */
+  uncertainCount: number;
   /** @nullable */
   lastScan: string | null;
   freshness: string;

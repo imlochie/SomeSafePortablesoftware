@@ -13,6 +13,8 @@ export interface AssistantOverview {
   summary: AssistantOverviewSummary;
   attention: AssistantRecommendation[];
   recommendations: AssistantRecommendation[];
+  blocked: AssistantRecommendation[];
+  uncertain: AssistantRecommendation[];
   informational: string[];
   activeWork: AssistantOverviewActiveWork;
 }

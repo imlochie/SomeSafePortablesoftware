@@ -19,6 +19,8 @@ test("assistant recommendation fields preserve evidence and explicit action stat
       health: "attention_required",
       attentionCount: 1,
       counts: { critical: 0, high: 1, medium: 0, low: 0, info: 0 },
+      blockedCount: 0,
+      uncertainCount: 0,
       lastScan: null,
       freshness: "known",
     },
@@ -35,6 +37,8 @@ test("assistant recommendation fields preserve evidence and explicit action stat
       reviewItemId: null,
     }],
     recommendations: [],
+    blocked: [],
+    uncertain: [],
     informational: [],
     activeWork: { scanStatus: "idle", acquisitionJobs: 0 },
   });

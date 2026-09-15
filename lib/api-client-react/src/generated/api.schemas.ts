@@ -178,6 +178,10 @@ export interface AssistantOverviewSummary {
   /** @minimum 0 */
   attentionCount: number;
   counts: AssistantOverviewSummaryCounts;
+  /** @minimum 0 */
+  blockedCount: number;
+  /** @minimum 0 */
+  uncertainCount: number;
   /** @nullable */
   lastScan: string | null;
   freshness: string;
@@ -193,6 +197,8 @@ export interface AssistantOverview {
   summary: AssistantOverviewSummary;
   attention: AssistantRecommendation[];
   recommendations: AssistantRecommendation[];
+  blocked: AssistantRecommendation[];
+  uncertain: AssistantRecommendation[];
   informational: string[];
   activeWork: AssistantOverviewActiveWork;
 }

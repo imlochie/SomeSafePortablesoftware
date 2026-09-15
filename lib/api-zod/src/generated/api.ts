@@ -32,6 +32,10 @@ export const getAssistantOverviewResponseSummaryCountsLowMin = 0;
 
 export const getAssistantOverviewResponseSummaryCountsInfoMin = 0;
 
+export const getAssistantOverviewResponseSummaryBlockedCountMin = 0;
+
+export const getAssistantOverviewResponseSummaryUncertainCountMin = 0;
+
 export const getAssistantOverviewResponseActiveWorkAcquisitionJobsMin = 0;
 
 
@@ -47,6 +51,8 @@ export const GetAssistantOverviewResponse = zod.object({
   "low": zod.number().min(getAssistantOverviewResponseSummaryCountsLowMin),
   "info": zod.number().min(getAssistantOverviewResponseSummaryCountsInfoMin)
 }),
+  "blockedCount": zod.number().min(getAssistantOverviewResponseSummaryBlockedCountMin),
+  "uncertainCount": zod.number().min(getAssistantOverviewResponseSummaryUncertainCountMin),
   "lastScan": zod.string().nullable(),
   "freshness": zod.string()
 }),
@@ -63,6 +69,30 @@ export const GetAssistantOverviewResponse = zod.object({
   "reviewItemId": zod.number().nullable()
 })),
   "recommendations": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['download', 'integrity', 'rename', 'duplicate', 'identity', 'quality']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
+  "confidence": zod.string(),
+  "title": zod.string(),
+  "explanation": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
+  "state": zod.string(),
+  "reviewItemId": zod.number().nullable()
+})),
+  "blocked": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['download', 'integrity', 'rename', 'duplicate', 'identity', 'quality']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
+  "confidence": zod.string(),
+  "title": zod.string(),
+  "explanation": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
+  "state": zod.string(),
+  "reviewItemId": zod.number().nullable()
+})),
+  "uncertain": zod.array(zod.object({
   "id": zod.string(),
   "type": zod.enum(['download', 'integrity', 'rename', 'duplicate', 'identity', 'quality']),
   "priority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
