@@ -62,6 +62,11 @@ describe('desktop lifecycle foundation', () => {
     expect(shell).toContain('state.shutdown()');
     expect(shell).toContain('api.prevent_exit()');
     expect(shell).toContain('allow_exit');
+    expect(shell).toContain('lifecycle.log');
+    expect(shell).toContain('WINDOW_CLOSE_REQUESTED');
+    expect(shell).toContain('APP_EXIT_REQUESTED');
+    expect(shell).toContain('TRAY_');
+    expect(shell).toContain('show_main_window(app)');
     // Shutdown is reserved for an actual application exit, not the window X.
     expect(shell).not.toMatch(/CloseRequested[\s\S]{0,500}state\.shutdown\(\)/);
   });

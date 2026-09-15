@@ -3,13 +3,14 @@
 use std::{
     collections::VecDeque,
     env,
+    fs::OpenOptions,
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Child, ChildStderr, ChildStdout, Command, Stdio},
     sync::{atomic::{AtomicBool, Ordering}, mpsc, Mutex},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use tauri::{
@@ -22,6 +23,23 @@ use tauri_plugin_updater::UpdaterExt;
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
 const READY_PREFIX: &str = "ARCHIVE_ASSISTANT_READY ";
+
+/// Release builds have no console, so keep a small, non-sensitive lifecycle
+/// trace in per-user app data. This is intentionally limited to event names,
+/// timestamps, and process IDs; it never records archive paths, credentials,
+/// or media contents.
+fn lifecycle_event(app: &AppHandle, event: &str) {
+    let Ok(directory) = app.path().app_local_data_dir() else { return };
+    let _ = std::fs::create_dir_all(&directory);
+    let path = directory.join("lifecycle.log");
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_secs())
+        .unwrap_or_default();
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{timestamp} pid={} {event}", std::process::id());
+    }
+}
 
 /// How many recent sidecar output lines to keep for a startup failure report.
 ///
@@ -605,13 +623,21 @@ fn set_start_with_windows(app: AppHandle, enabled: bool) -> Result<bool, String>
     manager.is_enabled().map_err(|error| error.to_string())
 }
 
-#[tauri::command]
-fn open_archive_assistant(app: AppHandle) -> Result<(), String> {
+fn show_main_window(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "The main desktop window is missing.".to_string())?;
+    lifecycle_event(app, "WINDOW_SHOW_REQUESTED");
+    window.unminimize().map_err(|error| error.to_string())?;
     window.show().map_err(|error| error.to_string())?;
-    window.set_focus().map_err(|error| error.to_string())
+    window.set_focus().map_err(|error| error.to_string())?;
+    lifecycle_event(app, "WINDOW_SHOWN_FOCUSED");
+    Ok(())
+}
+
+#[tauri::command]
+fn open_archive_assistant(app: AppHandle) -> Result<(), String> {
+    show_main_window(&app)
 }
 
 #[tauri::command]
@@ -674,21 +700,23 @@ fn install_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .menu(&menu)
         .tooltip("ARCHIVE ASSISTANT")
         .on_menu_event(|app, event| {
-            if event.id().as_ref() == "quit" {
+            let action = event.id().as_ref();
+            lifecycle_event(app, &format!("TRAY_{action}"));
+            if action == "quit" {
                 if let Some(exit_guard) = app.try_state::<ExitGuard>() {
                     exit_guard.allow_exit.store(true, Ordering::Release);
                 }
                 app.exit(0);
                 return;
             }
-            let _ = app.emit("tray://action", event.id().as_ref());
+            if action == "open" {
+                let _ = show_main_window(app);
+            }
+            let _ = app.emit("tray://action", action);
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::DoubleClick { .. } = event {
-                if let Some(window) = tray.app_handle().get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                let _ = show_main_window(&tray.app_handle());
             }
         })
         .build(app)?;
@@ -710,6 +738,7 @@ fn main() {
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| "The main desktop window is missing.".to_string())?;
+            lifecycle_event(&app.handle(), "APP_SETUP");
             app.manage(ExitGuard::default());
             install_tray(&app.handle()).map_err(|error| error.to_string())?;
 
@@ -726,8 +755,12 @@ fn main() {
             // webview and leaves only a stale-looking tray icon behind.
             let close_handler = window.on_window_event(move |event| {
                 if let WindowEvent::CloseRequested { api, .. } = event {
+                    lifecycle_event(&close_window.app_handle(), "WINDOW_CLOSE_REQUESTED");
                     api.prevent_close();
-                    let _ = close_window.hide();
+                    lifecycle_event(&close_window.app_handle(), "WINDOW_CLOSE_PREVENTED");
+                    if close_window.hide().is_ok() {
+                        lifecycle_event(&close_window.app_handle(), "WINDOW_HIDDEN");
+                    }
                 }
             });
             std::mem::forget(close_handler);
@@ -735,6 +768,7 @@ fn main() {
             match start_sidecar(&app.handle(), &window) {
                 Ok(state) => {
                     app.manage(state);
+                    lifecycle_event(&app.handle(), "SIDECAR_STARTED");
                     Ok(())
                 }
                 Err(error) => {
@@ -748,6 +782,7 @@ fn main() {
         .expect("error while building ARCHIVE ASSISTANT")
         .run(|app, event| {
             if let RunEvent::ExitRequested { api, .. } = &event {
+                lifecycle_event(&app.handle(), "APP_EXIT_REQUESTED");
                 let allow_exit = app
                     .try_state::<ExitGuard>()
                     .map(|guard| guard.allow_exit.load(Ordering::Acquire))
@@ -758,6 +793,7 @@ fn main() {
                     // defence, otherwise the tray may remain visible while
                     // the sidecar is shut down.
                     api.prevent_exit();
+                    lifecycle_event(&app.handle(), "APP_EXIT_PREVENTED");
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.hide();
                     }
@@ -765,8 +801,11 @@ fn main() {
                 }
             }
             if matches!(event, RunEvent::Exit) {
+                lifecycle_event(&app.handle(), "APP_EXIT");
                 if let Some(state) = app.try_state::<SidecarState>() {
+                    lifecycle_event(&app.handle(), "SIDECAR_STOPPING");
                     state.shutdown();
+                    lifecycle_event(&app.handle(), "SIDECAR_STOPPED");
                 }
             }
         });
