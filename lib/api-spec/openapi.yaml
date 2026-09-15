@@ -1748,6 +1748,31 @@ components:
     StatusValue:
       type: string
       enum: [ready, connected, idle, placeholder, warning, unavailable, processing]
+    AssistantGroup:
+      type: object
+      required: [id, type, state, priority, confidence, title, explanation, evidence, recommendedAction, underlyingItemIds, itemCount]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [download, integrity, rename, duplicate, identity, quality]
+        state:
+          type: string
+          enum: [actionable, blocked, uncertain, informational, resolved]
+        priority:
+          type: string
+          enum: [critical, high, medium, low, info]
+        confidence: { type: string }
+        title: { type: string }
+        explanation: { type: string }
+        evidence:
+          type: array
+          items: { type: string }
+        recommendedAction: { type: string }
+        underlyingItemIds:
+          type: array
+          items: { type: number }
+        itemCount: { type: number, minimum: 1 }
     AssistantRecommendation:
       type: object
       required: [id, type, priority, confidence, title, explanation, evidence, recommendedAction, state, reviewItemId]
@@ -1791,7 +1816,7 @@ components:
         freshness: { type: string }
     AssistantOverview:
       type: object
-      required: [summary, attention, recommendations, blocked, uncertain, informational, activeWork]
+      required: [summary, attention, recommendations, groups, blocked, uncertain, informational, activeWork]
       properties:
         summary:
           $ref: "#/components/schemas/AssistantOverviewSummary"
@@ -1803,6 +1828,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssistantRecommendation"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantGroup"
         blocked:
           type: array
           items:

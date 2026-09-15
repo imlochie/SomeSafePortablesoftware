@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AssistantGroup } from './assistantGroup';
 import type { AssistantOverviewActiveWork } from './assistantOverviewActiveWork';
 import type { AssistantOverviewSummary } from './assistantOverviewSummary';
 import type { AssistantRecommendation } from './assistantRecommendation';
@@ -13,6 +14,7 @@ export interface AssistantOverview {
   summary: AssistantOverviewSummary;
   attention: AssistantRecommendation[];
   recommendations: AssistantRecommendation[];
+  groups: AssistantGroup[];
   blocked: AssistantRecommendation[];
   uncertain: AssistantRecommendation[];
   informational: string[];

@@ -114,6 +114,55 @@ export const StatusValue = {
   processing: 'processing',
 } as const;
 
+export type AssistantGroupType = typeof AssistantGroupType[keyof typeof AssistantGroupType];
+
+
+export const AssistantGroupType = {
+  download: 'download',
+  integrity: 'integrity',
+  rename: 'rename',
+  duplicate: 'duplicate',
+  identity: 'identity',
+  quality: 'quality',
+} as const;
+
+export type AssistantGroupState = typeof AssistantGroupState[keyof typeof AssistantGroupState];
+
+
+export const AssistantGroupState = {
+  actionable: 'actionable',
+  blocked: 'blocked',
+  uncertain: 'uncertain',
+  informational: 'informational',
+  resolved: 'resolved',
+} as const;
+
+export type AssistantGroupPriority = typeof AssistantGroupPriority[keyof typeof AssistantGroupPriority];
+
+
+export const AssistantGroupPriority = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  info: 'info',
+} as const;
+
+export interface AssistantGroup {
+  id: string;
+  type: AssistantGroupType;
+  state: AssistantGroupState;
+  priority: AssistantGroupPriority;
+  confidence: string;
+  title: string;
+  explanation: string;
+  evidence: string[];
+  recommendedAction: string;
+  underlyingItemIds: number[];
+  /** @minimum 1 */
+  itemCount: number;
+}
+
 export type AssistantRecommendationType = typeof AssistantRecommendationType[keyof typeof AssistantRecommendationType];
 
 
@@ -197,6 +246,7 @@ export interface AssistantOverview {
   summary: AssistantOverviewSummary;
   attention: AssistantRecommendation[];
   recommendations: AssistantRecommendation[];
+  groups: AssistantGroup[];
   blocked: AssistantRecommendation[];
   uncertain: AssistantRecommendation[];
   informational: string[];

@@ -6,6 +6,21 @@ import { archiveDb } from "../lib/archive-db";
 export const assistantPriorities = ["critical", "high", "medium", "low", "info"] as const;
 export type AssistantPriority = (typeof assistantPriorities)[number];
 export type AssistantRecommendationType = "download" | "integrity" | "rename" | "duplicate" | "identity" | "quality";
+export type AssistantGroupState = "actionable" | "blocked" | "uncertain" | "informational" | "resolved";
+
+export interface AssistantGroup {
+  id: string;
+  type: AssistantRecommendationType;
+  state: AssistantGroupState;
+  priority: AssistantPriority;
+  confidence: string;
+  title: string;
+  explanation: string;
+  evidence: string[];
+  recommendedAction: string;
+  underlyingItemIds: number[];
+  itemCount: number;
+}
 
 export interface AssistantRecommendation {
   id: string;
@@ -54,6 +69,48 @@ function integrityRecommendation(record: any): AssistantRecommendation | null {
     };
   }
   return null;
+}
+
+function groupRecommendations(recommendations: AssistantRecommendation[]): AssistantGroup[] {
+  const groups = new Map<string, AssistantRecommendation[]>();
+  for (const item of recommendations) {
+    const key = item.type === "download"
+      ? `${item.type}:${item.state}:${item.title.replace(/^Download /, "").toLowerCase()}`
+      : `${item.type}:${item.state}`;
+    const values = groups.get(key) ?? [];
+    values.push(item);
+    groups.set(key, values);
+  }
+  return [...groups.entries()].map(([id, items]) => {
+    const first = items[0];
+    const title = items.length === 1
+      ? first.title
+      : first.type === "download"
+        ? `${items.length} acquisition candidates`
+        : first.type === "integrity"
+          ? `${items.length} integrity findings`
+          : first.type === "rename"
+            ? `${items.length} naming suggestions`
+            : `${items.length} ${first.type} findings`;
+    return {
+      id: `group:${id}`,
+      type: first.type,
+      state: first.state,
+      priority: first.priority,
+      confidence: first.confidence,
+      title,
+      explanation: items.length === 1
+        ? first.explanation
+        : `${items.length} related items were grouped so the archive is not presented as isolated rows.`,
+      evidence: [...new Set(items.flatMap((item) => item.evidence))].slice(0, 8),
+      recommendedAction: first.recommendedAction,
+      underlyingItemIds: items.flatMap((item) => {
+        const idValue = item.reviewItemId ?? Number(item.id.split(":").at(-1));
+        return Number.isInteger(idValue) ? [idValue] : [];
+      }),
+      itemCount: items.length,
+    };
+  }).sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority) || left.title.localeCompare(right.title));
 }
 
 export async function readAssistantOverview(ownerId: string) {
@@ -118,6 +175,7 @@ export async function readAssistantOverview(ownerId: string) {
     (result, item) => ({ ...result, [item.priority]: result[item.priority] + 1 }),
     { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
   );
+  const groups = groupRecommendations(recommendations);
   const activeWork = archiveDb.prepare("SELECT COUNT(*) AS count FROM acquisition_job WHERE owner_id = ? AND state IN ('planned', 'downloading', 'processing', 'verifying')").get(ownerId) as { count: number };
 
   return {
@@ -132,6 +190,7 @@ export async function readAssistantOverview(ownerId: string) {
     },
     attention,
     recommendations,
+    groups,
     blocked,
     uncertain,
     informational: [

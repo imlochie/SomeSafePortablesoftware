@@ -10,6 +10,7 @@ test("assistant overview is deterministic, typed, and safe when the archive is e
   assert.ok(["healthy", "mostly_healthy", "attention_required"].includes(parsed.summary.health));
   assert.equal(parsed.summary.attentionCount, parsed.attention.length);
   assert.ok(Array.isArray(parsed.recommendations));
+  assert.ok(Array.isArray(parsed.groups));
   assert.equal(typeof parsed.activeWork.scanStatus, "string");
 });
 
@@ -37,6 +38,7 @@ test("assistant recommendation fields preserve evidence and explicit action stat
       reviewItemId: null,
     }],
     recommendations: [],
+    groups: [],
     blocked: [],
     uncertain: [],
     informational: [],

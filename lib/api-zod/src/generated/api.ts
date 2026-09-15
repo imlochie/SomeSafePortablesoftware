@@ -36,6 +36,7 @@ export const getAssistantOverviewResponseSummaryBlockedCountMin = 0;
 
 export const getAssistantOverviewResponseSummaryUncertainCountMin = 0;
 
+
 export const getAssistantOverviewResponseActiveWorkAcquisitionJobsMin = 0;
 
 
@@ -79,6 +80,19 @@ export const GetAssistantOverviewResponse = zod.object({
   "recommendedAction": zod.string(),
   "state": zod.string(),
   "reviewItemId": zod.number().nullable()
+})),
+  "groups": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['download', 'integrity', 'rename', 'duplicate', 'identity', 'quality']),
+  "state": zod.enum(['actionable', 'blocked', 'uncertain', 'informational', 'resolved']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
+  "confidence": zod.string(),
+  "title": zod.string(),
+  "explanation": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
+  "underlyingItemIds": zod.array(zod.number()),
+  "itemCount": zod.number().min(1)
 })),
   "blocked": zod.array(zod.object({
   "id": zod.string(),
