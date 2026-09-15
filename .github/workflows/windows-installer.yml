@@ -17,6 +17,7 @@ on:
       - "artifacts/archive-assistant/scripts/**"
       - "artifacts/api-server/**"
       - ".github/workflows/windows-installer.yml"
+      - "scripts/windows-installed-smoke.ps1"
 
 concurrency:
   group: windows-installer-${{ github.ref }}
@@ -120,6 +121,36 @@ jobs:
             }
             Write-Host "ok  $relative"
           }
+
+      - name: Install the NSIS package into a clean temporary directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem -LiteralPath 'artifacts/archive-assistant/src-tauri/target/release/bundle/nsis' -Filter '*.exe' |
+            Where-Object { $_.Name -notmatch 'uninstall' } |
+            Select-Object -First 1
+          if (-not $installer) { throw 'The NSIS installer executable was not produced.' }
+          $installDirectory = Join-Path $env:RUNNER_TEMP 'archive-assistant-installed'
+          Remove-Item -LiteralPath $installDirectory -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $installDirectory | Out-Null
+          $result = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installDirectory") -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "NSIS installation failed with exit code $($result.ExitCode)." }
+          "ARCHIVE_ASSISTANT_INSTALL_DIR=$installDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Smoke-test the installed application
+        shell: pwsh
+        run: |
+          & .\scripts\windows-installed-smoke.ps1 -InstallDirectory $env:ARCHIVE_ASSISTANT_INSTALL_DIR
+
+      - name: Upload installed smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-assistant-installed-smoke-logs
+          path: |
+            ${{ runner.temp }}/archive-assistant-smoke-work/**
+            ${{ runner.temp }}/archive-assistant-installed/**/lifecycle.log
+          if-no-files-found: warn
 
       - name: Upload the installer
         uses: actions/upload-artifact@v4
