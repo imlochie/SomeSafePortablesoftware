@@ -1,5 +1,5 @@
 import { readArchiveInventory, readArchiveScan } from "./archive";
-import { listAcquisitionRecommendations } from "./acquisition-intelligence";
+import { listAcquisitionRecommendations, type AcquisitionIdentity } from "./acquisition-intelligence";
 import { readNamingProposals } from "./naming-intelligence";
 import { readIdentityAudit } from "./identity-audit";
 import { archiveDb, readSettings } from "../lib/archive-db";
@@ -35,6 +35,7 @@ export interface AssistantRecommendation {
   recommendedAction: string;
   state: "actionable" | "blocked" | "uncertain" | "informational" | "resolved";
   reviewItemId: number | null;
+  acquisitionIdentity?: AcquisitionIdentity | null;
 }
 
 function priorityRank(priority: AssistantPriority) {
@@ -76,8 +77,11 @@ function integrityRecommendation(record: any): AssistantRecommendation | null {
 export function groupRecommendations(recommendations: AssistantRecommendation[]): AssistantGroup[] {
   const groups = new Map<string, AssistantRecommendation[]>();
   for (const item of recommendations) {
+    const identity = item.acquisitionIdentity;
     const key = item.type === "download"
-      ? `${item.type}:${item.state}:${item.title.replace(/^Download /, "").toLowerCase()}`
+      ? identity?.seriesId && identity.seasonNumber !== undefined
+        ? `${item.type}:${item.state}:series:${identity.seriesId}:season:${identity.seasonNumber}`
+        : `${item.type}:${item.state}:${item.title.replace(/^Download /, "").toLowerCase()}`
       : `${item.type}:${item.state}`;
     const values = groups.get(key) ?? [];
     values.push(item);
@@ -85,15 +89,22 @@ export function groupRecommendations(recommendations: AssistantRecommendation[])
   }
   return [...groups.entries()].map(([id, items]) => {
     const first = items[0];
-    const title = items.length === 1
-      ? first.title
-      : first.type === "download"
-        ? `${items.length} acquisition candidates`
+    const identity = first.acquisitionIdentity;
+    const semanticSeasonTitle = first.type === "download"
+      && identity?.seriesTitle
+      && identity.seasonNumber !== undefined
+      ? `${identity.seriesTitle} — Season ${identity.seasonNumber}: ${items.length} missing episode${items.length === 1 ? "" : "s"}`
+      : null;
+    const title = semanticSeasonTitle
+      ?? (items.length === 1
+        ? first.title
+        : first.type === "download"
+          ? `${items.length} acquisition candidates`
         : first.type === "integrity"
           ? `${items.length} integrity findings`
           : first.type === "rename"
             ? `${items.length} naming suggestions`
-            : `${items.length} ${first.type} findings`;
+            : `${items.length} ${first.type} findings`);
     return {
       id: `group:${id}`,
       type: first.type,
@@ -146,6 +157,7 @@ export async function readAssistantOverview(ownerId: string) {
       recommendedAction: item.recommendedAction,
       state: item.blockers.length ? "blocked" : "actionable",
       reviewItemId: item.reviewItemId,
+      acquisitionIdentity: item.identity,
     });
   }
 
