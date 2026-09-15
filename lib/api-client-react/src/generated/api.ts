@@ -25,6 +25,7 @@ import type {
   AcquisitionRecommendation,
   AcquisitionWebhookAccepted,
   AcquisitionWebhookPayload,
+  AgentCapabilities,
   AppSettings,
   AppSettingsUpdate,
   ApprovedAcquisitionResult,
@@ -33,9 +34,12 @@ import type {
   ArchiveInventory,
   ArchiveInventoryRecord,
   ArchiveOperation,
+  ArchiveProviderSelection,
+  ArchiveProviderSelectionUpdate,
   ArchiveReview,
   ArchiveReviewUpdate,
   ArchiveScan,
+  AssistantOverview,
   CreateAcquisitionJob,
   CreateArchiveOperation,
   CreateReviewItem,
@@ -50,9 +54,13 @@ import type {
   GetArchiveNamingProposalsParams,
   GetArchiveReconciliationParams,
   GetAssistantToolCatalog200,
+  GetWebhookDeliveryHistoryParams,
   HealthStatus,
   IdentityAuditReport,
   IntegrationStatusResponse,
+  JellyfinConfig,
+  JellyfinConfigUpdate,
+  JellyfinInventory,
   LinkAcquisitionDownload,
   ListAcquisitionRecommendationsParams,
   ListArchiveOperationsParams,
@@ -77,9 +85,11 @@ import type {
   ReviewItem,
   ReviewSyncResult,
   RotateWebhookSecretBody,
+  StorageDiagnostics,
   SystemDependencies,
   SystemEvent,
   SystemOverview,
+  WebhookDeliveryHistoryResponse,
   WebhookSecretStatus,
   WebhookSecretStatusesResponse
 } from './api.schemas';
@@ -177,6 +187,308 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getHealthCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAgentCapabilitiesUrl = () => {
+
+
+
+
+  return `/api/agent/capabilities`
+}
+
+/**
+ * @summary Get the server-enforced agent boundary
+ */
+export const getAgentCapabilities = async ( options?: Parameters<typeof customFetch>[1]): Promise<AgentCapabilities> => {
+
+  return customFetch<AgentCapabilities>(getGetAgentCapabilitiesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgentCapabilitiesQueryKey = () => {
+    return [
+    `/api/agent/capabilities`
+    ] as const;
+    }
+
+
+export const getGetAgentCapabilitiesQueryOptions = <TData = Awaited<ReturnType<typeof getAgentCapabilities>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentCapabilities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgentCapabilitiesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgentCapabilities>>> = ({ signal }) => getAgentCapabilities({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgentCapabilities>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgentCapabilitiesQueryResult = NonNullable<Awaited<ReturnType<typeof getAgentCapabilities>>>
+export type GetAgentCapabilitiesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the server-enforced agent boundary
+ */
+
+export function useGetAgentCapabilities<TData = Awaited<ReturnType<typeof getAgentCapabilities>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentCapabilities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgentCapabilitiesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getStreamAgentEventsUrl = () => {
+
+
+
+
+  return `/api/events`
+}
+
+/**
+ * @summary Stream owner-scoped persisted system events
+ */
+export const streamAgentEvents = async ( options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getStreamAgentEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getStreamAgentEventsQueryKey = () => {
+    return [
+    `/api/events`
+    ] as const;
+    }
+
+
+export const getStreamAgentEventsQueryOptions = <TData = Awaited<ReturnType<typeof streamAgentEvents>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamAgentEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStreamAgentEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof streamAgentEvents>>> = ({ signal }) => streamAgentEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof streamAgentEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type StreamAgentEventsQueryResult = NonNullable<Awaited<ReturnType<typeof streamAgentEvents>>>
+export type StreamAgentEventsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Stream owner-scoped persisted system events
+ */
+
+export function useStreamAgentEvents<TData = Awaited<ReturnType<typeof streamAgentEvents>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamAgentEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getStreamAgentEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPlanAgentOperationUrl = () => {
+
+
+
+
+  return `/api/operations/plan`
+}
+
+/**
+ * @summary Persist an approval-gated operation plan without executing it
+ */
+export const planAgentOperation = async (createArchiveOperation: CreateArchiveOperation, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getPlanAgentOperationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createArchiveOperation)
+  }
+);}
+
+
+
+
+
+export const getPlanAgentOperationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planAgentOperation>>, TError,{data: BodyType<CreateArchiveOperation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof planAgentOperation>>, TError,{data: BodyType<CreateArchiveOperation>}, TContext> => {
+
+const mutationKey = ['planAgentOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof planAgentOperation>>, {data: BodyType<CreateArchiveOperation>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  planAgentOperation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PlanAgentOperationMutationResult = NonNullable<Awaited<ReturnType<typeof planAgentOperation>>>
+    export type PlanAgentOperationMutationBody = BodyType<CreateArchiveOperation>
+    export type PlanAgentOperationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Persist an approval-gated operation plan without executing it
+ */
+export const usePlanAgentOperation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planAgentOperation>>, TError,{data: BodyType<CreateArchiveOperation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof planAgentOperation>>,
+        TError,
+        {data: BodyType<CreateArchiveOperation>},
+        TContext
+      > => {
+      return useMutation(getPlanAgentOperationMutationOptions(options));
+    }
+
+export const getGetAssistantOverviewUrl = () => {
+
+
+
+
+  return `/api/assistant/overview`
+}
+
+/**
+ * @summary Get deterministic assistant overview
+ */
+export const getAssistantOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<AssistantOverview> => {
+
+  return customFetch<AssistantOverview>(getGetAssistantOverviewUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssistantOverviewQueryKey = () => {
+    return [
+    `/api/assistant/overview`
+    ] as const;
+    }
+
+
+export const getGetAssistantOverviewQueryOptions = <TData = Awaited<ReturnType<typeof getAssistantOverview>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssistantOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssistantOverviewQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssistantOverview>>> = ({ signal }) => getAssistantOverview({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssistantOverview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAssistantOverviewQueryResult = NonNullable<Awaited<ReturnType<typeof getAssistantOverview>>>
+export type GetAssistantOverviewQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get deterministic assistant overview
+ */
+
+export function useGetAssistantOverview<TData = Awaited<ReturnType<typeof getAssistantOverview>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssistantOverview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAssistantOverviewQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -331,6 +643,83 @@ export function useGetSystemDependencies<TData = Awaited<ReturnType<typeof getSy
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetSystemDependenciesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStorageDiagnosticsUrl = () => {
+
+
+
+
+  return `/api/system/storage-diagnostics`
+}
+
+/**
+ * @summary Report which database this process has open and what it contains
+ */
+export const getStorageDiagnostics = async ( options?: Parameters<typeof customFetch>[1]): Promise<StorageDiagnostics> => {
+
+  return customFetch<StorageDiagnostics>(getGetStorageDiagnosticsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStorageDiagnosticsQueryKey = () => {
+    return [
+    `/api/system/storage-diagnostics`
+    ] as const;
+    }
+
+
+export const getGetStorageDiagnosticsQueryOptions = <TData = Awaited<ReturnType<typeof getStorageDiagnostics>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStorageDiagnostics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStorageDiagnosticsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStorageDiagnostics>>> = ({ signal }) => getStorageDiagnostics({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStorageDiagnostics>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStorageDiagnosticsQueryResult = NonNullable<Awaited<ReturnType<typeof getStorageDiagnostics>>>
+export type GetStorageDiagnosticsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Report which database this process has open and what it contains
+ */
+
+export function useGetStorageDiagnostics<TData = Awaited<ReturnType<typeof getStorageDiagnostics>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStorageDiagnostics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStorageDiagnosticsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -935,6 +1324,521 @@ export function useGetPlexInventory<TData = Awaited<ReturnType<typeof getPlexInv
 
 
 
+export const getGetJellyfinConfigUrl = () => {
+
+
+
+
+  return `/api/jellyfin/config`
+}
+
+/**
+ * @summary Get Jellyfin configuration status
+ */
+export const getJellyfinConfig = async ( options?: Parameters<typeof customFetch>[1]): Promise<JellyfinConfig> => {
+
+  return customFetch<JellyfinConfig>(getGetJellyfinConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJellyfinConfigQueryKey = () => {
+    return [
+    `/api/jellyfin/config`
+    ] as const;
+    }
+
+
+export const getGetJellyfinConfigQueryOptions = <TData = Awaited<ReturnType<typeof getJellyfinConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJellyfinConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJellyfinConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJellyfinConfig>>> = ({ signal }) => getJellyfinConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJellyfinConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJellyfinConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getJellyfinConfig>>>
+export type GetJellyfinConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get Jellyfin configuration status
+ */
+
+export function useGetJellyfinConfig<TData = Awaited<ReturnType<typeof getJellyfinConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJellyfinConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJellyfinConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateJellyfinConfigUrl = () => {
+
+
+
+
+  return `/api/jellyfin/config`
+}
+
+/**
+ * @summary Update Jellyfin configuration
+ */
+export const updateJellyfinConfig = async (jellyfinConfigUpdate: JellyfinConfigUpdate, options?: Parameters<typeof customFetch>[1]): Promise<JellyfinConfig> => {
+
+  return customFetch<JellyfinConfig>(getUpdateJellyfinConfigUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(jellyfinConfigUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateJellyfinConfigMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateJellyfinConfig>>, TError,{data: BodyType<JellyfinConfigUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateJellyfinConfig>>, TError,{data: BodyType<JellyfinConfigUpdate>}, TContext> => {
+
+const mutationKey = ['updateJellyfinConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateJellyfinConfig>>, {data: BodyType<JellyfinConfigUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateJellyfinConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateJellyfinConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateJellyfinConfig>>>
+    export type UpdateJellyfinConfigMutationBody = BodyType<JellyfinConfigUpdate>
+    export type UpdateJellyfinConfigMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update Jellyfin configuration
+ */
+export const useUpdateJellyfinConfig = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateJellyfinConfig>>, TError,{data: BodyType<JellyfinConfigUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateJellyfinConfig>>,
+        TError,
+        {data: BodyType<JellyfinConfigUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateJellyfinConfigMutationOptions(options));
+    }
+
+export const getTestJellyfinConnectionUrl = () => {
+
+
+
+
+  return `/api/jellyfin/test-connection`
+}
+
+/**
+ * @summary Verify the configured Jellyfin server
+ */
+export const testJellyfinConnection = async ( options?: Parameters<typeof customFetch>[1]): Promise<JellyfinConfig> => {
+
+  return customFetch<JellyfinConfig>(getTestJellyfinConnectionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getTestJellyfinConnectionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testJellyfinConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testJellyfinConnection>>, TError,void, TContext> => {
+
+const mutationKey = ['testJellyfinConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testJellyfinConnection>>, void> = () => {
+
+
+          return  testJellyfinConnection(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestJellyfinConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof testJellyfinConnection>>>
+
+    export type TestJellyfinConnectionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Verify the configured Jellyfin server
+ */
+export const useTestJellyfinConnection = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testJellyfinConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testJellyfinConnection>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getTestJellyfinConnectionMutationOptions(options));
+    }
+
+export const getStartJellyfinSyncUrl = () => {
+
+
+
+
+  return `/api/jellyfin/sync`
+}
+
+/**
+ * @summary Start synchronizing the configured Jellyfin inventory
+ */
+export const startJellyfinSync = async ( options?: Parameters<typeof customFetch>[1]): Promise<JellyfinConfig> => {
+
+  return customFetch<JellyfinConfig>(getStartJellyfinSyncUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartJellyfinSyncMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startJellyfinSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startJellyfinSync>>, TError,void, TContext> => {
+
+const mutationKey = ['startJellyfinSync'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startJellyfinSync>>, void> = () => {
+
+
+          return  startJellyfinSync(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartJellyfinSyncMutationResult = NonNullable<Awaited<ReturnType<typeof startJellyfinSync>>>
+
+    export type StartJellyfinSyncMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Start synchronizing the configured Jellyfin inventory
+ */
+export const useStartJellyfinSync = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startJellyfinSync>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startJellyfinSync>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getStartJellyfinSyncMutationOptions(options));
+    }
+
+export const getGetJellyfinInventoryUrl = () => {
+
+
+
+
+  return `/api/jellyfin/inventory`
+}
+
+/**
+ * @summary Get the synchronized Jellyfin inventory
+ */
+export const getJellyfinInventory = async ( options?: Parameters<typeof customFetch>[1]): Promise<JellyfinInventory> => {
+
+  return customFetch<JellyfinInventory>(getGetJellyfinInventoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJellyfinInventoryQueryKey = () => {
+    return [
+    `/api/jellyfin/inventory`
+    ] as const;
+    }
+
+
+export const getGetJellyfinInventoryQueryOptions = <TData = Awaited<ReturnType<typeof getJellyfinInventory>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJellyfinInventory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJellyfinInventoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJellyfinInventory>>> = ({ signal }) => getJellyfinInventory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJellyfinInventory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJellyfinInventoryQueryResult = NonNullable<Awaited<ReturnType<typeof getJellyfinInventory>>>
+export type GetJellyfinInventoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the synchronized Jellyfin inventory
+ */
+
+export function useGetJellyfinInventory<TData = Awaited<ReturnType<typeof getJellyfinInventory>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJellyfinInventory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJellyfinInventoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetArchiveProviderUrl = () => {
+
+
+
+
+  return `/api/archive/provider`
+}
+
+/**
+ * @summary Get the active archive reference provider
+ */
+export const getArchiveProvider = async ( options?: Parameters<typeof customFetch>[1]): Promise<ArchiveProviderSelection> => {
+
+  return customFetch<ArchiveProviderSelection>(getGetArchiveProviderUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveProviderQueryKey = () => {
+    return [
+    `/api/archive/provider`
+    ] as const;
+    }
+
+
+export const getGetArchiveProviderQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveProvider>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveProvider>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveProviderQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveProvider>>> = ({ signal }) => getArchiveProvider({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveProvider>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveProviderQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveProvider>>>
+export type GetArchiveProviderQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the active archive reference provider
+ */
+
+export function useGetArchiveProvider<TData = Awaited<ReturnType<typeof getArchiveProvider>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveProvider>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveProviderQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSetArchiveProviderUrl = () => {
+
+
+
+
+  return `/api/archive/provider`
+}
+
+/**
+ * @summary Select the archive reference provider
+ */
+export const setArchiveProvider = async (archiveProviderSelectionUpdate: ArchiveProviderSelectionUpdate, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveProviderSelection> => {
+
+  return customFetch<ArchiveProviderSelection>(getSetArchiveProviderUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(archiveProviderSelectionUpdate)
+  }
+);}
+
+
+
+
+
+export const getSetArchiveProviderMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setArchiveProvider>>, TError,{data: BodyType<ArchiveProviderSelectionUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setArchiveProvider>>, TError,{data: BodyType<ArchiveProviderSelectionUpdate>}, TContext> => {
+
+const mutationKey = ['setArchiveProvider'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setArchiveProvider>>, {data: BodyType<ArchiveProviderSelectionUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setArchiveProvider(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetArchiveProviderMutationResult = NonNullable<Awaited<ReturnType<typeof setArchiveProvider>>>
+    export type SetArchiveProviderMutationBody = BodyType<ArchiveProviderSelectionUpdate>
+    export type SetArchiveProviderMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Select the archive reference provider
+ */
+export const useSetArchiveProvider = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setArchiveProvider>>, TError,{data: BodyType<ArchiveProviderSelectionUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setArchiveProvider>>,
+        TError,
+        {data: BodyType<ArchiveProviderSelectionUpdate>},
+        TContext
+      > => {
+      return useMutation(getSetArchiveProviderMutationOptions(options));
+    }
+
 export const getGetIntegrationStatusesUrl = () => {
 
 
@@ -1077,6 +1981,90 @@ export function useGetWebhookSecretStatuses<TData = Awaited<ReturnType<typeof ge
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetWebhookSecretStatusesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWebhookDeliveryHistoryUrl = (params?: GetWebhookDeliveryHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/integrations/webhooks/history?${stringifiedParams}` : `/api/integrations/webhooks/history`
+}
+
+/**
+ * @summary Get owner-scoped webhook delivery history
+ */
+export const getWebhookDeliveryHistory = async (params?: GetWebhookDeliveryHistoryParams, options?: Parameters<typeof customFetch>[1]): Promise<WebhookDeliveryHistoryResponse> => {
+
+  return customFetch<WebhookDeliveryHistoryResponse>(getGetWebhookDeliveryHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebhookDeliveryHistoryQueryKey = (params?: GetWebhookDeliveryHistoryParams,) => {
+    return [
+    `/api/integrations/webhooks/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWebhookDeliveryHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getWebhookDeliveryHistory>>, TError = ErrorType<unknown>>(params?: GetWebhookDeliveryHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookDeliveryHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebhookDeliveryHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebhookDeliveryHistory>>> = ({ signal }) => getWebhookDeliveryHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebhookDeliveryHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebhookDeliveryHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getWebhookDeliveryHistory>>>
+export type GetWebhookDeliveryHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get owner-scoped webhook delivery history
+ */
+
+export function useGetWebhookDeliveryHistory<TData = Awaited<ReturnType<typeof getWebhookDeliveryHistory>>, TError = ErrorType<unknown>>(
+ params?: GetWebhookDeliveryHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookDeliveryHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebhookDeliveryHistoryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -3947,6 +4935,84 @@ export const useReceiveAcquisitionWebhook = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getReceiveAcquisitionWebhookMutationOptions(options));
     }
+
+export const getStreamArchiveScanEventsUrl = () => {
+
+
+
+
+  return `/api/archive/scan/events`
+}
+
+/**
+ * Server-Sent Events stream of live scan observability. On connect the server sends a `snapshot` event carrying the persisted scan aggregate and the ephemeral live state, followed by `scan.*` events as the scan progresses. The persisted aggregate from `GET /archive/scan` remains the source of truth; this stream is ephemeral and safe to lose. Events are owner-scoped. Not modelled as a JSON response because the body is an unbounded `text/event-stream`.
+ * @summary Stream live archive scan progress as Server-Sent Events
+ */
+export const streamArchiveScanEvents = async ( options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getStreamArchiveScanEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getStreamArchiveScanEventsQueryKey = () => {
+    return [
+    `/api/archive/scan/events`
+    ] as const;
+    }
+
+
+export const getStreamArchiveScanEventsQueryOptions = <TData = Awaited<ReturnType<typeof streamArchiveScanEvents>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamArchiveScanEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStreamArchiveScanEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof streamArchiveScanEvents>>> = ({ signal }) => streamArchiveScanEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof streamArchiveScanEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type StreamArchiveScanEventsQueryResult = NonNullable<Awaited<ReturnType<typeof streamArchiveScanEvents>>>
+export type StreamArchiveScanEventsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Stream live archive scan progress as Server-Sent Events
+ */
+
+export function useStreamArchiveScanEvents<TData = Awaited<ReturnType<typeof streamArchiveScanEvents>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamArchiveScanEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getStreamArchiveScanEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetArchiveScanUrl = () => {
 

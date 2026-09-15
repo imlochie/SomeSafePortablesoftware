@@ -15,6 +15,44 @@ export const webhookDeliveryResultClasses = [
 ] as const;
 export type WebhookDeliveryResultClass = (typeof webhookDeliveryResultClasses)[number];
 
+export const webhookDeliveryClassifications = [
+  "processed",
+  "ignored",
+  "duplicate",
+  "rejected",
+  "unavailable",
+  "malformed",
+] as const;
+export type WebhookDeliveryClassification = (typeof webhookDeliveryClassifications)[number];
+
+export interface WebhookDeliveryHistoryRecord {
+  id: number;
+  provider: WebhookProvider;
+  receivedAt: string;
+  classification: WebhookDeliveryClassification;
+  reasonCode: string;
+  providerEventId: string | null;
+  providerJobId: string | null;
+  resolvedOwnerId: string | null;
+  acquisitionJobId: number | null;
+  detail: string;
+  deduplication: "event_id" | "unavailable" | null;
+}
+
+export interface RecordWebhookDeliveryHistoryInput {
+  provider: WebhookProvider;
+  classification: WebhookDeliveryClassification;
+  reasonCode: string;
+  providerEventId?: string | null;
+  providerJobId?: string | null;
+  resolvedOwnerId?: string | null;
+  acquisitionJobId?: number | null;
+  detail: string;
+  deduplication?: "event_id" | "unavailable" | null;
+  receivedAt?: string;
+}
+
+const WEBHOOK_HISTORY_RETENTION_DAYS = 30;
 const MINIMUM_WEBHOOK_SECRET_LENGTH = 16;
 const MAXIMUM_OVERLAP_MINUTES = 24 * 60;
 const WEBHOOK_DIAGNOSTICS_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -223,6 +261,80 @@ export function readWebhookSecretStatuses(
   now = Date.now(),
 ) {
   return webhookProviders.map((provider) => readWebhookSecretStatus(provider, env, now));
+}
+
+function pruneWebhookDeliveryHistory(now = Date.now()) {
+  const cutoff = new Date(now - WEBHOOK_HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  archiveDb.prepare("DELETE FROM webhook_delivery WHERE received_at < ?").run(cutoff);
+}
+
+export function recordWebhookDeliveryHistory(input: RecordWebhookDeliveryHistoryInput) {
+  const receivedAt = input.receivedAt ?? new Date().toISOString();
+  pruneWebhookDeliveryHistory(Date.parse(receivedAt));
+  const result = archiveDb.prepare(`
+    INSERT INTO webhook_delivery
+      (provider, received_at, classification, reason_code, provider_event_id,
+       provider_job_id, owner_id, acquisition_job_id, detail, deduplication)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    input.provider,
+    receivedAt,
+    input.classification,
+    input.reasonCode,
+    input.providerEventId ?? null,
+    input.providerJobId ?? null,
+    input.resolvedOwnerId ?? null,
+    input.acquisitionJobId ?? null,
+    input.detail,
+    input.deduplication ?? null,
+  );
+  return Number(result.lastInsertRowid);
+}
+
+export function listWebhookDeliveryHistory(
+  ownerId: string,
+  options: { provider?: WebhookProvider; page?: number; pageSize?: number } = {},
+) {
+  pruneWebhookDeliveryHistory();
+  const pageSize = Math.max(1, Math.min(100, Math.floor(options.pageSize ?? 50)));
+  const page = Math.max(1, Math.floor(options.page ?? 1));
+  const conditions = ["owner_id = ?"];
+  const values: Array<string | number> = [ownerId];
+  if (options.provider) {
+    conditions.push("provider = ?");
+    values.push(options.provider);
+  }
+  const where = conditions.join(" AND ");
+  const total = Number((archiveDb.prepare(`SELECT COUNT(*) AS count FROM webhook_delivery WHERE ${where}`).get(...values) as { count: number }).count);
+  const rows = archiveDb.prepare(`
+    SELECT id, provider, received_at, classification, reason_code, provider_event_id,
+           provider_job_id, owner_id, acquisition_job_id, detail, deduplication
+    FROM webhook_delivery
+    WHERE ${where}
+    ORDER BY received_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `).all(...values, pageSize, (page - 1) * pageSize) as Array<Record<string, unknown>>;
+  return {
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    },
+    results: rows.map((row) => ({
+      id: Number(row.id),
+      provider: String(row.provider) as WebhookProvider,
+      receivedAt: String(row.received_at),
+      classification: String(row.classification) as WebhookDeliveryClassification,
+      reasonCode: String(row.reason_code),
+      providerEventId: row.provider_event_id == null ? null : String(row.provider_event_id),
+      providerJobId: row.provider_job_id == null ? null : String(row.provider_job_id),
+      resolvedOwnerId: row.owner_id == null ? null : String(row.owner_id),
+      acquisitionJobId: row.acquisition_job_id == null ? null : Number(row.acquisition_job_id),
+      detail: String(row.detail),
+      deduplication: row.deduplication == null ? null : String(row.deduplication) as "event_id" | "unavailable",
+    } satisfies WebhookDeliveryHistoryRecord)),
+  };
 }
 
 function validateSecret(secret: unknown) {
