@@ -11,6 +11,7 @@ import archiveRouter from "./archive";
 import integrationsRouter from "./integrations";
 import acquisitionJobsRouter from "./acquisition-jobs";
 import controlPlaneRouter from "./control-plane";
+import agentRouter from "./agent";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(archiveRouter);
 router.use(integrationsRouter);
 router.use(acquisitionJobsRouter);
 router.use(controlPlaneRouter);
+router.use(agentRouter);
 
 export default router;

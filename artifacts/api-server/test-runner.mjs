@@ -9,6 +9,7 @@ import { build } from "esbuild";
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 const testDir = await mkdtemp(path.join(tmpdir(), "archive-assistant-tests-"));
 const testFiles = [
+  "agent-boundary.test.ts",
   "assistant-overview.test.ts",
   "ownership.test.ts",
   "integrations.test.ts",

@@ -200,6 +200,38 @@ export interface AssistantRecommendation {
   reviewItemId: number | null;
 }
 
+export type AgentCapabilitiesAgentMode = typeof AgentCapabilitiesAgentMode[keyof typeof AgentCapabilitiesAgentMode];
+
+
+export const AgentCapabilitiesAgentMode = {
+  local: 'local',
+  hosted: 'hosted',
+} as const;
+
+export type AgentCapabilitiesAgent = {
+  id: string;
+  mode: AgentCapabilitiesAgentMode;
+};
+
+export type AgentCapabilitiesCapabilities = {
+  read: boolean;
+  plan: boolean;
+  operate: boolean;
+};
+
+export type AgentCapabilitiesOperationPolicy = {
+  approvalRequired: boolean;
+  preflightRequired: boolean;
+  directMutation: boolean;
+  providerExecution: boolean;
+};
+
+export interface AgentCapabilities {
+  agent: AgentCapabilitiesAgent;
+  capabilities: AgentCapabilitiesCapabilities;
+  operationPolicy: AgentCapabilitiesOperationPolicy;
+}
+
 export type AssistantOverviewSummaryHealth = typeof AssistantOverviewSummaryHealth[keyof typeof AssistantOverviewSummaryHealth];
 
 

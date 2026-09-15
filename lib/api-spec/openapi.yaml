@@ -48,6 +48,56 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /agent/capabilities:
+    get:
+      operationId: getAgentCapabilities
+      tags: [agent]
+      summary: Get the server-enforced agent boundary
+      responses:
+        "200":
+          description: Agent capabilities and operation policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCapabilities"
+  /events:
+    get:
+      operationId: streamAgentEvents
+      tags: [agent]
+      summary: Stream owner-scoped persisted system events
+      responses:
+        "200":
+          description: Server-sent event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Authentication required
+  /operations/plan:
+    post:
+      operationId: planAgentOperation
+      tags: [agent, operations]
+      summary: Persist an approval-gated operation plan without executing it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateArchiveOperation"
+      responses:
+        "201":
+          description: Persisted operation plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
+        "400":
+          description: Invalid request or missing approval linkage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /assistant/overview:
     get:
       operationId: getAssistantOverview
@@ -1793,6 +1843,31 @@ components:
         recommendedAction: { type: string }
         state: { type: string }
         reviewItemId: { type: [number, "null"] }
+    AgentCapabilities:
+      type: object
+      required: [agent, capabilities, operationPolicy]
+      properties:
+        agent:
+          type: object
+          required: [id, mode]
+          properties:
+            id: { type: string }
+            mode: { type: string, enum: [local, hosted] }
+        capabilities:
+          type: object
+          required: [read, plan, operate]
+          properties:
+            read: { type: boolean }
+            plan: { type: boolean }
+            operate: { type: boolean }
+        operationPolicy:
+          type: object
+          required: [approvalRequired, preflightRequired, directMutation, providerExecution]
+          properties:
+            approvalRequired: { type: boolean }
+            preflightRequired: { type: boolean }
+            directMutation: { type: boolean }
+            providerExecution: { type: boolean }
     AssistantOverviewSummary:
       type: object
       required: [health, attentionCount, counts, blockedCount, uncertainCount, lastScan, freshness]

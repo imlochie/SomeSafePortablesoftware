@@ -25,6 +25,7 @@ import type {
   AcquisitionRecommendation,
   AcquisitionWebhookAccepted,
   AcquisitionWebhookPayload,
+  AgentCapabilities,
   AppSettings,
   AppSettingsUpdate,
   ApprovedAcquisitionResult,
@@ -195,6 +196,231 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+
+export const getGetAgentCapabilitiesUrl = () => {
+
+
+
+
+  return `/api/agent/capabilities`
+}
+
+/**
+ * @summary Get the server-enforced agent boundary
+ */
+export const getAgentCapabilities = async ( options?: Parameters<typeof customFetch>[1]): Promise<AgentCapabilities> => {
+
+  return customFetch<AgentCapabilities>(getGetAgentCapabilitiesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgentCapabilitiesQueryKey = () => {
+    return [
+    `/api/agent/capabilities`
+    ] as const;
+    }
+
+
+export const getGetAgentCapabilitiesQueryOptions = <TData = Awaited<ReturnType<typeof getAgentCapabilities>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentCapabilities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgentCapabilitiesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgentCapabilities>>> = ({ signal }) => getAgentCapabilities({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgentCapabilities>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgentCapabilitiesQueryResult = NonNullable<Awaited<ReturnType<typeof getAgentCapabilities>>>
+export type GetAgentCapabilitiesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the server-enforced agent boundary
+ */
+
+export function useGetAgentCapabilities<TData = Awaited<ReturnType<typeof getAgentCapabilities>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentCapabilities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgentCapabilitiesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getStreamAgentEventsUrl = () => {
+
+
+
+
+  return `/api/events`
+}
+
+/**
+ * @summary Stream owner-scoped persisted system events
+ */
+export const streamAgentEvents = async ( options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getStreamAgentEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getStreamAgentEventsQueryKey = () => {
+    return [
+    `/api/events`
+    ] as const;
+    }
+
+
+export const getStreamAgentEventsQueryOptions = <TData = Awaited<ReturnType<typeof streamAgentEvents>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamAgentEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStreamAgentEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof streamAgentEvents>>> = ({ signal }) => streamAgentEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof streamAgentEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type StreamAgentEventsQueryResult = NonNullable<Awaited<ReturnType<typeof streamAgentEvents>>>
+export type StreamAgentEventsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Stream owner-scoped persisted system events
+ */
+
+export function useStreamAgentEvents<TData = Awaited<ReturnType<typeof streamAgentEvents>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof streamAgentEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getStreamAgentEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPlanAgentOperationUrl = () => {
+
+
+
+
+  return `/api/operations/plan`
+}
+
+/**
+ * @summary Persist an approval-gated operation plan without executing it
+ */
+export const planAgentOperation = async (createArchiveOperation: CreateArchiveOperation, options?: Parameters<typeof customFetch>[1]): Promise<ArchiveOperation> => {
+
+  return customFetch<ArchiveOperation>(getPlanAgentOperationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createArchiveOperation)
+  }
+);}
+
+
+
+
+
+export const getPlanAgentOperationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planAgentOperation>>, TError,{data: BodyType<CreateArchiveOperation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof planAgentOperation>>, TError,{data: BodyType<CreateArchiveOperation>}, TContext> => {
+
+const mutationKey = ['planAgentOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof planAgentOperation>>, {data: BodyType<CreateArchiveOperation>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  planAgentOperation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PlanAgentOperationMutationResult = NonNullable<Awaited<ReturnType<typeof planAgentOperation>>>
+    export type PlanAgentOperationMutationBody = BodyType<CreateArchiveOperation>
+    export type PlanAgentOperationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Persist an approval-gated operation plan without executing it
+ */
+export const usePlanAgentOperation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planAgentOperation>>, TError,{data: BodyType<CreateArchiveOperation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof planAgentOperation>>,
+        TError,
+        {data: BodyType<CreateArchiveOperation>},
+        TContext
+      > => {
+      return useMutation(getPlanAgentOperationMutationOptions(options));
+    }
 
 export const getGetAssistantOverviewUrl = () => {
 

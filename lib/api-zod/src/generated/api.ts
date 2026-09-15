@@ -18,6 +18,94 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Get the server-enforced agent boundary
+ */
+export const GetAgentCapabilitiesResponse = zod.object({
+  "agent": zod.object({
+  "id": zod.string(),
+  "mode": zod.enum(['local', 'hosted'])
+}),
+  "capabilities": zod.object({
+  "read": zod.boolean(),
+  "plan": zod.boolean(),
+  "operate": zod.boolean()
+}),
+  "operationPolicy": zod.object({
+  "approvalRequired": zod.boolean(),
+  "preflightRequired": zod.boolean(),
+  "directMutation": zod.boolean(),
+  "providerExecution": zod.boolean()
+})
+})
+
+
+/**
+ * @summary Stream owner-scoped persisted system events
+ */
+export const StreamAgentEventsResponse = zod.unknown()
+
+
+/**
+ * @summary Persist an approval-gated operation plan without executing it
+ */
+
+
+
+
+
+
+export const planAgentOperationBodyDryRunDefault = false;
+
+export const PlanAgentOperationBody = zod.object({
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string().min(1),
+  "sourceId": zod.string().nullish(),
+  "sourcePath": zod.string().min(1),
+  "destinationPath": zod.string().min(1),
+  "reviewItemId": zod.number().min(1),
+  "acquisitionJobId": zod.number().min(1).nullish(),
+  "downloadJobId": zod.number().min(1).nullish(),
+  "dryRun": zod.boolean().default(planAgentOperationBodyDryRunDefault),
+  "idempotencyKey": zod.string().optional()
+})
+
+export const PlanAgentOperationResponse = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
  * @summary Get deterministic assistant overview
  */
 export const getAssistantOverviewResponseSummaryAttentionCountMin = 0;
