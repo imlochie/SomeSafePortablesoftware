@@ -782,7 +782,7 @@ fn main() {
         .expect("error while building ARCHIVE ASSISTANT")
         .run(|app, event| {
             if let RunEvent::ExitRequested { api, .. } = &event {
-                lifecycle_event(&app.handle(), "APP_EXIT_REQUESTED");
+                lifecycle_event(app, "APP_EXIT_REQUESTED");
                 let allow_exit = app
                     .try_state::<ExitGuard>()
                     .map(|guard| guard.allow_exit.load(Ordering::Acquire))
@@ -793,7 +793,7 @@ fn main() {
                     // defence, otherwise the tray may remain visible while
                     // the sidecar is shut down.
                     api.prevent_exit();
-                    lifecycle_event(&app.handle(), "APP_EXIT_PREVENTED");
+                    lifecycle_event(app, "APP_EXIT_PREVENTED");
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.hide();
                     }
@@ -801,11 +801,11 @@ fn main() {
                 }
             }
             if matches!(event, RunEvent::Exit) {
-                lifecycle_event(&app.handle(), "APP_EXIT");
+                lifecycle_event(app, "APP_EXIT");
                 if let Some(state) = app.try_state::<SidecarState>() {
-                    lifecycle_event(&app.handle(), "SIDECAR_STOPPING");
+                    lifecycle_event(app, "SIDECAR_STOPPING");
                     state.shutdown();
-                    lifecycle_event(&app.handle(), "SIDECAR_STOPPED");
+                    lifecycle_event(app, "SIDECAR_STOPPED");
                 }
             }
         });
