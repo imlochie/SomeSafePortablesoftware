@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readArchiveInventory } from "./archive";
 import { readNamingProposals } from "./naming-intelligence";
 import { ensureReviewItem } from "./review-queue";
+import { classifyFinding, summariseSeverity, type FindingClassification } from "./finding-severity";
 
 function evidenceHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -51,8 +52,32 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
 
   const inventory = readArchiveInventory(ownerId);
   let archiveFindingItems = 0;
+  let informationalFindings = 0;
+  const classifications: FindingClassification[] = [];
+  // Duplicate counterparts are needed to tell an exact SHA-256 duplicate from a
+  // fingerprint-only match, which is the difference between a decision and an
+  // observation.
+  const checksumById = new Map(inventory.records.map((record) => [record.id, record.checksum]));
   for (const record of inventory.records) {
     if (record.reviewStatus === "not_applicable") continue;
+    const classification = classifyFinding({
+      qualityStatus: record.qualityStatus,
+      checksum: record.checksum,
+      duplicateOfId: record.duplicateOfId,
+      duplicateChecksum: record.duplicateOfId === null
+        ? null
+        : checksumById.get(record.duplicateOfId) ?? null,
+      qualityDifferences: record.qualityDifferences,
+      integrityClassification: record.integrityClassification,
+    });
+    classifications.push(classification);
+    // Informational findings remain queryable through the archive inventory.
+    // They are simply not placed in front of the operator as decisions, which
+    // is what made the review queue unusable.
+    if (!classification.reviewRequired) {
+      informationalFindings += 1;
+      continue;
+    }
     ensureReviewItem(ownerId, {
       kind: "archive_finding",
       subjectKey: `archive-finding:${record.id}:${record.qualityStatus}:${record.reviewEvidenceKey}`,
@@ -70,6 +95,9 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
         evidenceKey: record.reviewEvidenceKey,
         archiveReviewStatus: record.reviewStatus,
         archiveReviewNote: record.reviewNote,
+        severity: classification.severity,
+        confidence: classification.confidence,
+        severityReason: classification.reason,
         blockers: [],
       },
     });
@@ -79,6 +107,8 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
   return {
     namingItems,
     archiveFindingItems,
+    informationalFindings,
+    severity: summariseSeverity(classifications),
     total: namingItems + archiveFindingItems,
   };
 }

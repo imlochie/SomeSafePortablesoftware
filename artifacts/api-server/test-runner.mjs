@@ -9,14 +9,28 @@ import { build } from "esbuild";
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 const testDir = await mkdtemp(path.join(tmpdir(), "archive-assistant-tests-"));
 const testFiles = [
+  "assistant-overview.test.ts",
   "ownership.test.ts",
   "integrations.test.ts",
+  "network-target.test.ts",
+  "jellyfin.test.ts",
+  "archive-provider.test.ts",
   "integration-http.test.ts",
   "acquisition-jobs.test.ts",
   "media-acquisition.test.ts",
   "control-plane.test.ts",
   "system-dependencies.test.ts",
   "media-integrity.test.ts",
+  "scan-events.test.ts",
+  "windows-compat.test.ts",
+  "desktop-cors.test.ts",
+  "archive-operations-safety.test.ts",
+  "acquisition-approval.test.ts",
+  "finding-severity.test.ts",
+  "review-sync-severity.test.ts",
+  "storage-diagnostics.test.ts",
+  "scan-lifecycle-reconcile.test.ts",
+  "scan-resume.test.ts",
 ];
 const outputFiles = testFiles.map((file) => path.join(testDir, file.replace(/\.ts$/, ".cjs")));
 const databaseFile = path.join(testDir, "ownership.sqlite");
@@ -207,6 +221,7 @@ try {
           NODE_ENV: process.env.NODE_ENV ?? "production",
           ARCHIVE_DB_PATH: databaseFile,
           ARCHIVE_TEST_ROOT: testDir,
+          API_SERVER_SRC: path.join(artifactDir, "src"),
         },
       },
     );

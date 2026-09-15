@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
@@ -15,7 +17,7 @@ import {
   getGetSystemOverviewQueryKey, getGetWebhookSecretStatusesQueryKey, useCancelDownload, useCreateDownload, useDeleteDownload,
   useGetDownloads, useGetPlexConfig, useGetPlexInventory, useGetSettings, useGetSystemDependencies,
   useGetWebhookSecretStatuses, useReplaceWebhookSecret,
-  useGetSystemEvents, useGetSystemOverview, useHealthCheck, useInspectMediaSource,
+  useGetSystemEvents, useGetSystemOverview, useGetAssistantOverview, useHealthCheck, useInspectMediaSource,
   usePauseDownload, usePrepareDownload, useRetryDownload, useResumeDownload,
   useStartDownload, useStartPlexSync, useTestPlexConnection, useUpdatePlexConfig, useUpdateSettings,
   useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord, useGetArchiveNamingProposals,
@@ -27,12 +29,18 @@ import {
   useCreateApprovedAcquisitionJob, useListArchiveOperations, useGetIntegrationStatuses,
   useSyncControlPlaneReviewItems, useCreateArchiveOperation, usePreflightArchiveOperation,
   useExecuteArchiveOperation, useCancelArchiveOperation, useRetryArchiveOperation,
-  useRollbackArchiveOperation,
-  setBaseUrl,
+  useRollbackArchiveOperation, useGetAcquisitionJobs, useLinkAcquisitionDownload,
+  usePlanApprovedAcquisitionImport, useRefreshAcquisitionJob,
 } from '@workspace/api-client-react';
-import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
+import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, ReviewSyncResult, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
+import { apiUrl } from '@/lib/desktop-api-base-url';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
+import { ArchiveScanPanel } from '@/components/archive-scan-panel';
+import { StorageDiagnosticsPanel } from './components/storage-diagnostics-panel';
+import { AcquisitionJobsPanel } from '@/components/acquisition-jobs-panel';
+import { useArchiveScanEvents } from '@/hooks/use-archive-scan-events';
+import { resolveScanLifecycle } from '@/lib/scan-lifecycle';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -51,10 +59,9 @@ const clerkPubKey = authMode === 'clerk'
   : null;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const desktopApiBaseUrl = (window as Window & {
-  __ARCHIVE_API_BASE_URL__?: string;
-}).__ARCHIVE_API_BASE_URL__;
-setBaseUrl(import.meta.env.VITE_API_BASE_URL?.trim() || desktopApiBaseUrl || null);
+// The API base URL is configured in main.tsx before this module is imported.
+// It cannot be read at module scope here: the desktop shell injects it only
+// after its sidecar is ready, which is long after these modules evaluate.
 
 if (authMode === 'clerk' && !clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
@@ -218,12 +225,12 @@ function MetricCard({ icon: Icon, label, value, status, note, accent = 'teal' }:
 }
 
 function Home() {
-  const { data: overview, isLoading, isError, refetch } = useGetSystemOverview(); const { data: events, isLoading: eventsLoading } = useGetSystemEvents(); const { data: deps } = useGetSystemDependencies(); const plex = useGetPlexConfig();
+  const { data: overview, isLoading, isError, refetch } = useGetSystemOverview(); const { data: events, isLoading: eventsLoading } = useGetSystemEvents(); const { data: deps } = useGetSystemDependencies(); const plex = useGetPlexConfig(); const assistantOverview = useGetAssistantOverview();
   if (isLoading) return <><PageIntro eyebrow="CONTROL ROOM / STARTUP" title="Archive at a glance" description="Reading the local node and preparing a trustworthy snapshot." /><div className="grid gap-4 md:grid-cols-3">{[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-[146px]" />)}</div></>;
   if (isError || !overview) return <ErrorState title="The local node did not answer" message="Overview data is unavailable. Nothing has been assumed or filled in." onRetry={() => refetch()} testId="button-retry-overview" />;
   const storage = overview.storage ?? { path: 'Storage readout not returned', freeBytes: 0, totalBytes: 0, usedBytes: 0, freePercent: 0, status: 'unavailable' as const }; const activity = overview.activity?.length ? overview.activity : events; const availableDeps = deps?.dependencies.filter((dep) => dep.status === 'available').length ?? 0;
   const activeDownloads = overview.activeDownloads ?? 0; const queuedJobs = overview.queuedJobs ?? 0; const processingJobs = overview.processingJobs ?? 0; const completedToday = overview.completedToday ?? 0; const failedToday = overview.failedToday ?? 0;
-  return <><PageIntro eyebrow="CONTROL ROOM / HOME" title="Archive at a glance" description="A restrained readout of what exists now, what is moving, and what still needs an operator." action={<button onClick={() => refetch()} className="inline-flex items-center gap-2 border border-[var(--line)] bg-white/60 px-3.5 py-2.5 text-[10px] font-bold tracking-[.11em] text-[#5a6d73] hover:border-[#81999a] hover:bg-white" data-testid="button-refresh-overview"><RefreshCw size={14} /> REFRESH READOUT</button>} /><div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"><MetricCard icon={Download} label="ACTIVE DOWNLOADS" value={String(activeDownloads)} note={`${queuedJobs} queued / ${processingJobs} processing`} status={activeDownloads ? 'processing' : 'idle'} accent="amber" /><MetricCard icon={Check} label="COMPLETED TODAY" value={String(completedToday)} note="Jobs with verified destinations" status="ready" /><MetricCard icon={Archive} label="FAILED TODAY" value={String(failedToday)} note="Requires operator review" status={failedToday ? 'error' : 'idle'} accent={failedToday ? 'red' : 'teal'} /><MetricCard icon={HardDrive} label="STORAGE" value={`${storage.freePercent.toFixed(1)}% free`} note={`${formatBytes(storage.freeBytes)} available`} status={storage.status} accent="amber" /><MetricCard icon={Library} label="ARCHIVE" value={statusText(overview.archiveStatus)} status={overview.archiveStatus} note="Collection index" /><MetricCard icon={PlaySquare} label="PLEX" value={plex.data?.configured ? statusText(plex.data.status) : 'NOT SET'} status={plex.data?.configured ? plex.data.status : 'not_configured'} note={plex.data?.configured ? 'Configuration present' : 'Connection never assumed'} accent="amber" /></div><div className="mb-5 grid gap-5 xl:grid-cols-[1.2fr_.8fr]"><section className="archive-panel p-5 md:p-6" data-testid="panel-storage-readout"><div className="flex items-start justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">CAPACITY / {storage.status.toUpperCase()}</div><h2 className="archive-display mt-1 text-lg font-extrabold">Storage readout</h2></div><HardDrive size={18} className="text-[#4e9690]" /></div><div className="mt-5 flex items-end justify-between"><div><div className="archive-display text-3xl font-extrabold text-[#263844]">{formatBytes(storage.freeBytes)}</div><div className="mt-1 text-[11px] text-[#879599]">free on the archive volume</div></div><div className="archive-mono text-right text-[10px] text-[#829197]">{formatBytes(storage.usedBytes)} used<br />{formatBytes(storage.totalBytes)} total</div></div><div className="mt-5 h-2 overflow-hidden bg-[#e6ecea]"><div className="h-full origin-left bg-[#4e9690] transition-transform duration-500" style={{ transform: `scaleX(${Math.min(1, Math.max(0, (100 - storage.freePercent) / 100))})` }} /></div><div className="mt-3 truncate text-[10px] text-[#8b999d]" title={storage.path}>{storage.path}</div></section><section className="archive-panel p-5 md:p-6" data-testid="panel-system-pulse"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">SYSTEM PULSE</div><h2 className="archive-display mt-1 text-lg font-extrabold">Last sync</h2><div className="mt-7 border-l-2 border-[#f4b942] pl-4"><div className="archive-mono text-[24px] font-medium tracking-[-.05em] text-[#263844]" data-testid="text-last-sync">{formatTime(overview.lastSync)}</div><div className="mt-2 text-[11px] leading-5 text-[#7d8b8e]">{overview.lastSync ? 'The local snapshot has a recorded sync point.' : 'No sync has been recorded. This is not an error.'}</div></div><Link href="/settings" className="mt-8 flex items-center justify-between border-t border-[#e3e8e7] pt-4 text-[10px] font-bold tracking-[.1em] text-[#65787c] hover:text-[#21303d]" data-testid="link-open-settings">SYSTEM SETTINGS <ChevronRight size={14} /></Link></section></div><section className="archive-panel p-5 md:p-6" data-testid="panel-recent-activity"><div className="mb-5 flex items-center justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LATEST SIGNALS / {availableDeps} DEPENDENCIES READY</div><h2 className="archive-display mt-1 text-lg font-extrabold">Recent activity</h2></div><Link href="/history" className="inline-flex items-center gap-1 text-[10px] font-bold tracking-[.1em] text-[#4e9690]" data-testid="link-view-history">VIEW HISTORY <ArrowUpRight size={13} /></Link></div>{eventsLoading ? <div className="space-y-3"><Skeleton className="h-10" /><Skeleton className="h-10" /></div> : <ActivityRows events={activity} />}</section></>;
+  return <><PageIntro eyebrow="CONTROL ROOM / HOME" title="Archive at a glance" description="A briefing of what the local archive knows, what needs attention, and what can wait." action={<button onClick={() => { refetch(); assistantOverview.refetch(); }} className="inline-flex items-center gap-2 border border-[var(--line)] bg-white/60 px-3.5 py-2.5 text-[10px] font-bold tracking-[.11em] text-[#5a6d73] hover:border-[#81999a] hover:bg-white" data-testid="button-refresh-overview"><RefreshCw size={14} /> REFRESH READOUT</button>} />{assistantOverview.data && <section className="archive-panel mb-7 p-5 md:p-6" data-testid="panel-assistant-overview"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">ASSISTANT / BRIEFING</div><h2 className="archive-display mt-1 text-xl font-extrabold">{assistantOverview.data.summary.health === 'healthy' ? 'Your archive is healthy.' : `${assistantOverview.data.summary.attentionCount} things need attention.`}</h2><p className="mt-1 text-[12px] text-[#829095]">Evidence-backed recommendations. Nothing changes without your approval.</p></div><div className="archive-mono text-[10px] text-[#829095]">{assistantOverview.data.summary.counts.high + assistantOverview.data.summary.counts.critical} HIGH PRIORITY</div></div>{assistantOverview.data.attention.length ? <div className="mt-5 grid gap-3 md:grid-cols-2">{assistantOverview.data.attention.slice(0, 6).map((item) => <div key={item.id} className="border border-[#e0e8e5] bg-[#fbfcfb] p-4" data-testid={`assistant-recommendation-${item.id}`}><div className="flex items-start justify-between gap-3"><div className="text-[12px] font-semibold text-[#3e5058]">{item.title}</div><StatusPill status={item.priority === 'critical' || item.priority === 'high' ? 'warning' : 'idle'} label={item.priority.toUpperCase()} /></div><p className="mt-2 text-[11px] leading-5 text-[#718187]">{item.explanation}</p><div className="mt-2 text-[10px] font-semibold text-[#39736e]">{item.recommendedAction}</div></div>)}</div> : <div className="mt-5 border-l-2 border-[#4e9690] bg-[#f1f7f5] p-3 text-[11px] text-[#56736f]">Nothing currently requires a decision. The archive is being observed.</div>}<div className="mt-4 flex flex-wrap gap-3 archive-mono text-[9px] tracking-[.08em] text-[#829095]"><span>{assistantOverview.data.summary.counts.medium} MEDIUM</span><span>{assistantOverview.data.summary.counts.low} LOW</span><span>{assistantOverview.data.activeWork.acquisitionJobs} ACTIVE ACQUISITIONS</span><span>SCAN: {assistantOverview.data.activeWork.scanStatus.toUpperCase()}</span></div></section>}<div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"><MetricCard icon={Download} label="ACTIVE DOWNLOADS" value={String(activeDownloads)} note={`${queuedJobs} queued / ${processingJobs} processing`} status={activeDownloads ? 'processing' : 'idle'} accent="amber" /><MetricCard icon={Check} label="COMPLETED TODAY" value={String(completedToday)} note="Jobs with verified destinations" status="ready" /><MetricCard icon={Archive} label="FAILED TODAY" value={String(failedToday)} note="Requires operator review" status={failedToday ? 'error' : 'idle'} accent={failedToday ? 'red' : 'teal'} /><MetricCard icon={HardDrive} label="STORAGE" value={`${storage.freePercent.toFixed(1)}% free`} note={`${formatBytes(storage.freeBytes)} available`} status={storage.status} accent="amber" /><MetricCard icon={Library} label="ARCHIVE" value={statusText(overview.archiveStatus)} status={overview.archiveStatus} note="Collection index" /><MetricCard icon={PlaySquare} label="PLEX" value={plex.data?.configured ? statusText(plex.data.status) : 'NOT SET'} status={plex.data?.configured ? plex.data.status : 'not_configured'} note={plex.data?.configured ? 'Configuration present' : 'Connection never assumed'} accent="amber" /></div><div className="mb-5 grid gap-5 xl:grid-cols-[1.2fr_.8fr]"><section className="archive-panel p-5 md:p-6" data-testid="panel-storage-readout"><div className="flex items-start justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">CAPACITY / {storage.status.toUpperCase()}</div><h2 className="archive-display mt-1 text-lg font-extrabold">Storage readout</h2></div><HardDrive size={18} className="text-[#4e9690]" /></div><div className="mt-5 flex items-end justify-between"><div><div className="archive-display text-3xl font-extrabold text-[#263844]">{formatBytes(storage.freeBytes)}</div><div className="mt-1 text-[11px] text-[#879599]">free on the archive volume</div></div><div className="archive-mono text-right text-[10px] text-[#829197]">{formatBytes(storage.usedBytes)} used<br />{formatBytes(storage.totalBytes)} total</div></div><div className="mt-5 h-2 overflow-hidden bg-[#e6ecea]"><div className="h-full origin-left bg-[#4e9690] transition-transform duration-500" style={{ transform: `scaleX(${Math.min(1, Math.max(0, (100 - storage.freePercent) / 100))})` }} /></div><div className="mt-3 truncate text-[10px] text-[#8b999d]" title={storage.path}>{storage.path}</div></section><section className="archive-panel p-5 md:p-6" data-testid="panel-system-pulse"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">SYSTEM PULSE</div><h2 className="archive-display mt-1 text-lg font-extrabold">Last sync</h2><div className="mt-7 border-l-2 border-[#f4b942] pl-4"><div className="archive-mono text-[24px] font-medium tracking-[-.05em] text-[#263844]" data-testid="text-last-sync">{formatTime(overview.lastSync)}</div><div className="mt-2 text-[11px] leading-5 text-[#7d8b8e]">{overview.lastSync ? 'The local snapshot has a recorded sync point.' : 'No sync has been recorded. This is not an error.'}</div></div><Link href="/settings" className="mt-8 flex items-center justify-between border-t border-[#e3e8e7] pt-4 text-[10px] font-bold tracking-[.1em] text-[#65787c] hover:text-[#21303d]" data-testid="link-open-settings">SYSTEM SETTINGS <ChevronRight size={14} /></Link></section></div><section className="archive-panel p-5 md:p-6" data-testid="panel-recent-activity"><div className="mb-5 flex items-center justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LATEST SIGNALS / {availableDeps} DEPENDENCIES READY</div><h2 className="archive-display mt-1 text-lg font-extrabold">Recent activity</h2></div><Link href="/history" className="inline-flex items-center gap-1 text-[10px] font-bold tracking-[.1em] text-[#4e9690]" data-testid="link-view-history">VIEW HISTORY <ArrowUpRight size={13} /></Link></div>{eventsLoading ? <div className="space-y-3"><Skeleton className="h-10" /><Skeleton className="h-10" /></div> : <ActivityRows events={activity} />}</section></>;
 }
 function ErrorState({ title, message, onRetry, testId }: { title: string; message: string; onRetry: () => void; testId: string }) {
   return <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center p-8 text-center"><CloudOff size={28} className="mb-4 text-[#c85b51]" /><h1 className="archive-display text-2xl font-extrabold">{title}</h1><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#77878b]">{message}</p><button onClick={onRetry} className="mt-5 inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3]" data-testid={testId}><RefreshCw size={14} /> RETRY READ</button></div>;
@@ -246,7 +253,7 @@ function InspectionResult({ inspection, selected, setSelected, onPrepare, pendin
 function QueuePage() {
   const queryClient = useQueryClient(); const { data: jobs, isLoading, isError, refetch } = useGetDownloads(); const [notice, setNotice] = useState('');
   const start = useStartDownload(); const pause = usePauseDownload(); const resume = useResumeDownload(); const cancel = useCancelDownload(); const retry = useRetryDownload(); const remove = useDeleteDownload(); const inspect = useInspectMediaSource(); const create = useCreateDownload();
-  useEffect(() => { const source = new EventSource('/api/downloads/events'); const invalidate = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }; ['message', 'download', 'job.created', 'job.updated', 'job.completed', 'job.finished'].forEach((eventName) => source.addEventListener(eventName, invalidate)); source.onerror = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); }; return () => source.close(); }, [queryClient]);
+  useEffect(() => { const source = new EventSource(apiUrl('/api/downloads/events')); const invalidate = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }; ['message', 'download', 'job.created', 'job.updated', 'job.completed', 'job.finished'].forEach((eventName) => source.addEventListener(eventName, invalidate)); source.onerror = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); }; return () => source.close(); }, [queryClient]);
   const persist = (mutation: { mutate: (data: { id: number }, options: { onSuccess: () => void; onError: (error: unknown) => void }) => void }, id: number, message: string) => mutation.mutate({ id }, { onSuccess: () => { setNotice(message); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(errorText(error)) });
   const createDemo = () => { setNotice('Inspecting the demo source…'); inspect.mutate({ data: { url: 'https://demo.local/archive-assistant/sample', forceRefresh: true } }, { onSuccess: (source) => { const format = source.formats.find((item) => item.usable); if (!format) { setNotice('Demo source returned no usable format.'); return; } create.mutate({ data: { sourceUrl: source.metadata.webpageUrl, title: source.metadata.title, sourceSite: source.metadata.extractor, selectedFormatId: format.formatId, selectedVideoFormatId: source.recommendedVideoFormatId, selectedAudioFormatId: source.recommendedAudioFormatId, outputContainer: 'mkv', finalFilename: source.metadata.title } }, { onSuccess: (job) => { start.mutate({ id: job.id }, { onSuccess: () => { setNotice('Demo job created and started.'); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(`Demo job created, but start failed: ${errorText(error)}`) }); }, onError: (error) => setNotice(errorText(error)) }); }, onError: (error) => setNotice(`Demo inspection failed: ${errorText(error)}`) }); };
   const action = (job: DownloadJob, kind: 'start' | 'pause' | 'resume' | 'cancel' | 'retry' | 'delete') => { if (kind === 'delete') { if (window.confirm(`Delete job #${job.id}? This only removes the job record.`)) persist(remove, job.id, `Job #${job.id} deleted.`); return; } if (kind === 'start') persist(start, job.id, `Job #${job.id} started.`); if (kind === 'pause') persist(pause, job.id, `Job #${job.id} paused.`); if (kind === 'resume') persist(resume, job.id, `Job #${job.id} resumed.`); if (kind === 'cancel') persist(cancel, job.id, `Job #${job.id} cancelled.`); if (kind === 'retry') persist(retry, job.id, `Job #${job.id} queued for retry.`); };
@@ -273,6 +280,27 @@ function HistoryPage() {
 const placeholderCopy: Record<string, { title: string; description: string; icon: typeof Activity; eyebrow: string }> = { ASSISTANT: { eyebrow: 'WORKSPACE / RESERVED', title: 'Assistant console', description: 'Reserved for collection-aware questions and guided actions.', icon: Bot }, ARCHIVE: { eyebrow: 'WORKSPACE / RESERVED', title: 'Archive browser', description: 'Reserved for a searchable browser of verified media.', icon: Archive } };
 function PlaceholderPage({ section }: { section: keyof typeof placeholderCopy }) { const copy = placeholderCopy[section]; const Icon = copy.icon; return <><PageIntro eyebrow={copy.eyebrow} title={copy.title} description={copy.description} /><div className="archive-panel relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden p-8 text-center"><div className="absolute left-0 top-0 h-1 w-24 bg-[#f4b942]" /><div className="absolute right-8 top-8 archive-mono text-[9px] tracking-[.16em] text-[#a2adae]">RESERVED / NO CLAIMS</div><div className="grid h-16 w-16 place-items-center border border-[#d6dfdc] bg-[#eaf0ed] text-[#4e9690]"><Icon size={27} strokeWidth={1.4} /></div><h2 className="archive-display mt-6 text-[25px] font-extrabold text-[#2b3d46]">Surface is reserved</h2><p className="mt-2 max-w-md text-[13px] leading-6 text-[#7c8a8d]">This workspace is intentionally honest about its current state. No records or capabilities are fabricated in this preview.</p><div className="mt-7 flex items-center gap-2 border border-[#e1e7e5] bg-[#f8faf8] px-3 py-2 archive-mono text-[9px] tracking-[.1em] text-[#799094]"><CircleHelp size={13} /> SAFE TO EXPLORE</div></div></>; }
 
+/**
+ * The review sync used to report a single total, which conflated observations
+ * with decisions and produced numbers in the tens of thousands on a real
+ * archive. Report what the operator actually has to act on, and keep the
+ * observations visible as context rather than as a backlog.
+ */
+export function summariseReviewSync(result: ReviewSyncResult): string {
+  const { severity } = result;
+  const counts = severity.bySeverity;
+  const escalated = (['critical', 'high', 'medium', 'low'] as const)
+    .filter((level) => counts[level] > 0)
+    .map((level) => `${counts[level]} ${level}`)
+    .join(', ');
+  const decisions = `${result.archiveFindingItems.toLocaleString()} finding${result.archiveFindingItems === 1 ? '' : 's'} need review`;
+  const observations = `${result.informationalFindings.toLocaleString()} informational`;
+  const naming = `${result.namingItems.toLocaleString()} naming proposal${result.namingItems === 1 ? '' : 's'}`;
+  return escalated
+    ? `${decisions} (${escalated}) · ${observations} · ${naming}.`
+    : `${decisions} · ${observations} · ${naming}.`;
+}
+
 function AssistantPage() {
   const recommendations = useListAcquisitionRecommendations({ status: 'active' });
   const reviews = useListReviewItems();
@@ -291,12 +319,19 @@ function AssistantPage() {
   const cancelOperation = useCancelArchiveOperation();
   const retryOperation = useRetryArchiveOperation();
   const rollbackOperation = useRollbackArchiveOperation();
+  const acquisitionJobs = useGetAcquisitionJobs();
+  const downloads = useGetDownloads();
+  const linkDownload = useLinkAcquisitionDownload();
+  const planImport = usePlanApprovedAcquisitionImport();
+  const refreshAcquisition = useRefreshAcquisitionJob();
   const [notice, setNotice] = useState('');
   const refresh = async () => Promise.all([
     recommendations.refetch(),
     reviews.refetch(),
     operations.refetch(),
     providers.refetch(),
+    acquisitionJobs.refetch(),
+    downloads.refetch(),
   ]);
   const decide = async (itemId: number, next: 'approve' | 'reject' | 'defer' | 'reopen') => {
     const mutation = { approve, reject, defer, reopen }[next];
@@ -321,6 +356,18 @@ function AssistantPage() {
       setNotice(errorText(error));
     }
   };
+  // The acquisition back half. Linking and planning are separate deliberate
+  // steps, and planning stops at a planned operation: the import is executed
+  // through the same preflight and confirmation path as every other mutation.
+  const acquire = async (action: () => Promise<unknown>, describe: (result: unknown) => string) => {
+    try {
+      const result = await action();
+      setNotice(describe(result));
+      await refresh();
+    } catch (error) {
+      setNotice(errorText(error));
+    }
+  };
   const pendingCount = (reviews.data ?? []).filter((item) => ['pending', 'reopened'].includes(item.state)).length;
   const blockedCount = (recommendations.data ?? []).filter((item) => item.blockers.length).length;
   const providerItems = providers.data?.integrations ?? [];
@@ -330,7 +377,7 @@ function AssistantPage() {
       eyebrow="CONTROL PLANE / ASSISTANT"
       title="Review before action"
       description="Current archive evidence, provider health, approvals, acquisition jobs, and filesystem operations. Nothing is auto-approved or moved."
-      action={<button disabled={busy} onClick={async () => { await generate.mutateAsync(); const result = await syncReviews.mutateAsync(); setNotice(`Evaluated recommendations and synchronized ${result.total} review items.`); await refresh(); }} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.11em] text-white disabled:opacity-50" data-testid="button-generate-recommendations"><Sparkles size={14} /> EVALUATE CURRENT STATE</button>}
+      action={<button disabled={busy} onClick={async () => { await generate.mutateAsync(); const result = await syncReviews.mutateAsync(); setNotice(summariseReviewSync(result)); await refresh(); }} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.11em] text-white disabled:opacity-50" data-testid="button-generate-recommendations"><Sparkles size={14} /> EVALUATE CURRENT STATE</button>}
     />
     {notice && <div className="mb-5 border-l-2 border-[#4e9690] bg-[#eaf3ef] px-4 py-3 text-[11px] text-[#39736e]">{notice}</div>}
     <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -372,6 +419,23 @@ function AssistantPage() {
       <div className="space-y-5">
         <section className="archive-panel p-5" data-testid="panel-recommendation-evidence"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">RECOMMENDATION EVIDENCE</div><div className="mt-4 space-y-4">{(recommendations.data ?? []).map((recommendation) => <article key={recommendation.id} className="border-t border-[#e3e8e7] pt-3"><div className="flex justify-between gap-3"><div className="text-[11px] font-bold text-[#42545b]">{recommendation.title}</div><span className="archive-mono text-[9px] uppercase text-[#80652e]">{recommendation.priority} / {recommendation.confidence}</span></div><p className="mt-2 text-[10px] leading-5 text-[#66787d]">{String(recommendation.evidence.reason ?? 'Evidence is recorded in the recommendation payload.')}</p>{recommendation.blockers.length > 0 && <ul className="mt-2 list-disc pl-4 text-[10px] leading-5 text-[#9b514a]">{recommendation.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul>}<p className="mt-2 border-l-2 border-[#4e9690] pl-2 text-[10px] leading-5 text-[#39736e]">{recommendation.recommendedAction}</p></article>)}{!(recommendations.data ?? []).length && <p className="text-[11px] text-[#829095]">Evaluate current state to generate deterministic recommendations.</p>}</div></section>
         <section className="archive-panel p-5" data-testid="panel-provider-health"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">PROVIDER HEALTH</div><div className="mt-4 space-y-3">{providerItems.map((provider) => <div key={provider.id} className="flex items-center justify-between gap-3 border-t border-[#e3e8e7] pt-3"><div><div className="text-[11px] font-bold text-[#42545b]">{provider.name}</div><div className="mt-1 text-[9px] text-[#8b999c]">{provider.detail}</div></div><StatusPill status={provider.state} /></div>)}</div></section>
+        <AcquisitionJobsPanel
+          jobs={acquisitionJobs.data ?? []}
+          downloads={downloads.data ?? []}
+          busy={linkDownload.isPending || planImport.isPending || refreshAcquisition.isPending}
+          onLinkDownload={(jobId, downloadJobId) => acquire(
+            () => linkDownload.mutateAsync({ id: jobId, data: { downloadJobId } }),
+            () => `Acquisition job #${jobId} linked to download #${downloadJobId}.`,
+          )}
+          onPlanImport={(jobId, destinationPath) => acquire(
+            () => planImport.mutateAsync({ id: jobId, data: { destinationPath } }),
+            (operation) => `Planned import operation #${(operation as { id: number }).id}. It requires preflight and explicit execution confirmation.`,
+          )}
+          onRefreshJob={(jobId) => acquire(
+            () => refreshAcquisition.mutateAsync({ id: jobId }),
+            () => `Refreshed acquisition job #${jobId} from its provider.`,
+          )}
+        />
         <section className="archive-panel p-5" data-testid="panel-operation-history"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">SAFE OPERATIONS</div><div className="mt-4 space-y-3">{(operations.data ?? []).slice(0, 8).map((operation) => <div key={operation.id} className="border-t border-[#e3e8e7] pt-3"><div className="flex items-center justify-between"><span className="text-[11px] font-bold uppercase text-[#42545b]">{operation.action} #{operation.id}</span><StatusPill status={operation.status} /></div><div className="mt-1 truncate text-[9px] text-[#8b999c]">{operation.destinationPath}</div>{operation.errorMessage && <div className="mt-2 text-[10px] text-[#a24d46]">{operation.errorMessage}</div>}<div className="mt-2 flex flex-wrap gap-1">{operation.status === 'planned' && <button onClick={() => operate(operation.id, 'preflight')} className="border px-2 py-1 text-[8px] font-bold">PREFLIGHT</button>}{operation.status === 'ready' && <button onClick={() => operate(operation.id, 'execute')} className="bg-[#1d2b38] px-2 py-1 text-[8px] font-bold text-white">EXECUTE</button>}{['planned', 'preflight', 'ready', 'failed'].includes(operation.status) && <button onClick={() => operate(operation.id, 'cancel')} className="border px-2 py-1 text-[8px] font-bold">CANCEL</button>}{['failed', 'cancelled'].includes(operation.status) && operation.retryCount < operation.maxRetries && <button onClick={() => operate(operation.id, 'retry')} className="border px-2 py-1 text-[8px] font-bold">RETRY</button>}{operation.status === 'completed' && <button onClick={() => operate(operation.id, 'rollback')} className="border border-[#d79a94] px-2 py-1 text-[8px] font-bold text-[#9b514a]">ROLLBACK</button>}</div>{operation.events.length > 0 && <details className="mt-2 text-[9px] text-[#75868a]"><summary>{operation.events.length} audit events</summary>{operation.events.map(event => <div key={event.id} className="mt-1">{formatTime(event.createdAt)} · {event.detail}</div>)}</details>}</div>)}{!(operations.data ?? []).length && <p className="text-[11px] leading-5 text-[#829095]">No operations have been planned. Filesystem mutation remains disabled.</p>}</div></section>
       </div>
     </div>
@@ -489,7 +553,7 @@ type FindingRecord = {
   qualitySummary: string;
   qualityDifferences: string[];
   duplicateOfId: number | null;
-  plexMatch: { title: string; year: number | null; qualityDifferences: string[] } | null;
+  plexMatch: { title: string; year: number | null; qualityDifferences: string[]; providerLabel?: string | null } | null;
   reviewStatus: string;
 };
 
@@ -544,15 +608,16 @@ function explainFinding(record: FindingRecord) {
     assessment = 'REVIEW';
   } else if (record.plexMatch && differences.length > 0) {
     const severity = qualityReviewSeverity(differences);
-    finding = `LOCAL is matched to PLEX item "${record.plexMatch.title}"${record.plexMatch.year ? ` (${record.plexMatch.year})` : ''}, with quality differences already reported by the system.`;
+    const provider = (record.plexMatch.providerLabel || 'Plex').toUpperCase();
+    finding = `LOCAL is matched to ${provider} item "${record.plexMatch.title}"${record.plexMatch.year ? ` (${record.plexMatch.year})` : ''}, with quality differences already reported by the system.`;
     if (severity === 'HIGH') {
-      why = 'A high-impact visual or dynamic-range difference exists between LOCAL and PLEX.';
+      why = `A high-impact visual or dynamic-range difference exists between LOCAL and ${provider}.`;
     } else if (severity === 'MEDIUM') {
-      why = 'A codec difference exists between LOCAL and PLEX and may affect compatibility or playback characteristics.';
+      why = `A codec difference exists between LOCAL and ${provider} and may affect compatibility or playback characteristics.`;
     } else {
       why = 'The reported differences are limited to lower-impact technical metadata.';
     }
-    consider = `Review the supplied LOCAL / PLEX differences: ${differences.join('; ')}`;
+    consider = `Review the supplied LOCAL / ${provider} differences: ${differences.join('; ')}`;
     assessment = `${severity} / REVIEW`;
   } else if (record.qualityStatus === 'higher_quality_available') {
     finding = 'A higher-quality local version is available for this media identity.';
@@ -618,7 +683,7 @@ function reviewPriorityLabel(record: Pick<FindingRecord, 'qualityStatus' | 'dupl
   if (priority >= 25) return 'DEFERRED';
   return 'INFO';
 }
-function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }) {
+export function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { data: record, isLoading, isError, refetch } = useGetArchiveRecord(id);
   const updateReview = useUpdateArchiveRecordReview();
@@ -734,7 +799,7 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
 
       {record.plexMatch && (
         <div className="mt-6 border-t border-[#e3e8e7] pt-5">
-           <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194] mb-3">PLEX MATCH</div>
+           <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194] mb-3">{(record.plexMatch.providerLabel || 'PLEX').toUpperCase()} MATCH</div>
            <div className="font-bold text-[#344851] text-[13px]">{record.plexMatch.title} {record.plexMatch.year ? `(${record.plexMatch.year})` : ''}</div>
            {record.plexMatch.qualityDifferences.length > 0 && (
              <div className="mt-3 space-y-2">
@@ -768,26 +833,48 @@ export function ArchivePage() {
   const [acquisitionTarget, setAcquisitionTarget] = useState<ArchiveAcquisitionTarget | null>(null);
 
   const [isScanning, setIsScanning] = useState(false);
+  const scanEvents = useArchiveScanEvents({
+    onScanStarted: () => {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+    },
+    onScanFinished: () => {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+    }
+  });
   const { data: scan, isLoading: scanLoading, refetch: refetchScan } = useGetArchiveScan({
     query: {
-      refetchInterval: isScanning ? 2000 : false,
+      // Interval polling is only a fallback while the SSE feed is down; the
+      // live event stream drives updates when connected.
+      refetchInterval: isScanning && !scanEvents.connected ? 2000 : false,
       queryKey: getGetArchiveScanQueryKey()
     }
   });
 
+  // A connected live feed is authoritative about whether a scan is running; a
+  // persisted `scanning` with no live session is interrupted residue, not an
+  // active scan. Merging the two with OR let the stale record win forever.
+  const scanLifecycle = resolveScanLifecycle({
+    persistedStatus: scan?.status,
+    liveStatus: scanEvents.status,
+    liveConnected: scanEvents.connected,
+    liveHasSession: Boolean(scanEvents.sessionId),
+  });
+  const scanInterrupted = scanLifecycle === 'interrupted';
+
   useEffect(() => {
     const wasScanning = isScanning;
-    const nowScanning = scan?.status === 'scanning';
+    const nowScanning = scanLifecycle === 'scanning';
     setIsScanning(nowScanning);
 
     if (wasScanning && !nowScanning) {
       queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
     }
-  }, [scan?.status, isScanning, queryClient]);
+  }, [scanLifecycle, isScanning, queryClient]);
 
   const { data: inventory, isLoading: invLoading, isError: invError, refetch: refetchInv } = useGetArchiveInventory({
     query: {
-      refetchInterval: isScanning ? 3000 : false,
+      refetchInterval: isScanning && !scanEvents.connected ? 3000 : false,
       queryKey: getGetArchiveInventoryQueryKey()
     }
   });
@@ -831,6 +918,9 @@ export function ArchivePage() {
   else if (filter === 'unresolved') displayedRecords = records.filter(r => ['unreviewed', 'unresolved'].includes(r.reviewStatus));
 
   const plexOnly = inventory?.plexOnly ?? [];
+  // The reference media server is operator-selected; label the provider-only
+  // view with whichever server actually produced the inventory.
+  const providerName = (inventory?.providerLabel ?? 'Plex').toUpperCase();
   const showPlex = view === 'plex_only';
   const selectableRecords = displayedRecords.filter(record => record.reviewStatus !== 'not_applicable');
   const selectedSet = new Set(selectedRecordIds);
@@ -889,7 +979,7 @@ export function ArchivePage() {
             data-testid="button-start-archive-scan"
           >
             {isScanning || startScan.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-            {isScanning ? 'SCANNING' : 'START INVENTORY SCAN'}
+            {isScanning ? 'SCANNING' : scanInterrupted ? 'RESUME INVENTORY SCAN' : 'START INVENTORY SCAN'}
           </button>
         }
       />
@@ -899,6 +989,19 @@ export function ArchivePage() {
           {notice}
         </div>
       )}
+
+      {scanInterrupted && (
+        <div
+          className="mb-5 border-l-2 border-[#d9bd77] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]"
+          data-testid="status-archive-scan-interrupted"
+        >
+          The last archive scan stopped before it finished, most likely because the application was
+          closed while it was running. {scan?.scannedFiles ? `${scan.scannedFiles.toLocaleString()} files were already examined and ` : 'Files already examined were kept, and '}
+          starting a scan will resume from where it stopped rather than beginning again.
+        </div>
+      )}
+
+      <ArchiveScanPanel live={scanEvents} />
 
       {scan && (
         <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -918,7 +1021,7 @@ export function ArchivePage() {
               <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
               <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
               <button onClick={() => { setView('naming_proposals'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'naming_proposals' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-naming-proposals">NAMING PROPOSALS</button>
-              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
+              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">{providerName} ONLY ({scan?.plexOnlyCount ?? 0})</button>
               <button onClick={() => { setView('missing_media'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'missing_media' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-missing-media">MISSING MEDIA</button>
             </div>
 
@@ -1184,15 +1287,46 @@ function ArchiveMissingMediaView({
   );
 }
 
-const settingsGroups = [{ name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel'] }, { name: 'Downloads', icon: Download, fields: ['downloadDirectory', 'temporaryDirectory', 'concurrentDownloads', 'maxRetries', 'bandwidthLimit'] }, { name: 'Archive', icon: Archive, fields: ['archiveDirectory', 'outputContainer', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'] }, { name: 'Plex', icon: PlaySquare, fields: [] }, { name: 'AI', icon: Sparkles, fields: [] }, { name: 'Local Model', icon: Cpu, fields: [] }, { name: 'OpenAI', icon: Zap, fields: [] }, { name: 'Local Engine', icon: Terminal, fields: ['ytDlpPath', 'ffmpegPath', 'ffprobePath'] }, { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration', 'hardwareAccelerationMode'] }, { name: 'Network', icon: Network, fields: ['networkMode'] }, { name: 'Security', icon: ShieldCheck, fields: [] }, { name: 'Logging', icon: Terminal, fields: [] }];
+const settingsGroups = [{ name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel', 'startWithWindows'] }, { name: 'Downloads', icon: Download, fields: ['downloadDirectory', 'temporaryDirectory', 'concurrentDownloads', 'maxRetries', 'bandwidthLimit'] }, { name: 'Archive', icon: Archive, fields: ['archiveDirectory', 'outputContainer', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'] }, { name: 'Plex', icon: PlaySquare, fields: [] }, { name: 'AI', icon: Sparkles, fields: [] }, { name: 'Local Model', icon: Cpu, fields: [] }, { name: 'OpenAI', icon: Zap, fields: [] }, { name: 'Local Engine', icon: Terminal, fields: ['ytDlpPath', 'ffmpegPath', 'ffprobePath'] }, { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration', 'hardwareAccelerationMode'] }, { name: 'Network', icon: Network, fields: ['networkMode'] }, { name: 'Security', icon: ShieldCheck, fields: [] }, { name: 'Logging', icon: Terminal, fields: [] }];
+type UpdateStatus = { available: boolean; version: string | null; date: string | null; body: string | null };
+
+function UpdaterPanel() {
+  const [status, setStatus] = useState<'idle' | 'checking' | 'available' | 'current' | 'error' | 'installing'>('idle');
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [message, setMessage] = useState('Release updates are checked only when requested.');
+  const check = async () => {
+    setStatus('checking');
+    try {
+      const result = await invoke<UpdateStatus>('check_for_update');
+      setUpdate(result);
+      setStatus(result.available ? 'available' : 'current');
+      setMessage(result.available ? `Signed release ${result.version ?? ''} is ready for review.` : 'This release is up to date.');
+    } catch {
+      setStatus('error');
+      setMessage('Update checks are unavailable in this build or the release endpoint did not answer.');
+    }
+  };
+  const install = async () => {
+    setStatus('installing');
+    setMessage('Downloading the approved signed release. The app will restart after installation.');
+    try {
+      await invoke('install_update');
+    } catch {
+      setStatus('error');
+      setMessage('The signed update was not installed. The current app and local data remain unchanged.');
+    }
+  };
+  return <section className="archive-panel p-5 md:p-6" data-testid="panel-updater"><div className="flex items-start justify-between gap-4"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">RELEASE CHANNEL / SIGNED</div><h2 className="archive-display mt-1 text-lg font-extrabold">Application updates</h2><p className="mt-2 text-[11px] leading-5 text-[#879599]">Updates come from signed GitHub releases. Nothing installs without operator approval.</p></div><RefreshCw size={17} className={status === 'checking' ? 'animate-spin text-[#39736e]' : 'text-[#7f9194]'} /></div><div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={check} disabled={status === 'checking' || status === 'installing'} className="border border-[#4e9690] bg-[#eaf3ef] px-3 py-2 text-[10px] font-bold tracking-[.08em] text-[#39736e] disabled:opacity-50" data-testid="button-check-updates">CHECK FOR UPDATES</button>{status === 'available' && <button type="button" onClick={install} className="bg-[#39736e] px-3 py-2 text-[10px] font-bold tracking-[.08em] text-white" data-testid="button-install-update">INSTALL {update?.version ?? 'UPDATE'}</button>}</div><div className={`mt-3 text-[10px] leading-5 ${status === 'error' ? 'text-[#994b43]' : 'text-[#71858a]'}`} data-testid="status-updater">{message}</div></section>;
+}
+
 function SettingsPage() {
   const queryClient = useQueryClient(); const { data, isLoading, isError, refetch } = useGetSettings(); const { data: dependencyStatus } = useGetSystemDependencies(); const mutation = useUpdateSettings(); const [form, setForm] = useState<Partial<AppSettings>>({}); const [notice, setNotice] = useState('');
   useEffect(() => { if (data) setForm(data); }, [data]);
   const update = (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => setForm((current) => ({ ...current, [key]: value }));
-  const save = () => { setNotice(''); mutation.mutate({ data: form as AppSettingsUpdate }, { onSuccess: (result) => { setForm(result); setNotice('Settings saved to the local node.'); queryClient.setQueryData(getGetSettingsQueryKey(), result); }, onError: () => setNotice('Settings could not be saved. The local node did not accept the update.') }); };
+  const save = () => { setNotice(''); mutation.mutate({ data: form as AppSettingsUpdate }, { onSuccess: async (result) => { setForm(result); setNotice('Settings saved to the local node.'); queryClient.setQueryData(getGetSettingsQueryKey(), result); try { await invoke('set_start_with_windows', { enabled: result.startWithWindows }); } catch { setNotice('Settings saved, but Windows startup could not be updated in this build.'); } }, onError: () => setNotice('Settings could not be saved. The local node did not accept the update.') }); };
   if (isLoading) return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Loading editable local preferences." /><Skeleton className="h-[520px]" /></>;
   if (isError || !data) return <ErrorState title="Settings unavailable" message="Preferences could not be read from the local node." onRetry={() => refetch()} testId="button-retry-settings" />;
-  return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Persistent preferences for the local-first control room. Changes are sent to the real settings API." action={<div className="flex items-center gap-3">{notice && <span className={`hidden text-[11px] sm:inline ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save">{notice}</span>}<button onClick={save} disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-settings"><Save size={14} /> {mutation.isPending ? 'SAVING' : 'SAVE CHANGES'}</button></div>} />{notice && <div className={`mb-4 text-[11px] sm:hidden ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save-mobile">{notice}</div>}<WebhookSecretPanel /><div className="grid gap-5 xl:grid-cols-[1fr_280px]"><div className="space-y-4">{settingsGroups.map(({ name, icon: Icon, fields }) => <SettingsGroup key={name} name={name} icon={Icon} fields={fields} form={form} update={update} />)}</div><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL DEPENDENCIES</div><h2 className="archive-display mt-1 text-lg font-extrabold">Capability check</h2>{dependencyStatus?.mediaBundle ? <div className="mt-5 border border-[#c9dfd9] bg-[#f1f9f5] p-3" data-testid="panel-media-bundle"><div className="flex items-center justify-between gap-3"><div className="archive-mono text-[9px] font-bold tracking-[.12em] text-[#39736e]">NATIVE MEDIA BUNDLE</div><span className="archive-mono bg-[#dcebe7] px-1.5 py-1 text-[9px] font-bold text-[#39736e]" data-testid="text-media-bundle-architecture">{dependencyStatus.mediaBundle.architecture.toUpperCase()}</span></div><div className="mt-2 text-[11px] font-semibold text-[#53656b]">{dependencyStatus.mediaBundle.targetTriple}</div><div className="mt-1 archive-mono text-[9px] text-[#799094]">yt-dlp {dependencyStatus.mediaBundle.ytDlpVersion} / FFmpeg {dependencyStatus.mediaBundle.ffmpegVersion}</div><div className="mt-2 text-[10px] leading-4 text-[#6e8583]">Managed native tools selected for this desktop build.</div></div> : <div className="mt-5 border border-[#e5e9e7] bg-[#f8faf8] p-3 text-[10px] leading-4 text-[#879599]" data-testid="panel-media-bundle-empty">No managed media bundle was detected. System tools or operator overrides may be in use.</div>}<div className="mt-5 space-y-3">{dependencyStatus?.dependencies?.length ? dependencyStatus.dependencies.map((dep) => <div key={dep.name} className="flex items-center gap-3" data-testid={`row-dependency-${dep.name}`}><span className={`status-dot ${dep.status === 'available' ? 'ready' : dep.status === 'missing' ? 'error' : 'warning'}`} /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><div className="truncate text-[11px] font-semibold text-[#53656b]">{dep.name}</div><span className={`archive-mono px-1 py-0.5 text-[8px] font-bold tracking-[.08em] ${dep.source === 'override' ? 'bg-[#fff0c9] text-[#8d681d]' : dep.source === 'bundled' ? 'bg-[#dcebe7] text-[#39736e]' : 'bg-[#eef1f0] text-[#879599]'}`} data-testid={`badge-dependency-source-${dep.name}`}>{dep.source.toUpperCase()}</span></div><div className="archive-mono text-[9px] text-[#96a3a5]">{dep.version ?? dep.status}</div></div></div>) : <p className="text-[11px] leading-5 text-[#879599]">No dependency data returned yet.</p>}</div><div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[10px] leading-5 text-[#879599]">Only versions, architecture, and source labels are shown here; filesystem paths are intentionally omitted.</div></aside></div></>;
+  return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Persistent preferences for the local-first control room. Changes are sent to the real settings API." action={<div className="flex items-center gap-3">{notice && <span className={`hidden text-[11px] sm:inline ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save">{notice}</span>}<button onClick={save} disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-settings"><Save size={14} /> {mutation.isPending ? 'SAVING' : 'SAVE CHANGES'}</button></div>} />{notice && <div className={`mb-4 text-[11px] sm:hidden ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save-mobile">{notice}</div>}<StorageDiagnosticsPanel /><UpdaterPanel /><WebhookSecretPanel /><div className="grid gap-5 xl:grid-cols-[1fr_280px]"><div className="space-y-4">{settingsGroups.map(({ name, icon: Icon, fields }) => <SettingsGroup key={name} name={name} icon={Icon} fields={fields} form={form} update={update} />)}</div><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL DEPENDENCIES</div><h2 className="archive-display mt-1 text-lg font-extrabold">Capability check</h2>{dependencyStatus?.mediaBundle ? <div className="mt-5 border border-[#c9dfd9] bg-[#f1f9f5] p-3" data-testid="panel-media-bundle"><div className="flex items-center justify-between gap-3"><div className="archive-mono text-[9px] font-bold tracking-[.12em] text-[#39736e]">NATIVE MEDIA BUNDLE</div><span className="archive-mono bg-[#dcebe7] px-1.5 py-1 text-[9px] font-bold text-[#39736e]" data-testid="text-media-bundle-architecture">{dependencyStatus.mediaBundle.architecture.toUpperCase()}</span></div><div className="mt-2 text-[11px] font-semibold text-[#53656b]">{dependencyStatus.mediaBundle.targetTriple}</div><div className="mt-1 archive-mono text-[9px] text-[#799094]">yt-dlp {dependencyStatus.mediaBundle.ytDlpVersion} / FFmpeg {dependencyStatus.mediaBundle.ffmpegVersion}</div><div className="mt-2 text-[10px] leading-4 text-[#6e8583]">Managed native tools selected for this desktop build.</div></div> : <div className="mt-5 border border-[#e5e9e7] bg-[#f8faf8] p-3 text-[10px] leading-4 text-[#879599]" data-testid="panel-media-bundle-empty">No managed media bundle was detected. System tools or operator overrides may be in use.</div>}<div className="mt-5 space-y-3">{dependencyStatus?.dependencies?.length ? dependencyStatus.dependencies.map((dep) => <div key={dep.name} className="flex items-center gap-3" data-testid={`row-dependency-${dep.name}`}><span className={`status-dot ${dep.status === 'available' ? 'ready' : dep.status === 'missing' ? 'error' : 'warning'}`} /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><div className="truncate text-[11px] font-semibold text-[#53656b]">{dep.name}</div><span className={`archive-mono px-1 py-0.5 text-[8px] font-bold tracking-[.08em] ${dep.source === 'override' ? 'bg-[#fff0c9] text-[#8d681d]' : dep.source === 'bundled' ? 'bg-[#dcebe7] text-[#39736e]' : 'bg-[#eef1f0] text-[#879599]'}`} data-testid={`badge-dependency-source-${dep.name}`}>{dep.source.toUpperCase()}</span></div><div className="archive-mono text-[9px] text-[#96a3a5]">{dep.version ?? dep.status}</div></div></div>) : <p className="text-[11px] leading-5 text-[#879599]">No dependency data returned yet.</p>}</div><div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[10px] leading-5 text-[#879599]">Only versions, architecture, and source labels are shown here; filesystem paths are intentionally omitted.</div></aside></div></>;
 }
 
 type WebhookForm = {
@@ -1299,7 +1433,7 @@ function SettingsGroup({ name, icon: Icon, fields, form, update }: { name: strin
 }
 function SettingField({ field, form, update }: { field: string; form: Partial<AppSettings>; update: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => void }) {
   const key = field as keyof AppSettings; const value = form[key];
-  if (field === 'mockMode' || field === 'hardwareAcceleration') return <label className="flex items-center justify-between gap-4 border border-[#e2e8e6] bg-white/50 px-3 py-3"><span><span className="block text-[11px] font-semibold text-[#53656b]">{field === 'mockMode' ? 'Mock mode' : 'Hardware acceleration'}</span><span className="mt-1 block text-[10px] text-[#94a1a3]">{field === 'mockMode' ? 'Use backend-provided demo data' : 'Allow accelerated media work'}</span></span><input type="checkbox" checked={Boolean(value)} onChange={(event) => update(key, event.target.checked)} className="h-4 w-4 accent-[#4e9690]" data-testid={`input-setting-${field}`} /></label>;
+  if (field === 'mockMode' || field === 'hardwareAcceleration' || field === 'startWithWindows') return <label className="flex items-center justify-between gap-4 border border-[#e2e8e6] bg-white/50 px-3 py-3"><span><span className="block text-[11px] font-semibold text-[#53656b]">{field === 'mockMode' ? 'Mock mode' : field === 'hardwareAcceleration' ? 'Hardware acceleration' : 'Start Archive Assistant with Windows'}</span><span className="mt-1 block text-[10px] text-[#94a1a3]">{field === 'mockMode' ? 'Use backend-provided demo data' : field === 'hardwareAcceleration' ? 'Allow accelerated media work' : 'Launch quietly to the system tray. Existing installs stay disabled until enabled.'}</span></span><input type="checkbox" checked={Boolean(value)} onChange={(event) => update(key, event.target.checked)} className="h-4 w-4 accent-[#4e9690]" data-testid={`input-setting-${field}`} /></label>;
   const selectOptions: Record<string, string[]> = { logLevel: ['info', 'debug', 'warn', 'error'], networkMode: ['offline', 'local_only', 'allow_network'], hardwareAccelerationMode: ['auto', 'disabled'], outputContainer: ['mp4', 'mkv', 'webm'] };
    const labels: Record<string, string> = { dataDirectory: 'DATA DIRECTORY', downloadDirectory: 'DOWNLOAD DIRECTORY', archiveDirectory: 'ARCHIVE DIRECTORY', temporaryDirectory: 'TEMPORARY DIRECTORY', ytDlpPath: 'YT-DLP EXECUTABLE', ffmpegPath: 'FFMPEG EXECUTABLE', ffprobePath: 'FFPROBE EXECUTABLE', concurrentDownloads: 'CONCURRENT DOWNLOADS', maxRetries: 'MAX RETRIES', bandwidthLimit: 'BANDWIDTH LIMIT (BYTES / SEC)', inspectionCacheMinutes: 'INSPECTION CACHE (MINUTES)', warningFreePercent: 'WARNING FREE (%)', criticalFreePercent: 'CRITICAL FREE (%)' };
   if (selectOptions[field]) return <label><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">{labels[field] ?? field.toUpperCase()}</span><select value={String(value ?? '')} onChange={(event) => update(key, event.target.value)} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2.5 text-[12px] outline-none" data-testid={`select-setting-${field}`}>{selectOptions[field].map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
@@ -1321,6 +1455,32 @@ function SignInPage() {
 
 function SignUpPage() {
   return <div className="flex min-h-[100dvh] items-center justify-center bg-[#f3f5f4] px-4 py-8"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>;
+}
+
+function DesktopLifecycleBridge() {
+  const [, setLocation] = useLocation();
+  const client = useQueryClient();
+  useEffect(() => {
+    let dispose: (() => void) | undefined;
+    listen<string>('tray://action', async (event) => {
+      switch (event.payload) {
+        case 'open': await invoke('open_archive_assistant').catch(() => undefined); break;
+        case 'scan':
+          await fetch(apiUrl('/api/archive/scan'), { method: 'POST' }).catch(() => undefined);
+          client.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+          break;
+        case 'plex':
+          await fetch(apiUrl('/api/plex/sync'), { method: 'POST' }).catch(() => undefined);
+          client.invalidateQueries({ queryKey: getGetPlexConfigQueryKey() });
+          client.invalidateQueries({ queryKey: getGetPlexInventoryQueryKey() });
+          break;
+        case 'activity': setLocation('/history'); break;
+        case 'settings': setLocation('/settings'); break;
+      }
+    }).then((unlisten) => { dispose = unlisten; }).catch(() => undefined);
+    return () => dispose?.();
+  }, [client, setLocation]);
+  return null;
 }
 
 function QueryCacheInvalidator() {
@@ -1364,7 +1524,7 @@ function ClerkApp() {
 }
 
 function ApplicationProviders() {
-  return <QueryClientProvider client={queryClient}><QueryCacheInvalidator /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><QueryCacheInvalidator /><DesktopLifecycleBridge /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>;
 }
 
 function LocalApp() {

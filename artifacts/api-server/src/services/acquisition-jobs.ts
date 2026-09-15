@@ -6,6 +6,7 @@ import {
   type IntegrationId,
 } from "../integrations";
 import { archiveDb } from "../lib/archive-db";
+import { assertAcquisitionApproval } from "./acquisition-approval";
 
 export const acquisitionJobStates = [
   "planned",
@@ -474,6 +475,12 @@ function errorMessage(error: unknown) {
 async function startProvider(job: AcquisitionJob, ownerId: string) {
   const providerId = job.providerId;
   if (!providerId) return job;
+
+  // The approval gate is deliberately outside the try block. A missing or
+  // withdrawn approval is a refusal to act, not a provider failure: it must
+  // surface to the caller and leave the job in `planned` rather than being
+  // recorded as a failed attempt that `retryAcquisitionJob` would replay.
+  assertAcquisitionApproval(job, ownerId);
 
   try {
     const initialState: AcquisitionJobState = providerId === "qbittorrent"

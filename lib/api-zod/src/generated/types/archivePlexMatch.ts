@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ArchiveProvider } from './archiveProvider';
 
 export interface ArchivePlexMatch {
   ratingKey: string;
@@ -12,4 +13,7 @@ export interface ArchivePlexMatch {
   /** @nullable */
   year: number | null;
   qualityDifferences: string[];
+  provider: ArchiveProvider;
+  /** Operator-facing provider name, for example Plex or Jellyfin. */
+  providerLabel: string;
 }
