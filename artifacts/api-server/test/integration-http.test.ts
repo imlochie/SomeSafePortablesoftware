@@ -12,6 +12,7 @@ import {
 } from "../src/integrations";
 import app from "../src/app";
 import { archiveDb, readEvents } from "../src/lib/archive-db";
+import { recordWebhookDeliveryHistory } from "../src/services/settings";
 import { runtimeConfig } from "../src/lib/runtime-config";
 
 const originalFetch = globalThis.fetch;
@@ -198,6 +199,47 @@ describe("HTTP integration adapters", { concurrency: false }, () => {
       createSonarrAdapter(config()).getCapability("media_lookup")!({ query: "Example" }, { ownerId: "__local__" }),
       (error: unknown) => error instanceof IntegrationHttpError && error.kind === "malformed",
     );
+  });
+
+  test("webhook delivery history is durable, paginated, and owner-scoped", async () => {
+    const ownerId = runtimeConfig.localOwnerId;
+    const otherOwnerId = "webhook-history-other-owner";
+    archiveDb.prepare("DELETE FROM webhook_delivery WHERE owner_id IN (?, ?)").run(ownerId, otherOwnerId);
+    recordWebhookDeliveryHistory({
+      provider: "sonarr",
+      classification: "ignored",
+      reasonCode: "no_matching_acquisition_job",
+      providerEventId: "history-event-1",
+      providerJobId: "missing-provider-job",
+      resolvedOwnerId: ownerId,
+      detail: "No matching acquisition job.",
+      deduplication: "event_id",
+    });
+    recordWebhookDeliveryHistory({
+      provider: "radarr",
+      classification: "processed",
+      reasonCode: "matched_acquisition_job",
+      providerEventId: "history-event-2",
+      providerJobId: "movie-provider-job",
+      resolvedOwnerId: otherOwnerId,
+      detail: "Processed movie event.",
+      deduplication: "unavailable",
+    });
+    const { server, baseUrl } = await startApiServer();
+    try {
+      const response = await originalFetch(`${baseUrl}/api/integrations/webhooks/history?page=1&pageSize=1`);
+      assert.equal(response.status, 200);
+      const result = await response.json() as { pagination: { total: number; totalPages: number }; results: Array<Record<string, unknown>> };
+      assert.equal(result.pagination.total, 1);
+      assert.equal(result.pagination.totalPages, 1);
+      assert.equal(result.results[0].classification, "ignored");
+      assert.equal(result.results[0].reasonCode, "no_matching_acquisition_job");
+      assert.equal(result.results[0].resolvedOwnerId, ownerId);
+      assert.equal(result.results[0].providerJobId, "missing-provider-job");
+    } finally {
+      await stopApiServer(server);
+      archiveDb.prepare("DELETE FROM webhook_delivery WHERE owner_id IN (?, ?)").run(ownerId, otherOwnerId);
+    }
   });
 
   test("authenticated webhook rotations are recorded only in the operator's system history", async () => {

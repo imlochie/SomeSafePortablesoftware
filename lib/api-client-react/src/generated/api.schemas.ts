@@ -921,6 +921,64 @@ export interface WebhookSecretStatus {
   diagnostics: WebhookDeliveryDiagnostics;
 }
 
+export type WebhookDeliveryClassification = typeof WebhookDeliveryClassification[keyof typeof WebhookDeliveryClassification];
+
+
+export const WebhookDeliveryClassification = {
+  processed: 'processed',
+  ignored: 'ignored',
+  duplicate: 'duplicate',
+  rejected: 'rejected',
+  unavailable: 'unavailable',
+  malformed: 'malformed',
+} as const;
+
+/**
+ * @nullable
+ */
+export type WebhookDeliveryHistoryItemDeduplication = typeof WebhookDeliveryHistoryItemDeduplication[keyof typeof WebhookDeliveryHistoryItemDeduplication] | null;
+
+
+export const WebhookDeliveryHistoryItemDeduplication = {
+  event_id: 'event_id',
+  unavailable: 'unavailable',
+} as const;
+
+export interface WebhookDeliveryHistoryItem {
+  id: number;
+  provider: WebhookProvider;
+  receivedAt: string;
+  classification: WebhookDeliveryClassification;
+  reasonCode: string;
+  /** @nullable */
+  providerEventId: string | null;
+  /** @nullable */
+  providerJobId: string | null;
+  /** @nullable */
+  resolvedOwnerId: string | null;
+  /** @nullable */
+  acquisitionJobId: number | null;
+  detail: string;
+  /** @nullable */
+  deduplication: WebhookDeliveryHistoryItemDeduplication;
+}
+
+export interface ReportPagination {
+  /** @minimum 1 */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  totalPages: number;
+}
+
+export interface WebhookDeliveryHistoryResponse {
+  pagination: ReportPagination;
+  results: WebhookDeliveryHistoryItem[];
+}
+
 export interface WebhookSecretStatusesResponse {
   providers: WebhookSecretStatus[];
 }
@@ -1979,17 +2037,6 @@ export interface ReviewSyncResult {
   total: number;
 }
 
-export interface ReportPagination {
-  /** @minimum 1 */
-  page: number;
-  /** @minimum 1 */
-  pageSize: number;
-  /** @minimum 0 */
-  total: number;
-  /** @minimum 0 */
-  totalPages: number;
-}
-
 export interface ReconciliationSummary {
   /** @minimum 0 */
   localCount: number;
@@ -2389,6 +2436,19 @@ export interface ErrorResponse {
 export type PageParameter = number;
 
 export type PageSizeParameter = number;
+
+export type GetWebhookDeliveryHistoryParams = {
+provider?: WebhookProvider;
+/**
+ * @minimum 1
+ */
+page?: PageParameter;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+pageSize?: PageSizeParameter;
+};
 
 export type GetAcquisitionJobsParams = {
 state?: AcquisitionJobState;

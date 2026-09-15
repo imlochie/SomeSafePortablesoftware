@@ -372,6 +372,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WebhookSecretStatusesResponse"
+  /integrations/webhooks/history:
+    get:
+      operationId: getWebhookDeliveryHistory
+      tags: [integrations]
+      summary: Get owner-scoped webhook delivery history
+      parameters:
+        - name: provider
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/WebhookProvider"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Paginated webhook delivery classifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryHistoryResponse"
   /integrations/webhooks/{provider}:
     put:
       operationId: replaceWebhookSecret
@@ -2502,6 +2522,38 @@ components:
             - type: "null"
         counts:
           $ref: "#/components/schemas/WebhookDeliveryCounts"
+    WebhookDeliveryClassification:
+      type: string
+      enum: [processed, ignored, duplicate, rejected, unavailable, malformed]
+    WebhookDeliveryHistoryItem:
+      type: object
+      required: [id, provider, receivedAt, classification, reasonCode, providerEventId, providerJobId, resolvedOwnerId, acquisitionJobId, detail, deduplication]
+      properties:
+        id: { type: number }
+        provider:
+          $ref: "#/components/schemas/WebhookProvider"
+        receivedAt: { type: string, format: date-time }
+        classification:
+          $ref: "#/components/schemas/WebhookDeliveryClassification"
+        reasonCode: { type: string }
+        providerEventId: { type: [string, "null"] }
+        providerJobId: { type: [string, "null"] }
+        resolvedOwnerId: { type: [string, "null"] }
+        acquisitionJobId: { type: [number, "null"] }
+        detail: { type: string }
+        deduplication:
+          type: [string, "null"]
+          enum: [event_id, unavailable, null]
+    WebhookDeliveryHistoryResponse:
+      type: object
+      required: [pagination, results]
+      properties:
+        pagination:
+          $ref: "#/components/schemas/ReportPagination"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookDeliveryHistoryItem"
     WebhookSecretStatusesResponse:
       type: object
       required: [providers]

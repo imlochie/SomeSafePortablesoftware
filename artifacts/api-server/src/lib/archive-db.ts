@@ -433,6 +433,23 @@ archiveDb.exec(`
     operator_id TEXT,
     retention_class TEXT NOT NULL DEFAULT 'operational'
   );
+  CREATE TABLE IF NOT EXISTS webhook_delivery (
+    id INTEGER PRIMARY KEY,
+    provider TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    classification TEXT NOT NULL,
+    reason_code TEXT NOT NULL,
+    provider_event_id TEXT,
+    provider_job_id TEXT,
+    owner_id TEXT,
+    acquisition_job_id INTEGER,
+    detail TEXT NOT NULL,
+    deduplication TEXT
+  );
+  CREATE INDEX IF NOT EXISTS webhook_delivery_owner_received_idx
+    ON webhook_delivery(owner_id, received_at DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS webhook_delivery_received_idx
+    ON webhook_delivery(received_at);
   CREATE TABLE IF NOT EXISTS setting (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,

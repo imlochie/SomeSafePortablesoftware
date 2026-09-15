@@ -54,6 +54,7 @@ import type {
   GetArchiveNamingProposalsParams,
   GetArchiveReconciliationParams,
   GetAssistantToolCatalog200,
+  GetWebhookDeliveryHistoryParams,
   HealthStatus,
   IdentityAuditReport,
   IntegrationStatusResponse,
@@ -88,6 +89,7 @@ import type {
   SystemDependencies,
   SystemEvent,
   SystemOverview,
+  WebhookDeliveryHistoryResponse,
   WebhookSecretStatus,
   WebhookSecretStatusesResponse
 } from './api.schemas';
@@ -1979,6 +1981,90 @@ export function useGetWebhookSecretStatuses<TData = Awaited<ReturnType<typeof ge
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetWebhookSecretStatusesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWebhookDeliveryHistoryUrl = (params?: GetWebhookDeliveryHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/integrations/webhooks/history?${stringifiedParams}` : `/api/integrations/webhooks/history`
+}
+
+/**
+ * @summary Get owner-scoped webhook delivery history
+ */
+export const getWebhookDeliveryHistory = async (params?: GetWebhookDeliveryHistoryParams, options?: Parameters<typeof customFetch>[1]): Promise<WebhookDeliveryHistoryResponse> => {
+
+  return customFetch<WebhookDeliveryHistoryResponse>(getGetWebhookDeliveryHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWebhookDeliveryHistoryQueryKey = (params?: GetWebhookDeliveryHistoryParams,) => {
+    return [
+    `/api/integrations/webhooks/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWebhookDeliveryHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getWebhookDeliveryHistory>>, TError = ErrorType<unknown>>(params?: GetWebhookDeliveryHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookDeliveryHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWebhookDeliveryHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWebhookDeliveryHistory>>> = ({ signal }) => getWebhookDeliveryHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWebhookDeliveryHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWebhookDeliveryHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getWebhookDeliveryHistory>>>
+export type GetWebhookDeliveryHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get owner-scoped webhook delivery history
+ */
+
+export function useGetWebhookDeliveryHistory<TData = Awaited<ReturnType<typeof getWebhookDeliveryHistory>>, TError = ErrorType<unknown>>(
+ params?: GetWebhookDeliveryHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWebhookDeliveryHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWebhookDeliveryHistoryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

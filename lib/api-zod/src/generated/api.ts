@@ -832,6 +832,51 @@ export const GetWebhookSecretStatusesResponse = zod.object({
 
 
 /**
+ * @summary Get owner-scoped webhook delivery history
+ */
+
+export const getWebhookDeliveryHistoryQueryPageSizeMax = 500;
+
+
+
+export const GetWebhookDeliveryHistoryQueryParams = zod.object({
+  "provider": zod.enum(['sonarr', 'radarr']).optional(),
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(getWebhookDeliveryHistoryQueryPageSizeMax).optional()
+})
+
+
+
+export const getWebhookDeliveryHistoryResponsePaginationTotalMin = 0;
+
+export const getWebhookDeliveryHistoryResponsePaginationTotalPagesMin = 0;
+
+
+
+export const GetWebhookDeliveryHistoryResponse = zod.object({
+  "pagination": zod.object({
+  "page": zod.number().min(1),
+  "pageSize": zod.number().min(1),
+  "total": zod.number().min(getWebhookDeliveryHistoryResponsePaginationTotalMin),
+  "totalPages": zod.number().min(getWebhookDeliveryHistoryResponsePaginationTotalPagesMin)
+}),
+  "results": zod.array(zod.object({
+  "id": zod.number(),
+  "provider": zod.enum(['sonarr', 'radarr']),
+  "receivedAt": zod.coerce.date(),
+  "classification": zod.enum(['processed', 'ignored', 'duplicate', 'rejected', 'unavailable', 'malformed']),
+  "reasonCode": zod.string(),
+  "providerEventId": zod.string().nullable(),
+  "providerJobId": zod.string().nullable(),
+  "resolvedOwnerId": zod.string().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "detail": zod.string(),
+  "deduplication": zod.union([zod.literal('event_id'),zod.literal('unavailable'),zod.literal(null)]).nullable()
+}))
+})
+
+
+/**
  * @summary Replace a provider webhook secret
  */
 export const ReplaceWebhookSecretParams = zod.object({
