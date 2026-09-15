@@ -1,4 +1,4 @@
-﻿# ============================================================================
+# ============================================================================
 # SECURITY: Minimum release age for npm packages (supply-chain attack defense)
 # ============================================================================
 #
@@ -89,7 +89,9 @@ overrides:
   "esbuild>@esbuild/sunos-x64": "-"
   "esbuild>@esbuild/win32-arm64": "-"
   "esbuild>@esbuild/win32-ia32": "-"
-  "esbuild>@esbuild/win32-x64": "-"
+  # @esbuild/win32-x64 is deliberately NOT excluded: the Windows desktop
+  # installer is built on Windows, and its beforeBuildCommand runs the
+  # api-server esbuild bundle. Excluding it breaks `tauri build` on win32-x64.
   "esbuild>@esbuild/aix-ppc64": '-'
   "esbuild>@esbuild/android-arm": '-'
   "esbuild>@esbuild/android-arm64": '-'

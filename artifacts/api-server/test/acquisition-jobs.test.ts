@@ -14,6 +14,7 @@ const originalEnvironment = {
 };
 
 let acquisition: typeof import("../src/services/acquisition-jobs");
+let review: typeof import("../src/services/review-queue");
 let createSonarrAdapter: typeof import("../src/integrations").createSonarrAdapter;
 
 before(async () => {
@@ -25,6 +26,7 @@ before(async () => {
   process.env.QBITTORRENT_PASSWORD = "test-password";
   ({ createSonarrAdapter } = await import("../src/integrations"));
   acquisition = await import("../src/services/acquisition-jobs");
+  review = await import("../src/services/review-queue");
 });
 
 after(() => {
@@ -51,6 +53,21 @@ function mockFetch(handler: (url: URL, init: RequestInit) => Response | Promise<
     handler(new URL(String(input)), init)) as typeof fetch;
 }
 
+/**
+ * Provider work requires an approved acquisition recommendation review. These
+ * tests exercise the job lifecycle, not the approval boundary, so each one
+ * establishes a real approval first rather than bypassing the gate.
+ */
+function approvedReviewItemId(ownerId: string, subjectKey: string) {
+  const item = review.ensureReviewItem(ownerId, {
+    kind: "acquisition_recommendation",
+    subjectKey,
+    title: `Approved acquisition for ${subjectKey}`,
+  });
+  review.approveReviewItem(item.id, ownerId, "Approved for provider work.");
+  return item.id;
+}
+
 function signWebhook(body: string, secret = "test-webhook-secret") {
   return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 }
@@ -64,12 +81,13 @@ describe("canonical acquisition jobs", { concurrency: false }, () => {
     });
 
     const ownerId = "acquisition-owner-complete";
+    const reviewItemId = approvedReviewItemId(ownerId, "example-series-42");
     const job = await acquisition.createAcquisitionJob({
       mediaType: "series",
       title: "Example Series",
       externalId: "42",
       providerId: "sonarr",
-      metadata: { requestReason: "operator" },
+      metadata: { requestReason: "operator", reviewItemId },
       start: true,
     }, ownerId);
 
@@ -116,6 +134,7 @@ describe("canonical acquisition jobs", { concurrency: false }, () => {
     assert.ok(current?.completedAt);
     assert.deepEqual(current?.metadata, {
       requestReason: "operator",
+      reviewItemId,
       source: "indexer-a",
     });
     assert.equal(current?.events.length, 9);
@@ -124,11 +143,13 @@ describe("canonical acquisition jobs", { concurrency: false }, () => {
   test("records provider failures durably and retries with bounded attempts", async () => {
     mockFetch(() => jsonResponse({ error: "unauthorized" }, 401));
     const ownerId = "acquisition-owner-failure";
+    const failureReviewItemId = approvedReviewItemId(ownerId, "unavailable-movie-84");
     const failed = await acquisition.createAcquisitionJob({
       mediaType: "movie",
       title: "Unavailable Movie",
       externalId: "84",
       providerId: "sonarr",
+      metadata: { reviewItemId: failureReviewItemId },
       start: true,
     }, ownerId);
 
@@ -167,12 +188,13 @@ describe("canonical acquisition jobs", { concurrency: false }, () => {
       throw new Error(`Unexpected URL ${url}`);
     });
 
+    const qbitReviewItemId = approvedReviewItemId("acquisition-owner-qbit", "example-movie-abc123");
     const job = await acquisition.createAcquisitionJob({
       mediaType: "movie",
       title: "Example Movie",
       sourceId: "magnet:?xt=urn:btih:abc123",
       providerId: "qbittorrent",
-      metadata: { hash: "abc123" },
+      metadata: { hash: "abc123", reviewItemId: qbitReviewItemId },
       start: true,
     }, "acquisition-owner-qbit");
 
@@ -209,11 +231,13 @@ describe("canonical acquisition jobs", { concurrency: false }, () => {
     });
 
     const ownerId = "acquisition-owner-polling";
+    const pollingReviewItemId = approvedReviewItemId(ownerId, "polling-movie-701");
     const job = await acquisition.createAcquisitionJob({
       mediaType: "series",
       title: "Polling Movie",
       externalId: "701",
       providerId: "sonarr",
+      metadata: { reviewItemId: pollingReviewItemId },
       start: true,
     }, ownerId);
     assert.equal(job?.state, "searching");
@@ -304,11 +328,13 @@ describe("canonical acquisition jobs", { concurrency: false }, () => {
       if (url.pathname.endsWith("/command")) return jsonResponse({ id: 702 });
       throw new Error(`Unexpected URL ${url}`);
     });
+    const ownerAReviewItemId = approvedReviewItemId("webhook-owner-a", "owner-a-1");
     const ownerA = await acquisition.createAcquisitionJob({
       mediaType: "series",
       title: "Owner A",
       externalId: "1",
       providerId: "sonarr",
+      metadata: { reviewItemId: ownerAReviewItemId },
       start: true,
     }, "webhook-owner-a");
     const ownerB = await acquisition.createAcquisitionJob({

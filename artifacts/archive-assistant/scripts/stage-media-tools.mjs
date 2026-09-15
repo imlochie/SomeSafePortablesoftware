@@ -98,7 +98,7 @@ async function findFile(root, filename) {
 async function expandZip(zipPath, outputDirectory) {
   await mkdir(outputDirectory, { recursive: true });
   await execFile(
-    process.env.ComSpec ?? "powershell.exe",
+    "powershell.exe",
     [
       "-NoProfile",
       "-NonInteractive",
