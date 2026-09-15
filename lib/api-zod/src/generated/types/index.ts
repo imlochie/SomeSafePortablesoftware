@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './acquisitionIdentity';
 export * from './acquisitionJob';
 export * from './acquisitionJobEvent';
 export * from './acquisitionJobEventMetadata';

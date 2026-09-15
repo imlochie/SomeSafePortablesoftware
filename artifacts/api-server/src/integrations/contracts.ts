@@ -138,6 +138,13 @@ export interface MissingMediaRecord {
   title: string;
   mediaType: string;
   year: number | null;
+  /** Structured provider identity, when the provider supplies it. */
+  seriesId?: string;
+  seriesTitle?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  episodeId?: string;
+  episodeTitle?: string;
   detail?: string;
 }
 

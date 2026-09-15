@@ -1212,6 +1212,15 @@ export const ListAcquisitionRecommendationsResponseItem = zod.object({
   "title": zod.string(),
   "year": zod.number().nullable(),
   "externalId": zod.string().nullable(),
+  "identity": zod.union([zod.object({
+  "mediaType": zod.string(),
+  "seriesId": zod.string().optional(),
+  "seriesTitle": zod.string().optional(),
+  "seasonNumber": zod.number().optional(),
+  "episodeNumber": zod.number().optional(),
+  "episodeId": zod.string().optional(),
+  "episodeTitle": zod.string().optional()
+}),zod.null()]),
   "target": zod.record(zod.string(), zod.unknown()),
   "evidence": zod.record(zod.string(), zod.unknown()),
   "preferredQuality": zod.record(zod.string(), zod.unknown()),
@@ -1241,6 +1250,15 @@ export const GenerateAcquisitionRecommendationsResponseItem = zod.object({
   "title": zod.string(),
   "year": zod.number().nullable(),
   "externalId": zod.string().nullable(),
+  "identity": zod.union([zod.object({
+  "mediaType": zod.string(),
+  "seriesId": zod.string().optional(),
+  "seriesTitle": zod.string().optional(),
+  "seasonNumber": zod.number().optional(),
+  "episodeNumber": zod.number().optional(),
+  "episodeId": zod.string().optional(),
+  "episodeTitle": zod.string().optional()
+}),zod.null()]),
   "target": zod.record(zod.string(), zod.unknown()),
   "evidence": zod.record(zod.string(), zod.unknown()),
   "preferredQuality": zod.record(zod.string(), zod.unknown()),
@@ -1277,6 +1295,15 @@ export const GetAcquisitionRecommendationResponse = zod.object({
   "title": zod.string(),
   "year": zod.number().nullable(),
   "externalId": zod.string().nullable(),
+  "identity": zod.union([zod.object({
+  "mediaType": zod.string(),
+  "seriesId": zod.string().optional(),
+  "seriesTitle": zod.string().optional(),
+  "seasonNumber": zod.number().optional(),
+  "episodeNumber": zod.number().optional(),
+  "episodeId": zod.string().optional(),
+  "episodeTitle": zod.string().optional()
+}),zod.null()]),
   "target": zod.record(zod.string(), zod.unknown()),
   "evidence": zod.record(zod.string(), zod.unknown()),
   "preferredQuality": zod.record(zod.string(), zod.unknown()),
@@ -1592,6 +1619,15 @@ export const CreateApprovedAcquisitionJobResponse = zod.object({
   "title": zod.string(),
   "year": zod.number().nullable(),
   "externalId": zod.string().nullable(),
+  "identity": zod.union([zod.object({
+  "mediaType": zod.string(),
+  "seriesId": zod.string().optional(),
+  "seriesTitle": zod.string().optional(),
+  "seasonNumber": zod.number().optional(),
+  "episodeNumber": zod.number().optional(),
+  "episodeId": zod.string().optional(),
+  "episodeTitle": zod.string().optional()
+}),zod.null()]),
   "target": zod.record(zod.string(), zod.unknown()),
   "evidence": zod.record(zod.string(), zod.unknown()),
   "preferredQuality": zod.record(zod.string(), zod.unknown()),

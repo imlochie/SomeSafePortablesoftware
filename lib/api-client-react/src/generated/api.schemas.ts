@@ -1741,6 +1741,16 @@ export const RecommendationPriority = {
   low: 'low',
 } as const;
 
+export interface AcquisitionIdentity {
+  mediaType: string;
+  seriesId?: string;
+  seriesTitle?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  episodeId?: string;
+  episodeTitle?: string;
+}
+
 export type AcquisitionRecommendationTarget = { [key: string]: unknown };
 
 export type AcquisitionRecommendationEvidence = { [key: string]: unknown };
@@ -1760,6 +1770,7 @@ export interface AcquisitionRecommendation {
   year: number | null;
   /** @nullable */
   externalId: string | null;
+  identity: AcquisitionIdentity | null;
   target: AcquisitionRecommendationTarget;
   evidence: AcquisitionRecommendationEvidence;
   preferredQuality: AcquisitionRecommendationPreferredQuality;

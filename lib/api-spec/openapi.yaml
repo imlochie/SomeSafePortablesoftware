@@ -3372,9 +3372,21 @@ components:
     RecommendationPriority:
       type: string
       enum: [critical, high, medium, low]
+    AcquisitionIdentity:
+      type: object
+      required: [mediaType]
+      additionalProperties: false
+      properties:
+        mediaType: { type: string }
+        seriesId: { type: string }
+        seriesTitle: { type: string }
+        seasonNumber: { type: number }
+        episodeNumber: { type: number }
+        episodeId: { type: string }
+        episodeTitle: { type: string }
     AcquisitionRecommendation:
       type: object
-      required: [id, recommendationKey, mediaType, title, year, externalId, target, evidence, preferredQuality, destination, route, blockers, recommendedAction, confidence, priority, status, reviewItemId, acquisitionJobId, evidenceHash, generatedAt, updatedAt]
+      required: [id, recommendationKey, mediaType, title, year, externalId, identity, target, evidence, preferredQuality, destination, route, blockers, recommendedAction, confidence, priority, status, reviewItemId, acquisitionJobId, evidenceHash, generatedAt, updatedAt]
       properties:
         id: { type: number }
         recommendationKey: { type: string }
@@ -3382,6 +3394,10 @@ components:
         title: { type: string }
         year: { type: ["number", "null"] }
         externalId: { type: ["string", "null"] }
+        identity:
+          oneOf:
+            - $ref: "#/components/schemas/AcquisitionIdentity"
+            - type: "null"
         target:
           type: object
           additionalProperties: true
