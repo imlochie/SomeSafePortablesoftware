@@ -24,6 +24,16 @@ const steps = [
     args: ["run", "typecheck"],
   },
   {
+    name: "API server production bundle",
+    command: "pnpm",
+    args: ["--filter", "@workspace/api-server", "run", "build"],
+  },
+  {
+    name: "Archive Assistant production bundle",
+    command: "pnpm",
+    args: ["--filter", "@workspace/archive-assistant", "run", "build"],
+  },
+  {
     name: "API server tests",
     command: "pnpm",
     args: ["--filter", "@workspace/api-server", "run", "test"],
