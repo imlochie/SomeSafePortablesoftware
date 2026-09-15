@@ -24,7 +24,7 @@ function expandHome(value: string) {
   return value.startsWith("~/") ? resolve(homedir(), value.slice(2)) : resolve(value);
 }
 
-function readStorage(settings: ReturnType<typeof readSettings>) {
+export function readStorage(settings: ReturnType<typeof readSettings>) {
   const volumes = getArchiveVolumes(settings);
 
   const readableVolumes = volumes.filter((volume) => volume.exists);

@@ -1,7 +1,9 @@
 import { readArchiveInventory, readArchiveScan } from "./archive";
 import { listAcquisitionRecommendations } from "./acquisition-intelligence";
 import { readNamingProposals } from "./naming-intelligence";
-import { archiveDb } from "../lib/archive-db";
+import { readIdentityAudit } from "./identity-audit";
+import { archiveDb, readSettings } from "../lib/archive-db";
+import { readStorage } from "../routes/system";
 
 export const assistantPriorities = ["critical", "high", "medium", "low", "info"] as const;
 export type AssistantPriority = (typeof assistantPriorities)[number];
@@ -71,7 +73,7 @@ function integrityRecommendation(record: any): AssistantRecommendation | null {
   return null;
 }
 
-function groupRecommendations(recommendations: AssistantRecommendation[]): AssistantGroup[] {
+export function groupRecommendations(recommendations: AssistantRecommendation[]): AssistantGroup[] {
   const groups = new Map<string, AssistantRecommendation[]>();
   for (const item of recommendations) {
     const key = item.type === "download"
@@ -107,19 +109,21 @@ function groupRecommendations(recommendations: AssistantRecommendation[]): Assis
       underlyingItemIds: items.flatMap((item) => {
         const idValue = item.reviewItemId ?? Number(item.id.split(":").at(-1));
         return Number.isInteger(idValue) ? [idValue] : [];
-      }),
+      }).sort((left, right) => left - right),
       itemCount: items.length,
     };
   }).sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority) || left.title.localeCompare(right.title));
 }
 
 export async function readAssistantOverview(ownerId: string) {
-  const [inventory, scan, naming] = await Promise.all([
+  const [inventory, scan, naming, identityAudit] = await Promise.all([
     Promise.resolve(readArchiveInventory(ownerId)),
     Promise.resolve(readArchiveScan(ownerId)),
     readNamingProposals(ownerId, { page: 1, pageSize: 500 }),
+    readIdentityAudit(ownerId, { page: 1, pageSize: 500, needsReview: true }),
   ]);
   const acquisition = listAcquisitionRecommendations(ownerId);
+  const storage = readStorage(readSettings());
   const recommendations: AssistantRecommendation[] = [];
 
   for (const item of acquisition) {
@@ -127,12 +131,14 @@ export async function readAssistantOverview(ownerId: string) {
     recommendations.push({
       id: `download:${item.id}`,
       type: "download",
-      priority: item.priority,
+      priority: storage.status === "critical" ? "low" : item.priority,
       confidence: item.confidence,
       title: `Download ${item.title}`,
       explanation: item.blockers.length
         ? `The recommendation is blocked: ${item.blockers.join(" ")}`
-        : "The archive/provider evidence indicates that this media is not currently available as a healthy local copy.",
+        : storage.status === "critical"
+          ? "The media gap is known, but storage is critically constrained, so acquisition should wait until space is recovered."
+          : "The archive/provider evidence indicates that this media is not currently available as a healthy local copy.",
       evidence: [
         `Recommendation status: ${item.status}`,
         ...(item.blockers.length ? item.blockers : [item.recommendedAction]),
@@ -176,6 +182,42 @@ export async function readAssistantOverview(ownerId: string) {
     { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
   );
   const groups = groupRecommendations(recommendations);
+  const duplicateRows = inventory.records.filter((record) => record.qualityStatus === "duplicate" && record.duplicateOfId !== null);
+  const duplicateGroups = [...new Map(duplicateRows.map((record) => {
+    const ids = [record.id, record.duplicateOfId!].sort((left, right) => left - right);
+    return [ids.join(":"), { ids, records: [record] }];
+  })).values()].map(({ ids, records }) => ({
+    id: `group:duplicate:${ids.join(":")}`,
+    type: "duplicate" as const,
+    state: "uncertain" as const,
+    priority: "medium" as const,
+    confidence: "needs_verification",
+    title: `${records[0].filename} duplicate group`,
+    explanation: "These records share duplicate evidence, but interchangeability has not been assumed.",
+    evidence: records.flatMap((record) => record.qualityDifferences).slice(0, 8),
+    recommendedAction: "Review the copies and quality differences before deciding what to retain.",
+    underlyingItemIds: ids,
+    itemCount: ids.length,
+  }));
+  const identityGroups = [...new Map(identityAudit.results.map((result) => {
+    const key = result.auditType;
+    const values = identityAudit.results.filter((item) => item.auditType === key);
+    return [key, {
+      id: `group:identity:${key}`,
+      type: "identity" as const,
+      state: "uncertain" as const,
+      priority: "medium" as const,
+      confidence: result.confidence,
+      title: `${values.length} files need identity review`,
+      explanation: result.reason,
+      evidence: [...new Set(values.flatMap((item) => item.evidence))].slice(0, 8),
+      recommendedAction: result.recommendedInterpretation,
+      underlyingItemIds: values.map((item) => item.fileRecordId),
+      itemCount: values.length,
+    }];
+  })).values()];
+  const semanticGroups = [...groups, ...duplicateGroups, ...identityGroups]
+    .sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority) || left.title.localeCompare(right.title));
   const activeWork = archiveDb.prepare("SELECT COUNT(*) AS count FROM acquisition_job WHERE owner_id = ? AND state IN ('planned', 'downloading', 'processing', 'verifying')").get(ownerId) as { count: number };
 
   return {
@@ -190,7 +232,7 @@ export async function readAssistantOverview(ownerId: string) {
     },
     attention,
     recommendations,
-    groups,
+    groups: semanticGroups,
     blocked,
     uncertain,
     informational: [

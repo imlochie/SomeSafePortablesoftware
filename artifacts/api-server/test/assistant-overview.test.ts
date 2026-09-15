@@ -14,6 +14,31 @@ test("assistant overview is deterministic, typed, and safe when the archive is e
   assert.equal(typeof parsed.activeWork.scanStatus, "string");
 });
 
+test("assistant groups preserve item IDs and order related recommendations deterministically", async () => {
+  const { groupRecommendations } = await import("../src/services/assistant-overview");
+  const groups = groupRecommendations([
+    {
+      id: "download:2", type: "download", priority: "high", confidence: "high",
+      title: "Download The Bear", explanation: "gap", evidence: ["episode missing"],
+      recommendedAction: "Review acquisition", state: "actionable", reviewItemId: 22,
+    },
+    {
+      id: "download:1", type: "download", priority: "high", confidence: "high",
+      title: "Download The Bear", explanation: "gap", evidence: ["season incomplete"],
+      recommendedAction: "Review acquisition", state: "actionable", reviewItemId: 21,
+    },
+    {
+      id: "integrity:9", type: "integrity", priority: "high", confidence: "high",
+      title: "The Bear file may be corrupt", explanation: "inspection failed", evidence: ["ffprobe"],
+      recommendedAction: "Compare another copy", state: "actionable", reviewItemId: null,
+    },
+  ]);
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].itemCount, 2);
+  assert.deepEqual(groups[0].underlyingItemIds, [21, 22]);
+  assert.equal(groups[1].type, "integrity");
+});
+
 test("assistant recommendation fields preserve evidence and explicit action state", () => {
   const result = GetAssistantOverviewResponse.parse({
     summary: {
