@@ -14,6 +14,8 @@ describe('desktop lifecycle foundation', () => {
     expect(app).toContain('useGetAssistantOverview');
     expect(app).toContain('panel-assistant-overview');
     expect(app).toContain('Evidence-backed recommendations');
+    expect(app).toContain('item.itemCount');
+    expect(app).toContain('evidence preserved');
   });
 
   it('does not present blocked acquisition rows as ordinary approval work', async () => {
