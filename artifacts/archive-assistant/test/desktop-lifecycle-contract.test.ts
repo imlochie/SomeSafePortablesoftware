@@ -60,6 +60,8 @@ describe('desktop lifecycle foundation', () => {
     expect(shell).toContain('close_window.hide()');
     expect(shell).toContain('app.manage(state)');
     expect(shell).toContain('state.shutdown()');
+    expect(shell).toContain('api.prevent_exit()');
+    expect(shell).toContain('allow_exit');
     // Shutdown is reserved for an actual application exit, not the window X.
     expect(shell).not.toMatch(/CloseRequested[\s\S]{0,500}state\.shutdown\(\)/);
   });
@@ -74,7 +76,8 @@ describe('desktop lifecycle foundation', () => {
     expect(app).toContain("fetch(apiUrl('/api/archive/scan'), { method: 'POST' })");
     expect(app).toContain("fetch(apiUrl('/api/plex/sync'), { method: 'POST' })");
     expect(shell).toContain('app.exit(0)');
-    expect(shell).toContain('if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit)');
+    expect(shell).toContain('if let RunEvent::ExitRequested { api, .. } = &event');
+    expect(shell).toContain('if matches!(event, RunEvent::Exit)');
   });
 
   it('keeps startup opt-in and boot launches minimized', async () => {

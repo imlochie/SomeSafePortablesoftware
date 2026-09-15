@@ -7,7 +7,7 @@ use std::{
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Child, ChildStderr, ChildStdout, Command, Stdio},
-    sync::{mpsc, Mutex},
+    sync::{atomic::{AtomicBool, Ordering}, mpsc, Mutex},
     thread,
     time::{Duration, Instant},
 };
@@ -39,6 +39,11 @@ const DIAGNOSTIC_LINES: usize = 20;
 
 struct SidecarState {
     child: Mutex<Option<Child>>,
+}
+
+#[derive(Default)]
+struct ExitGuard {
+    allow_exit: AtomicBool,
 }
 
 impl SidecarState {
@@ -670,6 +675,9 @@ fn install_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .tooltip("ARCHIVE ASSISTANT")
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "quit" {
+                if let Some(exit_guard) = app.try_state::<ExitGuard>() {
+                    exit_guard.allow_exit.store(true, Ordering::Release);
+                }
                 app.exit(0);
                 return;
             }
@@ -702,6 +710,7 @@ fn main() {
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| "The main desktop window is missing.".to_string())?;
+            app.manage(ExitGuard::default());
             install_tray(&app.handle()).map_err(|error| error.to_string())?;
 
             // Handle the native close request on the window itself. Tauri's
@@ -738,7 +747,24 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building ARCHIVE ASSISTANT")
         .run(|app, event| {
-            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+            if let RunEvent::ExitRequested { api, .. } = &event {
+                let allow_exit = app
+                    .try_state::<ExitGuard>()
+                    .map(|guard| guard.allow_exit.load(Ordering::Acquire))
+                    .unwrap_or(false);
+                if !allow_exit {
+                    // A native window close can arrive as an application exit
+                    // request on Windows. Cancel it as a second line of
+                    // defence, otherwise the tray may remain visible while
+                    // the sidecar is shut down.
+                    api.prevent_exit();
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                    return;
+                }
+            }
+            if matches!(event, RunEvent::Exit) {
                 if let Some(state) = app.try_state::<SidecarState>() {
                     state.shutdown();
                 }
