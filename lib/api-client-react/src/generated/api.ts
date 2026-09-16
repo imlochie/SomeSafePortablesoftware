@@ -25,6 +25,10 @@ import type {
   AcquisitionRecommendation,
   AcquisitionWebhookAccepted,
   AcquisitionWebhookPayload,
+  ActionApproval,
+  ActionCapability,
+  ActionProposal,
+  ActionStepSelection,
   AppSettings,
   AppSettingsUpdate,
   ApprovedAcquisitionResult,
@@ -47,6 +51,7 @@ import type {
   ErrorResponse,
   GetAcquisitionJobsParams,
   GetArchiveIdentityAuditParams,
+  GetArchiveNamingActionCandidatesParams,
   GetArchiveNamingProposalsParams,
   GetArchiveReconciliationParams,
   GetAssistantToolCatalog200,
@@ -55,6 +60,7 @@ import type {
   IntegrationStatusResponse,
   LinkAcquisitionDownload,
   ListAcquisitionRecommendationsParams,
+  ListActionProposalsParams,
   ListArchiveOperationsParams,
   ListReviewItemsParams,
   LocalMediaInspectInput,
@@ -64,9 +70,11 @@ import type {
   MediaInspection,
   MediaLookupResponse,
   MissingMediaResponse,
+  NamingActionCandidates,
   NamingProposalReport,
   OperationConfirmation,
   PlanAcquisitionImport,
+  PlanNamingNormalization,
   PlexConfig,
   PlexConfigUpdate,
   PlexInventory,
@@ -3237,6 +3245,900 @@ export const useRollbackArchiveOperation = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRollbackArchiveOperationMutationOptions(options));
+    }
+
+export const getListActionCapabilitiesUrl = () => {
+
+
+
+
+  return `/api/action-capabilities`
+}
+
+/**
+ * @summary List the declared action families and their execution support
+ */
+export const listActionCapabilities = async ( options?: Parameters<typeof customFetch>[1]): Promise<ActionCapability[]> => {
+
+  return customFetch<ActionCapability[]>(getListActionCapabilitiesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListActionCapabilitiesQueryKey = () => {
+    return [
+    `/api/action-capabilities`
+    ] as const;
+    }
+
+
+export const getListActionCapabilitiesQueryOptions = <TData = Awaited<ReturnType<typeof listActionCapabilities>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listActionCapabilities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListActionCapabilitiesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listActionCapabilities>>> = ({ signal }) => listActionCapabilities({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listActionCapabilities>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListActionCapabilitiesQueryResult = NonNullable<Awaited<ReturnType<typeof listActionCapabilities>>>
+export type ListActionCapabilitiesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the declared action families and their execution support
+ */
+
+export function useListActionCapabilities<TData = Awaited<ReturnType<typeof listActionCapabilities>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listActionCapabilities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListActionCapabilitiesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListActionProposalsUrl = (params?: ListActionProposalsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/action-proposals?${stringifiedParams}` : `/api/action-proposals`
+}
+
+/**
+ * @summary List owner-scoped action proposals
+ */
+export const listActionProposals = async (params?: ListActionProposalsParams, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal[]> => {
+
+  return customFetch<ActionProposal[]>(getListActionProposalsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListActionProposalsQueryKey = (params?: ListActionProposalsParams,) => {
+    return [
+    `/api/action-proposals`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListActionProposalsQueryOptions = <TData = Awaited<ReturnType<typeof listActionProposals>>, TError = ErrorType<unknown>>(params?: ListActionProposalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listActionProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListActionProposalsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listActionProposals>>> = ({ signal }) => listActionProposals(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listActionProposals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListActionProposalsQueryResult = NonNullable<Awaited<ReturnType<typeof listActionProposals>>>
+export type ListActionProposalsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List owner-scoped action proposals
+ */
+
+export function useListActionProposals<TData = Awaited<ReturnType<typeof listActionProposals>>, TError = ErrorType<unknown>>(
+ params?: ListActionProposalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listActionProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListActionProposalsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetActionProposalUrl = (id: number,) => {
+
+
+
+
+  return `/api/action-proposals/${id}`
+}
+
+/**
+ * @summary Read a single action proposal with its steps and history
+ */
+export const getActionProposal = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal> => {
+
+  return customFetch<ActionProposal>(getGetActionProposalUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetActionProposalQueryKey = (id: number,) => {
+    return [
+    `/api/action-proposals/${id}`
+    ] as const;
+    }
+
+
+export const getGetActionProposalQueryOptions = <TData = Awaited<ReturnType<typeof getActionProposal>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActionProposal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetActionProposalQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getActionProposal>>> = ({ signal }) => getActionProposal(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getActionProposal>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetActionProposalQueryResult = NonNullable<Awaited<ReturnType<typeof getActionProposal>>>
+export type GetActionProposalQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Read a single action proposal with its steps and history
+ */
+
+export function useGetActionProposal<TData = Awaited<ReturnType<typeof getActionProposal>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getActionProposal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetActionProposalQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateActionStepSelectionUrl = (id: number,) => {
+
+
+
+
+  return `/api/action-proposals/${id}/selection`
+}
+
+/**
+ * @summary Select or deselect individual steps before approval
+ */
+export const updateActionStepSelection = async (id: number,
+    actionStepSelection: ActionStepSelection, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal> => {
+
+  return customFetch<ActionProposal>(getUpdateActionStepSelectionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(actionStepSelection)
+  }
+);}
+
+
+
+
+
+export const getUpdateActionStepSelectionMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateActionStepSelection>>, TError,{id: number;data: BodyType<ActionStepSelection>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateActionStepSelection>>, TError,{id: number;data: BodyType<ActionStepSelection>}, TContext> => {
+
+const mutationKey = ['updateActionStepSelection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateActionStepSelection>>, {id: number;data: BodyType<ActionStepSelection>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateActionStepSelection(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateActionStepSelectionMutationResult = NonNullable<Awaited<ReturnType<typeof updateActionStepSelection>>>
+    export type UpdateActionStepSelectionMutationBody = BodyType<ActionStepSelection>
+    export type UpdateActionStepSelectionMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Select or deselect individual steps before approval
+ */
+export const useUpdateActionStepSelection = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateActionStepSelection>>, TError,{id: number;data: BodyType<ActionStepSelection>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateActionStepSelection>>,
+        TError,
+        {id: number;data: BodyType<ActionStepSelection>},
+        TContext
+      > => {
+      return useMutation(getUpdateActionStepSelectionMutationOptions(options));
+    }
+
+export const getApproveActionProposalUrl = (id: number,) => {
+
+
+
+
+  return `/api/action-proposals/${id}/approve`
+}
+
+/**
+ * @summary Record explicit durable approval for an action proposal
+ */
+export const approveActionProposal = async (id: number,
+    actionApproval?: ActionApproval, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal> => {
+
+  return customFetch<ActionProposal>(getApproveActionProposalUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(actionApproval)
+  }
+);}
+
+
+
+
+
+export const getApproveActionProposalMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveActionProposal>>, TError,{id: number;data?: BodyType<ActionApproval>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveActionProposal>>, TError,{id: number;data?: BodyType<ActionApproval>}, TContext> => {
+
+const mutationKey = ['approveActionProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveActionProposal>>, {id: number;data?: BodyType<ActionApproval>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  approveActionProposal(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveActionProposalMutationResult = NonNullable<Awaited<ReturnType<typeof approveActionProposal>>>
+    export type ApproveActionProposalMutationBody = BodyType<ActionApproval> | undefined
+    export type ApproveActionProposalMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Record explicit durable approval for an action proposal
+ */
+export const useApproveActionProposal = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveActionProposal>>, TError,{id: number;data?: BodyType<ActionApproval>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveActionProposal>>,
+        TError,
+        {id: number;data?: BodyType<ActionApproval>},
+        TContext
+      > => {
+      return useMutation(getApproveActionProposalMutationOptions(options));
+    }
+
+export const getPreflightActionProposalUrl = (id: number,) => {
+
+
+
+
+  return `/api/action-proposals/${id}/preflight`
+}
+
+/**
+ * @summary Re-check safety conditions without changing the archive
+ */
+export const preflightActionProposal = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal> => {
+
+  return customFetch<ActionProposal>(getPreflightActionProposalUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPreflightActionProposalMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof preflightActionProposal>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof preflightActionProposal>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['preflightActionProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof preflightActionProposal>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  preflightActionProposal(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreflightActionProposalMutationResult = NonNullable<Awaited<ReturnType<typeof preflightActionProposal>>>
+
+    export type PreflightActionProposalMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Re-check safety conditions without changing the archive
+ */
+export const usePreflightActionProposal = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof preflightActionProposal>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof preflightActionProposal>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getPreflightActionProposalMutationOptions(options));
+    }
+
+export const getExecuteActionProposalUrl = (id: number,) => {
+
+
+
+
+  return `/api/action-proposals/${id}/execute`
+}
+
+/**
+ * @summary Execute an approved and preflighted action proposal
+ */
+export const executeActionProposal = async (id: number,
+    operationConfirmation: OperationConfirmation, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal> => {
+
+  return customFetch<ActionProposal>(getExecuteActionProposalUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(operationConfirmation)
+  }
+);}
+
+
+
+
+
+export const getExecuteActionProposalMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof executeActionProposal>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof executeActionProposal>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext> => {
+
+const mutationKey = ['executeActionProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof executeActionProposal>>, {id: number;data: BodyType<OperationConfirmation>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  executeActionProposal(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExecuteActionProposalMutationResult = NonNullable<Awaited<ReturnType<typeof executeActionProposal>>>
+    export type ExecuteActionProposalMutationBody = BodyType<OperationConfirmation>
+    export type ExecuteActionProposalMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Execute an approved and preflighted action proposal
+ */
+export const useExecuteActionProposal = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof executeActionProposal>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof executeActionProposal>>,
+        TError,
+        {id: number;data: BodyType<OperationConfirmation>},
+        TContext
+      > => {
+      return useMutation(getExecuteActionProposalMutationOptions(options));
+    }
+
+export const getRevertActionProposalUrl = (id: number,) => {
+
+
+
+
+  return `/api/action-proposals/${id}/revert`
+}
+
+/**
+ * @summary Restore the archive state changed by a completed proposal
+ */
+export const revertActionProposal = async (id: number,
+    operationConfirmation: OperationConfirmation, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal> => {
+
+  return customFetch<ActionProposal>(getRevertActionProposalUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(operationConfirmation)
+  }
+);}
+
+
+
+
+
+export const getRevertActionProposalMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revertActionProposal>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revertActionProposal>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext> => {
+
+const mutationKey = ['revertActionProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revertActionProposal>>, {id: number;data: BodyType<OperationConfirmation>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  revertActionProposal(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevertActionProposalMutationResult = NonNullable<Awaited<ReturnType<typeof revertActionProposal>>>
+    export type RevertActionProposalMutationBody = BodyType<OperationConfirmation>
+    export type RevertActionProposalMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Restore the archive state changed by a completed proposal
+ */
+export const useRevertActionProposal = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revertActionProposal>>, TError,{id: number;data: BodyType<OperationConfirmation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revertActionProposal>>,
+        TError,
+        {id: number;data: BodyType<OperationConfirmation>},
+        TContext
+      > => {
+      return useMutation(getRevertActionProposalMutationOptions(options));
+    }
+
+export const getCancelActionProposalUrl = (id: number,) => {
+
+
+
+
+  return `/api/action-proposals/${id}/cancel`
+}
+
+/**
+ * @summary Cancel an action proposal before execution
+ */
+export const cancelActionProposal = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal> => {
+
+  return customFetch<ActionProposal>(getCancelActionProposalUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelActionProposalMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelActionProposal>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelActionProposal>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['cancelActionProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelActionProposal>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  cancelActionProposal(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelActionProposalMutationResult = NonNullable<Awaited<ReturnType<typeof cancelActionProposal>>>
+
+    export type CancelActionProposalMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Cancel an action proposal before execution
+ */
+export const useCancelActionProposal = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelActionProposal>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelActionProposal>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getCancelActionProposalMutationOptions(options));
+    }
+
+export const getRetryActionProposalUrl = (id: number,) => {
+
+
+
+
+  return `/api/action-proposals/${id}/retry`
+}
+
+/**
+ * @summary Retry the failed steps of an action proposal
+ */
+export const retryActionProposal = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal> => {
+
+  return customFetch<ActionProposal>(getRetryActionProposalUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryActionProposalMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryActionProposal>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryActionProposal>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['retryActionProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryActionProposal>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  retryActionProposal(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryActionProposalMutationResult = NonNullable<Awaited<ReturnType<typeof retryActionProposal>>>
+
+    export type RetryActionProposalMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Retry the failed steps of an action proposal
+ */
+export const useRetryActionProposal = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryActionProposal>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryActionProposal>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRetryActionProposalMutationOptions(options));
+    }
+
+export const getGetArchiveNamingActionCandidatesUrl = (params?: GetArchiveNamingActionCandidatesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive/naming-actions?${stringifiedParams}` : `/api/archive/naming-actions`
+}
+
+/**
+ * @summary Preview the rename actions available for naming findings
+ */
+export const getArchiveNamingActionCandidates = async (params?: GetArchiveNamingActionCandidatesParams, options?: Parameters<typeof customFetch>[1]): Promise<NamingActionCandidates> => {
+
+  return customFetch<NamingActionCandidates>(getGetArchiveNamingActionCandidatesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveNamingActionCandidatesQueryKey = (params?: GetArchiveNamingActionCandidatesParams,) => {
+    return [
+    `/api/archive/naming-actions`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetArchiveNamingActionCandidatesQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveNamingActionCandidates>>, TError = ErrorType<unknown>>(params?: GetArchiveNamingActionCandidatesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveNamingActionCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveNamingActionCandidatesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveNamingActionCandidates>>> = ({ signal }) => getArchiveNamingActionCandidates(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveNamingActionCandidates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveNamingActionCandidatesQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveNamingActionCandidates>>>
+export type GetArchiveNamingActionCandidatesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Preview the rename actions available for naming findings
+ */
+
+export function useGetArchiveNamingActionCandidates<TData = Awaited<ReturnType<typeof getArchiveNamingActionCandidates>>, TError = ErrorType<unknown>>(
+ params?: GetArchiveNamingActionCandidatesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveNamingActionCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveNamingActionCandidatesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPlanArchiveNamingNormalizationUrl = () => {
+
+
+
+
+  return `/api/archive/naming-actions`
+}
+
+/**
+ * @summary Create a reviewable rename proposal from naming findings
+ */
+export const planArchiveNamingNormalization = async (planNamingNormalization?: PlanNamingNormalization, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal> => {
+
+  return customFetch<ActionProposal>(getPlanArchiveNamingNormalizationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(planNamingNormalization)
+  }
+);}
+
+
+
+
+
+export const getPlanArchiveNamingNormalizationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planArchiveNamingNormalization>>, TError,{data?: BodyType<PlanNamingNormalization>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof planArchiveNamingNormalization>>, TError,{data?: BodyType<PlanNamingNormalization>}, TContext> => {
+
+const mutationKey = ['planArchiveNamingNormalization'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof planArchiveNamingNormalization>>, {data?: BodyType<PlanNamingNormalization>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  planArchiveNamingNormalization(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PlanArchiveNamingNormalizationMutationResult = NonNullable<Awaited<ReturnType<typeof planArchiveNamingNormalization>>>
+    export type PlanArchiveNamingNormalizationMutationBody = BodyType<PlanNamingNormalization> | undefined
+    export type PlanArchiveNamingNormalizationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a reviewable rename proposal from naming findings
+ */
+export const usePlanArchiveNamingNormalization = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planArchiveNamingNormalization>>, TError,{data?: BodyType<PlanNamingNormalization>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof planArchiveNamingNormalization>>,
+        TError,
+        {data?: BodyType<PlanNamingNormalization>},
+        TContext
+      > => {
+      return useMutation(getPlanArchiveNamingNormalizationMutationOptions(options));
     }
 
 export const getLinkAcquisitionDownloadUrl = (id: number,) => {

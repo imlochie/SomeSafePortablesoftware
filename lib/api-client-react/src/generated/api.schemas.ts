@@ -1471,6 +1471,287 @@ export interface ApprovedAcquisitionResult {
   created: boolean;
 }
 
+export type ActionType = typeof ActionType[keyof typeof ActionType];
+
+
+export const ActionType = {
+  rename: 'rename',
+  move: 'move',
+  delete: 'delete',
+  restore: 'restore',
+  reconcile: 'reconcile',
+  acquire: 'acquire',
+  import: 'import',
+  link: 'link',
+  unlink: 'unlink',
+  metadata_update: 'metadata_update',
+  plex_sync: 'plex_sync',
+} as const;
+
+export type ActionSource = typeof ActionSource[keyof typeof ActionSource];
+
+
+export const ActionSource = {
+  naming_intelligence: 'naming_intelligence',
+  acquisition_intelligence: 'acquisition_intelligence',
+  reconciliation: 'reconciliation',
+  identity_audit: 'identity_audit',
+  archive_review: 'archive_review',
+  assistant: 'assistant',
+  operator: 'operator',
+} as const;
+
+export type ActionProposalStatus = typeof ActionProposalStatus[keyof typeof ActionProposalStatus];
+
+
+export const ActionProposalStatus = {
+  draft: 'draft',
+  proposed: 'proposed',
+  approved: 'approved',
+  preflight: 'preflight',
+  ready: 'ready',
+  executing: 'executing',
+  completed: 'completed',
+  partially_completed: 'partially_completed',
+  failed: 'failed',
+  cancelled: 'cancelled',
+  reverted: 'reverted',
+} as const;
+
+export type ActionStepStatus = typeof ActionStepStatus[keyof typeof ActionStepStatus];
+
+
+export const ActionStepStatus = {
+  pending: 'pending',
+  skipped: 'skipped',
+  ready: 'ready',
+  executing: 'executing',
+  completed: 'completed',
+  failed: 'failed',
+  reverted: 'reverted',
+} as const;
+
+export type ActionRisk = typeof ActionRisk[keyof typeof ActionRisk];
+
+
+export const ActionRisk = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+} as const;
+
+export type ActionPhase = typeof ActionPhase[keyof typeof ActionPhase];
+
+
+export const ActionPhase = {
+  propose: 'propose',
+  select: 'select',
+  approve: 'approve',
+  preflight: 'preflight',
+  execute: 'execute',
+  verify: 'verify',
+  record: 'record',
+  revert: 'revert',
+  cancel: 'cancel',
+} as const;
+
+export interface ActionCapability {
+  type: ActionType;
+  supported: boolean;
+  mutatesFiles: boolean;
+  reversible: boolean;
+  risk: ActionRisk;
+  description: string;
+}
+
+export interface ActionTarget {
+  kind: string;
+  /** @nullable */
+  id: string | null;
+  /** @nullable */
+  path: string | null;
+  /** @nullable */
+  label: string | null;
+}
+
+export type ActionEventMetadata = { [key: string]: unknown };
+
+export interface ActionEvent {
+  id: number;
+  /** @nullable */
+  stepId: number | null;
+  phase: ActionPhase;
+  /** @nullable */
+  fromStatus: string | null;
+  toStatus: string;
+  detail: string;
+  metadata: ActionEventMetadata;
+  createdAt: string;
+}
+
+export type ActionStepBefore = { [key: string]: unknown };
+
+export type ActionStepAfter = { [key: string]: unknown };
+
+export type ActionStepPreflight = { [key: string]: unknown };
+
+export type ActionStepExecution = { [key: string]: unknown };
+
+export type ActionStepVerification = { [key: string]: unknown };
+
+export type ActionStepRevert = { [key: string]: unknown };
+
+export interface ActionStep {
+  id: number;
+  proposalId: number;
+  stepIndex: number;
+  type: ActionType;
+  status: ActionStepStatus;
+  selected: boolean;
+  summary: string;
+  target: ActionTarget;
+  before: ActionStepBefore;
+  after: ActionStepAfter;
+  preflight: ActionStepPreflight;
+  execution: ActionStepExecution;
+  verification: ActionStepVerification;
+  revert: ActionStepRevert;
+  /** @nullable */
+  errorCode: string | null;
+  /** @nullable */
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ActionProposalCounts {
+  total: number;
+  selected: number;
+  pending: number;
+  completed: number;
+  failed: number;
+  skipped: number;
+  reverted: number;
+}
+
+export type ActionProposalEvidence = { [key: string]: unknown };
+
+export type ActionProposalApproval = { [key: string]: unknown };
+
+export type ActionProposalPreflight = { [key: string]: unknown };
+
+export type ActionProposalExecution = { [key: string]: unknown };
+
+export type ActionProposalVerification = { [key: string]: unknown };
+
+export type ActionProposalRevert = { [key: string]: unknown };
+
+export type ActionProposalPostflight = { [key: string]: unknown };
+
+export interface ActionProposal {
+  id: number;
+  proposalKey: string;
+  type: ActionType;
+  source: ActionSource;
+  reason: string;
+  status: ActionProposalStatus;
+  risk: ActionRisk;
+  requiresApproval: boolean;
+  dryRun: boolean;
+  allowCreateDirectories: boolean;
+  /** @nullable */
+  reviewItemId: number | null;
+  /** @nullable */
+  acquisitionJobId: number | null;
+  /** @nullable */
+  downloadJobId: number | null;
+  planHash: string;
+  target: ActionTarget;
+  evidence: ActionProposalEvidence;
+  approval: ActionProposalApproval;
+  preflight: ActionProposalPreflight;
+  execution: ActionProposalExecution;
+  verification: ActionProposalVerification;
+  revert: ActionProposalRevert;
+  postflight: ActionProposalPostflight;
+  retryCount: number;
+  maxRetries: number;
+  /** @nullable */
+  errorCode: string | null;
+  /** @nullable */
+  errorMessage: string | null;
+  counts: ActionProposalCounts;
+  steps: ActionStep[];
+  events: ActionEvent[];
+  createdAt: string;
+  /** @nullable */
+  approvedAt: string | null;
+  /** @nullable */
+  executedAt: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  /** @nullable */
+  cancelledAt: string | null;
+  updatedAt: string;
+}
+
+export type ActionStepSelectionSelectionsItem = {
+  /** @minimum 1 */
+  stepId: number;
+  selected: boolean;
+};
+
+export interface ActionStepSelection {
+  /** @minItems 1 */
+  selections: ActionStepSelectionSelectionsItem[];
+}
+
+export interface ActionApproval {
+  /** @nullable */
+  note?: string | null;
+}
+
+export interface NamingActionCandidate {
+  fileRecordId: number;
+  type: ActionType;
+  sourcePath: string;
+  destinationPath: string;
+  sourceFilename: string;
+  destinationFilename: string;
+  confidence: string;
+  patternId: string;
+  reason: string;
+  evidence: string[];
+}
+
+export type NamingActionCandidatesSummary = {
+  inspected: number;
+  actionable: number;
+  selected: number;
+  rename: number;
+  move: number;
+  skipped: number;
+};
+
+export interface NamingActionCandidates {
+  summary: NamingActionCandidatesSummary;
+  candidates: NamingActionCandidate[];
+}
+
+export interface PlanNamingNormalization {
+  confidence?: string;
+  pattern?: string;
+  mediaType?: string;
+  volume?: string;
+  /**
+     * @minimum 1
+     * @maximum 500
+     */
+  limit?: number;
+  /** @items.minimum 1 */
+  fileRecordIds?: number[];
+}
+
 export type ArchiveOperationAction = typeof ArchiveOperationAction[keyof typeof ArchiveOperationAction];
 
 
@@ -2024,6 +2305,24 @@ export type GetAssistantToolCatalog200 = { [key: string]: unknown };
 
 export type ListArchiveOperationsParams = {
 status?: ArchiveOperationStatus;
+};
+
+export type ListActionProposalsParams = {
+status?: ActionProposalStatus;
+type?: ActionType;
+source?: ActionSource;
+};
+
+export type GetArchiveNamingActionCandidatesParams = {
+confidence?: string;
+pattern?: string;
+mediaType?: string;
+volume?: string;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+limit?: number;
 };
 
 export type LookupArchiveMediaParams = {

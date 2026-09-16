@@ -21,6 +21,11 @@ operations, provider-backed acquisitions, and durable operational history are
 implemented. See [`docs/archive-goals-freeze-review.md`](docs/archive-goals-freeze-review.md)
 for the original-goal classification and remaining release work.
 
+Archive changes run through a single Universal Archive Action Engine: findings
+become typed action proposals that are reviewed step by step, explicitly
+approved, preflighted, executed, verified, recorded, and reverted. See
+[`docs/universal-action-engine.md`](docs/universal-action-engine.md).
+
 The desktop application launches the Node.js API locally as a managed sidecar.
 
 The API is assigned an available loopback port and the desktop shell waits for the API health endpoint before exposing the application.

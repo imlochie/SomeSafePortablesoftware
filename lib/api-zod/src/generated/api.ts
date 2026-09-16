@@ -1708,6 +1708,1253 @@ export const RollbackArchiveOperationResponse = zod.object({
 
 
 /**
+ * @summary List the declared action families and their execution support
+ */
+export const ListActionCapabilitiesResponseItem = zod.object({
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "supported": zod.boolean(),
+  "mutatesFiles": zod.boolean(),
+  "reversible": zod.boolean(),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "description": zod.string()
+})
+export const ListActionCapabilitiesResponse = zod.array(ListActionCapabilitiesResponseItem)
+
+
+/**
+ * @summary List owner-scoped action proposals
+ */
+export const ListActionProposalsQueryParams = zod.object({
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']).optional(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']).optional(),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']).optional()
+})
+
+export const listActionProposalsResponseRetryCountMultipleOf = 1;
+
+export const listActionProposalsResponseMaxRetriesMultipleOf = 1;
+
+export const listActionProposalsResponseCountsTotalMultipleOf = 1;
+
+export const listActionProposalsResponseCountsSelectedMultipleOf = 1;
+
+export const listActionProposalsResponseCountsPendingMultipleOf = 1;
+
+export const listActionProposalsResponseCountsCompletedMultipleOf = 1;
+
+export const listActionProposalsResponseCountsFailedMultipleOf = 1;
+
+export const listActionProposalsResponseCountsSkippedMultipleOf = 1;
+
+export const listActionProposalsResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const ListActionProposalsResponseItem = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(listActionProposalsResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(listActionProposalsResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(listActionProposalsResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(listActionProposalsResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(listActionProposalsResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(listActionProposalsResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(listActionProposalsResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(listActionProposalsResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(listActionProposalsResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListActionProposalsResponse = zod.array(ListActionProposalsResponseItem)
+
+
+/**
+ * @summary Read a single action proposal with its steps and history
+ */
+
+
+
+export const GetActionProposalParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const getActionProposalResponseRetryCountMultipleOf = 1;
+
+export const getActionProposalResponseMaxRetriesMultipleOf = 1;
+
+export const getActionProposalResponseCountsTotalMultipleOf = 1;
+
+export const getActionProposalResponseCountsSelectedMultipleOf = 1;
+
+export const getActionProposalResponseCountsPendingMultipleOf = 1;
+
+export const getActionProposalResponseCountsCompletedMultipleOf = 1;
+
+export const getActionProposalResponseCountsFailedMultipleOf = 1;
+
+export const getActionProposalResponseCountsSkippedMultipleOf = 1;
+
+export const getActionProposalResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const GetActionProposalResponse = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(getActionProposalResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(getActionProposalResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(getActionProposalResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(getActionProposalResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(getActionProposalResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(getActionProposalResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(getActionProposalResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(getActionProposalResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(getActionProposalResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Select or deselect individual steps before approval
+ */
+
+
+
+export const UpdateActionStepSelectionParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+
+
+
+
+export const UpdateActionStepSelectionBody = zod.object({
+  "selections": zod.array(zod.object({
+  "stepId": zod.number().min(1),
+  "selected": zod.boolean()
+})).min(1)
+})
+
+export const updateActionStepSelectionResponseRetryCountMultipleOf = 1;
+
+export const updateActionStepSelectionResponseMaxRetriesMultipleOf = 1;
+
+export const updateActionStepSelectionResponseCountsTotalMultipleOf = 1;
+
+export const updateActionStepSelectionResponseCountsSelectedMultipleOf = 1;
+
+export const updateActionStepSelectionResponseCountsPendingMultipleOf = 1;
+
+export const updateActionStepSelectionResponseCountsCompletedMultipleOf = 1;
+
+export const updateActionStepSelectionResponseCountsFailedMultipleOf = 1;
+
+export const updateActionStepSelectionResponseCountsSkippedMultipleOf = 1;
+
+export const updateActionStepSelectionResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const UpdateActionStepSelectionResponse = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(updateActionStepSelectionResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(updateActionStepSelectionResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(updateActionStepSelectionResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(updateActionStepSelectionResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(updateActionStepSelectionResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(updateActionStepSelectionResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(updateActionStepSelectionResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(updateActionStepSelectionResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(updateActionStepSelectionResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Record explicit durable approval for an action proposal
+ */
+
+
+
+export const ApproveActionProposalParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const ApproveActionProposalBody = zod.object({
+  "note": zod.string().nullish()
+})
+
+export const approveActionProposalResponseRetryCountMultipleOf = 1;
+
+export const approveActionProposalResponseMaxRetriesMultipleOf = 1;
+
+export const approveActionProposalResponseCountsTotalMultipleOf = 1;
+
+export const approveActionProposalResponseCountsSelectedMultipleOf = 1;
+
+export const approveActionProposalResponseCountsPendingMultipleOf = 1;
+
+export const approveActionProposalResponseCountsCompletedMultipleOf = 1;
+
+export const approveActionProposalResponseCountsFailedMultipleOf = 1;
+
+export const approveActionProposalResponseCountsSkippedMultipleOf = 1;
+
+export const approveActionProposalResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const ApproveActionProposalResponse = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(approveActionProposalResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(approveActionProposalResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(approveActionProposalResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(approveActionProposalResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(approveActionProposalResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(approveActionProposalResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(approveActionProposalResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(approveActionProposalResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(approveActionProposalResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Re-check safety conditions without changing the archive
+ */
+
+
+
+export const PreflightActionProposalParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const preflightActionProposalResponseRetryCountMultipleOf = 1;
+
+export const preflightActionProposalResponseMaxRetriesMultipleOf = 1;
+
+export const preflightActionProposalResponseCountsTotalMultipleOf = 1;
+
+export const preflightActionProposalResponseCountsSelectedMultipleOf = 1;
+
+export const preflightActionProposalResponseCountsPendingMultipleOf = 1;
+
+export const preflightActionProposalResponseCountsCompletedMultipleOf = 1;
+
+export const preflightActionProposalResponseCountsFailedMultipleOf = 1;
+
+export const preflightActionProposalResponseCountsSkippedMultipleOf = 1;
+
+export const preflightActionProposalResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const PreflightActionProposalResponse = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(preflightActionProposalResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(preflightActionProposalResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(preflightActionProposalResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(preflightActionProposalResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(preflightActionProposalResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(preflightActionProposalResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(preflightActionProposalResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(preflightActionProposalResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(preflightActionProposalResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Execute an approved and preflighted action proposal
+ */
+
+
+
+export const ExecuteActionProposalParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const ExecuteActionProposalBody = zod.object({
+  "confirmed": zod.boolean()
+})
+
+export const executeActionProposalResponseRetryCountMultipleOf = 1;
+
+export const executeActionProposalResponseMaxRetriesMultipleOf = 1;
+
+export const executeActionProposalResponseCountsTotalMultipleOf = 1;
+
+export const executeActionProposalResponseCountsSelectedMultipleOf = 1;
+
+export const executeActionProposalResponseCountsPendingMultipleOf = 1;
+
+export const executeActionProposalResponseCountsCompletedMultipleOf = 1;
+
+export const executeActionProposalResponseCountsFailedMultipleOf = 1;
+
+export const executeActionProposalResponseCountsSkippedMultipleOf = 1;
+
+export const executeActionProposalResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const ExecuteActionProposalResponse = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(executeActionProposalResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(executeActionProposalResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(executeActionProposalResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(executeActionProposalResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(executeActionProposalResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(executeActionProposalResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(executeActionProposalResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(executeActionProposalResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(executeActionProposalResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Restore the archive state changed by a completed proposal
+ */
+
+
+
+export const RevertActionProposalParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const RevertActionProposalBody = zod.object({
+  "confirmed": zod.boolean()
+})
+
+export const revertActionProposalResponseRetryCountMultipleOf = 1;
+
+export const revertActionProposalResponseMaxRetriesMultipleOf = 1;
+
+export const revertActionProposalResponseCountsTotalMultipleOf = 1;
+
+export const revertActionProposalResponseCountsSelectedMultipleOf = 1;
+
+export const revertActionProposalResponseCountsPendingMultipleOf = 1;
+
+export const revertActionProposalResponseCountsCompletedMultipleOf = 1;
+
+export const revertActionProposalResponseCountsFailedMultipleOf = 1;
+
+export const revertActionProposalResponseCountsSkippedMultipleOf = 1;
+
+export const revertActionProposalResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const RevertActionProposalResponse = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(revertActionProposalResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(revertActionProposalResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(revertActionProposalResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(revertActionProposalResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(revertActionProposalResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(revertActionProposalResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(revertActionProposalResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(revertActionProposalResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(revertActionProposalResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Cancel an action proposal before execution
+ */
+
+
+
+export const CancelActionProposalParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const cancelActionProposalResponseRetryCountMultipleOf = 1;
+
+export const cancelActionProposalResponseMaxRetriesMultipleOf = 1;
+
+export const cancelActionProposalResponseCountsTotalMultipleOf = 1;
+
+export const cancelActionProposalResponseCountsSelectedMultipleOf = 1;
+
+export const cancelActionProposalResponseCountsPendingMultipleOf = 1;
+
+export const cancelActionProposalResponseCountsCompletedMultipleOf = 1;
+
+export const cancelActionProposalResponseCountsFailedMultipleOf = 1;
+
+export const cancelActionProposalResponseCountsSkippedMultipleOf = 1;
+
+export const cancelActionProposalResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const CancelActionProposalResponse = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(cancelActionProposalResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(cancelActionProposalResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(cancelActionProposalResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(cancelActionProposalResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(cancelActionProposalResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(cancelActionProposalResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(cancelActionProposalResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(cancelActionProposalResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(cancelActionProposalResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Retry the failed steps of an action proposal
+ */
+
+
+
+export const RetryActionProposalParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+export const retryActionProposalResponseRetryCountMultipleOf = 1;
+
+export const retryActionProposalResponseMaxRetriesMultipleOf = 1;
+
+export const retryActionProposalResponseCountsTotalMultipleOf = 1;
+
+export const retryActionProposalResponseCountsSelectedMultipleOf = 1;
+
+export const retryActionProposalResponseCountsPendingMultipleOf = 1;
+
+export const retryActionProposalResponseCountsCompletedMultipleOf = 1;
+
+export const retryActionProposalResponseCountsFailedMultipleOf = 1;
+
+export const retryActionProposalResponseCountsSkippedMultipleOf = 1;
+
+export const retryActionProposalResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const RetryActionProposalResponse = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(retryActionProposalResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(retryActionProposalResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(retryActionProposalResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(retryActionProposalResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(retryActionProposalResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(retryActionProposalResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(retryActionProposalResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(retryActionProposalResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(retryActionProposalResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Preview the rename actions available for naming findings
+ */
+export const getArchiveNamingActionCandidatesQueryLimitMax = 500;
+
+
+
+export const GetArchiveNamingActionCandidatesQueryParams = zod.object({
+  "confidence": zod.coerce.string().optional(),
+  "pattern": zod.coerce.string().optional(),
+  "mediaType": zod.coerce.string().optional(),
+  "volume": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().min(1).max(getArchiveNamingActionCandidatesQueryLimitMax).optional()
+})
+
+export const getArchiveNamingActionCandidatesResponseSummaryInspectedMultipleOf = 1;
+
+export const getArchiveNamingActionCandidatesResponseSummaryActionableMultipleOf = 1;
+
+export const getArchiveNamingActionCandidatesResponseSummarySelectedMultipleOf = 1;
+
+export const getArchiveNamingActionCandidatesResponseSummaryRenameMultipleOf = 1;
+
+export const getArchiveNamingActionCandidatesResponseSummaryMoveMultipleOf = 1;
+
+export const getArchiveNamingActionCandidatesResponseSummarySkippedMultipleOf = 1;
+
+
+
+export const GetArchiveNamingActionCandidatesResponse = zod.object({
+  "summary": zod.object({
+  "inspected": zod.number().multipleOf(getArchiveNamingActionCandidatesResponseSummaryInspectedMultipleOf),
+  "actionable": zod.number().multipleOf(getArchiveNamingActionCandidatesResponseSummaryActionableMultipleOf),
+  "selected": zod.number().multipleOf(getArchiveNamingActionCandidatesResponseSummarySelectedMultipleOf),
+  "rename": zod.number().multipleOf(getArchiveNamingActionCandidatesResponseSummaryRenameMultipleOf),
+  "move": zod.number().multipleOf(getArchiveNamingActionCandidatesResponseSummaryMoveMultipleOf),
+  "skipped": zod.number().multipleOf(getArchiveNamingActionCandidatesResponseSummarySkippedMultipleOf)
+}),
+  "candidates": zod.array(zod.object({
+  "fileRecordId": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "sourceFilename": zod.string(),
+  "destinationFilename": zod.string(),
+  "confidence": zod.string(),
+  "patternId": zod.string(),
+  "reason": zod.string(),
+  "evidence": zod.array(zod.string())
+}))
+})
+
+
+/**
+ * @summary Create a reviewable rename proposal from naming findings
+ */
+export const planArchiveNamingNormalizationBodyLimitMax = 500;
+
+
+
+
+export const PlanArchiveNamingNormalizationBody = zod.object({
+  "confidence": zod.string().optional(),
+  "pattern": zod.string().optional(),
+  "mediaType": zod.string().optional(),
+  "volume": zod.string().optional(),
+  "limit": zod.number().min(1).max(planArchiveNamingNormalizationBodyLimitMax).optional(),
+  "fileRecordIds": zod.array(zod.number().min(1)).optional()
+})
+
+export const planArchiveNamingNormalizationResponseRetryCountMultipleOf = 1;
+
+export const planArchiveNamingNormalizationResponseMaxRetriesMultipleOf = 1;
+
+export const planArchiveNamingNormalizationResponseCountsTotalMultipleOf = 1;
+
+export const planArchiveNamingNormalizationResponseCountsSelectedMultipleOf = 1;
+
+export const planArchiveNamingNormalizationResponseCountsPendingMultipleOf = 1;
+
+export const planArchiveNamingNormalizationResponseCountsCompletedMultipleOf = 1;
+
+export const planArchiveNamingNormalizationResponseCountsFailedMultipleOf = 1;
+
+export const planArchiveNamingNormalizationResponseCountsSkippedMultipleOf = 1;
+
+export const planArchiveNamingNormalizationResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const PlanArchiveNamingNormalizationResponse = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(planArchiveNamingNormalizationResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(planArchiveNamingNormalizationResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(planArchiveNamingNormalizationResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(planArchiveNamingNormalizationResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(planArchiveNamingNormalizationResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(planArchiveNamingNormalizationResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(planArchiveNamingNormalizationResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(planArchiveNamingNormalizationResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(planArchiveNamingNormalizationResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Link an owner-scoped local download to an acquisition job
  */
 

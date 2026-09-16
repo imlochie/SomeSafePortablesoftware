@@ -30,6 +30,8 @@ tags:
     description: Generic owner-scoped approval queue
   - name: operations
     description: Approval-gated archive filesystem operations
+  - name: actions
+    description: Universal action proposals with approval, preflight, execution, verification, and revert
 paths:
   /healthz:
     get:
@@ -838,6 +840,306 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ArchiveOperation"
+  /action-capabilities:
+    get:
+      operationId: listActionCapabilities
+      tags: [actions]
+      summary: List the declared action families and their execution support
+      responses:
+        "200":
+          description: Action families
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActionCapability"
+  /action-proposals:
+    get:
+      operationId: listActionProposals
+      tags: [actions]
+      summary: List owner-scoped action proposals
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ActionProposalStatus"
+        - name: type
+          in: query
+          schema:
+            $ref: "#/components/schemas/ActionType"
+        - name: source
+          in: query
+          schema:
+            $ref: "#/components/schemas/ActionSource"
+      responses:
+        "200":
+          description: Action proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActionProposal"
+  /action-proposals/{id}:
+    get:
+      operationId: getActionProposal
+      tags: [actions]
+      summary: Read a single action proposal with its steps and history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Action proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionProposal"
+        "404":
+          description: Action proposal not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /action-proposals/{id}/selection:
+    post:
+      operationId: updateActionStepSelection
+      tags: [actions]
+      summary: Select or deselect individual steps before approval
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionStepSelection"
+      responses:
+        "200":
+          description: Updated action proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionProposal"
+        "400":
+          description: Selection rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /action-proposals/{id}/approve:
+    post:
+      operationId: approveActionProposal
+      tags: [actions]
+      summary: Record explicit durable approval for an action proposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActionApproval"
+      responses:
+        "200":
+          description: Approved action proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionProposal"
+        "400":
+          description: Approval rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /action-proposals/{id}/preflight:
+    post:
+      operationId: preflightActionProposal
+      tags: [actions]
+      summary: Re-check safety conditions without changing the archive
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Preflighted action proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionProposal"
+        "400":
+          description: Preflight rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /action-proposals/{id}/execute:
+    post:
+      operationId: executeActionProposal
+      tags: [actions]
+      summary: Execute an approved and preflighted action proposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperationConfirmation"
+      responses:
+        "200":
+          description: Executed action proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionProposal"
+        "400":
+          description: Execution rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /action-proposals/{id}/revert:
+    post:
+      operationId: revertActionProposal
+      tags: [actions]
+      summary: Restore the archive state changed by a completed proposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperationConfirmation"
+      responses:
+        "200":
+          description: Reverted action proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionProposal"
+        "400":
+          description: Revert rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /action-proposals/{id}/cancel:
+    post:
+      operationId: cancelActionProposal
+      tags: [actions]
+      summary: Cancel an action proposal before execution
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Cancelled action proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionProposal"
+        "400":
+          description: Cancellation rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /action-proposals/{id}/retry:
+    post:
+      operationId: retryActionProposal
+      tags: [actions]
+      summary: Retry the failed steps of an action proposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Retried action proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionProposal"
+        "400":
+          description: Retry rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /archive/naming-actions:
+    get:
+      operationId: getArchiveNamingActionCandidates
+      tags: [actions, archive]
+      summary: Preview the rename actions available for naming findings
+      parameters:
+        - name: confidence
+          in: query
+          schema: { type: string }
+        - name: pattern
+          in: query
+          schema: { type: string }
+        - name: mediaType
+          in: query
+          schema: { type: string }
+        - name: volume
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: number, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Available naming actions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamingActionCandidates"
+    post:
+      operationId: planArchiveNamingNormalization
+      tags: [actions, archive]
+      summary: Create a reviewable rename proposal from naming findings
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanNamingNormalization"
+      responses:
+        "201":
+          description: Created action proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionProposal"
+        "400":
+          description: No actionable naming findings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /acquisition-jobs/{id}/download:
     post:
       operationId: linkAcquisitionDownload
@@ -2979,6 +3281,235 @@ components:
         job:
           $ref: "#/components/schemas/AcquisitionJob"
         created: { type: boolean }
+    ActionType:
+      type: string
+      enum: [rename, move, delete, restore, reconcile, acquire, import, link, unlink, metadata_update, plex_sync]
+    ActionSource:
+      type: string
+      enum: [naming_intelligence, acquisition_intelligence, reconciliation, identity_audit, archive_review, assistant, operator]
+    ActionProposalStatus:
+      type: string
+      enum: [draft, proposed, approved, preflight, ready, executing, completed, partially_completed, failed, cancelled, reverted]
+    ActionStepStatus:
+      type: string
+      enum: [pending, skipped, ready, executing, completed, failed, reverted]
+    ActionRisk:
+      type: string
+      enum: [low, medium, high]
+    ActionPhase:
+      type: string
+      enum: [propose, select, approve, preflight, execute, verify, record, revert, cancel]
+    ActionCapability:
+      type: object
+      required: [type, supported, mutatesFiles, reversible, risk, description]
+      properties:
+        type:
+          $ref: "#/components/schemas/ActionType"
+        supported: { type: boolean }
+        mutatesFiles: { type: boolean }
+        reversible: { type: boolean }
+        risk:
+          $ref: "#/components/schemas/ActionRisk"
+        description: { type: string }
+    ActionTarget:
+      type: object
+      required: [kind, id, path, label]
+      properties:
+        kind: { type: string }
+        id: { type: ["string", "null"] }
+        path: { type: ["string", "null"] }
+        label: { type: ["string", "null"] }
+    ActionEvent:
+      type: object
+      required: [id, stepId, phase, fromStatus, toStatus, detail, metadata, createdAt]
+      properties:
+        id: { type: number }
+        stepId: { type: ["number", "null"] }
+        phase:
+          $ref: "#/components/schemas/ActionPhase"
+        fromStatus: { type: ["string", "null"] }
+        toStatus: { type: string }
+        detail: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+    ActionStep:
+      type: object
+      required: [id, proposalId, stepIndex, type, status, selected, summary, target, before, after, preflight, execution, verification, revert, errorCode, errorMessage, createdAt, updatedAt]
+      properties:
+        id: { type: number }
+        proposalId: { type: number }
+        stepIndex: { type: number }
+        type:
+          $ref: "#/components/schemas/ActionType"
+        status:
+          $ref: "#/components/schemas/ActionStepStatus"
+        selected: { type: boolean }
+        summary: { type: string }
+        target:
+          $ref: "#/components/schemas/ActionTarget"
+        before:
+          type: object
+          additionalProperties: true
+        after:
+          type: object
+          additionalProperties: true
+        preflight:
+          type: object
+          additionalProperties: true
+        execution:
+          type: object
+          additionalProperties: true
+        verification:
+          type: object
+          additionalProperties: true
+        revert:
+          type: object
+          additionalProperties: true
+        errorCode: { type: ["string", "null"] }
+        errorMessage: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ActionProposalCounts:
+      type: object
+      required: [total, selected, pending, completed, failed, skipped, reverted]
+      properties:
+        total: { type: number, multipleOf: 1 }
+        selected: { type: number, multipleOf: 1 }
+        pending: { type: number, multipleOf: 1 }
+        completed: { type: number, multipleOf: 1 }
+        failed: { type: number, multipleOf: 1 }
+        skipped: { type: number, multipleOf: 1 }
+        reverted: { type: number, multipleOf: 1 }
+    ActionProposal:
+      type: object
+      required: [id, proposalKey, type, source, reason, status, risk, requiresApproval, dryRun, allowCreateDirectories, reviewItemId, acquisitionJobId, downloadJobId, planHash, target, evidence, approval, preflight, execution, verification, revert, postflight, retryCount, maxRetries, errorCode, errorMessage, counts, steps, events, createdAt, approvedAt, executedAt, completedAt, cancelledAt, updatedAt]
+      properties:
+        id: { type: number }
+        proposalKey: { type: string }
+        type:
+          $ref: "#/components/schemas/ActionType"
+        source:
+          $ref: "#/components/schemas/ActionSource"
+        reason: { type: string }
+        status:
+          $ref: "#/components/schemas/ActionProposalStatus"
+        risk:
+          $ref: "#/components/schemas/ActionRisk"
+        requiresApproval: { type: boolean }
+        dryRun: { type: boolean }
+        allowCreateDirectories: { type: boolean }
+        reviewItemId: { type: ["number", "null"] }
+        acquisitionJobId: { type: ["number", "null"] }
+        downloadJobId: { type: ["number", "null"] }
+        planHash: { type: string }
+        target:
+          $ref: "#/components/schemas/ActionTarget"
+        evidence:
+          type: object
+          additionalProperties: true
+        approval:
+          type: object
+          additionalProperties: true
+        preflight:
+          type: object
+          additionalProperties: true
+        execution:
+          type: object
+          additionalProperties: true
+        verification:
+          type: object
+          additionalProperties: true
+        revert:
+          type: object
+          additionalProperties: true
+        postflight:
+          type: object
+          additionalProperties: true
+        retryCount: { type: number, multipleOf: 1 }
+        maxRetries: { type: number, multipleOf: 1 }
+        errorCode: { type: ["string", "null"] }
+        errorMessage: { type: ["string", "null"] }
+        counts:
+          $ref: "#/components/schemas/ActionProposalCounts"
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActionStep"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActionEvent"
+        createdAt: { type: string, format: date-time }
+        approvedAt: { type: ["string", "null"], format: date-time }
+        executedAt: { type: ["string", "null"], format: date-time }
+        completedAt: { type: ["string", "null"], format: date-time }
+        cancelledAt: { type: ["string", "null"], format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ActionStepSelection:
+      type: object
+      required: [selections]
+      properties:
+        selections:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [stepId, selected]
+            properties:
+              stepId: { type: number, minimum: 1 }
+              selected: { type: boolean }
+    ActionApproval:
+      type: object
+      properties:
+        note: { type: ["string", "null"] }
+    NamingActionCandidate:
+      type: object
+      required: [fileRecordId, type, sourcePath, destinationPath, sourceFilename, destinationFilename, confidence, patternId, reason, evidence]
+      properties:
+        fileRecordId: { type: number }
+        type:
+          $ref: "#/components/schemas/ActionType"
+        sourcePath: { type: string }
+        destinationPath: { type: string }
+        sourceFilename: { type: string }
+        destinationFilename: { type: string }
+        confidence: { type: string }
+        patternId: { type: string }
+        reason: { type: string }
+        evidence:
+          type: array
+          items: { type: string }
+    NamingActionCandidates:
+      type: object
+      required: [summary, candidates]
+      properties:
+        summary:
+          type: object
+          required: [inspected, actionable, selected, rename, move, skipped]
+          properties:
+            inspected: { type: number, multipleOf: 1 }
+            actionable: { type: number, multipleOf: 1 }
+            selected: { type: number, multipleOf: 1 }
+            rename: { type: number, multipleOf: 1 }
+            move: { type: number, multipleOf: 1 }
+            skipped: { type: number, multipleOf: 1 }
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/NamingActionCandidate"
+    PlanNamingNormalization:
+      type: object
+      properties:
+        confidence: { type: string }
+        pattern: { type: string }
+        mediaType: { type: string }
+        volume: { type: string }
+        limit: { type: number, minimum: 1, maximum: 500 }
+        fileRecordIds:
+          type: array
+          items: { type: number, minimum: 1 }
     ArchiveOperationAction:
       type: string
       enum: [rename, move, import]

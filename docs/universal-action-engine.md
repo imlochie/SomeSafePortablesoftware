@@ -1,0 +1,155 @@
+# Universal Archive Action Engine
+
+Archive Assistant observes, understands, explains, and proposes. The Action
+Layer is the substrate that lets it also **change the archive safely**, so a
+finding no longer ends with "…and now you go fix it yourself."
+
+```text
+     OBSERVE → UNDERSTAND → EXPLAIN → PROPOSE → REVIEW
+                                                  ↓
+                                      ┌───────────────────┐
+                                      │   ACTION LAYER    │
+                                      │ approve preflight │
+                                      │ execute  verify   │
+                                      │ record   revert   │
+                                      └───────────────────┘
+                                                  ↓
+                            RESULT → ARCHIVE CHANGES → OBSERVE
+```
+
+Every finding should be able to answer four questions. The engine makes those
+answers structural rather than per-feature:
+
+| Question | Where it is answered |
+| --- | --- |
+| What can I do about this? | `GET /api/action-capabilities`, capability previews such as `GET /api/archive/naming-actions` |
+| What exactly will change? | `ActionProposal.steps[]` — each step carries `before` and `after` |
+| What needs my approval? | `requiresApproval`, `risk`, and the linked review-queue item |
+| What happens after Execute? | `preflight`, `execution`, `verification`, `postflight`, `events[]`, and `revert` |
+
+## Objects
+
+```ts
+ActionProposal {
+  id, ownerId, type, source, reason, status, risk
+  target, evidence
+  steps: ActionStep[]
+  approval, preflight, execution, verification, revert, postflight
+  planHash, counts, events
+  createdAt, approvedAt, executedAt, completedAt
+}
+
+ActionStep {
+  stepIndex, type, status, selected, summary
+  target, before, after
+  preflight, execution, verification, revert
+}
+```
+
+`ActionStep.before` / `after` are the reviewable substance: they are exactly
+what the operator sees as *Before → After*, and exactly what preflight
+re-validates before anything runs.
+
+## Action types
+
+Strictly typed, with an honest support flag so the product never claims a
+capability it does not have:
+
+| Type | Supported | Mutates files | Reversible |
+| --- | --- | --- | --- |
+| `rename` | yes | yes | yes |
+| `move` | yes | yes | yes |
+| `import` | yes | yes | yes |
+| `delete` | declared | yes | no |
+| `restore` | declared | yes | yes |
+| `reconcile` | declared | no | yes |
+| `acquire` | declared | no | yes |
+| `link` / `unlink` | declared | no | yes |
+| `metadata_update` | declared | no | yes |
+| `plex_sync` | declared | no | no |
+
+Declared families exist so the vocabulary is complete and the UI can say "not
+yet available." They refuse to plan or execute rather than half-working.
+
+## Lifecycle and its guarantees
+
+```text
+proposed ──select──> proposed ──approve──> approved ──preflight──> ready
+                                                                     │
+                                              execute (confirmed)    ↓
+                        reverted <──revert── completed / partially_completed
+```
+
+1. **Propose** — inert. Creating a proposal changes nothing on disk. Identical
+   evidence is idempotent and returns the existing proposal.
+2. **Select** — batch by default; individual steps can be deselected before
+   approval. Deselected steps become `skipped` and are never touched.
+   Selection is locked once approved.
+3. **Approve** — explicit and durable, recorded as an `operation_approval`
+   review item. Approval alone still changes nothing.
+4. **Preflight** — re-checks every safety condition immediately before
+   execution and never mutates: source exists, no destination collision
+   (including two steps in one plan racing for the same path), destination
+   inside a configured archive volume, directory writable, enough free space.
+   It also re-derives `planHash`; if the plan changed after approval the
+   proposal fails with `PLAN_CHANGED`.
+5. **Execute** — requires `confirmed: true`, a `ready` status, and a still-valid
+   approval. Each step is verified immediately after it runs.
+6. **Verify / Record** — per-step verification plus a history event for every
+   phase, then an archive rescan, Plex refresh, and reconciliation so the loop
+   returns to OBSERVE.
+7. **Revert** — restores completed steps newest-first.
+
+Partial failure is a first-class outcome: a batch where some steps fail becomes
+`partially_completed`, and revert restores only what actually succeeded.
+
+## Adding a capability
+
+Implement one `ActionHandler` in `services/action-engine/registry.ts`:
+
+```ts
+{
+  type, supported, mutatesFiles, reversible, risk, description,
+  summarize(step),
+  preflight(step, context),
+  execute(step, context),
+  verify(step, context),
+  revert(step, context),
+}
+```
+
+Then the intelligence feature only maps findings to steps. It writes no
+approval, execution, verification, or rollback logic. `services/naming-actions.ts`
+is the reference implementation.
+
+## Reference implementation: naming → rename
+
+```text
+Finding      "N files have inconsistent naming"
+   ↓         GET  /api/archive/naming-actions      (preview, no writes)
+Proposal     POST /api/archive/naming-actions      (exact file mappings)
+   ↓         POST /api/action-proposals/{id}/selection
+Review       POST /api/action-proposals/{id}/approve
+   ↓         POST /api/action-proposals/{id}/preflight
+Execute      POST /api/action-proposals/{id}/execute   {"confirmed": true}
+   ↓
+Verify/History  proposal.verification + proposal.events
+Revert       POST /api/action-proposals/{id}/revert    {"confirmed": true}
+```
+
+Only findings the naming layer marked executable become steps; uncertain and
+colliding findings stay advisory.
+
+## Legacy compatibility
+
+`/api/archive-operations` keeps its exact contract and response shape, but
+`services/archive-operations.ts` is now a thin adapter: each legacy operation is
+an `ActionProposal` with a single `ActionStep`. There is one execution path, and
+the same operation is visible through both APIs.
+
+## Safety boundary
+
+The AI does not perform actions. It may observe, propose, and read; it may not
+approve. Approval and execution are explicit operator decisions against a
+deterministic control plane — a natural-language operator above an archive
+operating system, not a chat shell with root privileges.

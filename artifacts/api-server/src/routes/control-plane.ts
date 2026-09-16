@@ -91,6 +91,18 @@ router.get("/assistant/tools", (_req, res) => {
       { id: "operation-plan", method: "POST", path: "/archive-operations", mutatesFiles: false, requiresApproval: true },
       { id: "operation-preflight", method: "POST", path: "/archive-operations/{id}/preflight", mutatesFiles: false, requiresApproval: true },
       { id: "operation-execute", method: "POST", path: "/archive-operations/{id}/execute", mutatesFiles: true, requiresApproval: true, requiresPreflight: true, requiresConfirmation: true },
+      // Universal action layer. The assistant may propose and read; it may never
+      // approve, and execution always requires an explicit operator decision.
+      { id: "action-capabilities", method: "GET", path: "/action-capabilities", mutatesFiles: false },
+      { id: "action-list", method: "GET", path: "/action-proposals", mutatesFiles: false },
+      { id: "action-read", method: "GET", path: "/action-proposals/{id}", mutatesFiles: false },
+      { id: "naming-action-preview", method: "GET", path: "/archive/naming-actions", mutatesFiles: false },
+      { id: "naming-action-plan", method: "POST", path: "/archive/naming-actions", mutatesFiles: false },
+      { id: "action-select", method: "POST", path: "/action-proposals/{id}/selection", mutatesFiles: false },
+      { id: "action-approve", method: "POST", path: "/action-proposals/{id}/approve", mutatesFiles: false, requiresApproval: true, operatorOnly: true },
+      { id: "action-preflight", method: "POST", path: "/action-proposals/{id}/preflight", mutatesFiles: false, requiresApproval: true },
+      { id: "action-execute", method: "POST", path: "/action-proposals/{id}/execute", mutatesFiles: true, requiresApproval: true, requiresPreflight: true, requiresConfirmation: true, operatorOnly: true },
+      { id: "action-revert", method: "POST", path: "/action-proposals/{id}/revert", mutatesFiles: true, requiresConfirmation: true, operatorOnly: true },
       { id: "scan", method: "POST", path: "/archive/scan", mutatesFiles: false },
       { id: "storage-status", method: "GET", path: "/system/storage", mutatesFiles: false },
       { id: "reconciliation", method: "GET", path: "/archive/reconciliation", mutatesFiles: false },

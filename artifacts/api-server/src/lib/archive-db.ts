@@ -362,6 +362,84 @@ archiveDb.exec(`
   );
   CREATE INDEX IF NOT EXISTS archive_operation_event_idx
     ON archive_operation_event(operation_id, created_at ASC, id ASC);
+  CREATE TABLE IF NOT EXISTS action_proposal (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    proposal_key TEXT NOT NULL,
+    type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'proposed',
+    risk TEXT NOT NULL DEFAULT 'medium',
+    requires_approval INTEGER NOT NULL DEFAULT 1,
+    dry_run INTEGER NOT NULL DEFAULT 0,
+    allow_create_directories INTEGER NOT NULL DEFAULT 0,
+    review_item_id INTEGER REFERENCES review_item(id) ON DELETE SET NULL,
+    acquisition_job_id INTEGER REFERENCES acquisition_job(id) ON DELETE SET NULL,
+    download_job_id INTEGER REFERENCES download_job(id) ON DELETE SET NULL,
+    plan_hash TEXT NOT NULL DEFAULT '',
+    target_json TEXT NOT NULL DEFAULT '{}',
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    approval_json TEXT NOT NULL DEFAULT '{}',
+    preflight_json TEXT NOT NULL DEFAULT '{}',
+    execution_json TEXT NOT NULL DEFAULT '{}',
+    verification_json TEXT NOT NULL DEFAULT '{}',
+    revert_json TEXT NOT NULL DEFAULT '{}',
+    postflight_json TEXT NOT NULL DEFAULT '{}',
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 3,
+    error_code TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    approved_at TEXT,
+    executed_at TEXT,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, proposal_key)
+  );
+  CREATE INDEX IF NOT EXISTS action_proposal_owner_idx
+    ON action_proposal(owner_id, status, updated_at DESC);
+  CREATE INDEX IF NOT EXISTS action_proposal_owner_type_idx
+    ON action_proposal(owner_id, type, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS action_step (
+    id INTEGER PRIMARY KEY,
+    proposal_id INTEGER NOT NULL REFERENCES action_proposal(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL,
+    step_index INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    selected INTEGER NOT NULL DEFAULT 1,
+    summary TEXT NOT NULL DEFAULT '',
+    target_json TEXT NOT NULL DEFAULT '{}',
+    before_json TEXT NOT NULL DEFAULT '{}',
+    after_json TEXT NOT NULL DEFAULT '{}',
+    preflight_json TEXT NOT NULL DEFAULT '{}',
+    execution_json TEXT NOT NULL DEFAULT '{}',
+    verification_json TEXT NOT NULL DEFAULT '{}',
+    revert_json TEXT NOT NULL DEFAULT '{}',
+    error_code TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (proposal_id, step_index)
+  );
+  CREATE INDEX IF NOT EXISTS action_step_proposal_idx
+    ON action_step(proposal_id, step_index ASC);
+  CREATE TABLE IF NOT EXISTS action_event (
+    id INTEGER PRIMARY KEY,
+    proposal_id INTEGER NOT NULL REFERENCES action_proposal(id) ON DELETE CASCADE,
+    step_id INTEGER REFERENCES action_step(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    from_status TEXT,
+    to_status TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS action_event_proposal_idx
+    ON action_event(proposal_id, created_at ASC, id ASC);
   CREATE TABLE IF NOT EXISTS assistant_conversation (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New conversation',

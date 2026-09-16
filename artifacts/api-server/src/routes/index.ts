@@ -9,6 +9,7 @@ import archiveRouter from "./archive";
 import integrationsRouter from "./integrations";
 import acquisitionJobsRouter from "./acquisition-jobs";
 import controlPlaneRouter from "./control-plane";
+import actionsRouter from "./actions";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(archiveRouter);
 router.use(integrationsRouter);
 router.use(acquisitionJobsRouter);
 router.use(controlPlaneRouter);
+router.use(actionsRouter);
 
 export default router;

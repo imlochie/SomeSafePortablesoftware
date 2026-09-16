@@ -14,3 +14,4 @@
 - [Generated contract builds](generated-contract-builds.md) — Shared generated API packages can expose stale declaration output during workspace type checks.
 - [OpenAPI operation naming](openapi-operation-naming.md) — Avoid operation/body names that collide with generated component exports in the Zod client.
 - [Control-plane approval boundary](control-plane-approval-boundary.md) — Recommendations and reviews remain advisory; only confirmed approved operations may mutate files.
+- [Universal Archive Action Engine](universal-action-engine.md) — Every archive-mutating capability is an ActionProposal on one shared approve/preflight/execute/verify/revert substrate.
