@@ -43,6 +43,13 @@ whether the product can actually change anything.
   actually reported that field, and copy says "recorded" rather than "written"
   when `mutatesFiles` is false. Adding a family should mean adding vocabulary,
   not branching the layout.
+- Reversibility is a three-way engine fact, never a UI inference.
+  `ActionHandler.reversibility` is `{ kind, strategy, explanation, conditions }`
+  where kind is `reversible | conditional | irreversible`; `conditional` exists
+  because a rename's undo throws when the original path has been taken. Each
+  proposal also reports `available`, `revertableSteps` and `blockedReason`. The
+  review surface must read these rather than deriving `canRevert` from status,
+  and must not promise an undo the engine has not promised.
 - An intelligence layer may only propose steps it is certain about. Reconcile
   plans `matched` / `quality_conflict` findings but never `uncertain` ones —
   asking an operator to rubber-stamp an ambiguous guess is the failure mode the

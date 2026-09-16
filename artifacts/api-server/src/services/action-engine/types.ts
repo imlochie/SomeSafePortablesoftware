@@ -130,6 +130,8 @@ export interface ActionProposal {
   id: number;
   proposalKey: string;
   type: ActionType;
+  /** Engine truth about undo. Never inferred from `type` by a client. */
+  reversibility: ProposalReversibility;
   source: ActionSource;
   reason: string;
   status: ActionProposalStatus;
@@ -212,6 +214,48 @@ export interface ActionHandlerContext {
 }
 
 /**
+ * How — and whether — an executed action can be undone.
+ *
+ * This started life as `reversible: boolean`, which turned out to be a lie the
+ * engine was telling about itself. `rename` reverts by moving the file back,
+ * but that revert *throws* when something else has taken the original path in
+ * the meantime. A boolean cannot express "usually, unless the world moved",
+ * so the UI had no choice but to promise an undo the engine might refuse.
+ *
+ * Three kinds, because that is what actually exists:
+ *
+ *   reversible    the engine can restore the prior state from what it recorded
+ *   conditional   restorable only while some external condition still holds
+ *   irreversible  no automatic undo; approving it is the last decision point
+ */
+export const reversibilityKinds = ["reversible", "conditional", "irreversible"] as const;
+export type ReversibilityKind = (typeof reversibilityKinds)[number];
+
+export interface Reversibility {
+  kind: ReversibilityKind;
+  /** What the undo actually does, in operator language. Null when irreversible. */
+  strategy: string | null;
+  /** Why this kind — the sentence a review surface can show verbatim. */
+  explanation: string;
+  /** What must still be true for a conditional revert to succeed. */
+  conditions: string[];
+}
+
+/**
+ * Declared reversibility plus whether a revert can be offered *right now* for
+ * one specific proposal. The review surface must never infer either half: the
+ * first is the handler's truth, the second is the proposal's recorded state.
+ */
+export interface ProposalReversibility extends Reversibility {
+  /** True only when a revert would actually be accepted this moment. */
+  available: boolean;
+  /** How many completed steps a revert would attempt. */
+  revertableSteps: number;
+  /** Why the revert is not on offer, when it is not. */
+  blockedReason: string | null;
+}
+
+/**
  * An action family. Adding a capability to Archive Assistant means writing one
  * of these — never re-inventing approval, execution, or history.
  */
@@ -220,7 +264,7 @@ export interface ActionHandler {
   /** False until the family is genuinely wired end to end. */
   supported: boolean;
   mutatesFiles: boolean;
-  reversible: boolean;
+  reversibility: Reversibility;
   risk: ActionRisk;
   description: string;
   summarize(step: ActionStep): string;

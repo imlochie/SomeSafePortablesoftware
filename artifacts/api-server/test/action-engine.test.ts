@@ -51,9 +51,37 @@ describe("action capability registry", { concurrency: false }, () => {
     // reconcile is the first supported family that changes no bytes on disk.
     const reconcile = capabilities.find((capability) => capability.type === "reconcile");
     assert.equal(reconcile?.mutatesFiles, false);
-    assert.equal(reconcile?.reversible, true);
+    // A link is pure engine-owned record state, so undo restores it exactly.
+    assert.equal(reconcile?.reversibility.kind, "reversible");
+    assert.deepEqual(reconcile?.reversibility.conditions, []);
     // Declared-but-unimplemented families must refuse to plan rather than pretend.
     assert.throws(() => engine.requireSupportedHandler("delete"), /not implemented yet/);
+  });
+
+  test("reports reversibility honestly, including the conditional middle ground", () => {
+    const byType = new Map(engine.listActionCapabilities().map((c) => [c.type, c]));
+
+    // rename/move revert by putting the file back, but that throws when the
+    // original path has been taken. A boolean could not say this, so the UI
+    // used to promise an undo the engine might refuse.
+    for (const type of ["rename", "move", "import"] as const) {
+      const capability = byType.get(type);
+      assert.equal(capability?.reversibility.kind, "conditional");
+      assert.ok((capability?.reversibility.conditions.length ?? 0) > 0);
+      assert.ok(capability?.reversibility.strategy);
+    }
+
+    // Irreversible families must say so and must not offer a strategy.
+    for (const type of ["delete", "plex_sync"] as const) {
+      const capability = byType.get(type);
+      assert.equal(capability?.reversibility.kind, "irreversible");
+      assert.equal(capability?.reversibility.strategy, null);
+    }
+
+    // Every family explains itself in operator language.
+    for (const capability of byType.values()) {
+      assert.ok(capability.reversibility.explanation.length > 20, capability.type);
+    }
   });
 });
 

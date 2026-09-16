@@ -6,6 +6,7 @@ import { findArchiveVolumeForPath, getArchiveScanRoots } from "../storage";
 import {
   actionTypes,
   type ActionHandler,
+  type Reversibility,
   type ActionHandlerContext,
   type ActionStep,
   type ActionType,
@@ -140,14 +141,25 @@ async function ensureDestinationDirectory(step: ActionStep, context: ActionHandl
 
 /**
  * rename / move are the same primitive with different intent: rename stays in
- * place, move relocates. Both are reversible by putting the file back.
+ * place, move relocates. Both undo by putting the file back — but only while
+ * the original path is still free, which is why they are `conditional` rather
+ * than `reversible`. The revert below genuinely throws on collision.
  */
 function relocationHandler(type: Extract<ActionType, "rename" | "move">): ActionHandler {
   return {
     type,
     supported: true,
     mutatesFiles: true,
-    reversible: true,
+    reversibility: {
+      kind: "conditional",
+      strategy: type === "rename"
+        ? "Rename the file back to its original name."
+        : "Move the file back to its original folder.",
+      explanation: type === "rename"
+        ? "The original name can be restored as long as nothing else has taken it."
+        : "The file can be moved back as long as nothing else has taken its original path.",
+      conditions: ["The original path is still free", "The moved file is still where the engine put it"],
+    },
     risk: type === "rename" ? "low" : "medium",
     description: type === "rename"
       ? "Rename a file in place to the archive naming convention."
@@ -201,7 +213,12 @@ const importHandler: ActionHandler = {
   type: "import",
   supported: true,
   mutatesFiles: true,
-  reversible: true,
+  reversibility: {
+    kind: "conditional",
+    strategy: "Delete the copy that was placed in the archive. The source file is never touched.",
+    explanation: "Only the imported copy is removed, so the original acquisition stays intact.",
+    conditions: ["The imported copy is still present and unmodified"],
+  },
   risk: "medium",
   description: "Copy a verified acquired file into the archive without removing the source.",
   summarize(step) {
@@ -288,7 +305,12 @@ const reconcileHandler: ActionHandler = {
   supported: true,
   // The archive's bytes are untouched; only the identity record changes.
   mutatesFiles: false,
-  reversible: true,
+  reversibility: {
+    kind: "reversible",
+    strategy: "Remove the recorded link, or restore the link that existed before.",
+    explanation: "The link is a record this engine owns, so undoing it restores the exact prior state.",
+    conditions: [],
+  },
   risk: "low",
   description: "Record a confirmed identity link between a local file and a Plex item.",
   summarize(step) {
@@ -434,7 +456,7 @@ const reconcileHandler: ActionHandler = {
 function plannedHandler(
   type: ActionType,
   description: string,
-  options: { mutatesFiles: boolean; reversible: boolean; risk: ActionHandler["risk"] },
+  options: { mutatesFiles: boolean; reversibility: Reversibility; risk: ActionHandler["risk"] },
 ): ActionHandler {
   const unavailable = () => {
     throw new Error(`The "${type}" action family is declared but not implemented yet.`);
@@ -443,7 +465,7 @@ function plannedHandler(
     type,
     supported: false,
     mutatesFiles: options.mutatesFiles,
-    reversible: options.reversible,
+    reversibility: options.reversibility,
     risk: options.risk,
     description,
     summarize: (step) => step.summary || type,
@@ -459,26 +481,68 @@ const handlers = new Map<ActionType, ActionHandler>([
   ["move", relocationHandler("move")],
   ["import", importHandler],
   ["delete", plannedHandler("delete", "Remove a file from the archive after retention review.", {
-    mutatesFiles: true, reversible: false, risk: "high",
+    mutatesFiles: true, reversibility: {
+      kind: "irreversible",
+      strategy: null,
+      explanation: "Deleted bytes cannot be brought back by this engine. Approving a deletion is the last point at which it can be stopped.",
+      conditions: [],
+    },
+    risk: "high",
   })],
   ["restore", plannedHandler("restore", "Restore a quarantined or previously removed file.", {
-    mutatesFiles: true, reversible: true, risk: "medium",
+    mutatesFiles: true, reversibility: {
+      kind: "conditional",
+      strategy: "Remove the restored copy again.",
+      explanation: "The restore can be undone while the restored file is still untouched.",
+      conditions: ["The restored file is still present and unmodified"],
+    },
+    risk: "medium",
   })],
   ["reconcile", reconcileHandler],
   ["acquire", plannedHandler("acquire", "Request missing media through an acquisition provider.", {
-    mutatesFiles: false, reversible: true, risk: "medium",
+    mutatesFiles: false, reversibility: {
+      kind: "conditional",
+      strategy: "Cancel the acquisition request with the provider.",
+      explanation: "A request can be withdrawn until the provider starts delivering it.",
+      conditions: ["The provider still reports the request as cancellable"],
+    },
+    risk: "medium",
   })],
   ["link", plannedHandler("link", "Associate an archive record with an external identity.", {
-    mutatesFiles: false, reversible: true, risk: "low",
+    mutatesFiles: false, reversibility: {
+      kind: "reversible",
+      strategy: "Remove the association.",
+      explanation: "The association is a local record, so removing it restores the prior state exactly.",
+      conditions: [],
+    },
+    risk: "low",
   })],
   ["unlink", plannedHandler("unlink", "Remove an association between records.", {
-    mutatesFiles: false, reversible: true, risk: "low",
+    mutatesFiles: false, reversibility: {
+      kind: "reversible",
+      strategy: "Recreate the association that was removed.",
+      explanation: "The previous association is recorded before removal, so it can be put back exactly.",
+      conditions: [],
+    },
+    risk: "low",
   })],
   ["metadata_update", plannedHandler("metadata_update", "Apply corrected metadata to archive records.", {
-    mutatesFiles: false, reversible: true, risk: "low",
+    mutatesFiles: false, reversibility: {
+      kind: "reversible",
+      strategy: "Write the previous field values back.",
+      explanation: "The prior values are recorded before the update, so the earlier state can be restored exactly.",
+      conditions: [],
+    },
+    risk: "low",
   })],
   ["plex_sync", plannedHandler("plex_sync", "Register or refresh an item in Plex.", {
-    mutatesFiles: false, reversible: false, risk: "low",
+    mutatesFiles: false, reversibility: {
+      kind: "irreversible",
+      strategy: null,
+      explanation: "Plex owns the result of a sync. This engine cannot roll back a change inside Plex.",
+      conditions: [],
+    },
+    risk: "low",
   })],
 ]);
 
@@ -503,7 +567,7 @@ export function listActionCapabilities() {
       type: handler.type,
       supported: handler.supported,
       mutatesFiles: handler.mutatesFiles,
-      reversible: handler.reversible,
+      reversibility: handler.reversibility,
       risk: handler.risk,
       description: handler.description,
     };

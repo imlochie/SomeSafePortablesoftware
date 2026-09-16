@@ -340,6 +340,30 @@ function groupSteps(steps: ActionStep[]): Array<{ id: GroupId; steps: ActionStep
 /** Collapse only long, unremarkable groups. Exceptions are always open. */
 const COLLAPSE_THRESHOLD = 8;
 
+/**
+ * How each reversibility kind presents itself. Teal reassures, amber qualifies,
+ * red warns — the colour carries the same meaning as the words so a one-way
+ * action cannot be mistaken for a safe one at a glance.
+ */
+const reversibilityStyle = {
+  reversible: {
+    heading: 'REVERSIBLE',
+    panel: 'border-[#4e9690] bg-[#f4f9f7]',
+    label: 'text-[#39736e]',
+  },
+  conditional: {
+    heading: 'REVERSIBLE — WITH CONDITIONS',
+    panel: 'border-[#f4b942] bg-[#fff8e7]',
+    label: 'text-[#8d681d]',
+  },
+  irreversible: {
+    heading: 'ONE-WAY ACTION',
+    panel: 'border-[#c85b51] bg-[#fcedea]',
+    label: 'text-[#994b43]',
+  },
+} as const;
+
+
 /* ------------------------------------------------------ preflight report -- */
 
 type PreflightCheck = { id: string; label: string; passed: number; total: number };
@@ -533,7 +557,10 @@ export function ActionProposalReview({
   const canApprove = editable && counts.selected > 0;
   const canPreflight = status === 'approved' || status === 'ready' || status === 'failed';
   const canExecute = status === 'ready';
-  const canRevert = status === 'completed' || status === 'partially_completed';
+  // Reversibility is engine truth, never inferred from status here. The engine
+  // reports both what the family can do and whether an undo is on offer now.
+  const reversibility = proposal.reversibility;
+  const canRevert = reversibility.available;
   const canCancel = editable || status === 'approved' || status === 'ready' || status === 'failed';
   const preflightPassed = readNumber(proposal.preflight as Bag, 'passed');
   const preflightFailed = readNumber(proposal.preflight as Bag, 'failed');
@@ -864,11 +891,29 @@ export function ActionProposalReview({
       {/* The authorization boundary, stated in words before the buttons. */}
       <div className="mt-6 border-t border-[#e7ecea] pt-5">
         {editable && (
-          <p className="mb-4 max-w-3xl text-[12px] leading-6 text-[#5c6d73]" data-testid="text-action-authorization-scope">
-            Approving authorizes exactly the {counts.selected} selected {plural(counts.selected, columns.changeNoun)} listed
-            above — not future {columns.futureNoun}. Preflight re-checks every condition immediately before
-            anything is {writesFiles ? 'written' : 'recorded'}.
-          </p>
+          <>
+            <p className="mb-4 max-w-3xl text-[12px] leading-6 text-[#5c6d73]" data-testid="text-action-authorization-scope">
+              Approving authorizes exactly the {counts.selected} selected {plural(counts.selected, columns.changeNoun)} listed
+              above — not future {columns.futureNoun}. Preflight re-checks every condition immediately before
+              anything is {writesFiles ? 'written' : 'recorded'}.
+            </p>
+            {/*
+              Undo is part of the decision, so it is stated before approval
+              rather than discovered afterwards. A one-way action has to say so
+              while the operator can still stop.
+            */}
+            <div
+              className={`mb-4 max-w-3xl border-l-2 p-3 ${reversibilityStyle[reversibility.kind].panel}`}
+              data-testid="panel-action-reversibility"
+            >
+              <div className={`archive-mono text-[9px] tracking-[.12em] ${reversibilityStyle[reversibility.kind].label}`}>
+                {reversibilityStyle[reversibility.kind].heading}
+              </div>
+              <p className={`mt-1 text-[11px] leading-5 ${reversibilityStyle[reversibility.kind].label}`}>
+                {reversibility.explanation}
+              </p>
+            </div>
+          </>
         )}
 
         {confirmingExecute && canExecute && (
@@ -880,7 +925,12 @@ export function ActionProposalReview({
               {writesFiles
                 ? 'This modifies files in the archive.'
                 : 'This changes archive records only; no file on disk is modified.'}{' '}
-              Each change is verified afterwards, and the proposal can be reverted.
+              Each change is verified afterwards.{' '}
+              {/* Never promise an undo the engine has not promised. */}
+              {reversibility.kind === 'reversible' && 'This can be undone afterwards.'}
+              {reversibility.kind === 'conditional' && reversibility.explanation}
+              {reversibility.kind === 'irreversible'
+                && 'This cannot be undone — approving it is the last point at which it can be stopped.'}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -907,10 +957,18 @@ export function ActionProposalReview({
 
         {confirmingRevert && canRevert && (
           <div className="mb-4 border-l-2 border-[#a77517] bg-[#fff8e7] p-4" data-testid="panel-confirm-revert">
-            <div className="text-[12px] font-bold text-[#80652e]">Put {counts.completed} applied {plural(counts.completed, 'change')} back?</div>
+            <div className="text-[12px] font-bold text-[#80652e]">
+              Put {reversibility.revertableSteps} applied {plural(reversibility.revertableSteps, 'change')} back?
+            </div>
             <p className="mt-1 text-[11px] leading-5 text-[#80652e]">
-              This restores the original paths recorded at execution time.
+              {reversibility.strategy ?? reversibility.explanation}
             </p>
+            {reversibility.kind === 'conditional' && reversibility.conditions.length > 0 && (
+              <p className="mt-2 text-[11px] leading-5 text-[#80652e]">
+                This can only succeed while: {reversibility.conditions.join('; ').toLowerCase()}.
+                If that is no longer true, the undo fails and says so rather than forcing it.
+              </p>
+            )}
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 onClick={() => {

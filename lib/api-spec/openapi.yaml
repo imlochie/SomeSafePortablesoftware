@@ -3338,15 +3338,54 @@ components:
     ActionPhase:
       type: string
       enum: [propose, select, approve, preflight, execute, verify, record, revert, cancel]
+    ReversibilityKind:
+      type: string
+      description: >-
+        Whether an executed action can be undone. `conditional` exists because a
+        rename undoes itself only while the original path is still free.
+      enum: [reversible, conditional, irreversible]
+    Reversibility:
+      type: object
+      description: An action family's declared undo behaviour.
+      required: [kind, strategy, explanation, conditions]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ReversibilityKind"
+        strategy:
+          type: string
+          nullable: true
+          description: What the undo does, in operator language. Null when irreversible.
+        explanation: { type: string }
+        conditions:
+          type: array
+          items: { type: string }
+    ProposalReversibility:
+      type: object
+      description: >-
+        Declared reversibility plus whether a revert is actually on offer for
+        this proposal right now. Clients must not infer either half.
+      required: [kind, strategy, explanation, conditions, available, revertableSteps, blockedReason]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ReversibilityKind"
+        strategy: { type: string, nullable: true }
+        explanation: { type: string }
+        conditions:
+          type: array
+          items: { type: string }
+        available: { type: boolean }
+        revertableSteps: { type: number, multipleOf: 1 }
+        blockedReason: { type: string, nullable: true }
     ActionCapability:
       type: object
-      required: [type, supported, mutatesFiles, reversible, risk, description]
+      required: [type, supported, mutatesFiles, reversibility, risk, description]
       properties:
         type:
           $ref: "#/components/schemas/ActionType"
         supported: { type: boolean }
         mutatesFiles: { type: boolean }
-        reversible: { type: boolean }
+        reversibility:
+          $ref: "#/components/schemas/Reversibility"
         risk:
           $ref: "#/components/schemas/ActionRisk"
         description: { type: string }
@@ -3423,12 +3462,14 @@ components:
         reverted: { type: number, multipleOf: 1 }
     ActionProposal:
       type: object
-      required: [id, proposalKey, type, source, reason, status, risk, requiresApproval, dryRun, allowCreateDirectories, reviewItemId, acquisitionJobId, downloadJobId, planHash, target, evidence, approval, preflight, execution, verification, revert, postflight, retryCount, maxRetries, errorCode, errorMessage, counts, steps, events, createdAt, approvedAt, executedAt, completedAt, cancelledAt, updatedAt]
+      required: [id, proposalKey, type, reversibility, source, reason, status, risk, requiresApproval, dryRun, allowCreateDirectories, reviewItemId, acquisitionJobId, downloadJobId, planHash, target, evidence, approval, preflight, execution, verification, revert, postflight, retryCount, maxRetries, errorCode, errorMessage, counts, steps, events, createdAt, approvedAt, executedAt, completedAt, cancelledAt, updatedAt]
       properties:
         id: { type: number }
         proposalKey: { type: string }
         type:
           $ref: "#/components/schemas/ActionType"
+        reversibility:
+          $ref: "#/components/schemas/ProposalReversibility"
         source:
           $ref: "#/components/schemas/ActionSource"
         reason: { type: string }

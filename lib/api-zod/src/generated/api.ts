@@ -1714,7 +1714,12 @@ export const ListActionCapabilitiesResponseItem = zod.object({
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
   "supported": zod.boolean(),
   "mutatesFiles": zod.boolean(),
-  "reversible": zod.boolean(),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable().describe('What the undo does, in operator language. Null when irreversible.'),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string())
+}).describe('An action family\'s declared undo behaviour.'),
   "risk": zod.enum(['low', 'medium', 'high']),
   "description": zod.string()
 })
@@ -1729,6 +1734,8 @@ export const ListActionProposalsQueryParams = zod.object({
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']).optional(),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']).optional()
 })
+
+export const listActionProposalsResponseReversibilityRevertableStepsMultipleOf = 1;
 
 export const listActionProposalsResponseRetryCountMultipleOf = 1;
 
@@ -1754,6 +1761,15 @@ export const ListActionProposalsResponseItem = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(listActionProposalsResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
@@ -1846,6 +1862,8 @@ export const GetActionProposalParams = zod.object({
   "id": zod.coerce.number().min(1)
 })
 
+export const getActionProposalResponseReversibilityRevertableStepsMultipleOf = 1;
+
 export const getActionProposalResponseRetryCountMultipleOf = 1;
 
 export const getActionProposalResponseMaxRetriesMultipleOf = 1;
@@ -1870,6 +1888,15 @@ export const GetActionProposalResponse = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(getActionProposalResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
@@ -1972,6 +1999,8 @@ export const UpdateActionStepSelectionBody = zod.object({
 })).min(1)
 })
 
+export const updateActionStepSelectionResponseReversibilityRevertableStepsMultipleOf = 1;
+
 export const updateActionStepSelectionResponseRetryCountMultipleOf = 1;
 
 export const updateActionStepSelectionResponseMaxRetriesMultipleOf = 1;
@@ -1996,6 +2025,15 @@ export const UpdateActionStepSelectionResponse = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(updateActionStepSelectionResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
@@ -2091,6 +2129,8 @@ export const ApproveActionProposalBody = zod.object({
   "note": zod.string().nullish()
 })
 
+export const approveActionProposalResponseReversibilityRevertableStepsMultipleOf = 1;
+
 export const approveActionProposalResponseRetryCountMultipleOf = 1;
 
 export const approveActionProposalResponseMaxRetriesMultipleOf = 1;
@@ -2115,6 +2155,15 @@ export const ApproveActionProposalResponse = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(approveActionProposalResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
@@ -2206,6 +2255,8 @@ export const PreflightActionProposalParams = zod.object({
   "id": zod.coerce.number().min(1)
 })
 
+export const preflightActionProposalResponseReversibilityRevertableStepsMultipleOf = 1;
+
 export const preflightActionProposalResponseRetryCountMultipleOf = 1;
 
 export const preflightActionProposalResponseMaxRetriesMultipleOf = 1;
@@ -2230,6 +2281,15 @@ export const PreflightActionProposalResponse = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(preflightActionProposalResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
@@ -2325,6 +2385,8 @@ export const ExecuteActionProposalBody = zod.object({
   "confirmed": zod.boolean()
 })
 
+export const executeActionProposalResponseReversibilityRevertableStepsMultipleOf = 1;
+
 export const executeActionProposalResponseRetryCountMultipleOf = 1;
 
 export const executeActionProposalResponseMaxRetriesMultipleOf = 1;
@@ -2349,6 +2411,15 @@ export const ExecuteActionProposalResponse = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(executeActionProposalResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
@@ -2444,6 +2515,8 @@ export const RevertActionProposalBody = zod.object({
   "confirmed": zod.boolean()
 })
 
+export const revertActionProposalResponseReversibilityRevertableStepsMultipleOf = 1;
+
 export const revertActionProposalResponseRetryCountMultipleOf = 1;
 
 export const revertActionProposalResponseMaxRetriesMultipleOf = 1;
@@ -2468,6 +2541,15 @@ export const RevertActionProposalResponse = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(revertActionProposalResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
@@ -2559,6 +2641,8 @@ export const CancelActionProposalParams = zod.object({
   "id": zod.coerce.number().min(1)
 })
 
+export const cancelActionProposalResponseReversibilityRevertableStepsMultipleOf = 1;
+
 export const cancelActionProposalResponseRetryCountMultipleOf = 1;
 
 export const cancelActionProposalResponseMaxRetriesMultipleOf = 1;
@@ -2583,6 +2667,15 @@ export const CancelActionProposalResponse = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(cancelActionProposalResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
@@ -2674,6 +2767,8 @@ export const RetryActionProposalParams = zod.object({
   "id": zod.coerce.number().min(1)
 })
 
+export const retryActionProposalResponseReversibilityRevertableStepsMultipleOf = 1;
+
 export const retryActionProposalResponseRetryCountMultipleOf = 1;
 
 export const retryActionProposalResponseMaxRetriesMultipleOf = 1;
@@ -2698,6 +2793,15 @@ export const RetryActionProposalResponse = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(retryActionProposalResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
@@ -2849,6 +2953,8 @@ export const PlanArchiveNamingNormalizationBody = zod.object({
   "fileRecordIds": zod.array(zod.number().min(1)).optional()
 })
 
+export const planArchiveNamingNormalizationResponseReversibilityRevertableStepsMultipleOf = 1;
+
 export const planArchiveNamingNormalizationResponseRetryCountMultipleOf = 1;
 
 export const planArchiveNamingNormalizationResponseMaxRetriesMultipleOf = 1;
@@ -2873,6 +2979,15 @@ export const PlanArchiveNamingNormalizationResponse = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(planArchiveNamingNormalizationResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
@@ -3019,6 +3134,8 @@ export const PlanArchiveReconciliationBody = zod.object({
   "fileRecordIds": zod.array(zod.number().min(1)).optional()
 })
 
+export const planArchiveReconciliationResponseReversibilityRevertableStepsMultipleOf = 1;
+
 export const planArchiveReconciliationResponseRetryCountMultipleOf = 1;
 
 export const planArchiveReconciliationResponseMaxRetriesMultipleOf = 1;
@@ -3043,6 +3160,15 @@ export const PlanArchiveReconciliationResponse = zod.object({
   "id": zod.number(),
   "proposalKey": zod.string(),
   "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "reversibility": zod.object({
+  "kind": zod.enum(['reversible', 'conditional', 'irreversible']).describe('Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.'),
+  "strategy": zod.string().nullable(),
+  "explanation": zod.string(),
+  "conditions": zod.array(zod.string()),
+  "available": zod.boolean(),
+  "revertableSteps": zod.number().multipleOf(planArchiveReconciliationResponseReversibilityRevertableStepsMultipleOf),
+  "blockedReason": zod.string().nullable()
+}).describe('Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.'),
   "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
   "reason": zod.string(),
   "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),

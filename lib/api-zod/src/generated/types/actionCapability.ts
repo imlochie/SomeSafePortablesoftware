@@ -7,12 +7,13 @@
  */
 import type { ActionRisk } from './actionRisk';
 import type { ActionType } from './actionType';
+import type { Reversibility } from './reversibility';
 
 export interface ActionCapability {
   type: ActionType;
   supported: boolean;
   mutatesFiles: boolean;
-  reversible: boolean;
+  reversibility: Reversibility;
   risk: ActionRisk;
   description: string;
 }

@@ -73,10 +73,25 @@ function proposal(overrides: Partial<ActionProposal> = {}): ActionProposal {
     }),
   ];
   const selected = steps.filter((entry) => entry.selected).length;
+  // Mirror how the engine derives revert availability so a fixture cannot
+  // describe a state the real backend would never produce.
+  const counts = overrides.counts
+    ?? { total: steps.length, selected, pending: selected, completed: 0, failed: 0, skipped: steps.length - selected, reverted: 0 };
+  const completedSteps = counts.completed;
   return {
     id: 7,
     proposalKey: 'key',
     type: 'rename',
+    reversibility: {
+      kind: 'conditional',
+      strategy: 'Rename the file back to its original name.',
+      explanation: 'The original name can be restored as long as nothing else has taken it.',
+      conditions: ['The original path is still free'],
+      available: completedSteps > 0,
+      revertableSteps: completedSteps,
+      blockedReason: completedSteps > 0 ? null : 'Nothing has been applied yet, so there is nothing to undo.',
+      ...(overrides.reversibility ?? {}),
+    },
     source: 'naming_intelligence',
     reason: 'Normalize 2 inconsistent filenames.',
     status: 'proposed',
@@ -100,7 +115,7 @@ function proposal(overrides: Partial<ActionProposal> = {}): ActionProposal {
     maxRetries: 3,
     errorCode: null,
     errorMessage: null,
-    counts: { total: steps.length, selected, pending: selected, completed: 0, failed: 0, skipped: steps.length - selected, reverted: 0 },
+    counts,
     steps,
     events: [],
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -487,5 +502,90 @@ describe('action proposal review surface', () => {
     expect(screen.getByTestId('text-step-error-102')).toHaveTextContent('Source file no longer exists.');
     // Revert is still offered, and it is scoped to what actually completed.
     expect(screen.getByTestId('button-revert-action-proposal')).toBeInTheDocument();
+  });
+
+  /* ------------------------------------------------- reversibility honesty -- */
+
+  it('states conditional reversibility before approval, not after', () => {
+    mocks.proposal.current = proposal();
+    renderReview();
+    const panel = screen.getByTestId('panel-action-reversibility');
+    expect(panel).toHaveTextContent('REVERSIBLE — WITH CONDITIONS');
+    // The caveat itself, not a bare "you can undo this".
+    expect(panel).toHaveTextContent('as long as nothing else has taken it');
+  });
+
+  it('never promises an undo for a one-way action', async () => {
+    const user = userEvent.setup();
+    mocks.proposal.current = proposal({
+      type: 'delete',
+      status: 'ready',
+      reversibility: {
+        kind: 'irreversible',
+        strategy: null,
+        explanation: 'Deleted bytes cannot be brought back by this engine.',
+        conditions: [],
+        available: false,
+        revertableSteps: 0,
+        blockedReason: 'This action cannot be undone by Archive Assistant.',
+      },
+      preflight: { checkedAt: 'now', steps: 2, passed: 2, failed: 0 },
+    });
+    renderReview();
+
+    await user.click(screen.getByTestId('button-execute-action-proposal'));
+    const confirm = screen.getByTestId('panel-confirm-execute');
+    // The decisive moment must carry the warning, not a reassurance.
+    expect(confirm).toHaveTextContent('cannot be undone');
+    expect(confirm).not.toHaveTextContent('can be undone afterwards');
+    expect(confirm.textContent).not.toMatch(/proposal can be reverted/i);
+  });
+
+  it('withdraws the revert button when the engine says a revert is unavailable', () => {
+    mocks.proposal.current = proposal({
+      type: 'delete',
+      status: 'completed',
+      verification: { total: 2, verified: 2, failed: 0 },
+      counts: { total: 2, selected: 2, pending: 0, completed: 2, failed: 0, skipped: 0, reverted: 0 },
+      steps: [step({ id: 101, stepIndex: 0, status: 'completed' }), step({ id: 102, stepIndex: 1, status: 'completed' })],
+      reversibility: {
+        kind: 'irreversible',
+        strategy: null,
+        explanation: 'Deleted bytes cannot be brought back by this engine.',
+        conditions: [],
+        available: false,
+        revertableSteps: 0,
+        blockedReason: 'This action cannot be undone by Archive Assistant.',
+      },
+    });
+    renderReview();
+    // Completed with 2 applied steps — the old surface inferred revert purely
+    // from that status and would have offered an impossible undo here.
+    expect(screen.getByTestId('text-action-verified')).toHaveTextContent('2 / 2');
+    expect(screen.queryByTestId('button-revert-action-proposal')).not.toBeInTheDocument();
+  });
+
+  it('describes the undo using the engine strategy rather than assuming file paths', async () => {
+    const user = userEvent.setup();
+    mocks.proposal.current = reconcileProposal({
+      status: 'completed',
+      verification: { total: 2, verified: 2, failed: 0 },
+      counts: { total: 2, selected: 2, pending: 0, completed: 2, failed: 0, skipped: 0, reverted: 0 },
+      reversibility: {
+        kind: 'reversible',
+        strategy: 'Remove the recorded link, or restore the link that existed before.',
+        explanation: 'The link is a record this engine owns, so undoing it restores the exact prior state.',
+        conditions: [],
+        available: true,
+        revertableSteps: 2,
+        blockedReason: null,
+      },
+    });
+    renderReview();
+    await user.click(screen.getByTestId('button-revert-action-proposal'));
+    const panel = screen.getByTestId('panel-confirm-revert');
+    expect(panel).toHaveTextContent('Remove the recorded link');
+    // The old copy claimed every revert "restores the original paths".
+    expect(panel.textContent).not.toMatch(/original paths/i);
   });
 });

@@ -429,7 +429,8 @@ export async function executeActionProposal(
         status: "completed",
         verification_json: JSON.stringify(verification),
         revert_json: JSON.stringify({
-          supported: handler.reversible,
+          supported: handler.reversibility.kind !== "irreversible",
+          kind: handler.reversibility.kind,
           strategy: handler.type,
           sourcePath: step.before.path ?? null,
           destinationPath: step.after.path ?? null,
@@ -532,7 +533,7 @@ export async function revertActionProposal(
   let failed = 0;
   for (const step of completedSteps) {
     const handler = getActionHandler(step.type);
-    if (!handler.reversible) {
+    if (handler.reversibility.kind === "irreversible") {
       failed += 1;
       failStep(step, ownerId, "REVERT_UNSUPPORTED", `The "${step.type}" action cannot be reverted.`, "revert");
       continue;

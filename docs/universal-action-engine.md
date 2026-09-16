@@ -197,6 +197,39 @@ Two rules came out of this and should be applied to the next family:
    and therefore degrades to "straightforward" for families that never set it,
    rather than mis-bucketing them.
 
-Still unproven: `delete` (irreversible — the surface currently assumes revert is
-always offerable) and `plex_sync` (verification against an external system
-rather than local state).
+Still unproven: `delete` and `plex_sync` (verification against an external
+system rather than local state).
+
+## Reversibility is engine truth, not a UI guess
+
+Auditing the surface for the `delete` case exposed something worse than a UI
+assumption: `reversible: boolean` was itself dishonest. `rename` reverts by
+moving the file back, and that revert **throws** when something else has taken
+the original path. The engine was claiming an unconditional undo it could not
+guarantee, and the review surface was separately inferring `canRevert` from
+`status === 'completed'` — so two layers were independently guessing.
+
+There are three kinds, and the middle one is the reason a boolean failed:
+
+| Kind | Meaning | Families |
+| --- | --- | --- |
+| `reversible` | prior state restored exactly from recorded data | `reconcile`, `link`, `unlink`, `metadata_update` |
+| `conditional` | restorable only while a stated condition holds | `rename`, `move`, `import`, `restore`, `acquire` |
+| `irreversible` | no automatic undo | `delete`, `plex_sync` |
+
+`ActionHandler.reversibility` carries `{ kind, strategy, explanation,
+conditions }`. Every proposal additionally reports `available`,
+`revertableSteps` and `blockedReason`, computed in `store.ts` from real step
+state. The distinction between *never applied* and *applied, then undone* is
+deliberate: after a successful revert the engine must not say "nothing has been
+applied yet", because something was.
+
+The review surface now reads all of this instead of deriving any of it. It
+shows the kind before approval — while the operator can still stop — and a
+one-way action says so at the moment of commitment rather than being discovered
+afterwards. A test asserts the confirm panel for an irreversible action never
+contains an undo promise.
+
+**Rule for the next family: the UI may not infer reversibility from the action
+type or the proposal status. If the engine did not say it, the surface does not
+claim it.**

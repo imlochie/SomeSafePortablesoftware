@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { archiveDb } from "../../lib/archive-db";
+import { getActionHandler } from "./registry";
 import {
   asPhase,
   asProposalStatus,
@@ -17,6 +18,7 @@ import {
   type ActionStepStatus,
   type ActionTarget,
   type ActionType,
+  type ProposalReversibility,
   type CreateActionProposalInput,
   type CreateActionStepInput,
 } from "./types";
@@ -127,16 +129,61 @@ export function readActionEvents(proposalId: number, ownerId: string): ActionEve
   `).all(proposalId, ownerId) as Array<Record<string, unknown>>).map(mapEvent);
 }
 
+
+/**
+ * Whether a revert can be offered for this proposal *right now*.
+ *
+ * Two separate truths, deliberately not collapsed: what the action family can
+ * do in principle (the handler's declaration), and whether this particular
+ * proposal is in a state where a revert would actually be accepted. The review
+ * surface previously derived the second from `status`, which meant it offered
+ * undo for irreversible families and stayed silent about the conditions a
+ * conditional revert depends on.
+ */
+function resolveReversibility(
+  type: ActionType,
+  status: ActionProposalStatus,
+  counts: ActionProposalCounts,
+): ProposalReversibility {
+  const declared = getActionHandler(type).reversibility;
+  const revertableSteps = counts.completed;
+  let blockedReason: string | null = null;
+
+  if (declared.kind === "irreversible") {
+    blockedReason = "This action cannot be undone by Archive Assistant.";
+  } else if (revertableSteps < 1) {
+    // "Never applied" and "applied, then undone" are different facts, and a
+    // trust surface must not blur them: saying "nothing has been applied" after
+    // a successful revert would deny that anything ever happened.
+    blockedReason = counts.reverted > 0
+      ? "No applied changes remain to undo."
+      : "Nothing has been applied yet, so there is nothing to undo.";
+  } else if (status !== "completed" && status !== "partially_completed") {
+    blockedReason = "Nothing has been applied yet, so there is nothing to undo.";
+  }
+
+  return {
+    ...declared,
+    available: blockedReason === null,
+    revertableSteps,
+    blockedReason,
+  };
+}
+
 function mapProposal(row: Record<string, unknown>, ownerId: string): ActionProposal {
   const id = Number(row.id);
   const steps = readActionSteps(id, ownerId);
+  const type = requireType(row.type);
+  const status = asProposalStatus(row.status);
+  const counts = countSteps(steps);
   return {
     id,
     proposalKey: String(row.proposal_key),
-    type: requireType(row.type),
+    type,
+    reversibility: resolveReversibility(type, status, counts),
     source: requireSource(row.source),
     reason: String(row.reason),
-    status: asProposalStatus(row.status),
+    status,
     risk: asRisk(row.risk),
     requiresApproval: Number(row.requires_approval) === 1,
     dryRun: Number(row.dry_run) === 1,
@@ -157,7 +204,7 @@ function mapProposal(row: Record<string, unknown>, ownerId: string): ActionPropo
     maxRetries: Number(row.max_retries),
     errorCode: row.error_code == null ? null : String(row.error_code),
     errorMessage: row.error_message == null ? null : String(row.error_message),
-    counts: countSteps(steps),
+    counts,
     steps,
     events: readActionEvents(id, ownerId),
     createdAt: String(row.created_at),

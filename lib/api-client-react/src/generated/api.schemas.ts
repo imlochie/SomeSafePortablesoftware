@@ -1555,11 +1555,47 @@ export const ActionPhase = {
   cancel: 'cancel',
 } as const;
 
+/**
+ * Whether an executed action can be undone. `conditional` exists because a rename undoes itself only while the original path is still free.
+ */
+export type ReversibilityKind = typeof ReversibilityKind[keyof typeof ReversibilityKind];
+
+
+export const ReversibilityKind = {
+  reversible: 'reversible',
+  conditional: 'conditional',
+  irreversible: 'irreversible',
+} as const;
+
+/**
+ * An action family's declared undo behaviour.
+ */
+export interface Reversibility {
+  kind: ReversibilityKind;
+  /** What the undo does, in operator language. Null when irreversible. */
+  strategy: string | null;
+  explanation: string;
+  conditions: string[];
+}
+
+/**
+ * Declared reversibility plus whether a revert is actually on offer for this proposal right now. Clients must not infer either half.
+ */
+export interface ProposalReversibility {
+  kind: ReversibilityKind;
+  strategy: string | null;
+  explanation: string;
+  conditions: string[];
+  available: boolean;
+  revertableSteps: number;
+  blockedReason: string | null;
+}
+
 export interface ActionCapability {
   type: ActionType;
   supported: boolean;
   mutatesFiles: boolean;
-  reversible: boolean;
+  reversibility: Reversibility;
   risk: ActionRisk;
   description: string;
 }
@@ -1652,6 +1688,7 @@ export interface ActionProposal {
   id: number;
   proposalKey: string;
   type: ActionType;
+  reversibility: ProposalReversibility;
   source: ActionSource;
   reason: string;
   status: ActionProposalStatus;

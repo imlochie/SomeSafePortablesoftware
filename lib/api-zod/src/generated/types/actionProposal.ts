@@ -20,11 +20,13 @@ import type { ActionSource } from './actionSource';
 import type { ActionStep } from './actionStep';
 import type { ActionTarget } from './actionTarget';
 import type { ActionType } from './actionType';
+import type { ProposalReversibility } from './proposalReversibility';
 
 export interface ActionProposal {
   id: number;
   proposalKey: string;
   type: ActionType;
+  reversibility: ProposalReversibility;
   source: ActionSource;
   reason: string;
   status: ActionProposalStatus;

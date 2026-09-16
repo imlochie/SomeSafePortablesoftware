@@ -278,4 +278,38 @@ describe("reconcile action lifecycle", { concurrency: false }, () => {
       0,
     );
   });
+
+  test("reports revert availability as engine state, not as a guess from status", async () => {
+    seedRecords(109, "plex-109");
+    const proposal = await reconcileActions.planReconciliation(owner, {}, reportOf([
+      reconciliationRow({
+        local: { ...reconciliationRow().local, fileRecordId: 109 },
+        plex: { ...reconciliationRow().plex, ratingKey: "plex-109" },
+      }),
+    ]));
+
+    // Declared truth is available from the very first read, before anything ran.
+    assert.equal(proposal.reversibility.kind, "reversible");
+    // But nothing has been applied, so there is nothing to undo yet.
+    assert.equal(proposal.reversibility.available, false);
+    assert.equal(proposal.reversibility.revertableSteps, 0);
+    assert.match(String(proposal.reversibility.blockedReason), /nothing to undo/i);
+
+    engine.approveActionProposal(proposal.id, owner);
+    await engine.preflightActionProposal(proposal.id, owner);
+    // Approval and a passing preflight still change nothing on their own.
+    assert.equal(engine.requireActionProposal(proposal.id, owner).reversibility.available, false);
+
+    await engine.executeActionProposal(proposal.id, owner, true, undefined, { postflight: false });
+    const executed = engine.requireActionProposal(proposal.id, owner);
+    assert.equal(executed.reversibility.available, true);
+    assert.equal(executed.reversibility.revertableSteps, 1);
+    assert.equal(executed.reversibility.blockedReason, null);
+
+    await engine.revertActionProposal(proposal.id, owner, true);
+    const reverted = engine.requireActionProposal(proposal.id, owner);
+    // Once reverted there are no completed steps left, so the offer withdraws.
+    assert.equal(reverted.reversibility.available, false);
+    assert.match(String(reverted.reversibility.blockedReason), /no applied changes/i);
+  });
 });
