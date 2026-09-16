@@ -28,11 +28,14 @@ import {
   useSyncControlPlaneReviewItems, useCreateArchiveOperation, usePreflightArchiveOperation,
   useExecuteArchiveOperation, useCancelArchiveOperation, useRetryArchiveOperation,
   useRollbackArchiveOperation,
+  useListActionProposals, useGetArchiveNamingActionCandidates, usePlanArchiveNamingNormalization,
+  getListActionProposalsQueryKey, getGetArchiveNamingActionCandidatesQueryKey,
   setBaseUrl,
 } from '@workspace/api-client-react';
 import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
+import { ActionProposalReview } from '@/components/action-proposal-review';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -763,7 +766,9 @@ export function ArchivePage() {
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
-  const [view, setView] = useState<'local' | 'naming_proposals' | 'plex_only' | 'missing_media'>('local');
+  const [view, setView] = useState<'local' | 'naming_proposals' | 'actions' | 'plex_only' | 'missing_media'>('local');
+  const [reviewProposalId, setReviewProposalId] = useState<number | null>(null);
+  const [actionNotice, setActionNotice] = useState('');
   const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'integrity' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
   const [acquisitionTarget, setAcquisitionTarget] = useState<ArchiveAcquisitionTarget | null>(null);
 
@@ -793,6 +798,15 @@ export function ArchivePage() {
   });
 
   const { data: namingProposals, isLoading: namingLoading, isError: namingError, refetch: refetchNaming } = useGetArchiveNamingProposals();
+
+  // Action layer: what can actually be done about the findings above.
+  const { data: actionProposals, isLoading: actionsLoading, isError: actionsError, refetch: refetchActions } = useListActionProposals();
+  const { data: namingActions } = useGetArchiveNamingActionCandidates();
+  const planNaming = usePlanArchiveNamingNormalization();
+  const refreshActions = () => {
+    queryClient.invalidateQueries({ queryKey: getListActionProposalsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetArchiveNamingActionCandidatesQueryKey() });
+  };
 
   const startScan = useStartArchiveScan();
   const bulkReview = useUpdateArchiveRecordReviews();
@@ -916,8 +930,8 @@ export function ArchivePage() {
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e3e8e7] bg-[#fbfcfa] p-4 md:px-6">
             <div className="flex flex-wrap gap-2">
               <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
-              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
               <button onClick={() => { setView('naming_proposals'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'naming_proposals' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-naming-proposals">NAMING PROPOSALS</button>
+              <button onClick={() => { setView('actions'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); setReviewProposalId(null); setActionNotice(''); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'actions' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-actions">ACTIONS ({actionProposals?.length ?? 0})</button>
               <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
               <button onClick={() => { setView('missing_media'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'missing_media' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-missing-media">MISSING MEDIA</button>
             </div>
@@ -986,6 +1000,16 @@ export function ArchivePage() {
                 <EmptyState icon={Sparkles} title="No naming proposals" description="The archive currently has no naming changes requiring review." />
               ) : (
                 <div className="space-y-3" data-testid="panel-naming-proposals">
+                  {(namingActions?.summary.actionable ?? 0) > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border border-[#b9d6cf] bg-[#eaf3ef] p-4" data-testid="panel-naming-proposals-action">
+                      <div className="min-w-0 text-[12px] leading-5 text-[#39736e]">
+                        <span className="font-bold">{namingActions?.summary.actionable}</span> of these findings can be resolved by a reviewable rename action.
+                      </div>
+                      <button onClick={() => { setView('actions'); setReviewProposalId(null); setActionNotice(''); }} className="inline-flex shrink-0 items-center gap-2 border border-[#4e9690] bg-white px-3.5 py-2 text-[10px] font-bold tracking-[.1em] text-[#39736e]" data-testid="button-open-naming-actions">
+                        <ArrowUpRight size={13} /> WHAT CAN I DO?
+                      </button>
+                    </div>
+                  )}
                   {namingProposals.results.map(proposal => (
                     <div key={proposal.fileRecordId} className="border border-[#e1e8e5] bg-white/50 p-4">
                       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -1016,6 +1040,77 @@ export function ArchivePage() {
                       <div className="mt-3 archive-mono text-[9px] tracking-[.08em] text-[#a0afaf]">PROPOSAL ONLY / NO FILESYSTEM ACTION</div>
                     </div>
                   ))}
+                </div>
+              )
+            ) : view === 'actions' ? (
+              reviewProposalId !== null ? (
+                <ActionProposalReview
+                  proposalId={reviewProposalId}
+                  onClose={() => { setReviewProposalId(null); refreshActions(); }}
+                />
+              ) : actionsLoading ? (
+                <div className="flex min-h-[250px] items-center justify-center archive-mono text-[10px] tracking-[.12em] text-[#7f9194]" data-testid="status-actions-loading">READING ACTION PROPOSALS...</div>
+              ) : actionsError ? (
+                <ErrorState title="Action layer unavailable" message="Action proposals could not be read from the local node." onRetry={() => refetchActions()} testId="button-retry-actions" />
+              ) : (
+                <div className="space-y-4" data-testid="panel-actions">
+                  {/* What can I do about the naming findings? */}
+                  {(namingActions?.summary.actionable ?? 0) > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border border-[#b9d6cf] bg-[#eaf3ef] p-4" data-testid="panel-naming-action-available">
+                      <div className="min-w-0">
+                        <div className="archive-mono text-[9px] tracking-[.12em] text-[#39736e]">ACTION AVAILABLE / NORMALIZE FILENAMES</div>
+                        <div className="mt-1 text-[12px] leading-5 text-[#39736e]">
+                          {namingActions?.summary.actionable} naming finding{namingActions?.summary.actionable === 1 ? '' : 's'} can be resolved
+                          {(namingActions?.summary.skipped ?? 0) > 0 && ` (${namingActions?.summary.skipped} stay advisory)`}.
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setActionNotice('');
+                          planNaming.mutate({ data: {} }, {
+                            onSuccess: (created) => { setReviewProposalId(created.id); refreshActions(); },
+                            onError: (error) => setActionNotice(errorText(error)),
+                          });
+                        }}
+                        disabled={planNaming.isPending}
+                        className="inline-flex shrink-0 items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50"
+                        data-testid="button-plan-naming-normalization"
+                      >
+                        {planNaming.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                        REVIEW CHANGES
+                      </button>
+                    </div>
+                  )}
+                  {actionNotice && (
+                    <div className="border-l-2 border-[#c85b51] bg-[#fcedea] p-3 text-[11px] leading-5 text-[#994b43]" data-testid="status-action-plan">{actionNotice}</div>
+                  )}
+                  {!actionProposals?.length ? (
+                    <EmptyState icon={ShieldCheck} title="No action proposals" description="Findings that can be acted on will appear here as reviewable proposals." />
+                  ) : (
+                    actionProposals.map(proposal => (
+                      <button
+                        key={proposal.id}
+                        onClick={() => setReviewProposalId(proposal.id)}
+                        className="block w-full border border-[#e1e8e5] bg-white/50 p-4 text-left hover:border-[#81999a]"
+                        data-testid={`row-action-proposal-${proposal.id}`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">
+                              {proposal.type.toUpperCase()} / {proposal.source.replace(/_/g, ' ').toUpperCase()}
+                            </div>
+                            <div className="mt-1 break-words text-[13px] font-bold text-[#344851]">{proposal.reason}</div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className="archive-mono text-[9px] tracking-[.1em] text-[#7f9194]">{proposal.counts.selected}/{proposal.counts.total} STEPS</span>
+                            <span className={`archive-mono border px-2 py-1 text-[9px] font-bold tracking-[.1em] ${proposal.status === 'completed' ? 'border-[#b9d6cf] bg-[#eaf3ef] text-[#39736e]' : proposal.status === 'failed' || proposal.status === 'partially_completed' ? 'border-[#e0b3ad] bg-[#fcedea] text-[#994b43]' : 'border-[#d6dfdc] bg-[#f3f6f5] text-[#5a6d73]'}`}>
+                              {proposal.status.replace(/_/g, ' ').toUpperCase()}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  )}
                 </div>
               )
             ) : showPlex ? (
