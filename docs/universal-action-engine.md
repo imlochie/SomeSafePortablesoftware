@@ -62,7 +62,7 @@ capability it does not have:
 | `import` | yes | yes | yes |
 | `delete` | declared | yes | no |
 | `restore` | declared | yes | yes |
-| `reconcile` | declared | no | yes |
+| `reconcile` | yes | **no** | yes |
 | `acquire` | declared | no | yes |
 | `link` / `unlink` | declared | no | yes |
 | `metadata_update` | declared | no | yes |
@@ -70,6 +70,12 @@ capability it does not have:
 
 Declared families exist so the vocabulary is complete and the UI can say "not
 yet available." They refuse to plan or execute rather than half-working.
+
+`reconcile` is the first supported family that changes **no bytes on disk** — it
+records a confirmed identity link between a local file and a Plex item in
+`media_identity_link`. It exists partly to prove the engine is not merely a
+file-mover with a general-sounding name; see "What the second family taught us"
+below.
 
 ## Lifecycle and its guarantees
 
@@ -153,3 +159,44 @@ The AI does not perform actions. It may observe, propose, and read; it may not
 approve. Approval and execution are explicit operator decisions against a
 deterministic control plane — a natural-language operator above an archive
 operating system, not a chat shell with root privileges.
+
+## What the second family taught us
+
+`rename`, `move` and `import` all share three private helpers — `stepPaths()`,
+`preflightFilesystemMutation()` and `verifyMovedFile()`. Every one of them is
+"move bytes from path A to path B", so none of them could tell us whether the
+*lifecycle* was genuinely universal or just well-factored file plumbing.
+
+`reconcile` was chosen next precisely because it breaks those assumptions: no
+source to `stat`, no destination collision, nothing to `rename` back. What
+survived unchanged is the part that was supposed to be universal:
+
+- the proposal/step/selection model,
+- propose → approve → preflight → execute → verify → record → revert,
+- plan-hash tamper detection,
+- batch selection with per-step opt-out,
+- the review surface, history and revert affordances.
+
+What had to change was **vocabulary, not structure**:
+
+| Assumption | Was | Now |
+| --- | --- | --- |
+| Step column headings | hardcoded `OLD NAME` / `NEW NAME` | per action type (`LOCAL FILE` / `PLEX ITEM`) |
+| Step identity | filename, else path basename | explicit planner `label` wins over a derived basename |
+| "before" is replaced | always struck through | only when the action replaces it |
+| Preflight checks | fixed file-oriented list | emitted only for fields the engine actually reported |
+| Copy | "written to disk" | "written" or "recorded" per `mutatesFiles` |
+
+Two rules came out of this and should be applied to the next family:
+
+1. **Never render a check the handler did not report.** The review surface now
+   emits a preflight line only when the field is present in the step payload,
+   so a new family cannot inherit a reassurance that is meaningless for it.
+2. **Group membership must key off engine facts, not action semantics.** The
+   `CREATES A NEW FOLDER` bucket keys off `destinationDirectoryMissing === true`
+   and therefore degrades to "straightforward" for families that never set it,
+   rather than mis-bucketing them.
+
+Still unproven: `delete` (irreversible — the surface currently assumes revert is
+always offerable) and `plex_sync` (verification against an external system
+rather than local state).

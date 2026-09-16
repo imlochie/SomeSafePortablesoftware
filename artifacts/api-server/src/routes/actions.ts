@@ -17,6 +17,10 @@ import {
   planNamingNormalization,
   readNamingActionCandidates,
 } from "../services/naming-actions";
+import {
+  planReconciliation,
+  readReconcileActionCandidates,
+} from "../services/reconcile-actions";
 
 const router: IRouter = Router();
 
@@ -171,6 +175,31 @@ router.post("/archive/naming-actions", async (req, res) => {
       fileRecordIds: body.fileRecordIds,
     });
     res.status(201).json(Api.PlanArchiveNamingNormalizationResponse.parse(proposal));
+  } catch (error) {
+    res.status(400).json({ error: message(error) });
+  }
+});
+
+router.get("/archive/reconcile-actions", async (req, res) => {
+  try {
+    const query = Api.GetArchiveReconcileActionCandidatesQueryParams.parse(req.query);
+    const result = await readReconcileActionCandidates(getAuthenticatedUserId(req), {
+      limit: query.limit,
+    });
+    res.json(Api.GetArchiveReconcileActionCandidatesResponse.parse(result));
+  } catch (error) {
+    res.status(400).json({ error: message(error) });
+  }
+});
+
+router.post("/archive/reconcile-actions", async (req, res) => {
+  try {
+    const body = Api.PlanArchiveReconciliationBody.parse(req.body ?? {});
+    const proposal = await planReconciliation(getAuthenticatedUserId(req), {
+      limit: body.limit,
+      fileRecordIds: body.fileRecordIds,
+    });
+    res.status(201).json(Api.PlanArchiveReconciliationResponse.parse(proposal));
   } catch (error) {
     res.status(400).json({ error: message(error) });
   }

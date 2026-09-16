@@ -98,6 +98,8 @@ router.get("/assistant/tools", (_req, res) => {
       { id: "action-read", method: "GET", path: "/action-proposals/{id}", mutatesFiles: false },
       { id: "naming-action-preview", method: "GET", path: "/archive/naming-actions", mutatesFiles: false },
       { id: "naming-action-plan", method: "POST", path: "/archive/naming-actions", mutatesFiles: false },
+      { id: "reconcile-action-preview", method: "GET", path: "/archive/reconcile-actions", mutatesFiles: false },
+      { id: "reconcile-action-plan", method: "POST", path: "/archive/reconcile-actions", mutatesFiles: false },
       { id: "action-select", method: "POST", path: "/action-proposals/{id}/selection", mutatesFiles: false },
       { id: "action-approve", method: "POST", path: "/action-proposals/{id}/approve", mutatesFiles: false, requiresApproval: true, operatorOnly: true },
       { id: "action-preflight", method: "POST", path: "/action-proposals/{id}/preflight", mutatesFiles: false, requiresApproval: true },

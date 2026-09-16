@@ -2955,6 +2955,176 @@ export const PlanArchiveNamingNormalizationResponse = zod.object({
 
 
 /**
+ * @summary Preview the identity links available for reconciliation findings
+ */
+export const getArchiveReconcileActionCandidatesQueryLimitMax = 500;
+
+
+
+export const GetArchiveReconcileActionCandidatesQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(getArchiveReconcileActionCandidatesQueryLimitMax).optional()
+})
+
+export const getArchiveReconcileActionCandidatesResponseSummaryInspectedMultipleOf = 1;
+
+export const getArchiveReconcileActionCandidatesResponseSummaryActionableMultipleOf = 1;
+
+export const getArchiveReconcileActionCandidatesResponseSummarySelectedMultipleOf = 1;
+
+export const getArchiveReconcileActionCandidatesResponseSummaryMatchedMultipleOf = 1;
+
+export const getArchiveReconcileActionCandidatesResponseSummaryQualityConflictMultipleOf = 1;
+
+export const getArchiveReconcileActionCandidatesResponseSummaryUncertainMultipleOf = 1;
+
+export const getArchiveReconcileActionCandidatesResponseSummarySkippedMultipleOf = 1;
+
+
+
+export const GetArchiveReconcileActionCandidatesResponse = zod.object({
+  "summary": zod.object({
+  "inspected": zod.number().multipleOf(getArchiveReconcileActionCandidatesResponseSummaryInspectedMultipleOf),
+  "actionable": zod.number().multipleOf(getArchiveReconcileActionCandidatesResponseSummaryActionableMultipleOf),
+  "selected": zod.number().multipleOf(getArchiveReconcileActionCandidatesResponseSummarySelectedMultipleOf),
+  "matched": zod.number().multipleOf(getArchiveReconcileActionCandidatesResponseSummaryMatchedMultipleOf),
+  "qualityConflict": zod.number().multipleOf(getArchiveReconcileActionCandidatesResponseSummaryQualityConflictMultipleOf),
+  "uncertain": zod.number().multipleOf(getArchiveReconcileActionCandidatesResponseSummaryUncertainMultipleOf),
+  "skipped": zod.number().multipleOf(getArchiveReconcileActionCandidatesResponseSummarySkippedMultipleOf)
+}),
+  "candidates": zod.array(zod.object({
+  "fileRecordId": zod.number(),
+  "ratingKey": zod.string(),
+  "identityKey": zod.string(),
+  "localPath": zod.string(),
+  "localLabel": zod.string(),
+  "plexTitle": zod.string(),
+  "plexLibrary": zod.string(),
+  "matchingStrategy": zod.string(),
+  "classification": zod.string(),
+  "qualityStatus": zod.string()
+}))
+})
+
+
+/**
+ * @summary Create a reviewable identity-link proposal from reconciliation findings
+ */
+export const planArchiveReconciliationBodyLimitMax = 500;
+
+
+
+
+export const PlanArchiveReconciliationBody = zod.object({
+  "limit": zod.number().min(1).max(planArchiveReconciliationBodyLimitMax).optional(),
+  "fileRecordIds": zod.array(zod.number().min(1)).optional()
+})
+
+export const planArchiveReconciliationResponseRetryCountMultipleOf = 1;
+
+export const planArchiveReconciliationResponseMaxRetriesMultipleOf = 1;
+
+export const planArchiveReconciliationResponseCountsTotalMultipleOf = 1;
+
+export const planArchiveReconciliationResponseCountsSelectedMultipleOf = 1;
+
+export const planArchiveReconciliationResponseCountsPendingMultipleOf = 1;
+
+export const planArchiveReconciliationResponseCountsCompletedMultipleOf = 1;
+
+export const planArchiveReconciliationResponseCountsFailedMultipleOf = 1;
+
+export const planArchiveReconciliationResponseCountsSkippedMultipleOf = 1;
+
+export const planArchiveReconciliationResponseCountsRevertedMultipleOf = 1;
+
+
+
+export const PlanArchiveReconciliationResponse = zod.object({
+  "id": zod.number(),
+  "proposalKey": zod.string(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "source": zod.enum(['naming_intelligence', 'acquisition_intelligence', 'reconciliation', 'identity_audit', 'archive_review', 'assistant', 'operator']),
+  "reason": zod.string(),
+  "status": zod.enum(['draft', 'proposed', 'approved', 'preflight', 'ready', 'executing', 'completed', 'partially_completed', 'failed', 'cancelled', 'reverted']),
+  "risk": zod.enum(['low', 'medium', 'high']),
+  "requiresApproval": zod.boolean(),
+  "dryRun": zod.boolean(),
+  "allowCreateDirectories": zod.boolean(),
+  "reviewItemId": zod.number().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "planHash": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "evidence": zod.record(zod.string(), zod.unknown()),
+  "approval": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "retryCount": zod.number().multipleOf(planArchiveReconciliationResponseRetryCountMultipleOf),
+  "maxRetries": zod.number().multipleOf(planArchiveReconciliationResponseMaxRetriesMultipleOf),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "counts": zod.object({
+  "total": zod.number().multipleOf(planArchiveReconciliationResponseCountsTotalMultipleOf),
+  "selected": zod.number().multipleOf(planArchiveReconciliationResponseCountsSelectedMultipleOf),
+  "pending": zod.number().multipleOf(planArchiveReconciliationResponseCountsPendingMultipleOf),
+  "completed": zod.number().multipleOf(planArchiveReconciliationResponseCountsCompletedMultipleOf),
+  "failed": zod.number().multipleOf(planArchiveReconciliationResponseCountsFailedMultipleOf),
+  "skipped": zod.number().multipleOf(planArchiveReconciliationResponseCountsSkippedMultipleOf),
+  "reverted": zod.number().multipleOf(planArchiveReconciliationResponseCountsRevertedMultipleOf)
+}),
+  "steps": zod.array(zod.object({
+  "id": zod.number(),
+  "proposalId": zod.number(),
+  "stepIndex": zod.number(),
+  "type": zod.enum(['rename', 'move', 'delete', 'restore', 'reconcile', 'acquire', 'import', 'link', 'unlink', 'metadata_update', 'plex_sync']),
+  "status": zod.enum(['pending', 'skipped', 'ready', 'executing', 'completed', 'failed', 'reverted']),
+  "selected": zod.boolean(),
+  "summary": zod.string(),
+  "target": zod.object({
+  "kind": zod.string(),
+  "id": zod.string().nullable(),
+  "path": zod.string().nullable(),
+  "label": zod.string().nullable()
+}),
+  "before": zod.record(zod.string(), zod.unknown()),
+  "after": zod.record(zod.string(), zod.unknown()),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "execution": zod.record(zod.string(), zod.unknown()),
+  "verification": zod.record(zod.string(), zod.unknown()),
+  "revert": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "stepId": zod.number().nullable(),
+  "phase": zod.enum(['propose', 'select', 'approve', 'preflight', 'execute', 'verify', 'record', 'revert', 'cancel']),
+  "fromStatus": zod.string().nullable(),
+  "toStatus": zod.string(),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})),
+  "createdAt": zod.coerce.date(),
+  "approvedAt": zod.coerce.date().nullable(),
+  "executedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Link an owner-scoped local download to an acquisition job
  */
 

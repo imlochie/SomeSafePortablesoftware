@@ -333,6 +333,90 @@ describe('action proposal review surface', () => {
     expect(screen.getByTestId('button-preflight-action-proposal')).toHaveTextContent('RE-CHECK');
   });
 
+  // --- second action family -------------------------------------------------
+  // reconcile records an identity link and touches no file. These assertions
+  // exist to catch the review surface quietly assuming every action is a
+  // rename, which is exactly what the first family could not reveal.
+
+  function reconcileProposal(overrides: Partial<ActionProposal> = {}) {
+    const steps: ActionStep[] = [
+      {
+        ...step({ id: 501, stepIndex: 0 }),
+        type: 'reconcile',
+        summary: 'Example Show/S01E01.mkv ⇄ Pilot (2019)',
+        before: { fileRecordId: 501, label: 'Example Show/S01E01.mkv', path: '/archive/Example Show/S01E01.mkv', linked: false },
+        after: { ratingKey: 'plex-1', label: 'Pilot (2019)', title: 'Pilot (2019)', library: 'TV Shows', linked: true },
+      },
+    ];
+    return proposal({
+      type: 'reconcile',
+      source: 'reconciliation',
+      reason: 'Confirm 1 archive-to-Plex identity link.',
+      steps,
+      counts: { total: 1, selected: 1, pending: 1, completed: 0, failed: 0, skipped: 0, reverted: 0 },
+      ...overrides,
+    });
+  }
+
+  it('renders a record action with identity columns, not filename columns', () => {
+    mocks.proposal.current = reconcileProposal();
+    renderReview();
+    expect(screen.getByText('LOCAL FILE')).toBeInTheDocument();
+    expect(screen.getByText('PLEX ITEM')).toBeInTheDocument();
+    expect(screen.queryByText('OLD NAME')).not.toBeInTheDocument();
+    // The Plex side has no path, so the planner's label carries the identity.
+    expect(screen.getByTestId('text-step-after-501')).toHaveTextContent('Pilot (2019)');
+    expect(screen.getByTestId('text-step-before-501')).toHaveTextContent('Example Show/S01E01.mkv');
+  });
+
+  it('does not strike through the local file, because nothing is replaced', () => {
+    mocks.proposal.current = reconcileProposal();
+    renderReview();
+    expect(screen.getByTestId('text-step-before-501').className).not.toContain('line-through');
+  });
+
+  it('never claims a record action writes to disk', () => {
+    mocks.proposal.current = reconcileProposal();
+    renderReview();
+    expect(screen.getByTestId('text-action-narrative')).toHaveTextContent('Nothing will be recorded until you approve');
+    expect(screen.getByTestId('text-action-authorization-scope'))
+      .toHaveTextContent('not future identity links');
+    expect(screen.getByTestId('text-action-footer-contract'))
+      .toHaveTextContent('NO RECORD CHANGE UNTIL APPROVED');
+    expect(screen.getByTestId('button-approve-action-proposal')).toHaveTextContent('APPROVE 1 SELECTED');
+  });
+
+  it('confirms a record action without promising a filesystem write', async () => {
+    mocks.proposal.current = reconcileProposal({
+      status: 'ready',
+      approvedAt: '2026-01-02T00:00:00.000Z',
+      preflight: { passed: 1, failed: 0 },
+      steps: [{ ...reconcileProposal().steps[0], status: 'ready' }],
+    });
+    renderReview();
+    await userEvent.setup().click(screen.getByTestId('button-execute-action-proposal'));
+    const panel = screen.getByTestId('panel-confirm-execute');
+    expect(panel).toHaveTextContent('Record 1 verified link now?');
+    expect(panel).toHaveTextContent('no file on disk is modified');
+  });
+
+  it('reports preflight for a record action in record vocabulary', () => {
+    mocks.proposal.current = reconcileProposal({
+      status: 'ready',
+      preflight: {
+        passed: 1,
+        failed: 0,
+        results: [{ stepId: 501, ok: true, sourceExists: true, alreadyLinked: false }],
+      },
+    });
+    renderReview();
+    const panel = screen.getByTestId('panel-preflight-checks');
+    expect(panel).toHaveTextContent('Both records still exist');
+    expect(panel).toHaveTextContent('Neither side is already claimed by another link');
+    // A folder-writability check would be meaningless here.
+    expect(panel).not.toHaveTextContent('Destination folders are writable');
+  });
+
   it('surfaces a withdrawn approval as a blocking reason instead of failing silently', () => {
     mocks.proposal.current = proposal({
       status: 'failed',

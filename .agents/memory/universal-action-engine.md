@@ -35,3 +35,15 @@ whether the product can actually change anything.
 - `services/archive-operations.ts` is a compatibility adapter that maps the
   legacy single-operation contract onto the engine. Keep it thin; do not
   reintroduce execution logic there.
+- Not every family touches the filesystem. `reconcile` records an identity link
+  in `media_identity_link` and sets `mutatesFiles: false`; its preflight reads
+  rows instead of calling `stat`. Do not assume `step.before.path` exists.
+- The review surface must not hardcode file vocabulary. Column headings come
+  from the action type, a preflight check is rendered only when the handler
+  actually reported that field, and copy says "recorded" rather than "written"
+  when `mutatesFiles` is false. Adding a family should mean adding vocabulary,
+  not branching the layout.
+- An intelligence layer may only propose steps it is certain about. Reconcile
+  plans `matched` / `quality_conflict` findings but never `uncertain` ones —
+  asking an operator to rubber-stamp an ambiguous guess is the failure mode the
+  approval boundary exists to prevent.

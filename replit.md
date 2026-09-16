@@ -29,6 +29,7 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 - `artifacts/api-server/src/integrations/` — abstract media capabilities, adapter registry, Plex wiring, and explicit disconnected adapters for future integrations.
 - `artifacts/api-server/src/services/action-engine/` — the Universal Archive Action Engine: typed action proposals/steps, the handler registry, and the shared approve → preflight → execute → verify → record → revert lifecycle.
 - `artifacts/api-server/src/services/naming-actions.ts` — reference migration turning naming findings into rename/move action proposals.
+- `artifacts/api-server/src/services/reconcile-actions.ts` — second action family: turns reconciliation findings into `reconcile` proposals that record archive↔Plex identity links in `media_identity_link`. Changes no bytes on disk; proves the engine is not file-specific.
 - `artifacts/api-server/src/services/archive-operations.ts` — compatibility adapter mapping the legacy single-operation contract onto the action engine.
 - `artifacts/api-server/src/services/acquisition-jobs.ts` — durable provider-backed acquisition lifecycle and transition history; it does not replace the local download engine or mutate archive files automatically.
 - `artifacts/api-server/src/services/media-acquisition.ts` — owner-scoped registry orchestration for media lookup, missing-media discovery, and archive-context acquisition requests.
@@ -43,6 +44,7 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 - Intelligence/control-plane code must use abstract integration capabilities through the registry; adapters may report disconnected and must not return mocked external data.
 - Sonarr, Radarr, Prowlarr, and qBittorrent use environment configuration only; API keys, passwords, and session cookies stay server-side and are never included in status responses or logs.
 - The control plane uses durable local persistence; external providers remain explicit, replaceable adapters with honest disconnected/error states.
+- Not every action family mutates files. `reconcile` sets `mutatesFiles: false` and writes only records, so the review surface derives its column headings, preflight checks, and "written"/"recorded" wording from the action type rather than assuming a rename. See "What the second family taught us" in `docs/universal-action-engine.md`.
 - Archive mutation has one substrate. Every capability that can change the archive is an `ActionProposal` of typed `ActionStep`s executed by the action engine; intelligence features only map findings to steps and never implement their own approval, execution, verification, or rollback. New action families register an `ActionHandler` and stay `supported: false` until wired.
 - Optional dependency detection uses direct process execution without a shell and never accepts arbitrary commands from the UI.
 

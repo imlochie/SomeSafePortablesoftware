@@ -53,6 +53,7 @@ import type {
   GetArchiveIdentityAuditParams,
   GetArchiveNamingActionCandidatesParams,
   GetArchiveNamingProposalsParams,
+  GetArchiveReconcileActionCandidatesParams,
   GetArchiveReconciliationParams,
   GetAssistantToolCatalog200,
   HealthStatus,
@@ -75,10 +76,12 @@ import type {
   OperationConfirmation,
   PlanAcquisitionImport,
   PlanNamingNormalization,
+  PlanReconciliation,
   PlexConfig,
   PlexConfigUpdate,
   PlexInventory,
   ProgressAcquisitionJob,
+  ReconcileActionCandidates,
   ReconciliationReport,
   RequestArchiveAcquisition,
   ReviewDecisionInput,
@@ -4139,6 +4142,161 @@ export const usePlanArchiveNamingNormalization = <TError = ErrorType<ErrorRespon
         TContext
       > => {
       return useMutation(getPlanArchiveNamingNormalizationMutationOptions(options));
+    }
+
+export const getGetArchiveReconcileActionCandidatesUrl = (params?: GetArchiveReconcileActionCandidatesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/archive/reconcile-actions?${stringifiedParams}` : `/api/archive/reconcile-actions`
+}
+
+/**
+ * @summary Preview the identity links available for reconciliation findings
+ */
+export const getArchiveReconcileActionCandidates = async (params?: GetArchiveReconcileActionCandidatesParams, options?: Parameters<typeof customFetch>[1]): Promise<ReconcileActionCandidates> => {
+
+  return customFetch<ReconcileActionCandidates>(getGetArchiveReconcileActionCandidatesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveReconcileActionCandidatesQueryKey = (params?: GetArchiveReconcileActionCandidatesParams,) => {
+    return [
+    `/api/archive/reconcile-actions`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetArchiveReconcileActionCandidatesQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveReconcileActionCandidates>>, TError = ErrorType<unknown>>(params?: GetArchiveReconcileActionCandidatesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveReconcileActionCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveReconcileActionCandidatesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveReconcileActionCandidates>>> = ({ signal }) => getArchiveReconcileActionCandidates(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveReconcileActionCandidates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveReconcileActionCandidatesQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveReconcileActionCandidates>>>
+export type GetArchiveReconcileActionCandidatesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Preview the identity links available for reconciliation findings
+ */
+
+export function useGetArchiveReconcileActionCandidates<TData = Awaited<ReturnType<typeof getArchiveReconcileActionCandidates>>, TError = ErrorType<unknown>>(
+ params?: GetArchiveReconcileActionCandidatesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveReconcileActionCandidates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveReconcileActionCandidatesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPlanArchiveReconciliationUrl = () => {
+
+
+
+
+  return `/api/archive/reconcile-actions`
+}
+
+/**
+ * @summary Create a reviewable identity-link proposal from reconciliation findings
+ */
+export const planArchiveReconciliation = async (planReconciliation?: PlanReconciliation, options?: Parameters<typeof customFetch>[1]): Promise<ActionProposal> => {
+
+  return customFetch<ActionProposal>(getPlanArchiveReconciliationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(planReconciliation)
+  }
+);}
+
+
+
+
+
+export const getPlanArchiveReconciliationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planArchiveReconciliation>>, TError,{data?: BodyType<PlanReconciliation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof planArchiveReconciliation>>, TError,{data?: BodyType<PlanReconciliation>}, TContext> => {
+
+const mutationKey = ['planArchiveReconciliation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof planArchiveReconciliation>>, {data?: BodyType<PlanReconciliation>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  planArchiveReconciliation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PlanArchiveReconciliationMutationResult = NonNullable<Awaited<ReturnType<typeof planArchiveReconciliation>>>
+    export type PlanArchiveReconciliationMutationBody = BodyType<PlanReconciliation> | undefined
+    export type PlanArchiveReconciliationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a reviewable identity-link proposal from reconciliation findings
+ */
+export const usePlanArchiveReconciliation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof planArchiveReconciliation>>, TError,{data?: BodyType<PlanReconciliation>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof planArchiveReconciliation>>,
+        TError,
+        {data?: BodyType<PlanReconciliation>},
+        TContext
+      > => {
+      return useMutation(getPlanArchiveReconciliationMutationOptions(options));
     }
 
 export const getLinkAcquisitionDownloadUrl = (id: number,) => {

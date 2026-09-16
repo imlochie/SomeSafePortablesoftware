@@ -1752,6 +1752,44 @@ export interface PlanNamingNormalization {
   fileRecordIds?: number[];
 }
 
+export interface ReconcileActionCandidate {
+  fileRecordId: number;
+  ratingKey: string;
+  identityKey: string;
+  localPath: string;
+  localLabel: string;
+  plexTitle: string;
+  plexLibrary: string;
+  matchingStrategy: string;
+  classification: string;
+  qualityStatus: string;
+}
+
+export type ReconcileActionCandidatesSummary = {
+  inspected: number;
+  actionable: number;
+  selected: number;
+  matched: number;
+  qualityConflict: number;
+  uncertain: number;
+  skipped: number;
+};
+
+export interface ReconcileActionCandidates {
+  summary: ReconcileActionCandidatesSummary;
+  candidates: ReconcileActionCandidate[];
+}
+
+export interface PlanReconciliation {
+  /**
+     * @minimum 1
+     * @maximum 500
+     */
+  limit?: number;
+  /** @items.minimum 1 */
+  fileRecordIds?: number[];
+}
+
 export type ArchiveOperationAction = typeof ArchiveOperationAction[keyof typeof ArchiveOperationAction];
 
 
@@ -2318,6 +2356,14 @@ confidence?: string;
 pattern?: string;
 mediaType?: string;
 volume?: string;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+limit?: number;
+};
+
+export type GetArchiveReconcileActionCandidatesParams = {
 /**
  * @minimum 1
  * @maximum 500

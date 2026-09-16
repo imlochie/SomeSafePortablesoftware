@@ -1140,6 +1140,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /archive/reconcile-actions:
+    get:
+      operationId: getArchiveReconcileActionCandidates
+      tags: [actions, archive]
+      summary: Preview the identity links available for reconciliation findings
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: number, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Available reconcile actions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconcileActionCandidates"
+    post:
+      operationId: planArchiveReconciliation
+      tags: [actions, archive]
+      summary: Create a reviewable identity-link proposal from reconciliation findings
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanReconciliation"
+      responses:
+        "201":
+          description: Created action proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionProposal"
+        "400":
+          description: No unambiguous reconciliation matches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /acquisition-jobs/{id}/download:
     post:
       operationId: linkAcquisitionDownload
@@ -3506,6 +3545,46 @@ components:
         pattern: { type: string }
         mediaType: { type: string }
         volume: { type: string }
+        limit: { type: number, minimum: 1, maximum: 500 }
+        fileRecordIds:
+          type: array
+          items: { type: number, minimum: 1 }
+    ReconcileActionCandidate:
+      type: object
+      required: [fileRecordId, ratingKey, identityKey, localPath, localLabel, plexTitle, plexLibrary, matchingStrategy, classification, qualityStatus]
+      properties:
+        fileRecordId: { type: number }
+        ratingKey: { type: string }
+        identityKey: { type: string }
+        localPath: { type: string }
+        localLabel: { type: string }
+        plexTitle: { type: string }
+        plexLibrary: { type: string }
+        matchingStrategy: { type: string }
+        classification: { type: string }
+        qualityStatus: { type: string }
+    ReconcileActionCandidates:
+      type: object
+      required: [summary, candidates]
+      properties:
+        summary:
+          type: object
+          required: [inspected, actionable, selected, matched, qualityConflict, uncertain, skipped]
+          properties:
+            inspected: { type: number, multipleOf: 1 }
+            actionable: { type: number, multipleOf: 1 }
+            selected: { type: number, multipleOf: 1 }
+            matched: { type: number, multipleOf: 1 }
+            qualityConflict: { type: number, multipleOf: 1 }
+            uncertain: { type: number, multipleOf: 1 }
+            skipped: { type: number, multipleOf: 1 }
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconcileActionCandidate"
+    PlanReconciliation:
+      type: object
+      properties:
         limit: { type: number, minimum: 1, maximum: 500 }
         fileRecordIds:
           type: array

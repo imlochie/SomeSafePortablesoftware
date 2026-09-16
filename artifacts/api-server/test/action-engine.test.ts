@@ -47,7 +47,11 @@ describe("action capability registry", { concurrency: false }, () => {
     const capabilities = engine.listActionCapabilities();
     assert.equal(capabilities.length, engine.actionTypes.length);
     const supported = capabilities.filter((capability) => capability.supported).map((c) => c.type);
-    assert.deepEqual(supported.sort(), ["import", "move", "rename"]);
+    assert.deepEqual(supported.sort(), ["import", "move", "reconcile", "rename"]);
+    // reconcile is the first supported family that changes no bytes on disk.
+    const reconcile = capabilities.find((capability) => capability.type === "reconcile");
+    assert.equal(reconcile?.mutatesFiles, false);
+    assert.equal(reconcile?.reversible, true);
     // Declared-but-unimplemented families must refuse to plan rather than pretend.
     assert.throws(() => engine.requireSupportedHandler("delete"), /not implemented yet/);
   });

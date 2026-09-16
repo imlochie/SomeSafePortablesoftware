@@ -61,19 +61,60 @@ function plural(count: number, one: string, many?: string) {
   return one === one.toUpperCase() ? `${one}S` : `${one}s`;
 }
 
-/** Filenames are the operator's mental model; full paths are the proof. */
+/**
+ * What the two sides of a step are called.
+ *
+ * Not every action family renames a file. `reconcile` links a local file to a
+ * Plex item, so "OLD NAME → NEW NAME" would be a lie. The column headings come
+ * from the action type; the row renderer stays generic.
+ */
+const stepColumns: Record<string, {
+  before: string; after: string; changeNoun: string; futureNoun: string;
+}> = {
+  // futureNoun names the blanket permission the operator is NOT granting, so
+  // the sentence stays as concrete as "not future renames".
+  rename: { before: 'OLD NAME', after: 'NEW NAME', changeNoun: 'change', futureNoun: 'renames' },
+  move: { before: 'CURRENT LOCATION', after: 'NEW LOCATION', changeNoun: 'move', futureNoun: 'moves' },
+  import: { before: 'SOURCE FILE', after: 'ARCHIVE DESTINATION', changeNoun: 'import', futureNoun: 'imports' },
+  reconcile: { before: 'LOCAL FILE', after: 'PLEX ITEM', changeNoun: 'link', futureNoun: 'identity links' },
+};
+const defaultColumns = { before: 'BEFORE', after: 'AFTER', changeNoun: 'change', futureNoun: 'changes' };
+const routineBlurb: Record<string, string> = {
+  rename: 'Same folder, same file, new name.',
+  move: 'Relocated within the archive.',
+  import: 'Copied into the archive; the source is left in place.',
+  reconcile: 'One local file, one Plex item, no file touched.',
+};
+const columnsFor = (type: string) => stepColumns[type] ?? defaultColumns;
+
+/**
+ * Identify each side of a step.
+ *
+ * A filesystem step is identified by its filename, with the full path as the
+ * proof underneath. A record step has no path at all, so it falls back to the
+ * label the planner supplied. Both render through the same two-column layout.
+ */
 function stepLabels(step: ActionStep) {
   const before = step.before as Bag;
   const after = step.after as Bag;
   const beforePath = readString(before, 'path');
   const afterPath = readString(after, 'path');
+  // An explicit label beats a derived basename: a planner that supplied
+  // "Example Show/Season 01/S01E01.mkv" chose that context deliberately, and
+  // collapsing it to "S01E01.mkv" would make rows indistinguishable.
   const beforeName = readString(before, 'filename')
+    ?? readString(before, 'label')
     ?? beforePath?.split(/[\\/]/).pop()
     ?? step.summary;
   const afterName = readString(after, 'filename')
     ?? afterPath?.split(/[\\/]/).pop()
+    ?? readString(after, 'label')
+    ?? readString(after, 'title')
     ?? '—';
-  return { beforeName, afterName, beforePath, afterPath };
+  // Secondary proof line: a path when there is one, otherwise the qualifying
+  // detail the planner gave (e.g. which Plex library the item lives in).
+  const afterDetail = afterPath ?? readString(after, 'library');
+  return { beforeName, afterName, beforePath, afterDetail };
 }
 
 const statusTone: Record<string, string> = {
@@ -161,6 +202,10 @@ const stageCopy: Record<Stage, { label: string; tone: string; hint: string }> = 
  */
 function narrate(proposal: ActionProposal): string[] {
   const { counts, status } = proposal;
+  // A record action writes no bytes; the wording must not imply it does.
+  const writes = proposal.type !== 'reconcile';
+  const written = writes ? 'written' : 'recorded';
+  const touched = writes ? 'No file has been touched.' : 'No record has been changed.';
   const evidence = proposal.evidence as Bag;
   const inspected = readNumber(evidence, 'inspected');
   const verified = readNumber(proposal.verification as Bag, 'verified');
@@ -176,12 +221,12 @@ function narrate(proposal: ActionProposal): string[] {
     if (counts.total - counts.selected > 0) {
       lines.push(`${counts.selected} ${plural(counts.selected, 'is', 'are')} selected; ${counts.total - counts.selected} ${plural(counts.total - counts.selected, 'is', 'are')} excluded and will be left alone.`);
     }
-    lines.push('Nothing will be written until you approve the selected changes.');
+    lines.push(`Nothing will be ${written} until you approve the selected changes.`);
     return lines;
   }
   if (status === 'approved') {
     lines.push(`You approved ${counts.selected} ${plural(counts.selected, 'change')}.`);
-    lines.push('No file has been touched. Every condition is re-checked immediately before anything is written.');
+    lines.push(`${touched} Every condition is re-checked immediately before anything is ${written}.`);
     return lines;
   }
   if (status === 'preflight') {
@@ -190,7 +235,7 @@ function narrate(proposal: ActionProposal): string[] {
   }
   if (status === 'ready') {
     lines.push(`All checks passed for ${counts.selected} ${plural(counts.selected, 'change')}.`);
-    lines.push('Nothing has been written yet — applying is still your decision.');
+    lines.push(`Nothing has been ${written} yet — applying is still your decision.`);
     return lines;
   }
   if (status === 'executing') {
@@ -220,12 +265,12 @@ function narrate(proposal: ActionProposal): string[] {
       // The engine records that the plan hash moved, but not which step moved
       // it — so we say exactly that rather than inventing a filename.
       lines.push('This plan changed after you approved it, so your approval no longer covers it.');
-      lines.push('Nothing was written. Re-read the changes below and approve again if they still look right.');
+      lines.push(`Nothing was ${written}. Re-read the changes below and approve again if they still look right.`);
       return lines;
     }
     lines.push(counts.completed
       ? `Stopped after applying ${counts.completed} ${plural(counts.completed, 'change')}.`
-      : 'Stopped before anything was written.');
+      : `Stopped before anything was ${written}.`);
     if (counts.failed) lines.push(`${counts.failed} ${plural(counts.failed, 'change')} could not pass the safety checks. The reason for each is shown below.`);
     return lines;
   }
@@ -251,7 +296,7 @@ const groupCopy: Record<GroupId, { label: string; blurb: string; tone: string; a
   },
   routine: {
     label: 'STRAIGHTFORWARD',
-    blurb: 'Same folder, same file, new name.',
+    blurb: '',
     tone: 'border-[#e1e8e5] bg-white/60',
     attention: false,
   },
@@ -263,7 +308,7 @@ const groupCopy: Record<GroupId, { label: string; blurb: string; tone: string; a
   },
   done: {
     label: 'APPLIED',
-    blurb: 'Written and verified by the engine.',
+    blurb: 'Recorded and verified by the engine.',
     tone: 'border-[#b9d6cf] bg-[#eaf3ef]',
     // After execution this group is the result, so it stays open.
     attention: true,
@@ -310,32 +355,59 @@ function preflightChecks(proposal: ActionProposal): PreflightCheck[] {
   const results = raw.filter((entry): entry is Bag => !!entry && typeof entry === 'object');
   const ok = results.filter((entry) => entry.ok === true);
   if (!ok.length) return [];
-  return [
-    {
+
+  const checks: PreflightCheck[] = [];
+  const count = (predicate: (entry: Bag) => boolean) => ok.filter(predicate).length;
+  // Only claim a check the engine actually reported for these steps.
+  const reported = (key: string) => ok.some((entry) => entry[key] !== undefined);
+
+  if (proposal.type === 'reconcile') {
+    checks.push({
       id: 'source-exists',
-      label: 'Source files still exist',
-      passed: ok.filter((entry) => entry.sourceExists === true).length,
+      label: 'Both records still exist',
+      passed: count((entry) => entry.sourceExists === true),
       total: ok.length,
-    },
-    {
-      id: 'no-collision',
-      label: 'Destinations are free (nothing overwritten)',
-      passed: ok.filter((entry) => entry.destinationExists === false).length,
-      total: ok.length,
-    },
-    {
-      id: 'folder-ready',
-      label: 'Destination folders are writable',
-      passed: ok.filter((entry) => entry.destinationDirectoryMissing !== true).length,
-      total: ok.length,
-    },
-    {
-      id: 'plan-stable',
-      label: 'Plan unchanged since you approved it',
+    });
+    checks.push({
+      id: 'link-free',
+      label: 'Neither side is already claimed by another link',
       passed: ok.length,
       total: ok.length,
-    },
-  ];
+    });
+  } else {
+    if (reported('sourceExists')) {
+      checks.push({
+        id: 'source-exists',
+        label: 'Source files still exist',
+        passed: count((entry) => entry.sourceExists === true),
+        total: ok.length,
+      });
+    }
+    if (reported('destinationExists')) {
+      checks.push({
+        id: 'no-collision',
+        label: 'Destinations are free (nothing overwritten)',
+        passed: count((entry) => entry.destinationExists === false),
+        total: ok.length,
+      });
+    }
+    if (reported('destinationDirectoryMissing')) {
+      checks.push({
+        id: 'folder-ready',
+        label: 'Destination folders are writable',
+        passed: count((entry) => entry.destinationDirectoryMissing !== true),
+        total: ok.length,
+      });
+    }
+  }
+
+  checks.push({
+    id: 'plan-stable',
+    label: 'Plan unchanged since you approved it',
+    passed: ok.length,
+    total: ok.length,
+  });
+  return checks;
 }
 
 /* ------------------------------------------------------------- component -- */
@@ -469,6 +541,13 @@ export function ActionProposalReview({
   const stage = stageOf(proposal);
   const busy = pending || status === 'preflight' || status === 'executing';
   const story = narrate(proposal);
+  const columns = columnsFor(proposal.type);
+  // Only a filesystem action replaces its "before" side. A reconcile link adds
+  // a record, so striking the local filename through would misrepresent it.
+  const replacesBefore = proposal.type !== 'reconcile';
+  // reconcile changes records, not bytes. Saying "written to disk" about it
+  // would overstate what the operator is authorizing.
+  const writesFiles = proposal.type !== 'reconcile';
 
   const toggleStep = (step: ActionStep) => {
     if (!editable || pending) return;
@@ -692,6 +771,7 @@ export function ActionProposalReview({
           {groups.map(({ id, steps }) => {
             const open = isOpen(id, steps.length);
             const copy = groupCopy[id];
+            const blurb = copy.blurb || (id === 'routine' ? routineBlurb[proposal.type] ?? '' : '');
             return (
               <div key={id} className={`border ${copy.tone}`} data-testid={`group-action-steps-${id}`}>
                 <button
@@ -706,20 +786,20 @@ export function ActionProposalReview({
                   <span className="archive-mono text-[10px] font-bold tracking-[.1em] text-[#43545b]">
                     {steps.length} {copy.label}
                   </span>
-                  <span className="truncate text-[11px] text-[#7f9194]">{copy.blurb}</span>
+                  <span className="truncate text-[11px] text-[#7f9194]">{blurb}</span>
                 </button>
 
                 {open && (
                   <div className="border-t border-white/60">
                     <div className="hidden px-3 py-2 md:grid md:grid-cols-[28px_minmax(0,1fr)_20px_minmax(0,1fr)_92px] md:gap-3">
                       <span />
-                      <span className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">OLD NAME</span>
+                      <span className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">{columns.before}</span>
                       <span />
-                      <span className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">NEW NAME</span>
+                      <span className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">{columns.after}</span>
                       <span className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">STATUS</span>
                     </div>
                     {steps.map((step) => {
-                      const { beforeName, afterName, beforePath, afterPath } = stepLabels(step);
+                      const { beforeName, afterName, beforePath, afterDetail } = stepLabels(step);
                       return (
                         <div
                           key={step.id}
@@ -739,7 +819,7 @@ export function ActionProposalReview({
                             {step.selected ? <Check size={12} /> : <Square size={12} className="opacity-0" />}
                           </button>
                           <div className="min-w-0">
-                            <div className="truncate text-[12px] text-[#5c6d73] line-through decoration-[#c0cbc9]" data-testid={`text-step-before-${step.id}`}>
+                            <div className={`truncate text-[12px] text-[#5c6d73] ${replacesBefore ? 'line-through decoration-[#c0cbc9]' : ''}`} data-testid={`text-step-before-${step.id}`}>
                               {beforeName}
                             </div>
                             {beforePath && <div className="archive-mono mt-0.5 truncate text-[9px] text-[#a0afaf]" title={beforePath}>{beforePath}</div>}
@@ -749,7 +829,7 @@ export function ActionProposalReview({
                             <div className="truncate text-[12px] font-semibold text-[#21303d]" data-testid={`text-step-after-${step.id}`}>
                               {afterName}
                             </div>
-                            {afterPath && <div className="archive-mono mt-0.5 truncate text-[9px] text-[#a0afaf]" title={afterPath}>{afterPath}</div>}
+                            {afterDetail && <div className="archive-mono mt-0.5 truncate text-[9px] text-[#a0afaf]" title={afterDetail}>{afterDetail}</div>}
                           </div>
                           <div className="md:text-right">
                             <StepStatusBadge step={step} />
@@ -785,18 +865,22 @@ export function ActionProposalReview({
       <div className="mt-6 border-t border-[#e7ecea] pt-5">
         {editable && (
           <p className="mb-4 max-w-3xl text-[12px] leading-6 text-[#5c6d73]" data-testid="text-action-authorization-scope">
-            Approving authorizes exactly the {counts.selected} selected {plural(counts.selected, 'change')} listed above — not future
-            renames. Preflight re-checks every condition immediately before anything is written.
+            Approving authorizes exactly the {counts.selected} selected {plural(counts.selected, columns.changeNoun)} listed
+            above — not future {columns.futureNoun}. Preflight re-checks every condition immediately before
+            anything is {writesFiles ? 'written' : 'recorded'}.
           </p>
         )}
 
         {confirmingExecute && canExecute && (
           <div className="mb-4 border-l-2 border-[#c85b51] bg-[#fcedea] p-4" data-testid="panel-confirm-execute">
             <div className="text-[12px] font-bold text-[#994b43]">
-              Write {counts.selected} verified {plural(counts.selected, 'change')} to disk now?
+              {writesFiles ? 'Write' : 'Record'} {counts.selected} verified {plural(counts.selected, columns.changeNoun)} now?
             </div>
             <p className="mt-1 text-[11px] leading-5 text-[#994b43]">
-              This modifies files in the archive. Each change is verified after it is written, and the proposal can be reverted.
+              {writesFiles
+                ? 'This modifies files in the archive.'
+                : 'This changes archive records only; no file on disk is modified.'}{' '}
+              Each change is verified afterwards, and the proposal can be reverted.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -909,9 +993,9 @@ export function ActionProposalReview({
 
         <div className="mt-4 archive-mono text-[9px] tracking-[.08em] text-[#a0afaf]" data-testid="text-action-footer-contract">
           {status === 'proposed' || status === 'draft'
-            ? 'PROPOSAL ONLY / NO FILESYSTEM ACTION UNTIL APPROVED, PREFLIGHTED, AND CONFIRMED'
+            ? `PROPOSAL ONLY / NO ${writesFiles ? 'FILESYSTEM ACTION' : 'RECORD CHANGE'} UNTIL APPROVED, PREFLIGHTED, AND CONFIRMED`
             : status === 'approved'
-              ? 'APPROVED / NO FILESYSTEM ACTION UNTIL PREFLIGHT AND EXPLICIT CONFIRMATION'
+              ? `APPROVED / NO ${writesFiles ? 'FILESYSTEM ACTION' : 'RECORD CHANGE'} UNTIL PREFLIGHT AND EXPLICIT CONFIRMATION`
               : status === 'ready'
                 ? 'PREFLIGHT PASSED / EXECUTION REQUIRES EXPLICIT CONFIRMATION'
                 : status === 'cancelled'

@@ -17,6 +17,7 @@ const testFiles = [
   "control-plane.test.ts",
   "action-engine.test.ts",
   "naming-actions.test.ts",
+  "reconcile-actions.test.ts",
   "system-dependencies.test.ts",
   "media-integrity.test.ts",
 ];

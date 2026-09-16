@@ -265,6 +265,32 @@ archiveDb.exec(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (owner_id, file_record_id, finding_type, evidence_key)
   );
+  /**
+   * A confirmed link between a local file and a Plex item.
+   *
+   * Reconciliation normally re-derives matches heuristically on every scan.
+   * When an operator approves a reconcile action the decision is recorded here
+   * so it survives rescans, and so a later contradiction is a visible conflict
+   * rather than a silently different guess.
+   */
+  CREATE TABLE IF NOT EXISTS media_identity_link (
+    id INTEGER PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    file_record_id INTEGER NOT NULL REFERENCES file_record(id) ON DELETE CASCADE,
+    plex_rating_key TEXT NOT NULL,
+    identity_key TEXT NOT NULL,
+    matching_strategy TEXT NOT NULL DEFAULT 'operator_confirmed',
+    confidence TEXT NOT NULL DEFAULT 'confirmed',
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    linked_by TEXT,
+    action_step_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, file_record_id),
+    UNIQUE (owner_id, plex_rating_key)
+  );
+  CREATE INDEX IF NOT EXISTS media_identity_link_owner_idx
+    ON media_identity_link(owner_id, updated_at DESC);
   CREATE TABLE IF NOT EXISTS review_item (
     id INTEGER PRIMARY KEY,
     owner_id TEXT NOT NULL,

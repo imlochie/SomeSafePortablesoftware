@@ -29,7 +29,9 @@ import {
   useExecuteArchiveOperation, useCancelArchiveOperation, useRetryArchiveOperation,
   useRollbackArchiveOperation,
   useListActionProposals, useGetArchiveNamingActionCandidates, usePlanArchiveNamingNormalization,
+  useGetArchiveReconcileActionCandidates, usePlanArchiveReconciliation,
   getListActionProposalsQueryKey, getGetArchiveNamingActionCandidatesQueryKey,
+  getGetArchiveReconcileActionCandidatesQueryKey,
   getGetArchiveNamingProposalsQueryKey,
   setBaseUrl,
 } from '@workspace/api-client-react';
@@ -811,6 +813,8 @@ export function ArchivePage() {
   const { data: actionProposals, isLoading: actionsLoading, isError: actionsError, refetch: refetchActions } = useListActionProposals();
   const { data: namingActions } = useGetArchiveNamingActionCandidates();
   const planNaming = usePlanArchiveNamingNormalization();
+  const { data: reconcileActions } = useGetArchiveReconcileActionCandidates();
+  const planReconcile = usePlanArchiveReconciliation();
   /**
    * Closing the loop: once an action has been applied the observations that
    * produced it are stale, so the findings re-evaluate instead of lingering as
@@ -819,6 +823,7 @@ export function ArchivePage() {
   const refreshActions = () => {
     queryClient.invalidateQueries({ queryKey: getListActionProposalsQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetArchiveNamingActionCandidatesQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetArchiveReconcileActionCandidatesQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetArchiveNamingProposalsQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
@@ -1102,6 +1107,41 @@ export function ArchivePage() {
                       >
                         {planNaming.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
                         REVIEW CHANGES
+                      </button>
+                    </div>
+                  )}
+                  {/* Second action family: link local files to Plex items. */}
+                  {(reconcileActions?.summary.actionable ?? 0) > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border border-[#b9d6cf] bg-[#eaf3ef] p-4" data-testid="panel-reconcile-action-available">
+                      <div className="min-w-0">
+                        <div className="archive-mono text-[9px] tracking-[.12em] text-[#39736e]">ACTION AVAILABLE / CONFIRM IDENTITY LINKS</div>
+                        <div className="mt-1 text-[12px] leading-5 text-[#39736e]">
+                          {reconcileActions?.summary.actionable} archive file{reconcileActions?.summary.actionable === 1 ? '' : 's'} match a Plex item unambiguously
+                          {(reconcileActions?.summary.uncertain ?? 0) > 0 && ` (${reconcileActions?.summary.uncertain} ambiguous, left for you)`}.
+                          Confirming records the link; no file is moved or renamed.
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setActionNotice('');
+                          const found = reconcileActions?.summary.actionable ?? 0;
+                          planReconcile.mutate({ data: {} }, {
+                            onSuccess: (created) => {
+                              openProposal(created.id, {
+                                eyebrow: 'FROM FINDING',
+                                headline: `${found} unconfirmed Plex ${found === 1 ? 'match' : 'matches'}`,
+                              });
+                              refreshActions();
+                            },
+                            onError: (error) => setActionNotice(errorText(error)),
+                          });
+                        }}
+                        disabled={planReconcile.isPending}
+                        className="inline-flex shrink-0 items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50"
+                        data-testid="button-plan-reconciliation"
+                      >
+                        {planReconcile.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                        REVIEW LINKS
                       </button>
                     </div>
                   )}
