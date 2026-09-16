@@ -38,6 +38,9 @@ import {
 import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
+import { AcquisitionJobsPanel } from '@/components/acquisition-jobs-panel';
+import { MediaIdentityView } from '@/components/media-identity-view';
+import { CapabilitySummary } from '@/components/capability-summary';
 import { ActionProposalReview } from '@/components/action-proposal-review';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -339,6 +342,7 @@ function AssistantPage() {
       action={<button disabled={busy} onClick={async () => { await generate.mutateAsync(); const result = await syncReviews.mutateAsync(); setNotice(`Evaluated recommendations and synchronized ${result.total} review items.`); await refresh(); }} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.11em] text-white disabled:opacity-50" data-testid="button-generate-recommendations"><Sparkles size={14} /> EVALUATE CURRENT STATE</button>}
     />
     {notice && <div className="mb-5 border-l-2 border-[#4e9690] bg-[#eaf3ef] px-4 py-3 text-[11px] text-[#39736e]">{notice}</div>}
+    <div className="mb-6"><CapabilitySummary /></div>
     <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <MetricCard icon={Sparkles} label="RECOMMENDATIONS" value={String(recommendations.data?.length ?? 0)} note={`${blockedCount} with blockers`} status={blockedCount ? 'warning' : 'ready'} accent="amber" />
       <MetricCard icon={ShieldCheck} label="AWAITING REVIEW" value={String(pendingCount)} note="Explicit operator decisions" status={pendingCount ? 'warning' : 'ready'} />
@@ -769,7 +773,7 @@ export function ArchivePage() {
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
-  const [view, setView] = useState<'local' | 'naming_proposals' | 'actions' | 'plex_only' | 'missing_media'>('local');
+  const [view, setView] = useState<'local' | 'naming_proposals' | 'actions' | 'plex_only' | 'missing_media' | 'identity'>('local');
   const [reviewProposalId, setReviewProposalId] = useState<number | null>(null);
   const [actionNotice, setActionNotice] = useState('');
   // Where the operator entered the review from, carried through so the flow
@@ -953,6 +957,7 @@ export function ArchivePage() {
               <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
               <button onClick={() => { setView('naming_proposals'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'naming_proposals' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-naming-proposals">NAMING PROPOSALS</button>
               <button onClick={() => { setView('actions'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); setReviewProposalId(null); setActionNotice(''); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'actions' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-actions">ACTIONS ({actionProposals?.length ?? 0})</button>
+              <button onClick={() => { setView('identity'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'identity' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-media-identity">MEDIA IDENTITY</button>
               <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
               <button onClick={() => { setView('missing_media'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'missing_media' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-missing-media">MISSING MEDIA</button>
             </div>
@@ -1010,8 +1015,18 @@ export function ArchivePage() {
           )}
 
           <div className="flex-1 overflow-y-auto p-4 md:p-6" style={{ maxHeight: '600px' }}>
-            {view === 'missing_media' ? (
-              <ArchiveMissingMediaView onRequest={(item, providerId) => setAcquisitionTarget({ kind: 'missing', item, providerId })} />
+            {view === 'identity' ? (
+              <MediaIdentityView />
+            ) : view === 'missing_media' ? (
+              <div className="space-y-6">
+                {/*
+                  What is already in flight comes before what could be requested.
+                  Until now an approved acquisition vanished the moment it became
+                  a job, so the queue was invisible while the work continued.
+                */}
+                <AcquisitionJobsPanel />
+                <ArchiveMissingMediaView onRequest={(item, providerId) => setAcquisitionTarget({ kind: 'missing', item, providerId })} />
+              </div>
             ) : view === 'naming_proposals' ? (
               namingLoading ? (
                 <div className="flex min-h-[250px] items-center justify-center archive-mono text-[10px] tracking-[.12em] text-[#7f9194]" data-testid="status-naming-proposals-loading">ANALYSING ARCHIVE NAMING...</div>

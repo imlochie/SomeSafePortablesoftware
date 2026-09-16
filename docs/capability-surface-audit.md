@@ -1,6 +1,8 @@
 # Capability Surface Audit
 
-> Generated 2026-09-16, after the `reconcile` pass.
+> First generated 2026-09-16 after the `reconcile` pass; **updated the same day
+> after the Capability Surface Completion pass** (acquisition, media identity,
+> capability honesty). Numbers below are current.
 >
 > The premise: a capability that exists only in the backend is **unfinished
 > product surface**, however good its implementation. Pass 4 proved backend
@@ -38,9 +40,19 @@ Grades: 🟢 fully surfaced · 🟡 surfaced but awkward or disconnected ·
 | | |
 | --- | --- |
 | Public API operations | 84 |
-| Operations with no UI hook usage | **22 (26%)** |
+| Operations with no UI hook usage | 15 (was 22) |
+| Backend-only by design | 4 |
+| **Unexplained — real missing doors** | **11 (was 18)** |
 | Navigation destinations | 8 |
 | Action families wired end to end | 4 of 11 (`rename`, `move`, `import`, `reconcile`) |
+
+### Closed in the completion pass
+
+| Capability | Before | After |
+| --- | --- | --- |
+| Acquisition jobs | 🔴 invisible after creation | 🟢 `AcquisitionJobsPanel` — lifecycle, provenance, stop/retry/refresh |
+| Identity graph | 🔴 computed, never rendered | 🟢 `MediaIdentityView` — both observations, ambiguity explained |
+| Capability honesty | 🟠 engine knew, product didn't say | 🟢 `CapabilitySummary` — "4 of 11 actions are available" |
 
 ## The matrix
 
@@ -57,54 +69,54 @@ Grades: 🟢 fully surfaced · 🟡 surfaced but awkward or disconnected ·
 | Plex inventory | real | PLEX | yes | read-only | partly | 🟠 |
 | Assistant / AI tools | real | ASSISTANT | yes | yes | yes | 🟢 |
 | Sources / integrations | real | SOURCES | yes | yes | yes | 🟢 |
-| **Acquisition jobs** | **992 lines** | **none** | no | **no** | no | **🔴** |
-| **Acquisition intelligence** | **434 lines** | lookup only | partly | **no** | no | **🔴** |
+| Acquisition jobs | 992 lines | ARCHIVE → MISSING MEDIA | yes | stop / retry / refresh | yes | 🟢 |
+| Acquisition intelligence | 434 lines | ASSISTANT | partly | approve → job | partly | 🟡 |
 | **Identity audit** | real | **none** | no | no | no | **🔴** |
-| **Reconciliation report** | real | only via proposal | partly | via reconcile | yes | 🟡 |
-| **Action capabilities** | real | **none** | no | n/a | n/a | 🟠 |
+| Reconciliation report | real | ARCHIVE → MEDIA IDENTITY | yes | via reconcile | yes | 🟢 |
+| Action capabilities | real | ASSISTANT | yes | n/a | n/a | 🟢 |
 | **Assistant tool catalog** | real | **none** | no | n/a | n/a | 🟠 |
 | Review items | real | indirect | no | no | partly | 🟡 |
 | Retry a proposal | real | **none** | no | **no** | n/a | 🔴 |
 | Download event stream (SSE) | real | polling instead | n/a | n/a | n/a | 🟡 |
 
-## The 22 unreachable operations
+## Remaining unreachable operations (11)
 
 ```text
-ACQUISITION  (10)  the largest hole by far
-  GET    /acquisition-jobs                      POST   /acquisition-jobs
-  GET    /acquisition-jobs/{id}                 POST   /acquisition-jobs/{id}/cancel
-  POST   /acquisition-jobs/{id}/download        POST   /acquisition-jobs/{id}/import
-  POST   /acquisition-jobs/{id}/progress        POST   /acquisition-jobs/{id}/refresh
-  POST   /acquisition-jobs/{id}/retry           GET    /acquisition-recommendations/{id}
-
-IDENTITY / RECONCILIATION  (2)
-  GET    /archive/identity-audit                GET    /archive/reconciliation
-
-ACTION LAYER  (2)
-  GET    /action-capabilities                   POST   /action-proposals/{id}/retry
+ACQUISITION LIFECYCLE  (4)   mostly machine-driven, but import is a real gap
+  POST   /acquisition-jobs                      createAcquisitionJob
+  POST   /acquisition-jobs/{id}/progress        progressAcquisitionJob
+  POST   /acquisition-jobs/{id}/download        linkAcquisitionDownload
+  POST   /acquisition-jobs/{id}/import          planApprovedAcquisitionImport
 
 REVIEW QUEUE  (2)
-  POST   /review-items                          GET    /review-items/{id}
+  POST   /review-items                          createReviewItem
+  GET    /review-items/{id}                     getReviewItem
 
-OTHER  (6)
-  POST   /archive/acquisitions                  GET    /archive-operations/{id}
-  GET    /assistant/tools                       GET    /downloads/events
-  POST   /media/local-inspect                   POST   /acquisition-webhooks/{provider}
+ARCHIVE  (2)
+  POST   /archive/acquisitions                  requestArchiveAcquisition
+  GET    /archive/identity-audit                getArchiveIdentityAudit
+
+OTHER  (3)
+  GET    /acquisition-recommendations/{id}      getAcquisitionRecommendation
+  GET    /assistant/tools                       getAssistantToolCatalog
+  POST   /action-proposals/{id}/retry           retryActionProposal
 ```
 
-Not all of these are defects. Legitimately backend-only:
+The single most valuable one left is **`planApprovedAcquisitionImport`**. It is
+the join between the acquisition lifecycle and the action engine: it turns a
+verified download into an `import` proposal that already executes end to end.
+Wiring it closes the last link in
 
-- `POST /acquisition-webhooks/{provider}` — a provider callback, not a user action.
-- `GET /archive-operations/{id}` — the legacy compatibility adapter.
-- `POST /media/local-inspect` — an internal probe the scanner uses.
-- `GET /downloads/events` — an SSE transport the UI currently replaces with polling.
+```text
+discover → recommend → approve → job → download → verify → IMPORT → archive
+```
 
-That leaves **18 operations representing real product capability with no door
-into them.**
+`getArchiveIdentityAudit` is the other genuine hole, and it now has an obvious
+home in the MEDIA IDENTITY view rather than needing a surface of its own.
 
 ## The three findings that matter
 
-### 1. Acquisition is the biggest hole in the product
+### 1. Acquisition was the biggest hole in the product — now surfaced
 
 1,557 lines of service code across `acquisition-jobs.ts` (992),
 `acquisition-intelligence.ts` (434) and `acquisition-orchestration.ts` (131),
@@ -120,7 +132,7 @@ an `import` action proposal, an already-wired action family — is unreachable.
 This is the exact `REAL → INVISIBLE → UNACTIONABLE` pattern. It is also the
 highest-leverage gap, because the action spine it would feed already works.
 
-### 2. The identity graph has no home of its own
+### 2. The identity graph had no home of its own — now `MEDIA IDENTITY`
 
 `reconciliation.ts` (411 lines) computes the unified picture — matched,
 local_only, plex_only, duplicate, quality_conflict, uncertain — and
@@ -139,7 +151,7 @@ product can only show the moments where that world needs a mutation, never the
 world itself. The `uncertain` exclusion was the right call, but it currently
 means those findings vanish rather than surface as "I don't know, here's why."
 
-### 3. The product cannot describe its own capabilities
+### 3. The product could not describe its own capabilities — now it can
 
 `GET /action-capabilities` returns exactly what every family can do —
 `supported`, `mutatesFiles`, `risk`, and now the full `reversibility` record.
@@ -160,15 +172,24 @@ Every important result must have               history / provenance
 interface, not a substitute for discoverability. "There is an API route" does
 not satisfy it either.
 
-## Recommended order
+## What shipped, and what is next
 
-1. **Acquisition surface** — the largest gap, and it terminates in `import`,
-   an action family that already works end to end.
-2. **Identity / media-world view** — makes the unified model visible, and gives
-   `uncertain` findings somewhere to live instead of being silently dropped.
-3. **Capability honesty** — render `/action-capabilities` so unimplemented
-   families are visibly declared rather than absent.
+Done in the completion pass:
 
-Deliberately *not* first: more action families. Three of the four that exist
-are the same filesystem primitive; the product's constraint is doors, not
-engines.
+1. ~~Acquisition surface~~ — `AcquisitionJobsPanel`, mounted above missing-media
+   discovery so in-flight work is seen before more is requested.
+2. ~~Identity / media-world view~~ — `MediaIdentityView`, a MEDIA IDENTITY tab
+   showing both observations per item, with ambiguous findings explained rather
+   than dropped.
+3. ~~Capability honesty~~ — `CapabilitySummary` on the Assistant page.
+
+Next, in order:
+
+1. **`planApprovedAcquisitionImport`** — the join between acquisition and the
+   action engine, and the last link in the discover → archive chain.
+2. **`getArchiveIdentityAudit`** — fold coverage grading into MEDIA IDENTITY.
+3. **Retry a proposal** — the engine supports it; the review surface does not
+   offer it.
+
+Deliberately *not* next: more action families. Three of the four that exist are
+the same filesystem primitive; the constraint is doors, not engines.
