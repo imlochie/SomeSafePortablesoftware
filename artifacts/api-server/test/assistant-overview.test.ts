@@ -17,6 +17,25 @@ test("unified workload is read-only, owner-scoped, and classifies operational tr
   }
 });
 
+test("bootstrap workload stays bounded when the review queue is large", async () => {
+  const { archiveDb } = await import("../src/lib/archive-db");
+  const { readWorkload } = await import("../src/services/workload");
+  archiveDb.exec("BEGIN");
+  try {
+    const insert = archiveDb.prepare(
+      "INSERT INTO review_item (owner_id, kind, subject_key, title, state) VALUES (?, 'archive_finding', ?, ?, 'pending')",
+    );
+    for (let index = 0; index < 40_000; index += 1) {
+      insert.run("__scale__", `bootstrap-scale-${index}`, `Scale test ${index}`);
+    }
+    const report = await readWorkload("__scale__");
+    assert.equal(report.counts.needs_you, 40_000);
+    assert.ok(report.items.filter((item) => item.source === "review").length <= 20);
+  } finally {
+    archiveDb.exec("ROLLBACK");
+  }
+});
+
 test("ordering analysis proposes reversal only from explicit episode and publication metadata", async () => {
   const { analyzeOrdering } = await import("../src/services/ordering-analysis");
   const result = analyzeOrdering("Creator Season 1", [

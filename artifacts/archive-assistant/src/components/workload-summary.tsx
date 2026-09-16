@@ -24,11 +24,20 @@ function LineageDisclosure({ item }: { item: WorkloadItem }) {
 /** A read-only view of the assistant's existing workload truth. */
 export function WorkloadSummary({ compact = false }: { compact?: boolean }) {
   useWorkloadEvents();
-  const workload = useQuery<Workload>({ queryKey: ['assistant-workload'], queryFn: async () => {
-    const response = await fetch(apiUrl('/api/assistant/workload'));
-    if (!response.ok) throw new Error('Workload unavailable');
-    return response.json() as Promise<Workload>;
-  }, refetchInterval: 30000 });
+  const workload = useQuery<Workload>({ queryKey: ['assistant-workload'], queryFn: async ({ signal }) => {
+    const timeout = new AbortController();
+    const timer = window.setTimeout(() => timeout.abort(), 10000);
+    const cancel = () => timeout.abort();
+    signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      const response = await fetch(apiUrl('/api/assistant/workload'), { signal: timeout.signal });
+      if (!response.ok) throw new Error('Workload unavailable');
+      return response.json() as Promise<Workload>;
+    } finally {
+      window.clearTimeout(timer);
+      signal?.removeEventListener('abort', cancel);
+    }
+  }, refetchInterval: 30000, retry: false });
   if (workload.isLoading) return <section className="archive-panel mb-5 flex items-center gap-2 p-4 text-[11px] text-[#718187]" data-testid="panel-unified-workload-loading"><LoaderCircle size={14} className="animate-spin" /> Reading what needs attention…</section>;
   if (workload.isError || !workload.data) return <section className="archive-panel mb-5 flex items-start gap-2 p-4 text-[11px] text-[#82765d]" data-testid="panel-unified-workload-unavailable"><CircleHelp size={14} className="mt-0.5 shrink-0" /> I can't read the current workload right now. The underlying work has not been changed.</section>;
   const { counts } = workload.data;

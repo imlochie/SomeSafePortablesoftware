@@ -248,13 +248,18 @@ function MetricCard({ icon: Icon, label, value, status, note, accent = 'teal' }:
 
 function Home() {
   const { data: overview, isLoading, isError, refetch } = useGetSystemOverview();
-  const assistantOverview = useGetAssistantOverview();
+  // Deep assistant analysis is intentionally deferred on Home. The bounded
+  // workload summary above is the bootstrap readout; Assistant owns the
+  // expensive naming/identity analysis when the operator opens it.
+  const assistantOverview = useGetAssistantOverview({ query: { enabled: false, queryKey: ['assistant-overview-deferred'] } });
 
   if (isLoading) return <><PageIntro eyebrow="ARCHIVE ASSISTANT" title="Your archive, understood" description="Reading what matters right now." /><div className="archive-panel space-y-4 p-6"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-20" /><Skeleton className="h-20" /></div></>;
   if (isError || !overview) return <ErrorState title="The local archive could not be read" message="Nothing has been assumed or filled in. Try the readout again." onRetry={() => refetch()} testId="button-retry-overview" />;
 
   const actionable = assistantOverview.data?.groups.filter((group) => group.state === 'actionable') ?? [];
-  const healthy = assistantOverview.data?.summary.health === 'healthy' && actionable.length === 0;
+  const healthy = assistantOverview.data
+    ? assistantOverview.data.summary.health === 'healthy' && actionable.length === 0
+    : true;
   const waiting = assistantOverview.data?.summary.blockedCount ?? 0;
 
   return <>
