@@ -50,6 +50,7 @@ import DiscoverPage from '@/pages/discover';
 import WorkloadDetailPage from '@/pages/workload-detail';
 import IntelligentOrderingPage from '@/pages/intelligent-ordering';
 import ArchiveHealthPage from '@/pages/archive-health';
+import SourcesPage from '@/pages/sources';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 
 const queryClient = new QueryClient();
@@ -1520,7 +1521,7 @@ function Workspace() {
   const { isLoaded, isSignedIn } = useAppAuth();
   if (!isLoaded) return <AuthLoading />;
   if (!isSignedIn) return <Redirect to="/" />;
-  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/workload/:workloadId" component={WorkloadDetailPage} /><Route path="/archive/ordering/:proposalId" component={IntelligentOrderingPage} /><Route path="/archive/health" component={ArchiveHealthPage} /><Route path="/assistant" component={AssistantPage} /><Route path="/discover" component={DiscoverPage} /><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
+  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/workload/:workloadId" component={WorkloadDetailPage} /><Route path="/archive/ordering/:proposalId" component={IntelligentOrderingPage} /><Route path="/archive/health" component={ArchiveHealthPage} /><Route path="/assistant" component={AssistantPage} /><Route path="/discover" component={DiscoverPage} /><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcesPage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
 }
 
 function Router() {
