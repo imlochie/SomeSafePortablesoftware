@@ -14,6 +14,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  ArrowRight,
   Ban,
   ChevronDown,
   ChevronRight,
@@ -28,9 +29,11 @@ import {
   useCancelAcquisitionJob,
   useRetryAcquisitionJob,
   useRefreshAcquisitionJob,
+  useListActionProposals,
   getGetAcquisitionJobsQueryKey,
   type AcquisitionJob,
   type AcquisitionJobState,
+  type ActionProposal,
 } from '@workspace/api-client-react';
 
 function errorText(error: unknown): string {
@@ -138,7 +141,12 @@ function Pipeline({ job }: { job: AcquisitionJob }) {
   );
 }
 
-function JobCard({ job }: { job: AcquisitionJob }) {
+function JobCard({ job, importProposal, onReviewImport }: {
+  job: AcquisitionJob;
+  /** The import proposal this job produced, if the engine has planned one. */
+  importProposal?: ActionProposal;
+  onReviewImport?: (proposalId: number, job: AcquisitionJob) => void;
+}) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [notice, setNotice] = useState('');
@@ -217,6 +225,33 @@ function JobCard({ job }: { job: AcquisitionJob }) {
         </div>
       )}
 
+      {/*
+        The handoff. A verified download is not the end of anything — it is the
+        moment the acquisition system hands ownership to the action engine. Left
+        implicit, the operator finishes a download and thinks "now what?", then
+        has to go find the Actions tab and recognise their own import there.
+        Stating it here keeps one continuous thread.
+      */}
+      {importProposal && onReviewImport && (
+        <div className="mt-3 border-l-2 border-[#4e9690] bg-[#f4f9f7] p-3" data-testid={`panel-import-ready-${job.id}`}>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#39736e]">
+            {importProposal.status === 'completed' ? 'IMPORTED' : 'IMPORT READY'}
+          </div>
+          <p className="mt-1 text-[11px] leading-5 text-[#39736e]">
+            {importProposal.status === 'completed'
+              ? 'This file was reviewed, imported, and verified. It is part of the archive now.'
+              : 'The download is verified and an import has been planned. Nothing is copied into the archive until you review and approve it.'}
+          </p>
+          <button
+            onClick={() => onReviewImport(importProposal.id, job)}
+            className="mt-2 inline-flex items-center gap-2 bg-[#1d2b38] px-3 py-2 text-[10px] font-bold tracking-[.08em] text-[#f5f6f3]"
+            data-testid={`button-review-import-${job.id}`}
+          >
+            {importProposal.status === 'completed' ? 'VIEW IMPORT' : 'REVIEW IMPORT'} <ArrowRight size={13} />
+          </button>
+        </div>
+      )}
+
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {providerDriven && (
           <button
@@ -278,8 +313,18 @@ function JobCard({ job }: { job: AcquisitionJob }) {
   );
 }
 
-export function AcquisitionJobsPanel() {
+export function AcquisitionJobsPanel({ onReviewImport }: {
+  /** Opens the standard action review surface, so import has no second UI. */
+  onReviewImport?: (proposalId: number, job: AcquisitionJob) => void;
+} = {}) {
   const { data: jobs, isLoading, isError, refetch } = useGetAcquisitionJobs();
+  // An import proposal records the acquisition job it came from, so the two
+  // halves of the chain can be joined without a new endpoint.
+  const { data: proposals } = useListActionProposals({ type: 'import' });
+  const importByJob = new Map<number, ActionProposal>();
+  for (const proposal of proposals ?? []) {
+    if (typeof proposal.acquisitionJobId === 'number') importByJob.set(proposal.acquisitionJobId, proposal);
+  }
 
   if (isLoading) {
     return (
@@ -357,7 +402,12 @@ export function AcquisitionJobsPanel() {
 
       <div className="space-y-3">
         {[...needsYou, ...active, ...list.filter((job) => job.state === 'complete' || job.state === 'cancelled')].map((job) => (
-          <JobCard key={job.id} job={job} />
+          <JobCard
+            key={job.id}
+            job={job}
+            importProposal={importByJob.get(job.id)}
+            onReviewImport={onReviewImport}
+          />
         ))}
       </div>
     </section>

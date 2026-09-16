@@ -54,3 +54,7 @@ Thumbs.db
 # Local ARCHIVE ASSISTANT runtime data
 data/
 artifacts/api-server/data/
+
+# Local preview sandbox (DB + fixture media); never committed
+.sandbox/
+

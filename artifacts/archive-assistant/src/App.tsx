@@ -1024,7 +1024,17 @@ export function ArchivePage() {
                   Until now an approved acquisition vanished the moment it became
                   a job, so the queue was invisible while the work continued.
                 */}
-                <AcquisitionJobsPanel />
+                <AcquisitionJobsPanel
+                  onReviewImport={(proposalId, job) => {
+                    // Same review surface as every other action. The acquisition
+                    // system hands ownership over; it does not grow its own.
+                    setView('actions');
+                    openProposal(proposalId, {
+                      eyebrow: 'FROM ACQUISITION',
+                      headline: `${job.title}${job.year ? ` (${job.year})` : ''}`,
+                    });
+                  }}
+                />
                 <ArchiveMissingMediaView onRequest={(item, providerId) => setAcquisitionTarget({ kind: 'missing', item, providerId })} />
               </div>
             ) : view === 'naming_proposals' ? (

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   cancel: vi.fn(),
   retry: vi.fn(),
   refresh: vi.fn(),
+  proposals: { current: [] as unknown[] },
 }));
 
 vi.mock('@workspace/api-client-react', () => ({
@@ -29,6 +30,7 @@ vi.mock('@workspace/api-client-react', () => ({
   useCancelAcquisitionJob: () => ({ mutate: mocks.cancel, isPending: false }),
   useRetryAcquisitionJob: () => ({ mutate: mocks.retry, isPending: false }),
   useRefreshAcquisitionJob: () => ({ mutate: mocks.refresh, isPending: false }),
+  useListActionProposals: () => ({ data: mocks.proposals.current, isLoading: false, isError: false }),
   getGetAcquisitionJobsQueryKey: () => ['acquisition-jobs'],
 }));
 
@@ -87,6 +89,7 @@ function renderPanel() {
 
 beforeEach(() => {
   mocks.jobs.current = [];
+  mocks.proposals.current = [];
   mocks.isLoading.current = false;
   mocks.isError.current = false;
   vi.clearAllMocks();
@@ -182,5 +185,49 @@ describe('acquisition jobs panel', () => {
     renderPanel();
     expect(screen.getByTestId('panel-acquisition-jobs-error'))
       .toHaveTextContent('No job state is being guessed in the browser');
+  });
+
+  /* ------------------------------------------- handoff to the action layer -- */
+
+  it('hands a verified download to the action engine instead of dead-ending', async () => {
+    const user = userEvent.setup();
+    const onReviewImport = vi.fn();
+    mocks.jobs.current = [job({ state: 'verifying', downloadJobId: 5 })];
+    mocks.proposals.current = [{ id: 42, type: 'import', status: 'approved', acquisitionJobId: 1 }];
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+        <AcquisitionJobsPanel onReviewImport={onReviewImport} />
+      </QueryClientProvider>,
+    );
+    const panel = screen.getByTestId('panel-import-ready-1');
+    expect(panel).toHaveTextContent('IMPORT READY');
+    // The approval boundary survives the handoff.
+    expect(panel).toHaveTextContent('Nothing is copied into the archive until you review and approve it');
+    await user.click(screen.getByTestId('button-review-import-1'));
+    expect(onReviewImport).toHaveBeenCalledWith(42, expect.objectContaining({ id: 1 }));
+  });
+
+  it('shows no import handoff until the engine has actually planned one', () => {
+    mocks.jobs.current = [job()];
+    mocks.proposals.current = [];
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+        <AcquisitionJobsPanel onReviewImport={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByTestId('panel-import-ready-1')).not.toBeInTheDocument();
+  });
+
+  it('reports a completed import as finished rather than still pending review', () => {
+    mocks.jobs.current = [job({ state: 'complete', progress: 100, completedAt: '2026-01-01T00:09:00.000Z' })];
+    mocks.proposals.current = [{ id: 42, type: 'import', status: 'completed', acquisitionJobId: 1 }];
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+        <AcquisitionJobsPanel onReviewImport={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    const panel = screen.getByTestId('panel-import-ready-1');
+    expect(panel).toHaveTextContent('IMPORTED');
+    expect(panel).toHaveTextContent('part of the archive now');
   });
 });

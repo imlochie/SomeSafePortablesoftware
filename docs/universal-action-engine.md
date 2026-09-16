@@ -233,3 +233,28 @@ contains an undo promise.
 **Rule for the next family: the UI may not infer reversibility from the action
 type or the proposal status. If the engine did not say it, the surface does not
 claim it.**
+
+## Closing the loop out loud
+
+`runArchivePostflight` has always re-scanned the archive, refreshed Plex and
+re-run reconciliation after every execution — the loop closed, but silently, so
+an operator had no way to know the system had caught up with what they just did.
+
+The review surface now renders a `WHAT HAPPENED NEXT` panel from
+`proposal.postflight`, under the same rule as preflight: **a line appears only
+if the engine recorded that step.** If Plex is not configured it says so rather
+than implying a sync; if postflight reported errors they are shown and the
+"Nothing else needs your attention" all-clear is withheld.
+
+## Acquisition hands ownership to the engine
+
+`planApprovedAcquisitionImport` → `createArchiveOperation` → `createActionProposal`.
+An acquisition import has always *been* an `ActionProposal`; the legacy
+`ArchiveOperation` shape is a projection of the same row. That means importing
+an acquired file needs no second review UI, and must not grow one.
+
+The acquisition card shows `IMPORT READY` when a proposal exists for that job
+(matched on `acquisitionJobId`) and opens the standard review surface. The
+approval boundary is unchanged: the proposal is created pre-approved only
+because an operator already approved the underlying review item, and execution
+still requires preflight plus explicit confirmation.

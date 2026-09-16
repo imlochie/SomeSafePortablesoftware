@@ -588,4 +588,71 @@ describe('action proposal review surface', () => {
     // The old copy claimed every revert "restores the original paths".
     expect(panel.textContent).not.toMatch(/original paths/i);
   });
+
+  /* -------------------------------------------------------- loop closure -- */
+
+  it('reports what the engine did after the action, only where it recorded doing it', () => {
+    mocks.proposal.current = proposal({
+      status: 'completed',
+      verification: { total: 2, verified: 2, failed: 0 },
+      counts: { total: 2, selected: 2, pending: 0, completed: 2, failed: 0, skipped: 0, reverted: 0 },
+      steps: [step({ id: 101, stepIndex: 0, status: 'completed' }), step({ id: 102, stepIndex: 1, status: 'completed' })],
+      postflight: {
+        status: 'completed',
+        errors: [],
+        archiveScan: { status: 'completed', scannedFiles: 12 },
+        plex: { configured: true, attempted: true, status: 'idle' },
+        reconciliation: { summary: { matchedCount: 9 } },
+      },
+    });
+    renderReview();
+    const panel = screen.getByTestId('panel-action-loop-closure');
+    expect(panel).toHaveTextContent('The archive was re-scanned (12 files seen).');
+    expect(panel).toHaveTextContent('Plex was refreshed.');
+    expect(panel).toHaveTextContent('9 items still line up with Plex');
+    expect(screen.getByTestId('text-action-nothing-pending')).toHaveTextContent('Nothing else needs your attention');
+  });
+
+  it('does not claim a Plex sync that never happened', () => {
+    mocks.proposal.current = proposal({
+      status: 'completed',
+      counts: { total: 1, selected: 1, pending: 0, completed: 1, failed: 0, skipped: 0, reverted: 0 },
+      steps: [step({ id: 101, stepIndex: 0, status: 'completed' })],
+      postflight: {
+        status: 'completed',
+        errors: [],
+        archiveScan: { status: 'completed', scannedFiles: 3 },
+        plex: { configured: false, attempted: false },
+      },
+    });
+    renderReview();
+    const panel = screen.getByTestId('panel-action-loop-closure');
+    expect(panel).toHaveTextContent('Plex is not configured, so nothing was synced there.');
+    expect(panel).not.toHaveTextContent('Plex was refreshed');
+  });
+
+  it('surfaces postflight errors and withholds the all-clear', () => {
+    mocks.proposal.current = proposal({
+      status: 'completed',
+      counts: { total: 1, selected: 1, pending: 0, completed: 1, failed: 0, skipped: 0, reverted: 0 },
+      steps: [step({ id: 101, stepIndex: 0, status: 'completed' })],
+      postflight: {
+        status: 'completed_with_errors',
+        errors: ['Plex synchronization failed.'],
+        archiveScan: { status: 'completed', scannedFiles: 3 },
+        plex: { configured: true, attempted: true, status: 'sync_error' },
+      },
+    });
+    renderReview();
+    const panel = screen.getByTestId('panel-action-loop-closure');
+    expect(panel).toHaveTextContent('Plex synchronization failed.');
+    // The chain did not finish cleanly, so it must not say otherwise.
+    expect(screen.queryByTestId('text-action-nothing-pending')).not.toBeInTheDocument();
+  });
+
+  it('says nothing about a loop that has not run yet', () => {
+    mocks.proposal.current = proposal();
+    renderReview();
+    expect(screen.queryByTestId('panel-action-loop-closure')).not.toBeInTheDocument();
+  });
 });

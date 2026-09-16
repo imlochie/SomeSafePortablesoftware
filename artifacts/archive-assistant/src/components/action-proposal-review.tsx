@@ -569,6 +569,40 @@ export function ActionProposalReview({
   const busy = pending || status === 'preflight' || status === 'executing';
   const story = narrate(proposal);
   const columns = columnsFor(proposal.type);
+  // What the engine did on its own after the action, stated only where it
+  // actually recorded doing it. Postflight is the system re-observing the world
+  // it just changed, which is the last step of the loop.
+  const postflight = proposal.postflight as Bag;
+  const loopClosure: string[] = [];
+  const scan = postflight?.archiveScan as Bag | null | undefined;
+  if (scan) {
+    const scanned = readNumber(scan, 'scannedFiles');
+    loopClosure.push(scanned
+      ? `The archive was re-scanned (${scanned} ${plural(scanned, 'file')} seen).`
+      : 'The archive was re-scanned.');
+  }
+  const plex = postflight?.plex as Bag | null | undefined;
+  if (plex?.attempted === true) {
+    loopClosure.push(plex.status === 'sync_error'
+      ? 'Plex could not be refreshed, so its view may be out of date.'
+      : 'Plex was refreshed.');
+  } else if (plex && plex.configured === false) {
+    loopClosure.push('Plex is not configured, so nothing was synced there.');
+  }
+  const reconciliation = postflight?.reconciliation as Bag | null | undefined;
+  if (reconciliation) {
+    const summary = reconciliation.summary as Bag | undefined;
+    const matched = summary ? readNumber(summary, 'matchedCount') : 0;
+    loopClosure.push(matched
+      ? `Identities were re-checked; ${matched} ${plural(matched, 'item')} still line up with Plex.`
+      : 'Archive and Plex identities were re-checked.');
+  }
+  const postflightErrors = Array.isArray(postflight?.errors) ? (postflight.errors as unknown[]) : [];
+  for (const entry of postflightErrors) {
+    if (typeof entry === 'string' && entry.trim()) loopClosure.push(entry);
+  }
+  const postflightClean = loopClosure.length > 0 && postflightErrors.length === 0
+    && postflight?.status === 'completed';
   // Only a filesystem action replaces its "before" side. A reconcile link adds
   // a record, so striking the local filename through would misrepresent it.
   const replacesBefore = proposal.type !== 'reconcile';
@@ -1048,6 +1082,29 @@ export function ActionProposalReview({
             </button>
           )}
         </div>
+
+        {/*
+          Closing the loop out loud. Postflight already re-scans the archive,
+          refreshes Plex and re-reconciles after every execution; until now that
+          happened silently, so the operator had no way to know the world had
+          caught up with what they just did. Each line appears only if the
+          engine actually recorded that step.
+        */}
+        {stage === 'closed' && loopClosure.length > 0 && (
+          <div className="mt-4 border-l-2 border-[#4e9690] bg-[#f4f9f7] p-4" data-testid="panel-action-loop-closure">
+            <div className="archive-mono text-[9px] tracking-[.12em] text-[#39736e]">WHAT HAPPENED NEXT</div>
+            <ul className="mt-2 space-y-1">
+              {loopClosure.map((line) => (
+                <li key={line} className="text-[11px] leading-5 text-[#39736e]">{line}</li>
+              ))}
+            </ul>
+            {postflightClean && (
+              <div className="mt-2 text-[11px] font-semibold leading-5 text-[#39736e]" data-testid="text-action-nothing-pending">
+                Nothing else needs your attention.
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 archive-mono text-[9px] tracking-[.08em] text-[#a0afaf]" data-testid="text-action-footer-contract">
           {status === 'proposed' || status === 'draft'

@@ -50,6 +50,13 @@ whether the product can actually change anything.
   proposal also reports `available`, `revertableSteps` and `blockedReason`. The
   review surface must read these rather than deriving `canRevert` from status,
   and must not promise an undo the engine has not promised.
+- An acquisition import is already an `ActionProposal`:
+  `planApprovedAcquisitionImport` → `createArchiveOperation` →
+  `createActionProposal`, and the legacy `ArchiveOperation` is a projection of
+  that same row. Never build a second import review UI; surface the proposal.
+- Postflight results belong on the review surface. Render a `WHAT HAPPENED NEXT`
+  line only when the engine recorded that step, and withhold the all-clear when
+  `postflight.errors` is non-empty.
 - An intelligence layer may only propose steps it is certain about. Reconcile
   plans `matched` / `quality_conflict` findings but never `uncertain` ones —
   asking an operator to rubber-stamp an ambiguous guess is the failure mode the

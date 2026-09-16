@@ -102,17 +102,41 @@ OTHER  (3)
   POST   /action-proposals/{id}/retry           retryActionProposal
 ```
 
-The single most valuable one left is **`planApprovedAcquisitionImport`**. It is
-the join between the acquisition lifecycle and the action engine: it turns a
-verified download into an `import` proposal that already executes end to end.
-Wiring it closes the last link in
+### What closing the acquisition → import loop actually revealed
 
-```text
-discover → recommend → approve → job → download → verify → IMPORT → archive
-```
+The audit's own recommendation was to wire `planApprovedAcquisitionImport`
+next. Tracing it produced a more useful finding than expected: **the backend
+tendon was already connected.**
 
-`getArchiveIdentityAudit` is the other genuine hole, and it now has an obvious
-home in the MEDIA IDENTITY view rather than needing a surface of its own.
+`planApprovedAcquisitionImport` calls `createArchiveOperation`, which calls
+`createActionProposal`. The returned "archive operation" *is* an action
+proposal — same row, same id, wearing a legacy shape for contract
+compatibility. Verified live: creating an import operation produced proposal
+`id: 1`, `type: import`, `status: approved`, and the standard review surface
+rendered it correctly (`SOURCE FILE` / `ARCHIVE DESTINATION`, "Copied into the
+archive; the source is left in place") with no changes at all.
+
+So the missing piece was never plumbing. It was **navigation**: an operator
+finished a download and had no signal that an import was waiting, no path to
+it, and no reason to suspect the Actions tab held their import. The fix is a
+handoff on the acquisition card, not a new endpoint.
+
+This is why the unexplained count stays at 11 while the product got materially
+more connected. The script measures *hook usage*, which is a good proxy for
+"is there a door" but cannot see a capability reached through a shared surface.
+`planApprovedAcquisitionImport` remains listed because the UI creates import
+proposals through the legacy `POST /archive-operations` path that the engine
+already unifies — wiring the acquisition-specific endpoint would change which
+door is used, not whether one exists.
+
+**Lesson for the next audit pass:** hook-usage counting finds missing doors, not
+missing *signposts*. A capability can be fully reachable and still be
+undiscoverable. The remaining 11 need reading individually rather than treating
+the number as a score.
+
+`getArchiveIdentityAudit` is the clearest genuine hole left, and it now has an
+obvious home in the MEDIA IDENTITY view rather than needing a surface of its
+own.
 
 ## The three findings that matter
 
@@ -183,13 +207,18 @@ Done in the completion pass:
    than dropped.
 3. ~~Capability honesty~~ — `CapabilitySummary` on the Assistant page.
 
+4. ~~Acquisition → import handoff~~ — `IMPORT READY` on the acquisition card,
+   opening the standard review surface; plus `WHAT HAPPENED NEXT`, which finally
+   says out loud that postflight re-scanned the archive, refreshed Plex and
+   re-checked identities.
+
 Next, in order:
 
-1. **`planApprovedAcquisitionImport`** — the join between acquisition and the
-   action engine, and the last link in the discover → archive chain.
-2. **`getArchiveIdentityAudit`** — fold coverage grading into MEDIA IDENTITY.
-3. **Retry a proposal** — the engine supports it; the review surface does not
+1. **`getArchiveIdentityAudit`** — fold coverage grading into MEDIA IDENTITY.
+2. **Retry a proposal** — the engine supports it; the review surface does not
    offer it.
+3. **Read the remaining 11 individually** — the number is no longer the signal;
+   several are machine-driven endpoints that legitimately have no door.
 
 Deliberately *not* next: more action families. Three of the four that exist are
 the same filesystem primitive; the constraint is doors, not engines.
