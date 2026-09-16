@@ -30,6 +30,7 @@ import {
   useRollbackArchiveOperation,
   useListActionProposals, useGetArchiveNamingActionCandidates, usePlanArchiveNamingNormalization,
   getListActionProposalsQueryKey, getGetArchiveNamingActionCandidatesQueryKey,
+  getGetArchiveNamingProposalsQueryKey,
   setBaseUrl,
 } from '@workspace/api-client-react';
 import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
@@ -769,6 +770,13 @@ export function ArchivePage() {
   const [view, setView] = useState<'local' | 'naming_proposals' | 'actions' | 'plex_only' | 'missing_media'>('local');
   const [reviewProposalId, setReviewProposalId] = useState<number | null>(null);
   const [actionNotice, setActionNotice] = useState('');
+  // Where the operator entered the review from, carried through so the flow
+  // reads as one continuous thought rather than a jump between screens.
+  const [actionOrigin, setActionOrigin] = useState<{ eyebrow: string; headline: string } | null>(null);
+  const openProposal = (id: number, origin: { eyebrow: string; headline: string } | null = null) => {
+    setActionOrigin(origin);
+    setReviewProposalId(id);
+  };
   const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'integrity' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
   const [acquisitionTarget, setAcquisitionTarget] = useState<ArchiveAcquisitionTarget | null>(null);
 
@@ -803,9 +811,17 @@ export function ArchivePage() {
   const { data: actionProposals, isLoading: actionsLoading, isError: actionsError, refetch: refetchActions } = useListActionProposals();
   const { data: namingActions } = useGetArchiveNamingActionCandidates();
   const planNaming = usePlanArchiveNamingNormalization();
+  /**
+   * Closing the loop: once an action has been applied the observations that
+   * produced it are stale, so the findings re-evaluate instead of lingering as
+   * already-fixed work. OBSERVE → FIND → ACT → OBSERVE AGAIN.
+   */
   const refreshActions = () => {
     queryClient.invalidateQueries({ queryKey: getListActionProposalsQueryKey() });
     queryClient.invalidateQueries({ queryKey: getGetArchiveNamingActionCandidatesQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetArchiveNamingProposalsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
   };
 
   const startScan = useStartArchiveScan();
@@ -1046,7 +1062,8 @@ export function ArchivePage() {
               reviewProposalId !== null ? (
                 <ActionProposalReview
                   proposalId={reviewProposalId}
-                  onClose={() => { setReviewProposalId(null); refreshActions(); }}
+                  context={actionOrigin}
+                  onClose={() => { setReviewProposalId(null); setActionOrigin(null); refreshActions(); }}
                 />
               ) : actionsLoading ? (
                 <div className="flex min-h-[250px] items-center justify-center archive-mono text-[10px] tracking-[.12em] text-[#7f9194]" data-testid="status-actions-loading">READING ACTION PROPOSALS...</div>
@@ -1067,8 +1084,15 @@ export function ArchivePage() {
                       <button
                         onClick={() => {
                           setActionNotice('');
+                          const found = namingActions?.summary.actionable ?? 0;
                           planNaming.mutate({ data: {} }, {
-                            onSuccess: (created) => { setReviewProposalId(created.id); refreshActions(); },
+                            onSuccess: (created) => {
+                              openProposal(created.id, {
+                                eyebrow: 'FROM FINDING',
+                                headline: `${found} naming ${found === 1 ? 'inconsistency' : 'inconsistencies'}`,
+                              });
+                              refreshActions();
+                            },
                             onError: (error) => setActionNotice(errorText(error)),
                           });
                         }}
@@ -1090,7 +1114,7 @@ export function ArchivePage() {
                     actionProposals.map(proposal => (
                       <button
                         key={proposal.id}
-                        onClick={() => setReviewProposalId(proposal.id)}
+                        onClick={() => openProposal(proposal.id, { eyebrow: 'FROM ACTION QUEUE', headline: proposal.reason })}
                         className="block w-full border border-[#e1e8e5] bg-white/50 p-4 text-left hover:border-[#81999a]"
                         data-testid={`row-action-proposal-${proposal.id}`}
                       >

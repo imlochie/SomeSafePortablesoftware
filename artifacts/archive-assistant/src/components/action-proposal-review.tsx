@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  AlertTriangle, ArrowRight, Check, CheckSquare, CircleHelp, CloudOff,
-  FileCheck2, RefreshCw, RotateCcw, ShieldCheck, Square, X,
+  AlertTriangle, ArrowRight, Check, CheckSquare, ChevronDown, ChevronRight,
+  CloudOff, FolderPlus, Loader2, RefreshCw, RotateCcw, Square, X,
 } from 'lucide-react';
 import {
   getGetActionProposalQueryKey,
@@ -20,11 +20,16 @@ import type { ActionProposal, ActionStep } from '@workspace/api-client-react';
 /**
  * Before → After review surface for the Universal Action Engine.
  *
- * This is a trust surface, not an intelligence layer. It renders only what the
- * engine reports and must make three things unambiguous:
- *   1. What is changing?      — the exact per-step Before → After mapping
- *   2. Why is it changing?    — evidence and confidence from the planner
- *   3. What am I authorizing? — a bounded, counted list of selected steps
+ * This is a trust surface, not an intelligence layer. Everything rendered here
+ * is a restatement of something the engine reported. The component groups,
+ * counts and phrases those facts so a human can absorb them quickly — it never
+ * infers a new conclusion about the archive, and it never decides anything.
+ *
+ * The surface is one object that changes character as the proposal moves
+ * through its lifecycle:
+ *   UNDER REVIEW → CHECKING → APPLYING → COMPLETED
+ * so the operator keeps their mental context instead of being handed from one
+ * screen to the next.
  */
 
 function errorText(error: unknown) {
@@ -37,15 +42,29 @@ function errorText(error: unknown) {
   return 'The local node rejected this request.';
 }
 
-function readString(source: Record<string, unknown> | undefined, key: string) {
+type Bag = Record<string, unknown>;
+
+function readString(source: Bag | undefined, key: string) {
   const value = source?.[key];
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
+function readNumber(source: Bag | undefined, key: string) {
+  const value = Number(source?.[key]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function plural(count: number, one: string, many?: string) {
+  if (count === 1) return one;
+  if (many) return many;
+  // Match the case of the singular so uppercase labels stay uppercase.
+  return one === one.toUpperCase() ? `${one}S` : `${one}s`;
+}
+
 /** Filenames are the operator's mental model; full paths are the proof. */
 function stepLabels(step: ActionStep) {
-  const before = step.before as Record<string, unknown>;
-  const after = step.after as Record<string, unknown>;
+  const before = step.before as Bag;
+  const after = step.after as Bag;
   const beforePath = readString(before, 'path');
   const afterPath = readString(after, 'path');
   const beforeName = readString(before, 'filename')
@@ -90,51 +109,254 @@ function StepStatusBadge({ step }: { step: ActionStep }) {
   );
 }
 
-/** The lifecycle, always visible, so "what happens after Execute" is never a surprise. */
-function LifecycleTrail({ proposal }: { proposal: ActionProposal }) {
-  const reached = (phase: string) => {
-    const order = ['propose', 'approve', 'preflight', 'execute', 'verify', 'record'];
-    const statusPhase: Record<string, number> = {
-      draft: 0, proposed: 0, approved: 1, preflight: 2, ready: 2,
-      executing: 3, completed: 5, partially_completed: 5, failed: 2,
-      cancelled: 0, reverted: 5,
-    };
-    return (statusPhase[proposal.status] ?? 0) >= order.indexOf(phase);
-  };
-  const phases = [
-    { id: 'propose', label: 'PROPOSE' },
-    { id: 'approve', label: 'APPROVE' },
-    { id: 'preflight', label: 'PREFLIGHT' },
-    { id: 'execute', label: 'EXECUTE' },
-    { id: 'verify', label: 'VERIFY' },
-    { id: 'record', label: 'RECORD' },
-  ];
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1" data-testid="trail-action-lifecycle">
-      {phases.map((phase, index) => (
-        <span key={phase.id} className="flex items-center gap-2">
-          <span className={`archive-mono text-[9px] tracking-[.1em] ${reached(phase.id) ? 'text-[#39736e]' : 'text-[#b3bfbf]'}`}>
-            {phase.label}
-          </span>
-          {index < phases.length - 1 && <span className="text-[#cfd8d6]">›</span>}
-        </span>
-      ))}
-    </div>
-  );
+/* ---------------------------------------------------------------- stages -- */
+
+type Stage = 'review' | 'checking' | 'applying' | 'closed';
+
+const stageOf = (proposal: ActionProposal): Stage => {
+  switch (proposal.status) {
+    case 'draft':
+    case 'proposed':
+    case 'approved':
+      return 'review';
+    case 'preflight':
+      return 'checking';
+    case 'executing':
+      return 'applying';
+    case 'ready':
+      return 'checking';
+    default:
+      return 'closed';
+  }
+};
+
+const stageCopy: Record<Stage, { label: string; tone: string; hint: string }> = {
+  review: {
+    label: 'UNDER REVIEW',
+    tone: 'border-[#d9bd77] bg-[#fff8e7] text-[#8d681d]',
+    hint: 'Understanding what would change',
+  },
+  checking: {
+    label: 'CHECKING',
+    tone: 'border-[#b9d6cf] bg-[#eaf3ef] text-[#39736e]',
+    hint: 'Re-verifying every condition before anything is written',
+  },
+  applying: {
+    label: 'APPLYING',
+    tone: 'border-[#d9bd77] bg-[#fff8e7] text-[#8d681d]',
+    hint: 'Changes are being written now',
+  },
+  closed: {
+    label: 'CLOSED',
+    tone: 'border-[#d6dfdc] bg-[#f3f6f5] text-[#5a6d73]',
+    hint: 'Recorded outcome',
+  },
+};
+
+/**
+ * The engine's state, told as a sentence.
+ *
+ * Every clause below is a direct restatement of a counter or status the engine
+ * already reported. Nothing here is inferred about the archive itself.
+ */
+function narrate(proposal: ActionProposal): string[] {
+  const { counts, status } = proposal;
+  const evidence = proposal.evidence as Bag;
+  const inspected = readNumber(evidence, 'inspected');
+  const verified = readNumber(proposal.verification as Bag, 'verified');
+  const noun = plural(counts.total, 'change');
+  const lines: string[] = [];
+
+  if (status === 'draft' || status === 'proposed') {
+    lines.push(
+      inspected
+        ? `Archive Assistant inspected ${inspected} ${plural(inspected, 'file')} and prepared ${counts.total} ${noun}.`
+        : `Archive Assistant prepared ${counts.total} ${noun}.`,
+    );
+    if (counts.total - counts.selected > 0) {
+      lines.push(`${counts.selected} ${plural(counts.selected, 'is', 'are')} selected; ${counts.total - counts.selected} ${plural(counts.total - counts.selected, 'is', 'are')} excluded and will be left alone.`);
+    }
+    lines.push('Nothing will be written until you approve the selected changes.');
+    return lines;
+  }
+  if (status === 'approved') {
+    lines.push(`You approved ${counts.selected} ${plural(counts.selected, 'change')}.`);
+    lines.push('No file has been touched. Every condition is re-checked immediately before anything is written.');
+    return lines;
+  }
+  if (status === 'preflight') {
+    lines.push(`Checking ${counts.selected} ${plural(counts.selected, 'change')}. This only reads the archive.`);
+    return lines;
+  }
+  if (status === 'ready') {
+    lines.push(`All checks passed for ${counts.selected} ${plural(counts.selected, 'change')}.`);
+    lines.push('Nothing has been written yet — applying is still your decision.');
+    return lines;
+  }
+  if (status === 'executing') {
+    lines.push(`Applying ${counts.selected} ${plural(counts.selected, 'change')}.`);
+    return lines;
+  }
+  if (status === 'completed') {
+    lines.push(`${counts.completed} ${plural(counts.completed, 'change')} applied and verified.`);
+    if (counts.skipped) lines.push(`${counts.skipped} excluded ${plural(counts.skipped, 'change was', 'changes were')} left untouched.`);
+    return lines;
+  }
+  if (status === 'partially_completed') {
+    lines.push(`${counts.completed} of ${counts.selected} ${plural(counts.selected, 'change')} applied and verified; ${counts.failed} did not.`);
+    lines.push('The changes that failed are listed below with the reason the engine gave.');
+    return lines;
+  }
+  if (status === 'reverted') {
+    lines.push(`${counts.reverted || verified} ${plural(counts.reverted || verified, 'change')} reverted. The originals are back in place.`);
+    return lines;
+  }
+  if (status === 'cancelled') {
+    lines.push('This proposal was cancelled. Nothing was changed.');
+    return lines;
+  }
+  if (status === 'failed') {
+    if (proposal.errorCode === 'PLAN_CHANGED') {
+      // The engine records that the plan hash moved, but not which step moved
+      // it — so we say exactly that rather than inventing a filename.
+      lines.push('This plan changed after you approved it, so your approval no longer covers it.');
+      lines.push('Nothing was written. Re-read the changes below and approve again if they still look right.');
+      return lines;
+    }
+    lines.push(counts.completed
+      ? `Stopped after applying ${counts.completed} ${plural(counts.completed, 'change')}.`
+      : 'Stopped before anything was written.');
+    if (counts.failed) lines.push(`${counts.failed} ${plural(counts.failed, 'change')} could not pass the safety checks. The reason for each is shown below.`);
+    return lines;
+  }
+  return lines;
 }
+
+/* ------------------------------------------------- progressive disclosure -- */
+
+type GroupId = 'blocked' | 'newFolder' | 'routine' | 'excluded' | 'done';
+
+const groupCopy: Record<GroupId, { label: string; blurb: string; tone: string; attention: boolean }> = {
+  blocked: {
+    label: 'NEEDS YOUR ATTENTION',
+    blurb: 'The engine refused these. They are not included in any apply.',
+    tone: 'border-[#e0b3ad] bg-[#fcedea]',
+    attention: true,
+  },
+  newFolder: {
+    label: 'CREATES A NEW FOLDER',
+    blurb: 'The destination folder does not exist yet.',
+    tone: 'border-[#d9bd77] bg-[#fff8e7]',
+    attention: true,
+  },
+  routine: {
+    label: 'STRAIGHTFORWARD',
+    blurb: 'Same folder, same file, new name.',
+    tone: 'border-[#e1e8e5] bg-white/60',
+    attention: false,
+  },
+  excluded: {
+    label: 'EXCLUDED BY YOU',
+    blurb: 'Deselected, so these will be left exactly as they are.',
+    tone: 'border-[#e1e8e5] bg-[#f6f8f7]',
+    attention: false,
+  },
+  done: {
+    label: 'APPLIED',
+    blurb: 'Written and verified by the engine.',
+    tone: 'border-[#b9d6cf] bg-[#eaf3ef]',
+    // After execution this group is the result, so it stays open.
+    attention: true,
+  },
+};
+
+/**
+ * Bucket steps so the operator reads the exceptions instead of scrolling past
+ * thirty identical renames.
+ *
+ * Every rule below keys off a fact the engine set — step status, the operator's
+ * own selection, or a preflight field. The UI is compressing, not judging.
+ */
+function groupSteps(steps: ActionStep[]): Array<{ id: GroupId; steps: ActionStep[] }> {
+  const buckets: Record<GroupId, ActionStep[]> = {
+    blocked: [], newFolder: [], routine: [], excluded: [], done: [],
+  };
+  for (const step of steps) {
+    if (step.status === 'failed' || step.errorCode) buckets.blocked.push(step);
+    else if (step.status === 'completed' || step.status === 'reverted') buckets.done.push(step);
+    else if (!step.selected) buckets.excluded.push(step);
+    else if ((step.preflight as Bag)?.destinationDirectoryMissing === true) buckets.newFolder.push(step);
+    else buckets.routine.push(step);
+  }
+  const order: GroupId[] = ['blocked', 'newFolder', 'routine', 'done', 'excluded'];
+  return order.filter((id) => buckets[id].length > 0).map((id) => ({ id, steps: buckets[id] }));
+}
+
+/** Collapse only long, unremarkable groups. Exceptions are always open. */
+const COLLAPSE_THRESHOLD = 8;
+
+/* ------------------------------------------------------ preflight report -- */
+
+type PreflightCheck = { id: string; label: string; passed: number; total: number };
+
+/**
+ * Turn the engine's per-step preflight payloads into the named reassurances a
+ * human actually wants ("are the files still there?"). Each check counts only
+ * steps where the engine itself reported that field.
+ */
+function preflightChecks(proposal: ActionProposal): PreflightCheck[] {
+  const raw = (proposal.preflight as Bag)?.results;
+  if (!Array.isArray(raw)) return [];
+  const results = raw.filter((entry): entry is Bag => !!entry && typeof entry === 'object');
+  const ok = results.filter((entry) => entry.ok === true);
+  if (!ok.length) return [];
+  return [
+    {
+      id: 'source-exists',
+      label: 'Source files still exist',
+      passed: ok.filter((entry) => entry.sourceExists === true).length,
+      total: ok.length,
+    },
+    {
+      id: 'no-collision',
+      label: 'Destinations are free (nothing overwritten)',
+      passed: ok.filter((entry) => entry.destinationExists === false).length,
+      total: ok.length,
+    },
+    {
+      id: 'folder-ready',
+      label: 'Destination folders are writable',
+      passed: ok.filter((entry) => entry.destinationDirectoryMissing !== true).length,
+      total: ok.length,
+    },
+    {
+      id: 'plan-stable',
+      label: 'Plan unchanged since you approved it',
+      passed: ok.length,
+      total: ok.length,
+    },
+  ];
+}
+
+/* ------------------------------------------------------------- component -- */
 
 export function ActionProposalReview({
   proposalId,
   onClose,
+  context,
 }: {
   proposalId: number;
   onClose?: () => void;
+  /** The finding the operator came from, so the thread of thought survives. */
+  context?: { eyebrow: string; headline: string } | null;
 }) {
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState('');
   const [noticeTone, setNoticeTone] = useState<'good' | 'bad'>('good');
   const [confirmingExecute, setConfirmingExecute] = useState(false);
   const [confirmingRevert, setConfirmingRevert] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Partial<Record<GroupId, boolean>>>({});
+  const autoPreflighted = useRef<number | null>(null);
 
   const { data: proposal, isLoading, isError, refetch } = useGetActionProposal(proposalId);
   const selection = useUpdateActionStepSelection();
@@ -163,8 +385,26 @@ export function ActionProposalReview({
     onError: (error: unknown) => report(errorText(error), 'bad'),
   });
 
+  const runPreflight = () => preflight.mutate(
+    { id: proposalId },
+    handle('Preflight complete. No files were modified.'),
+  );
+
+  /**
+   * Approval hands off straight into preflight so the operator does not have to
+   * ask "what now?". Preflight only reads the archive — the write still needs a
+   * separate, explicit confirmation below.
+   */
+  useEffect(() => {
+    if (!proposal || proposal.status !== 'approved' || pending) return;
+    if (autoPreflighted.current === proposal.id) return;
+    autoPreflighted.current = proposal.id;
+    runPreflight();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proposal?.status, proposal?.id]);
+
   const evidence = useMemo(() => {
-    const source = (proposal?.evidence ?? {}) as Record<string, unknown>;
+    const source = (proposal?.evidence ?? {}) as Bag;
     const entries: Array<[string, string]> = [];
     const push = (label: string, value: unknown) => {
       if (value === null || value === undefined) return;
@@ -182,6 +422,9 @@ export function ActionProposalReview({
     push('CONFIDENCE', source.confidences);
     return entries;
   }, [proposal?.evidence]);
+
+  const groups = useMemo(() => groupSteps(proposal?.steps ?? []), [proposal?.steps]);
+  const checks = useMemo(() => (proposal ? preflightChecks(proposal) : []), [proposal]);
 
   if (isLoading) {
     return (
@@ -220,9 +463,12 @@ export function ActionProposalReview({
   const canExecute = status === 'ready';
   const canRevert = status === 'completed' || status === 'partially_completed';
   const canCancel = editable || status === 'approved' || status === 'ready' || status === 'failed';
-  const preflightPassed = Number((proposal.preflight as Record<string, unknown>).passed ?? 0);
-  const preflightFailed = Number((proposal.preflight as Record<string, unknown>).failed ?? 0);
-  const verification = proposal.verification as Record<string, unknown>;
+  const preflightPassed = readNumber(proposal.preflight as Bag, 'passed');
+  const preflightFailed = readNumber(proposal.preflight as Bag, 'failed');
+  const verification = proposal.verification as Bag;
+  const stage = stageOf(proposal);
+  const busy = pending || status === 'preflight' || status === 'executing';
+  const story = narrate(proposal);
 
   const toggleStep = (step: ActionStep) => {
     if (!editable || pending) return;
@@ -239,48 +485,101 @@ export function ActionProposalReview({
     );
   };
 
+  const isOpen = (id: GroupId, size: number) =>
+    openGroups[id] ?? (groupCopy[id].attention || size <= COLLAPSE_THRESHOLD);
+
+  /** One obvious next move at every stage — the operator never has to hunt. */
+  const primaryAction = canApprove
+    ? {
+        testId: 'button-approve-action-proposal',
+        label: `APPROVE ${counts.selected} SELECTED`,
+        icon: CheckSquare,
+        onClick: () => approve.mutate(
+          { id: proposal.id, data: {} },
+          handle('Approval recorded. Running preflight checks; still nothing written.'),
+        ),
+      }
+    : canExecute
+      ? {
+          testId: 'button-execute-action-proposal',
+          label: `APPLY ${counts.selected} ${plural(counts.selected, 'CHANGE')}`,
+          icon: ArrowRight,
+          onClick: () => setConfirmingExecute(true),
+        }
+      : status === 'failed' && counts.completed === 0
+        ? {
+            testId: 'button-preflight-action-proposal',
+            label: 'RE-CHECK',
+            icon: RefreshCw,
+            onClick: runPreflight,
+          }
+        : null;
+
   return (
     <section className="archive-panel p-5 md:p-7" data-testid={`panel-action-proposal-${proposal.id}`}>
+      {/* Where the operator came from, kept alive through the whole flow. */}
+      {context && (
+        <div className="mb-4 flex items-center gap-2 border-l-2 border-[#4e9690] bg-[#f4f8f6] px-3 py-2" data-testid="text-action-origin">
+          <span className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">{context.eyebrow}</span>
+          <ChevronRight size={12} className="text-[#b3c0c0]" />
+          <span className="text-[11px] font-semibold text-[#43545b]">{context.headline}</span>
+        </div>
+      )}
+
       <div className="flex flex-col justify-between gap-4 border-b border-[#e7ecea] pb-5 md:flex-row md:items-start">
         <div className="min-w-0">
           <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">
-            ACTION PROPOSAL / {proposal.type.toUpperCase()} / {proposal.source.replace(/_/g, ' ').toUpperCase()}
+            ACTION REVIEW / {proposal.type.toUpperCase()} / {proposal.source.replace(/_/g, ' ').toUpperCase()}
           </div>
           <h2 className="archive-display mt-1 text-[22px] font-extrabold text-[#21303d]" data-testid="text-action-proposal-reason">
             {proposal.reason}
           </h2>
-          <div className="mt-3"><LifecycleTrail proposal={proposal} /></div>
+          {/* The narrative: engine state, told as a sentence. */}
+          <div className="mt-3 max-w-2xl space-y-1 text-[13px] leading-6 text-[#5c6d73]" data-testid="text-action-narrative">
+            {story.map((line) => <p key={line}>{line}</p>)}
+          </div>
         </div>
-        <div className="flex shrink-0 items-start gap-2">
-          <span
-            className={`archive-mono border px-2 py-1 text-[9px] font-bold tracking-[.1em] ${
-              proposal.risk === 'high'
-                ? 'border-[#e0b3ad] bg-[#fcedea] text-[#994b43]'
-                : proposal.risk === 'medium'
-                  ? 'border-[#d9bd77] bg-[#fff8e7] text-[#8d681d]'
-                  : 'border-[#b9d6cf] bg-[#eaf3ef] text-[#39736e]'
-            }`}
-            data-testid="badge-action-risk"
-          >
-            RISK / {proposal.risk.toUpperCase()}
-          </span>
-          <span className="archive-mono border border-[#d6dfdc] bg-[#f3f6f5] px-2 py-1 text-[9px] font-bold tracking-[.1em] text-[#5a6d73]" data-testid="badge-action-status">
-            {status.replace(/_/g, ' ').toUpperCase()}
-          </span>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="border border-[#d6dfdc] bg-white p-1.5 text-[#7f9194] hover:border-[#81999a]"
-              aria-label="Close proposal review"
-              data-testid="button-close-action-proposal"
+        <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
+          <div className="flex items-center gap-2">
+            <span
+              className={`archive-mono inline-flex items-center gap-1.5 border px-2 py-1 text-[9px] font-bold tracking-[.1em] ${stageCopy[stage].tone}`}
+              data-testid="badge-action-stage"
             >
-              <X size={14} />
-            </button>
-          )}
+              {busy && <Loader2 size={11} className="animate-spin" />}
+              {stage === 'closed' ? status.replace(/_/g, ' ').toUpperCase() : stageCopy[stage].label}
+            </span>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="border border-[#d6dfdc] bg-white p-1.5 text-[#7f9194] hover:border-[#81999a]"
+                aria-label="Close proposal review"
+                data-testid="button-close-action-proposal"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className={`archive-mono border px-2 py-1 text-[9px] font-bold tracking-[.1em] ${
+                proposal.risk === 'high'
+                  ? 'border-[#e0b3ad] bg-[#fcedea] text-[#994b43]'
+                  : proposal.risk === 'medium'
+                    ? 'border-[#d9bd77] bg-[#fff8e7] text-[#8d681d]'
+                    : 'border-[#b9d6cf] bg-[#eaf3ef] text-[#39736e]'
+              }`}
+              data-testid="badge-action-risk"
+            >
+              RISK / {proposal.risk.toUpperCase()}
+            </span>
+            <span className="archive-mono border border-[#d6dfdc] bg-[#f3f6f5] px-2 py-1 text-[9px] font-bold tracking-[.1em] text-[#5a6d73]" data-testid="badge-action-status">
+              {status.replace(/_/g, ' ').toUpperCase()}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* WHAT AM I AUTHORIZING — a bounded count, never a blanket permission. */}
+      {/* Counters stay visible the whole way through, so nothing "resets". */}
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="border border-[#e1e8e5] bg-white/60 p-3">
           <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">SELECTED / TOTAL</div>
@@ -305,44 +604,74 @@ export function ActionProposalReview({
         <div className="border border-[#e1e8e5] bg-white/60 p-3">
           <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">VERIFIED</div>
           <div className="mt-1 text-[12px] font-semibold text-[#43545b]" data-testid="text-action-verified">
-            {verification.verified !== undefined
-              ? `${String(verification.verified)} / ${String(verification.total ?? counts.total)}`
+            {readNumber(verification, 'total')
+              ? `${readNumber(verification, 'verified')} / ${readNumber(verification, 'total')}`
               : '—'}
           </div>
         </div>
       </div>
 
-      {/* WHY IS IT CHANGING */}
-      {(evidence.length > 0 || proposal.errorMessage) && (
-        <div className="mt-5 space-y-3">
-          {evidence.length > 0 && (
-            <div className="border-l-2 border-[#d9bd77] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]" data-testid="panel-action-evidence">
-              <span className="font-bold">EVIDENCE / </span>
-              {evidence.map(([label, value]) => `${label} ${value}`).join(' · ')}
-            </div>
-          )}
-          {proposal.errorMessage && (
-            <div className="border-l-2 border-[#c85b51] bg-[#fcedea] p-3 text-[11px] leading-5 text-[#994b43]" data-testid="text-action-error">
-              <span className="font-bold">BLOCKED / </span>
-              {proposal.errorMessage}
-              {proposal.errorCode === 'PLAN_CHANGED' && ' The plan changed after approval, so it must be approved again.'}
+      {/* WHY — the planner's own evidence, unreinterpreted. */}
+      {evidence.length > 0 && (
+        <div className="mt-5 border-l-2 border-[#f4b942] bg-[#fff8e7] p-4" data-testid="panel-action-evidence">
+          <div className="archive-mono text-[9px] font-bold tracking-[.12em] text-[#80652e]">WHY / EVIDENCE FROM THE PLANNER</div>
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] leading-5 text-[#80652e]">
+            {evidence.map(([label, value]) => (
+              <span key={label}><span className="archive-mono text-[9px] tracking-[.1em] opacity-70">{label}</span> {value}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Blocking reason, translated out of engine vocabulary. */}
+      {proposal.errorMessage && (
+        <div className="mt-5 border-l-2 border-[#c85b51] bg-[#fcedea] p-4 text-[12px] leading-6 text-[#994b43]" data-testid="text-action-error">
+          <div className="archive-mono text-[9px] font-bold tracking-[.12em]">BLOCKED / {proposal.errorCode ?? 'ERROR'}</div>
+          <div className="mt-1">{proposal.errorMessage}</div>
+          {proposal.errorCode === 'PLAN_CHANGED' && (
+            <div className="mt-1">
+              The plan changed after approval, so it must be approved again. Nothing was written.
             </div>
           )}
         </div>
       )}
 
-      {/* WHAT IS CHANGING — the Before → After table. */}
-      <div className="mt-6">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">
-            {counts.total} PROPOSED CHANGE{counts.total === 1 ? '' : 'S'}
+      {/* Preflight, as named reassurances rather than a status code. */}
+      {checks.length > 0 && (
+        <div className="mt-5 border border-[#d7e6e1] bg-[#f4f9f7] p-4" data-testid="panel-preflight-checks">
+          <div className="archive-mono text-[9px] font-bold tracking-[.12em] text-[#39736e]">
+            PREFLIGHT / {preflightPassed} OF {preflightPassed + preflightFailed} {plural(preflightPassed + preflightFailed, 'CHANGE')} CLEARED
           </div>
-          {editable && counts.total > 1 && (
+          <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+            {checks.map((check) => (
+              <li key={check.id} className="flex items-center gap-2 text-[11px] text-[#39736e]" data-testid={`check-${check.id}`}>
+                {check.passed === check.total
+                  ? <Check size={13} className="shrink-0" />
+                  : <AlertTriangle size={13} className="shrink-0 text-[#a77517]" />}
+                <span className={check.passed === check.total ? '' : 'text-[#8d681d]'}>{check.label}</span>
+                <span className="archive-mono text-[9px] opacity-60">{check.passed}/{check.total}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* WHAT IS CHANGING — grouped so exceptions surface first. */}
+      <div className="mt-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">WHAT WOULD CHANGE</div>
+            <h3 className="archive-display mt-1 text-[16px] font-extrabold text-[#21303d]" data-testid="text-action-change-summary">
+              {counts.total} proposed {plural(counts.total, 'change')}
+              {counts.total !== counts.selected && ` · ${counts.selected} selected · ${counts.total - counts.selected} excluded`}
+            </h3>
+          </div>
+          {editable && (
             <div className="flex gap-2">
               <button
                 onClick={() => setAll(true)}
                 disabled={pending}
-                className="border border-[#d6dfdc] bg-white px-2.5 py-1.5 archive-mono text-[9px] font-bold tracking-[.1em] text-[#5a6d73] hover:border-[#81999a] disabled:opacity-50"
+                className="border border-[#d7e1de] bg-white/70 px-2.5 py-1.5 text-[9px] font-bold tracking-[.08em] text-[#607379] hover:border-[#8fb3ac] disabled:opacity-50"
                 data-testid="button-select-all-steps"
               >
                 SELECT ALL
@@ -350,7 +679,7 @@ export function ActionProposalReview({
               <button
                 onClick={() => setAll(false)}
                 disabled={pending}
-                className="border border-[#d6dfdc] bg-white px-2.5 py-1.5 archive-mono text-[9px] font-bold tracking-[.1em] text-[#5a6d73] hover:border-[#81999a] disabled:opacity-50"
+                className="border border-[#d7e1de] bg-white/70 px-2.5 py-1.5 text-[9px] font-bold tracking-[.08em] text-[#607379] hover:border-[#8fb3ac] disabled:opacity-50"
                 data-testid="button-deselect-all-steps"
               >
                 CLEAR
@@ -359,63 +688,82 @@ export function ActionProposalReview({
           )}
         </div>
 
-        <div className="hidden grid-cols-[28px_minmax(0,1fr)_20px_minmax(0,1fr)_92px] gap-3 border-b border-[#e7ecea] pb-2 md:grid">
-          <span />
-          <span className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">OLD NAME</span>
-          <span />
-          <span className="archive-mono text-[9px] tracking-[.12em] text-[#39736e]">NEW NAME</span>
-          <span className="archive-mono text-right text-[9px] tracking-[.12em] text-[#7f9194]">STATUS</span>
-        </div>
-
-        <div className="divide-y divide-[#edf1ef]" data-testid="list-action-steps">
-          {proposal.steps.map((step) => {
-            const { beforeName, afterName, beforePath, afterPath } = stepLabels(step);
-            const muted = !step.selected || step.status === 'skipped';
+        <div className="mt-3 space-y-3" data-testid="list-action-steps">
+          {groups.map(({ id, steps }) => {
+            const open = isOpen(id, steps.length);
+            const copy = groupCopy[id];
             return (
-              <div
-                key={step.id}
-                className={`grid grid-cols-1 gap-2 py-3 md:grid-cols-[28px_minmax(0,1fr)_20px_minmax(0,1fr)_92px] md:gap-3 ${muted ? 'opacity-45' : ''}`}
-                data-testid={`row-action-step-${step.id}`}
-              >
-                <div className="flex items-start">
-                  <button
-                    onClick={() => toggleStep(step)}
-                    disabled={!editable || pending}
-                    className="text-[#4e9690] disabled:cursor-not-allowed disabled:text-[#b3bfbf]"
-                    aria-label={`${step.selected ? 'Deselect' : 'Select'} ${beforeName}`}
-                    aria-pressed={step.selected}
-                    data-testid={`checkbox-action-step-${step.id}`}
-                  >
-                    {step.selected ? <CheckSquare size={15} /> : <Square size={15} />}
-                  </button>
-                </div>
-                <div className="min-w-0">
-                  <div className="break-all text-[12px] font-semibold text-[#43545b]" data-testid={`text-step-before-${step.id}`}>
-                    {beforeName}
-                  </div>
-                  {beforePath && (
-                    <div className="mt-0.5 break-all archive-mono text-[9px] text-[#a0afaf]" title={beforePath}>{beforePath}</div>
-                  )}
-                </div>
-                <div className="hidden items-start justify-center pt-0.5 text-[#9fb0ae] md:flex">
-                  <ArrowRight size={13} />
-                </div>
-                <div className="min-w-0">
-                  <div className="break-all text-[12px] font-semibold text-[#344851]" data-testid={`text-step-after-${step.id}`}>
-                    {afterName}
-                  </div>
-                  {afterPath && (
-                    <div className="mt-0.5 break-all archive-mono text-[9px] text-[#a0afaf]" title={afterPath}>{afterPath}</div>
-                  )}
-                  {step.errorMessage && (
-                    <div className="mt-1 text-[10px] leading-4 text-[#994b43]" data-testid={`text-step-error-${step.id}`}>
-                      {step.errorMessage}
+              <div key={id} className={`border ${copy.tone}`} data-testid={`group-action-steps-${id}`}>
+                <button
+                  onClick={() => setOpenGroups((current) => ({ ...current, [id]: !open }))}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+                  data-testid={`button-toggle-group-${id}`}
+                  aria-expanded={open}
+                >
+                  {open ? <ChevronDown size={13} className="shrink-0 text-[#7f9194]" /> : <ChevronRight size={13} className="shrink-0 text-[#7f9194]" />}
+                  {id === 'blocked' && <AlertTriangle size={13} className="shrink-0 text-[#994b43]" />}
+                  {id === 'newFolder' && <FolderPlus size={13} className="shrink-0 text-[#8d681d]" />}
+                  <span className="archive-mono text-[10px] font-bold tracking-[.1em] text-[#43545b]">
+                    {steps.length} {copy.label}
+                  </span>
+                  <span className="truncate text-[11px] text-[#7f9194]">{copy.blurb}</span>
+                </button>
+
+                {open && (
+                  <div className="border-t border-white/60">
+                    <div className="hidden px-3 py-2 md:grid md:grid-cols-[28px_minmax(0,1fr)_20px_minmax(0,1fr)_92px] md:gap-3">
+                      <span />
+                      <span className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">OLD NAME</span>
+                      <span />
+                      <span className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">NEW NAME</span>
+                      <span className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">STATUS</span>
                     </div>
-                  )}
-                </div>
-                <div className="flex items-start md:justify-end">
-                  <StepStatusBadge step={step} />
-                </div>
+                    {steps.map((step) => {
+                      const { beforeName, afterName, beforePath, afterPath } = stepLabels(step);
+                      return (
+                        <div
+                          key={step.id}
+                          className="grid gap-2 border-t border-white/70 px-3 py-2.5 md:grid-cols-[28px_minmax(0,1fr)_20px_minmax(0,1fr)_92px] md:items-center md:gap-3"
+                          data-testid={`row-action-step-${step.id}`}
+                        >
+                          <button
+                            onClick={() => toggleStep(step)}
+                            disabled={!editable || pending}
+                            className={`grid h-5 w-5 place-items-center border ${
+                              step.selected ? 'border-[#4e9690] bg-[#4e9690] text-white' : 'border-[#c3d0cd] bg-white text-transparent'
+                            } ${editable ? 'hover:border-[#39736e]' : 'cursor-default opacity-60'}`}
+                            aria-label={step.selected ? `Exclude ${beforeName}` : `Include ${beforeName}`}
+                            aria-pressed={step.selected}
+                            data-testid={`checkbox-action-step-${step.id}`}
+                          >
+                            {step.selected ? <Check size={12} /> : <Square size={12} className="opacity-0" />}
+                          </button>
+                          <div className="min-w-0">
+                            <div className="truncate text-[12px] text-[#5c6d73] line-through decoration-[#c0cbc9]" data-testid={`text-step-before-${step.id}`}>
+                              {beforeName}
+                            </div>
+                            {beforePath && <div className="archive-mono mt-0.5 truncate text-[9px] text-[#a0afaf]" title={beforePath}>{beforePath}</div>}
+                          </div>
+                          <ArrowRight size={13} className="hidden shrink-0 text-[#9fb0ae] md:block" />
+                          <div className="min-w-0">
+                            <div className="truncate text-[12px] font-semibold text-[#21303d]" data-testid={`text-step-after-${step.id}`}>
+                              {afterName}
+                            </div>
+                            {afterPath && <div className="archive-mono mt-0.5 truncate text-[9px] text-[#a0afaf]" title={afterPath}>{afterPath}</div>}
+                          </div>
+                          <div className="md:text-right">
+                            <StepStatusBadge step={step} />
+                            {step.errorMessage && (
+                              <div className="mt-1 text-[10px] leading-4 text-[#994b43]" data-testid={`text-step-error-${step.id}`}>
+                                {step.errorMessage}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -424,155 +772,120 @@ export function ActionProposalReview({
 
       {notice && (
         <div
-          className={`mt-5 flex gap-2 border-l-2 p-3 text-[11px] leading-5 ${
-            noticeTone === 'bad'
-              ? 'border-[#c85b51] bg-[#fcedea] text-[#994b43]'
-              : 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]'
+          className={`mt-5 border-l-2 p-3 text-[11px] leading-5 ${
+            noticeTone === 'bad' ? 'border-[#c85b51] bg-[#fcedea] text-[#994b43]' : 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]'
           }`}
-          role="status"
           data-testid="status-action-proposal"
         >
-          <FileCheck2 size={14} className="mt-0.5 shrink-0" />
           {notice}
         </div>
       )}
 
-      {/* The operator contract, stated before the buttons that act on it. */}
+      {/* The authorization boundary, stated in words before the buttons. */}
       <div className="mt-6 border-t border-[#e7ecea] pt-5">
         {editable && (
-          <div className="mb-4 flex gap-2 border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]" data-testid="text-action-authorization-scope">
-            <CircleHelp size={14} className="mt-0.5 shrink-0" />
-            <span>
-              Approving authorizes exactly the {counts.selected} selected change
-              {counts.selected === 1 ? '' : 's'} listed above — not future renames. Preflight re-checks every
-              condition immediately before anything is written.
-            </span>
-          </div>
-        )}
-        {status === 'approved' && (
-          <div className="mb-4 flex gap-2 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-3 text-[11px] leading-5 text-[#39736e]" data-testid="text-action-next-step">
-            <ShieldCheck size={14} className="mt-0.5 shrink-0" />
-            Approval is recorded. Run preflight to re-check the archive before execution. No file has been touched.
-          </div>
-        )}
-        {canExecute && (
-          <div className="mb-4 flex gap-2 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-3 text-[11px] leading-5 text-[#39736e]" data-testid="text-action-execute-ready">
-            <Check size={14} className="mt-0.5 shrink-0" />
-            Preflight passed for {preflightPassed} step{preflightPassed === 1 ? '' : 's'}. Executing writes to the
-            archive, verifies each change, and records it in history. It can be reverted afterwards.
-          </div>
+          <p className="mb-4 max-w-3xl text-[12px] leading-6 text-[#5c6d73]" data-testid="text-action-authorization-scope">
+            Approving authorizes exactly the {counts.selected} selected {plural(counts.selected, 'change')} listed above — not future
+            renames. Preflight re-checks every condition immediately before anything is written.
+          </p>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          {editable && (
-            <button
-              onClick={() => approve.mutate(
-                { id: proposal.id, data: {} },
-                handle(`Approved ${counts.selected} change${counts.selected === 1 ? '' : 's'}. Nothing has been written yet.`),
-              )}
-              disabled={!canApprove || pending}
-              className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50"
-              data-testid="button-approve-action-proposal"
-            >
-              <ShieldCheck size={14} />
-              APPROVE {counts.selected} SELECTED
-            </button>
-          )}
-          {canPreflight && (
-            <button
-              onClick={() => preflight.mutate(
-                { id: proposal.id },
-                handle('Preflight complete. No files were modified.'),
-              )}
-              disabled={pending}
-              className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50"
-              data-testid="button-preflight-action-proposal"
-            >
-              {preflight.isPending ? <RefreshCw size={13} className="animate-spin" /> : <FileCheck2 size={14} />}
-              RUN PREFLIGHT
-            </button>
-          )}
-          {canExecute && !confirmingExecute && (
-            <button
-              onClick={() => setConfirmingExecute(true)}
-              disabled={pending}
-              className="inline-flex items-center gap-2 bg-[#39736e] px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50"
-              data-testid="button-execute-action-proposal"
-            >
-              <Check size={14} /> EXECUTE
-            </button>
-          )}
-          {/* Execution is never one click from a list view. */}
-          {canExecute && confirmingExecute && (
-            <div className="flex w-full flex-wrap items-center gap-2 border border-[#d9bd77] bg-[#fff8e7] p-3" data-testid="panel-confirm-execute">
-              <AlertTriangle size={14} className="shrink-0 text-[#8d681d]" />
-              <span className="mr-1 text-[11px] leading-5 text-[#80652e]">
-                Write {preflightPassed} verified change{preflightPassed === 1 ? '' : 's'} to the archive?
-              </span>
+        {confirmingExecute && canExecute && (
+          <div className="mb-4 border-l-2 border-[#c85b51] bg-[#fcedea] p-4" data-testid="panel-confirm-execute">
+            <div className="text-[12px] font-bold text-[#994b43]">
+              Write {counts.selected} verified {plural(counts.selected, 'change')} to disk now?
+            </div>
+            <p className="mt-1 text-[11px] leading-5 text-[#994b43]">
+              This modifies files in the archive. Each change is verified after it is written, and the proposal can be reverted.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
               <button
                 onClick={() => {
                   setConfirmingExecute(false);
-                  execute.mutate(
-                    { id: proposal.id, data: { confirmed: true } },
-                    handle('Execution finished. Every change was verified and recorded.'),
-                  );
+                  execute.mutate({ id: proposal.id, data: { confirmed: true } }, handle('Execution finished. Every change was verified.'));
                 }}
                 disabled={pending}
-                className="inline-flex items-center gap-2 bg-[#39736e] px-3.5 py-2 text-[10px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50"
+                className="inline-flex items-center gap-2 bg-[#994b43] px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-white disabled:opacity-50"
                 data-testid="button-confirm-execute-action-proposal"
               >
-                {execute.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
-                CONFIRM EXECUTE
+                <Check size={14} /> YES, APPLY {counts.selected}
               </button>
               <button
                 onClick={() => setConfirmingExecute(false)}
-                className="border border-[#d6dfdc] bg-white px-3.5 py-2 text-[10px] font-bold tracking-[.1em] text-[#5a6d73]"
+                className="border border-[#d6dfdc] bg-white px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#5a6d73]"
                 data-testid="button-cancel-execute-action-proposal"
               >
-                BACK
+                NOT YET
               </button>
             </div>
+          </div>
+        )}
+
+        {confirmingRevert && canRevert && (
+          <div className="mb-4 border-l-2 border-[#a77517] bg-[#fff8e7] p-4" data-testid="panel-confirm-revert">
+            <div className="text-[12px] font-bold text-[#80652e]">Put {counts.completed} applied {plural(counts.completed, 'change')} back?</div>
+            <p className="mt-1 text-[11px] leading-5 text-[#80652e]">
+              This restores the original paths recorded at execution time.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  setConfirmingRevert(false);
+                  revert.mutate({ id: proposal.id, data: { confirmed: true } }, handle('Revert finished. The originals are back in place.'));
+                }}
+                disabled={pending}
+                className="inline-flex items-center gap-2 bg-[#a77517] px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-white disabled:opacity-50"
+                data-testid="button-confirm-revert-action-proposal"
+              >
+                <RotateCcw size={14} /> YES, REVERT
+              </button>
+              <button
+                onClick={() => setConfirmingRevert(false)}
+                className="border border-[#d6dfdc] bg-white px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#5a6d73]"
+                data-testid="button-cancel-revert-action-proposal"
+              >
+                KEEP CHANGES
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* One obvious next move, sized and coloured to be the obvious one. */}
+          {primaryAction && !confirmingExecute && (
+            <button
+              onClick={primaryAction.onClick}
+              disabled={busy}
+              className="inline-flex items-center gap-2 bg-[#1d2b38] px-5 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] hover:bg-[#263844] disabled:opacity-50"
+              data-testid={primaryAction.testId}
+            >
+              <primaryAction.icon size={14} /> {primaryAction.label}
+            </button>
           )}
+
+          {/* Preflight stays reachable on its own for an already-checked plan. */}
+          {canPreflight && !(status === 'failed' && counts.completed === 0) && (
+            <button
+              onClick={runPreflight}
+              disabled={busy}
+              className="inline-flex items-center gap-2 border border-[#4e9690] bg-white px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#39736e] hover:bg-[#eaf3ef] disabled:opacity-50"
+              data-testid="button-preflight-action-proposal"
+            >
+              <RefreshCw size={14} /> RE-RUN CHECKS
+            </button>
+          )}
+
           {canRevert && !confirmingRevert && (
             <button
               onClick={() => setConfirmingRevert(true)}
               disabled={pending}
-              className="inline-flex items-center gap-2 border border-[#d6dfdc] bg-white px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#5a6d73] hover:border-[#81999a] disabled:opacity-50"
+              className="inline-flex items-center gap-2 border border-[#d9bd77] bg-[#fff8e7] px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#8d681d] disabled:opacity-50"
               data-testid="button-revert-action-proposal"
             >
               <RotateCcw size={14} /> REVERT
             </button>
           )}
-          {canRevert && confirmingRevert && (
-            <div className="flex w-full flex-wrap items-center gap-2 border border-[#d9bd77] bg-[#fff8e7] p-3" data-testid="panel-confirm-revert">
-              <AlertTriangle size={14} className="shrink-0 text-[#8d681d]" />
-              <span className="mr-1 text-[11px] leading-5 text-[#80652e]">
-                Restore {counts.completed} completed change{counts.completed === 1 ? '' : 's'} to their original state?
-              </span>
-              <button
-                onClick={() => {
-                  setConfirmingRevert(false);
-                  revert.mutate(
-                    { id: proposal.id, data: { confirmed: true } },
-                    handle('Revert finished. The archive was restored.'),
-                  );
-                }}
-                disabled={pending}
-                className="inline-flex items-center gap-2 bg-[#1d2b38] px-3.5 py-2 text-[10px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50"
-                data-testid="button-confirm-revert-action-proposal"
-              >
-                {revert.isPending ? <RefreshCw size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-                CONFIRM REVERT
-              </button>
-              <button
-                onClick={() => setConfirmingRevert(false)}
-                className="border border-[#d6dfdc] bg-white px-3.5 py-2 text-[10px] font-bold tracking-[.1em] text-[#5a6d73]"
-                data-testid="button-cancel-revert-action-proposal"
-              >
-                BACK
-              </button>
-            </div>
-          )}
+
           {canCancel && (
             <button
               onClick={() => cancel.mutate({ id: proposal.id }, handle('Proposal cancelled. Nothing was changed.'))}
@@ -605,7 +918,7 @@ export function ActionProposalReview({
                   ? `CANCELLED / NO CHANGES APPLIED / ${proposal.events.length} LIFECYCLE EVENTS`
                   : status === 'failed' && counts.completed === 0
                     ? `STOPPED BEFORE EXECUTION / NO CHANGES APPLIED / ${proposal.events.length} LIFECYCLE EVENTS`
-                    : `RECORDED IN HISTORY / ${counts.completed} CHANGE(S) APPLIED / ${proposal.events.length} LIFECYCLE EVENTS`}
+                    : `RECORDED IN HISTORY / ${counts.completed} ${plural(counts.completed, 'CHANGE')} APPLIED / ${proposal.events.length} LIFECYCLE EVENTS`}
         </div>
       </div>
     </section>

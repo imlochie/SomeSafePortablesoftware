@@ -72,16 +72,18 @@ suite('action proposal review against a live engine', () => {
     );
     expect(screen.getByTestId('text-action-authorization-scope')).toHaveTextContent('exactly the 2 selected changes');
 
-    // Approve — this must not touch the filesystem.
+    // Approve — this must not touch the filesystem. Approval hands off into
+    // preflight on its own, so the operator never has to ask "what now?".
     await user.click(screen.getByTestId('button-approve-action-proposal'));
     await waitFor(() => expect(screen.getByTestId('text-action-approval')).toHaveTextContent('RECORDED'));
     expect(existsSync(`${archiveDir}/01 - pilot.mkv`)).toBe(true);
     expect(existsSync(`${archiveDir}/01 - Pilot.mkv`)).toBe(false);
-    expect(screen.queryByTestId('button-execute-action-proposal')).not.toBeInTheDocument();
 
-    // Preflight must come before execute is even offered.
-    await user.click(screen.getByTestId('button-preflight-action-proposal'));
-    await waitFor(() => expect(screen.getByTestId('text-action-preflight')).toHaveTextContent('2 PASSED'));
+    // Preflight still runs before execute is offered, and writes nothing.
+    await waitFor(() => expect(screen.getByTestId('text-action-preflight')).toHaveTextContent('2 PASSED'), {
+      timeout: 10_000,
+    });
+    expect(screen.getByTestId('panel-preflight-checks')).toHaveTextContent('Source files still exist');
     expect(existsSync(`${archiveDir}/01 - pilot.mkv`)).toBe(true);
 
     // Execute is gated behind an explicit second confirmation.

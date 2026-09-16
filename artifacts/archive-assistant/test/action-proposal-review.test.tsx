@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   cancelMutate: vi.fn(),
   proposal: { current: null as ActionProposal | null },
 }));
-const { approveMutate, executeMutate, selectionMutate } = mocks;
+const { approveMutate, executeMutate, selectionMutate, preflightMutate } = mocks;
 
 vi.mock('@workspace/api-client-react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@workspace/api-client-react')>();
@@ -204,7 +204,7 @@ describe('action proposal review surface', () => {
     expect(screen.getByTestId('text-action-approval')).toHaveTextContent('RECORDED');
     expect(screen.getByTestId('button-preflight-action-proposal')).toBeInTheDocument();
     expect(screen.queryByTestId('button-execute-action-proposal')).not.toBeInTheDocument();
-    expect(screen.getByTestId('text-action-next-step')).toHaveTextContent('No file has been touched');
+    expect(screen.getByTestId('text-action-narrative')).toHaveTextContent('No file has been touched');
   });
 
   it('requires a second explicit confirmation before executing', async () => {
@@ -225,6 +225,112 @@ describe('action proposal review surface', () => {
 
     await user.click(screen.getByTestId('button-confirm-execute-action-proposal'));
     expect(executeMutate).toHaveBeenCalledWith({ id: 7, data: { confirmed: true } }, expect.anything());
+  });
+
+  it('tells the operator the story instead of dumping engine vocabulary', () => {
+    renderReview();
+    const narrative = screen.getByTestId('text-action-narrative');
+    expect(narrative).toHaveTextContent('inspected 37 files and prepared 2 changes');
+    expect(narrative).toHaveTextContent('Nothing will be written until you approve the selected changes.');
+    expect(screen.getByTestId('badge-action-stage')).toHaveTextContent('UNDER REVIEW');
+  });
+
+  it('runs preflight automatically once approval is recorded, without writing anything', () => {
+    mocks.proposal.current = proposal({ status: 'approved', approvedAt: '2026-01-02T00:00:00.000Z' });
+    renderReview();
+    // Approval hands straight off into checking; execution still needs a human.
+    expect(preflightMutate).toHaveBeenCalledWith({ id: 7 }, expect.anything());
+    expect(executeMutate).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('button-execute-action-proposal')).not.toBeInTheDocument();
+  });
+
+  it('groups steps so exceptions are read first and bulk routine work collapses', () => {
+    const many = Array.from({ length: 10 }, (_, index) =>
+      step({ id: 200 + index, stepIndex: index }));
+    mocks.proposal.current = proposal({
+      status: 'ready',
+      steps: [
+        ...many,
+        step({ id: 300, stepIndex: 10, status: 'failed', errorMessage: 'Destination collision detected.' }),
+        step({ id: 301, stepIndex: 11, selected: false }),
+      ],
+    });
+    renderReview();
+
+    // The exception group is present and expanded by default...
+    expect(screen.getByTestId('group-action-steps-blocked')).toHaveTextContent('1 NEEDS YOUR ATTENTION');
+    expect(screen.getByTestId('text-step-error-300')).toBeInTheDocument();
+    // ...while ten identical renames are compressed behind a count.
+    expect(screen.getByTestId('group-action-steps-routine')).toHaveTextContent('10 STRAIGHTFORWARD');
+    expect(screen.queryByTestId('row-action-step-200')).not.toBeInTheDocument();
+    expect(screen.getByTestId('group-action-steps-excluded')).toHaveTextContent('1 EXCLUDED BY YOU');
+  });
+
+  it('expands a collapsed group on demand', async () => {
+    const many = Array.from({ length: 10 }, (_, index) =>
+      step({ id: 400 + index, stepIndex: index }));
+    mocks.proposal.current = proposal({ steps: many });
+    renderReview();
+    expect(screen.queryByTestId('row-action-step-400')).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByTestId('button-toggle-group-routine'));
+    expect(screen.getByTestId('row-action-step-400')).toBeInTheDocument();
+  });
+
+  it('reports preflight as named reassurances rather than a status code', () => {
+    mocks.proposal.current = proposal({
+      status: 'ready',
+      preflight: {
+        passed: 2,
+        failed: 0,
+        results: [
+          { stepId: 101, ok: true, sourceExists: true, destinationExists: false, destinationDirectoryMissing: false },
+          { stepId: 102, ok: true, sourceExists: true, destinationExists: false, destinationDirectoryMissing: false },
+        ],
+      },
+    });
+    renderReview();
+    const panel = screen.getByTestId('panel-preflight-checks');
+    expect(panel).toHaveTextContent('Source files still exist');
+    expect(panel).toHaveTextContent('Destinations are free (nothing overwritten)');
+    expect(screen.getByTestId('check-source-exists')).toHaveTextContent('2/2');
+    expect(screen.getByTestId('badge-action-stage')).toHaveTextContent('CHECKING');
+  });
+
+  it('flags a step that would create a new folder instead of hiding it in the crowd', () => {
+    mocks.proposal.current = proposal({
+      status: 'ready',
+      steps: [
+        step({ id: 101, stepIndex: 0 }),
+        step({ id: 102, stepIndex: 1, preflight: { destinationDirectoryMissing: true } }),
+      ],
+    });
+    renderReview();
+    expect(screen.getByTestId('group-action-steps-newFolder')).toHaveTextContent('1 CREATES A NEW FOLDER');
+    expect(screen.getByTestId('row-action-step-102')).toBeInTheDocument();
+  });
+
+  it('carries the originating finding into the review', () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ActionProposalReview proposalId={7} context={{ eyebrow: 'FROM FINDING', headline: '37 naming inconsistencies' }} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByTestId('text-action-origin')).toHaveTextContent('37 naming inconsistencies');
+  });
+
+  it('explains a withdrawn approval as a human story, not an error code', () => {
+    mocks.proposal.current = proposal({
+      status: 'failed',
+      errorCode: 'PLAN_CHANGED',
+      errorMessage: 'The proposal changed after approval; re-approval is required.',
+    });
+    renderReview();
+    const narrative = screen.getByTestId('text-action-narrative');
+    expect(narrative).toHaveTextContent('This plan changed after you approved it');
+    expect(narrative).toHaveTextContent('Nothing was written.');
+    // And the way forward is offered, not just the complaint.
+    expect(screen.getByTestId('button-preflight-action-proposal')).toHaveTextContent('RE-CHECK');
   });
 
   it('surfaces a withdrawn approval as a blocking reason instead of failing silently', () => {
@@ -251,6 +357,18 @@ describe('action proposal review surface', () => {
       .toHaveTextContent('CANCELLED / NO CHANGES APPLIED');
   });
 
+  it('keeps uppercase labels uppercase when pluralising', () => {
+    mocks.proposal.current = proposal({
+      status: 'completed',
+      counts: { total: 2, selected: 2, pending: 0, completed: 2, failed: 0, skipped: 0, reverted: 0 },
+      steps: [step({ id: 101, stepIndex: 0, status: 'completed' }), step({ id: 102, stepIndex: 1, status: 'completed' })],
+    });
+    renderReview();
+    const footer = screen.getByTestId('text-action-footer-contract');
+    expect(footer).toHaveTextContent('2 CHANGES APPLIED');
+    expect(footer.textContent).not.toMatch(/CHANGEs/);
+  });
+
   it('reports verified results and offers revert once the work is recorded', () => {
     mocks.proposal.current = proposal({
       status: 'completed',
@@ -265,6 +383,9 @@ describe('action proposal review surface', () => {
     expect(screen.getByTestId('text-action-verified')).toHaveTextContent('2 / 2');
     expect(screen.getByTestId('button-revert-action-proposal')).toBeInTheDocument();
     expect(screen.queryByTestId('button-approve-action-proposal')).not.toBeInTheDocument();
+    // The applied rows are the result — visible without hunting for them.
+    expect(screen.getByTestId('group-action-steps-done')).toHaveTextContent('2 APPLIED');
+    expect(screen.getByTestId('row-action-step-101')).toBeInTheDocument();
   });
 
   it('shows per-step failure detail for a partially completed plan', () => {
