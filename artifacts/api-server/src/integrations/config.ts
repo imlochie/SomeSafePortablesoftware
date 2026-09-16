@@ -1,4 +1,4 @@
-import type { IntegrationId } from "./contracts";
+import type { ExternalIntegrationId } from "./contracts";
 
 export interface IntegrationConfiguration {
   endpoint: string | null;
@@ -13,8 +13,10 @@ export interface IntegrationConfiguration {
   languageProfileId?: number | null;
 }
 
+// Plex and Jellyfin are service-backed adapters: their credentials live in
+// owner-scoped settings rather than process environment variables.
 export type ExternalIntegrationConfiguration = Record<
-  Exclude<IntegrationId, "plex">,
+  ExternalIntegrationId,
   IntegrationConfiguration
 >;
 
