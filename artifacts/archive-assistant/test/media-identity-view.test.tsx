@@ -8,12 +8,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReconciliationReport, ReconciliationResult } from '@workspace/api-client-react';
+import type {
+  IdentityAuditReport,
+  IdentityAuditResult,
+  ReconciliationReport,
+  ReconciliationResult,
+} from '@workspace/api-client-react';
 
 const mocks = vi.hoisted(() => ({
   report: { current: null as ReconciliationReport | null },
   isLoading: { current: false },
   isError: { current: false },
+  audit: { current: null as IdentityAuditReport | null },
+  auditLoading: { current: false },
+  auditError: { current: false },
 }));
 
 vi.mock('@workspace/api-client-react', () => ({
@@ -23,13 +31,19 @@ vi.mock('@workspace/api-client-react', () => ({
     isError: mocks.isError.current,
     refetch: vi.fn(),
   }),
+  useGetArchiveIdentityAudit: () => ({
+    data: mocks.audit.current,
+    isLoading: mocks.auditLoading.current,
+    isError: mocks.auditError.current,
+    refetch: vi.fn(),
+  }),
 }));
 
 const { MediaIdentityView } = await import('../src/components/media-identity-view');
 
-function localItem(path: string) {
+function localItem(path: string, fileRecordId = 1) {
   return {
-    fileRecordId: 1,
+    fileRecordId,
     localMediaIdentityId: 1,
     path: `/archive/${path}`,
     relativePath: path,
@@ -81,6 +95,32 @@ function report(results: Partial<ReconciliationResult>[]): ReconciliationReport 
   } as ReconciliationReport;
 }
 
+function auditResult(entry: Partial<IdentityAuditResult> = {}): IdentityAuditResult {
+  return {
+    fileRecordId: 1,
+    path: '/archive/Example Show/S01E01.mkv',
+    currentLocalIdentity: null,
+    extractedCandidates: [],
+    plexCandidates: [],
+    reason: 'The durable identity title differs from the title extracted from the current path.',
+    auditType: 'title_conflict',
+    confidence: 'high',
+    evidence: ['identity title: the signal', 'extracted titles: the signal s01e03'],
+    recommendedInterpretation: 'Review the durable identity and path-derived title before changing either.',
+    needsReview: true,
+    mediaType: 'tv',
+    ...entry,
+  } as IdentityAuditResult;
+}
+
+function auditReport(results: IdentityAuditResult[]): IdentityAuditReport {
+  return {
+    summary: { totalCandidates: results.length, byAuditType: {}, byConfidence: {} },
+    pagination: { page: 1, pageSize: 200, total: results.length, totalPages: 1 },
+    results,
+  } as IdentityAuditReport;
+}
+
 function renderView() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
@@ -94,6 +134,9 @@ beforeEach(() => {
   mocks.report.current = report([]);
   mocks.isLoading.current = false;
   mocks.isError.current = false;
+  mocks.audit.current = auditReport([]);
+  mocks.auditLoading.current = false;
+  mocks.auditError.current = false;
   vi.clearAllMocks();
 });
 
@@ -182,5 +225,135 @@ describe('media identity view', () => {
     renderView();
     expect(screen.getByTestId('panel-media-identity-error'))
       .toHaveTextContent('No relationships are being inferred in the browser');
+  });
+
+  /*
+    The identity audit is folded into this view rather than living at its own
+    URL. These tests hold the fold-in to the same standard as the rest of the
+    surface: engine text only, and no implied verdict.
+  */
+  it('attaches an audit concern to the file it describes', () => {
+    mocks.report.current = report([
+      { classification: 'local_only', local: localItem('Example Show/S01E01.mkv', 7), plex: null },
+    ]);
+    mocks.audit.current = auditReport([auditResult({ fileRecordId: 7 })]);
+    renderView();
+    expect(screen.getByTestId('panel-identity-audit-0')).toHaveTextContent('1 CONCERN');
+    expect(screen.getByTestId('badge-identity-audit-type-0-0')).toHaveTextContent('TITLE DISAGREES');
+    expect(screen.getByTestId('row-identity-audit-0-0')).toHaveTextContent(
+      'The durable identity title differs from the title extracted from the current path.',
+    );
+  });
+
+  it('does not annotate a file the audit did not flag', () => {
+    mocks.report.current = report([
+      { classification: 'local_only', local: localItem('Example Show/S01E01.mkv', 7), plex: null },
+    ]);
+    mocks.audit.current = auditReport([auditResult({ fileRecordId: 999 })]);
+    renderView();
+    expect(screen.queryByTestId('panel-identity-audit-0')).toBeNull();
+  });
+
+  it('shows the engine evidence verbatim rather than a summary of it', () => {
+    mocks.report.current = report([
+      { classification: 'local_only', local: localItem('a.mkv', 7), plex: null },
+    ]);
+    mocks.audit.current = auditReport([
+      auditResult({ fileRecordId: 7, evidence: ['identity title: alpha', 'extracted titles: beta'] }),
+    ]);
+    renderView();
+    const evidence = screen.getByTestId('list-identity-audit-evidence-0-0');
+    expect(evidence).toHaveTextContent('identity title: alpha');
+    expect(evidence).toHaveTextContent('extracted titles: beta');
+  });
+
+  it('lists every concern when one file raises several', () => {
+    mocks.report.current = report([
+      { classification: 'local_only', local: localItem('a.mkv', 7), plex: null },
+    ]);
+    mocks.audit.current = auditReport([
+      auditResult({ fileRecordId: 7, auditType: 'title_conflict' }),
+      auditResult({ fileRecordId: 7, auditType: 'missing_year', confidence: 'medium' }),
+    ]);
+    renderView();
+    expect(screen.getByTestId('panel-identity-audit-0')).toHaveTextContent('2 CONCERNS');
+    expect(screen.getByTestId('badge-identity-audit-type-0-1')).toHaveTextContent('NO YEAR');
+  });
+
+  /*
+    needsReview: false is the engine saying the evidence already settled it.
+    Marking that as something to review would manufacture work.
+  */
+  it('marks a corroborated finding as resolved rather than pending', () => {
+    mocks.report.current = report([
+      { classification: 'local_only', local: localItem('a.mkv', 7), plex: null },
+    ]);
+    mocks.audit.current = auditReport([
+      auditResult({ fileRecordId: 7, auditType: 'numeric_title', needsReview: false }),
+    ]);
+    renderView();
+    expect(screen.getByTestId('row-identity-audit-0-0')).toHaveTextContent('RESOLVED BY EVIDENCE');
+    expect(screen.getByTestId('text-identity-audit-summary')).toHaveTextContent('all resolved by evidence');
+  });
+
+  it('counts only findings the engine flagged for review', () => {
+    mocks.report.current = report([
+      { classification: 'local_only', local: localItem('a.mkv', 7), plex: null },
+    ]);
+    mocks.audit.current = auditReport([
+      auditResult({ fileRecordId: 7 }),
+      auditResult({ fileRecordId: 7, auditType: 'numeric_title', needsReview: false }),
+    ]);
+    renderView();
+    expect(screen.getByTestId('text-identity-audit-summary')).toHaveTextContent('1 concern');
+    expect(screen.getByTestId('text-identity-audit-summary')).toHaveTextContent('across 1 file');
+  });
+
+  it('filters to the files that need an identity review', async () => {
+    mocks.report.current = report([
+      { classification: 'local_only', local: localItem('flagged.mkv', 7), plex: null },
+      { classification: 'local_only', local: localItem('clean.mkv', 8), plex: null },
+    ]);
+    mocks.audit.current = auditReport([auditResult({ fileRecordId: 7 })]);
+    renderView();
+    await userEvent.click(screen.getByTestId('button-identity-filter-concerns'));
+    expect(screen.getByTestId('list-media-identity').textContent).toContain('flagged.mkv');
+    expect(screen.getByTestId('list-media-identity').textContent).not.toContain('clean.mkv');
+  });
+
+  it('says so plainly when the audit found nothing', () => {
+    mocks.report.current = report([
+      { classification: 'local_only', local: localItem('a.mkv', 7), plex: null },
+    ]);
+    mocks.audit.current = auditReport([]);
+    renderView();
+    expect(screen.getByTestId('panel-identity-audit-clean')).toHaveTextContent('No identity problems found');
+  });
+
+  /*
+    A failed audit must degrade the annotation, never the identity picture.
+    Silently dropping it would let the view imply a clean audit that never ran.
+  */
+  it('keeps showing the world when the audit cannot be read', () => {
+    mocks.report.current = report([
+      { classification: 'local_only', local: localItem('a.mkv', 7), plex: null },
+    ]);
+    mocks.audit.current = null;
+    mocks.auditError.current = true;
+    renderView();
+    expect(screen.getByTestId('panel-identity-audit-unavailable')).toHaveTextContent('could not be read');
+    expect(screen.queryByTestId('panel-identity-audit-clean')).toBeNull();
+    expect(screen.getByTestId('list-media-identity')).toHaveTextContent('a.mkv');
+  });
+
+  it('does not offer a fix from a read-only audit', () => {
+    mocks.report.current = report([
+      { classification: 'local_only', local: localItem('a.mkv', 7), plex: null },
+    ]);
+    mocks.audit.current = auditReport([auditResult({ fileRecordId: 7 })]);
+    renderView();
+    const panel = screen.getByTestId('panel-identity-audit-0');
+    expect(panel).toHaveTextContent('Reading the evidence changed nothing.');
+    expect(panel.querySelectorAll('button')).toHaveLength(0);
   });
 });

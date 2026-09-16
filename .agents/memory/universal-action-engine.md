@@ -50,6 +50,11 @@ whether the product can actually change anything.
   proposal also reports `available`, `revertableSteps` and `blockedReason`. The
   review surface must read these rather than deriving `canRevert` from status,
   and must not promise an undo the engine has not promised.
+- Retry is bounded engine truth: allowed for `failed`, `partially_completed` and
+  `cancelled`, refused once `retryCount >= maxRetries`, and it re-runs
+  *preflight* rather than re-executing. Never offer it for `PLAN_CHANGED` — that
+  failure is a plan-hash mismatch retry would reproduce exactly while spending a
+  finite attempt.
 - An acquisition import is already an `ActionProposal`:
   `planApprovedAcquisitionImport` → `createArchiveOperation` →
   `createActionProposal`, and the legacy `ArchiveOperation` is a projection of

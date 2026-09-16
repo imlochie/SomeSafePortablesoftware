@@ -131,8 +131,31 @@ door is used, not whether one exists.
 
 **Lesson for the next audit pass:** hook-usage counting finds missing doors, not
 missing *signposts*. A capability can be fully reachable and still be
-undiscoverable. The remaining 11 need reading individually rather than treating
-the number as a score.
+undiscoverable. The remaining gaps need reading individually rather than
+treating the number as a score.
+
+### Reading the remaining 9 individually
+
+The count fell from 11 to 9 by folding the identity audit into MEDIA IDENTITY
+and exposing retry on the review surface. The nine that remain were then traced
+by hand, and they are not all the same kind of thing.
+
+| Operation | Verdict | Why |
+|---|---|---|
+| `createAcquisitionJob` | **Correct as-is** | The UI creates jobs through `createApprovedAcquisitionJob` (orchestration), which enforces the approval path. A direct create door would bypass it. |
+| `progressAcquisitionJob` | **Correct as-is** | Machine-driven state transition, called by provider refresh and webhooks. An operator advancing a job by hand would be inventing state. |
+| `linkAcquisitionDownload` | **Correct as-is** | Internal join between a job and a download record. Not a decision an operator makes. |
+| `planApprovedAcquisitionImport` | **Reachable, different door** | Imports reach the operator as action proposals via `createArchiveOperation`. Now signposted by `IMPORT READY`. |
+| `createReviewItem` | **Correct as-is** | Review items are created by the services that discover work (`ensureReviewItem`). A UI that manufactures its own review items would be inventing findings. |
+| `getReviewItem` | **Genuine gap, low value** | The list view carries the same fields. Worth a door only if a review item ever gets detail the list omits. |
+| `getAcquisitionRecommendation` | **Genuine gap, low value** | Same shape as the list entry. |
+| `requestArchiveAcquisition` | **Genuine gap** | Needs provider adapters to be meaningful; cannot be honestly surfaced in an environment with no Sonarr/Radarr configured. |
+| `getAssistantToolCatalog` | **Correct as-is** | Describes tools to the assistant. Rendering it to operators is the "giant technical registry" this project explicitly rejected. |
+
+So of nine remaining, **six are correct as they are**, two are low-value
+duplicates of list data, and one is blocked on external providers. The honest
+floor for this metric is therefore close to 9, not 0 — which is the strongest
+argument yet that the number was never the goal.
 
 `getArchiveIdentityAudit` is the clearest genuine hole left, and it now has an
 obvious home in the MEDIA IDENTITY view rather than needing a surface of its
@@ -212,13 +235,19 @@ Done in the completion pass:
    says out loud that postflight re-scanned the archive, refreshed Plex and
    re-checked identities.
 
+5. ~~`getArchiveIdentityAudit`~~ — folded into MEDIA IDENTITY as per-file
+   concerns, joined on `fileRecordId`, with a NEEDS REVIEW filter.
+6. ~~Retry a proposal~~ — WHAT CAN HAPPEN NEXT on a stalled proposal, with the
+   engine's own retry budget and an explicit refusal for `PLAN_CHANGED`.
+7. ~~Read the remaining gaps individually~~ — done above.
+
 Next, in order:
 
-1. **`getArchiveIdentityAudit`** — fold coverage grading into MEDIA IDENTITY.
-2. **Retry a proposal** — the engine supports it; the review surface does not
-   offer it.
-3. **Read the remaining 11 individually** — the number is no longer the signal;
-   several are machine-driven endpoints that legitimately have no door.
+1. **Nothing on the capability-count list.** The remaining nine are mostly
+   correct as they are; chasing the number further would add doors that should
+   not exist.
+2. **The next action family**, now that the review surface handles success,
+   partial failure, hard failure, ambiguity and recovery.
 
 Deliberately *not* next: more action families. Three of the four that exist are
 the same filesystem primitive; the constraint is doors, not engines.

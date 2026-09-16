@@ -12,6 +12,7 @@ import {
   useExecuteActionProposal,
   useGetActionProposal,
   usePreflightActionProposal,
+  useRetryActionProposal,
   useRevertActionProposal,
   useUpdateActionStepSelection,
 } from '@workspace/api-client-react';
@@ -461,9 +462,10 @@ export function ActionProposalReview({
   const execute = useExecuteActionProposal();
   const revert = useRevertActionProposal();
   const cancel = useCancelActionProposal();
+  const retry = useRetryActionProposal();
 
   const pending = selection.isPending || approve.isPending || preflight.isPending
-    || execute.isPending || revert.isPending || cancel.isPending;
+    || execute.isPending || revert.isPending || cancel.isPending || retry.isPending;
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: getGetActionProposalQueryKey(proposalId) });
@@ -484,6 +486,18 @@ export function ActionProposalReview({
   const runPreflight = () => preflight.mutate(
     { id: proposalId },
     handle('Preflight complete. No files were modified.'),
+  );
+
+  /*
+    Retry resets the failed steps to pending and re-runs preflight — it does not
+    re-execute. The completed steps stay completed, so a partially applied
+    proposal resumes rather than starting over. The copy has to say that
+    precisely: promising "retrying the action" would imply a write that this
+    button does not perform.
+  */
+  const runRetry = () => retry.mutate(
+    { id: proposalId },
+    handle('Retry planned. The failed changes were reset and re-checked; nothing has been written yet.'),
   );
 
   /**
@@ -562,6 +576,24 @@ export function ActionProposalReview({
   const reversibility = proposal.reversibility;
   const canRevert = reversibility.available;
   const canCancel = editable || status === 'approved' || status === 'ready' || status === 'failed';
+  /*
+    Retry is engine truth, not a guess from status. The engine allows it for
+    failed, partially completed and cancelled proposals, and refuses once
+    retryCount reaches maxRetries — so the button disappears at exactly the
+    point the API would start rejecting it, and the operator is told how many
+    attempts remain rather than discovering the limit by hitting it.
+  */
+  const retryableStatus = status === 'failed' || status === 'partially_completed' || status === 'cancelled';
+  const retriesLeft = Math.max(0, proposal.maxRetries - proposal.retryCount);
+  /*
+    PLAN_CHANGED is the one failure retry cannot fix. Retry re-runs preflight
+    against the plan hash recorded at approval, and that hash is exactly what
+    already mismatched — so a retry would fail identically while spending one of
+    a finite number of attempts. Offering it would be the UI promising a
+    recovery the engine cannot perform.
+  */
+  const planChanged = proposal.errorCode === 'PLAN_CHANGED';
+  const canRetry = retryableStatus && retriesLeft > 0 && !planChanged;
   const preflightPassed = readNumber(proposal.preflight as Bag, 'passed');
   const preflightFailed = readNumber(proposal.preflight as Bag, 'failed');
   const verification = proposal.verification as Bag;
@@ -646,14 +678,23 @@ export function ActionProposalReview({
           icon: ArrowRight,
           onClick: () => setConfirmingExecute(true),
         }
-      : status === 'failed' && counts.completed === 0
+      : canRetry
         ? {
-            testId: 'button-preflight-action-proposal',
-            label: 'RE-CHECK',
+            testId: 'button-retry-action-proposal',
+            label: counts.failed > 0
+              ? `RETRY ${counts.failed} FAILED ${plural(counts.failed, 'CHANGE')}`
+              : 'RETRY',
             icon: RefreshCw,
-            onClick: runPreflight,
+            onClick: runRetry,
           }
-        : null;
+        : status === 'failed' && counts.completed === 0
+          ? {
+              testId: 'button-preflight-action-proposal',
+              label: 'RE-CHECK',
+              icon: RefreshCw,
+              onClick: runPreflight,
+            }
+          : null;
 
   return (
     <section className="archive-panel p-5 md:p-7" data-testid={`panel-action-proposal-${proposal.id}`}>
@@ -1082,6 +1123,50 @@ export function ActionProposalReview({
             </button>
           )}
         </div>
+
+        {/*
+          A stalled proposal must never dead-end. When the engine still allows
+          a move, name it; when it does not, say why the road ends here rather
+          than leaving the operator to guess. Every line is derived from engine
+          state — retry availability, the retry budget, and whether anything
+          was actually applied.
+        */}
+        {retryableStatus && (
+          <div className="mt-4 border-l-2 border-[#d9bd77] bg-[#fff8e7] p-4" data-testid="panel-action-next-steps">
+            <div className="archive-mono text-[9px] tracking-[.12em] text-[#8d681d]">WHAT CAN HAPPEN NEXT</div>
+            <div className="mt-2 space-y-1 text-[12px] leading-6 text-[#8d681d]">
+              {counts.completed > 0 && (
+                <p data-testid="text-action-next-kept">
+                  {counts.completed} {plural(counts.completed, 'change')} already applied and verified {counts.completed === 1 ? 'stays' : 'stay'} applied.
+                  A retry resumes from there rather than starting over.
+                </p>
+              )}
+              {planChanged ? (
+                <p data-testid="text-action-next-plan-changed">
+                  Retrying would re-run the same check against the plan you approved, so it would stop
+                  here again. This proposal needs to be planned again from the current state.
+                </p>
+              ) : canRetry ? (
+                <>
+                  <p data-testid="text-action-next-retry">
+                    {counts.failed > 0
+                      ? `Retrying resets ${counts.failed} failed ${plural(counts.failed, 'change')} and re-runs the safety checks. Nothing is written until you approve the result.`
+                      : 'Retrying re-runs the safety checks. Nothing is written until you approve the result.'}
+                  </p>
+                  <p className="archive-mono text-[9px] tracking-[.1em] text-[#a08341]" data-testid="text-action-retry-budget">
+                    {retriesLeft} OF {proposal.maxRetries} {plural(proposal.maxRetries, 'ATTEMPT')} REMAINING
+                  </p>
+                </>
+              ) : (
+                <p data-testid="text-action-next-exhausted">
+                  {proposal.maxRetries === 0
+                    ? 'This action cannot be retried automatically. Resolve the cause and plan a new action.'
+                    : `All ${proposal.maxRetries} retry ${plural(proposal.maxRetries, 'attempt')} have been used. Resolve the cause and plan a new action.`}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/*
           Closing the loop out loud. Postflight already re-scans the archive,

@@ -11,6 +11,12 @@
  * deliberately read-mostly. Understanding is automatic; only mutation goes
  * through the action layer.
  *
+ * The identity audit is folded in here rather than living at its own URL. It is
+ * not a separate report; it is more knowledge about these same objects, so it
+ * belongs on the object it describes. The audit answers the question the
+ * reconciliation report cannot: "is what we believe about this file actually
+ * sound?"
+ *
  * It also gives the `uncertain` findings somewhere to live. The planner refuses
  * to propose them because asking an operator to rubber-stamp an ambiguous guess
  * is the failure mode approval exists to prevent — but refusing to propose is
@@ -28,7 +34,9 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import {
+  useGetArchiveIdentityAudit,
   useGetArchiveReconciliation,
+  type IdentityAuditResult,
   type ReconciliationResult,
   type ReconciliationPlexItem,
 } from '@workspace/api-client-react';
@@ -84,8 +92,43 @@ const classificationCopy: Record<Classification, {
   },
 };
 
-const FILTERS: readonly { id: 'all' | Classification; label: string }[] = [
+/**
+ * The eight audit types in the operator's language.
+ *
+ * The engine's `reason` string is always shown verbatim underneath; these
+ * labels only name the category so a list of concerns can be skimmed. Nothing
+ * here re-derives or second-guesses the finding.
+ */
+const auditTypeCopy: Record<string, string> = {
+  suspicious_year: 'YEAR LOOKS WRONG',
+  numeric_title: 'NUMBER IN TITLE',
+  collection_prefix: 'COLLECTION FOLDER',
+  missing_year: 'NO YEAR',
+  year_conflict: 'YEAR DISAGREES',
+  title_conflict: 'TITLE DISAGREES',
+  multiple_candidates: 'SEVERAL MATCHES',
+  unresolved: 'UNIDENTIFIED',
+};
+
+/**
+ * Confidence here is confidence that the *concern is real*, not confidence in
+ * a fix. A high-confidence title conflict means the system is sure the two
+ * titles disagree — it says nothing about which one is correct. The wording
+ * has to carry that distinction or it invites exactly the wrong conclusion.
+ */
+const auditConfidenceCopy: Record<string, string> = {
+  high: 'Certain this is worth a look',
+  medium: 'Probably worth a look',
+  low: 'Weak signal',
+};
+
+function auditTypeLabel(auditType: string): string {
+  return auditTypeCopy[auditType] ?? auditType.replace(/_/g, ' ').toUpperCase();
+}
+
+const FILTERS: readonly { id: 'all' | 'concerns' | Classification; label: string }[] = [
   { id: 'all', label: 'EVERYTHING' },
+  { id: 'concerns', label: 'NEEDS REVIEW' },
   { id: 'matched', label: 'MATCHED' },
   { id: 'uncertain', label: 'AMBIGUOUS' },
   { id: 'quality_conflict', label: 'QUALITY' },
@@ -98,7 +141,15 @@ function strategyLabel(strategy: string): string {
 }
 
 /** One piece of media, with both observations of it side by side. */
-function IdentityRow({ result, index }: { result: ReconciliationResult; index: number }) {
+function IdentityRow({
+  result,
+  index,
+  audits,
+}: {
+  result: ReconciliationResult;
+  index: number;
+  audits: IdentityAuditResult[];
+}) {
   const classification = (result.classification as Classification) ?? 'uncertain';
   const copy = classificationCopy[classification] ?? classificationCopy.uncertain;
   const local = result.local;
@@ -204,13 +255,77 @@ function IdentityRow({ result, index }: { result: ReconciliationResult; index: n
           ) : null}
         </div>
       )}
+
+      {/*
+        What the identity audit noticed about this same file. One file can raise
+        several concerns, so they are listed rather than collapsed to a verdict.
+        Every line is engine text: `reason`, `evidence`, `recommendedInterpretation`.
+      */}
+      {audits.length > 0 && (
+        <div className="mt-3 border border-[#e7ecea] bg-[#f9fbfa] p-3" data-testid={`panel-identity-audit-${index}`}>
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">
+            IDENTITY AUDIT / {audits.length} {audits.length === 1 ? 'CONCERN' : 'CONCERNS'}
+          </div>
+          <div className="mt-2 space-y-3">
+            {audits.map((audit, position) => (
+              <div key={`${audit.auditType}-${position}`} data-testid={`row-identity-audit-${index}-${position}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`border px-2 py-1 archive-mono text-[9px] font-bold tracking-[.1em] ${
+                      audit.needsReview
+                        ? 'border-[#d9bd77] bg-[#fff8e7] text-[#8d681d]'
+                        : 'border-[#b9d6cf] bg-[#eaf3ef] text-[#39736e]'
+                    }`}
+                    data-testid={`badge-identity-audit-type-${index}-${position}`}
+                  >
+                    {auditTypeLabel(audit.auditType)}
+                  </span>
+                  <span className="archive-mono text-[9px] tracking-[.1em] text-[#a0afaf]">
+                    {auditConfidenceCopy[audit.confidence] ?? audit.confidence}
+                  </span>
+                  {!audit.needsReview && (
+                    <span className="archive-mono text-[9px] tracking-[.1em] text-[#39736e]">RESOLVED BY EVIDENCE</span>
+                  )}
+                </div>
+                <p className="mt-1.5 text-[11px] leading-5 text-[#344851]">{audit.reason}</p>
+                {audit.evidence.length > 0 && (
+                  <ul className="mt-1 space-y-0.5" data-testid={`list-identity-audit-evidence-${index}-${position}`}>
+                    {audit.evidence.map((line, evidenceIndex) => (
+                      <li key={evidenceIndex} className="archive-mono text-[9px] leading-4 tracking-[.04em] text-[#7f9194]">
+                        · {line}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-1.5 text-[11px] leading-5 text-[#5c6d73]">
+                  {audit.recommendedInterpretation}
+                </p>
+              </div>
+            ))}
+          </div>
+          {/*
+            The audit reads evidence; it does not plan. Saying so prevents the
+            panel from reading like a queue of pending fixes.
+          */}
+          <p className="mt-3 border-t border-[#e7ecea] pt-2 text-[11px] leading-5 text-[#7f9194]">
+            Reading the evidence changed nothing. Any correction is a separate action you approve.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
 export function MediaIdentityView() {
-  const [filter, setFilter] = useState<'all' | Classification>('all');
+  const [filter, setFilter] = useState<'all' | 'concerns' | Classification>('all');
   const { data, isLoading, isError, refetch } = useGetArchiveReconciliation({ page: 1, pageSize: 100 });
+  /*
+    The audit is a second read of the same world, joined on fileRecordId — an
+    exact key both reports carry, so no path-string matching is needed. It is
+    intentionally not allowed to fail the view: if the audit cannot be read the
+    identity picture is still true, just less annotated.
+  */
+  const auditQuery = useGetArchiveIdentityAudit({ page: 1, pageSize: 200 });
 
   if (isLoading) {
     return (
@@ -241,7 +356,31 @@ export function MediaIdentityView() {
 
   const summary = data?.summary;
   const results = data?.results ?? [];
-  const visible = filter === 'all' ? results : results.filter((entry) => entry.classification === filter);
+
+  const auditResults = auditQuery.data?.results ?? [];
+  const auditsByFile = new Map<number, IdentityAuditResult[]>();
+  for (const audit of auditResults) {
+    const existing = auditsByFile.get(audit.fileRecordId);
+    if (existing) existing.push(audit);
+    else auditsByFile.set(audit.fileRecordId, [audit]);
+  }
+  const auditsFor = (entry: ReconciliationResult): IdentityAuditResult[] => {
+    const fileRecordId = entry.local?.fileRecordId;
+    return typeof fileRecordId === 'number' ? auditsByFile.get(fileRecordId) ?? [] : [];
+  };
+  /*
+    "Needs review" is the engine's own needsReview flag, not a severity we
+    invent. A corroborated finding stays visible on its row but does not pull
+    the file into this filter.
+  */
+  const concernCount = auditResults.filter((audit) => audit.needsReview).length;
+  const filesWithConcerns = results.filter((entry) => auditsFor(entry).some((audit) => audit.needsReview)).length;
+
+  const visible = filter === 'all'
+    ? results
+    : filter === 'concerns'
+      ? results.filter((entry) => auditsFor(entry).some((audit) => audit.needsReview))
+      : results.filter((entry) => entry.classification === filter);
 
   const cards: { id: Classification | 'total'; label: string; value: number; icon: typeof Layers; tone: string }[] = [
     { id: 'total', label: 'LOCAL FILES', value: summary?.localCount ?? 0, icon: Layers, tone: 'text-[#39736e]' },
@@ -264,6 +403,36 @@ export function MediaIdentityView() {
           happens automatically; nothing here changes a file or a record until you approve an action.
         </p>
       </div>
+
+      {/*
+        A standing summary of what the audit thinks, stated as a question of
+        soundness rather than a count of errors. Silence here is meaningful, so
+        the clean case says so explicitly instead of rendering nothing.
+      */}
+      {auditQuery.isError ? (
+        <div className="border border-[#e1e8e5] bg-white p-3" data-testid="panel-identity-audit-unavailable">
+          <p className="text-[11px] leading-5 text-[#7f9194]">
+            The identity audit could not be read, so these items are shown without it. What you see
+            below is still the current archive and Plex state.
+          </p>
+        </div>
+      ) : auditResults.length > 0 ? (
+        <div className="border-l-2 border-[#d9bd77] bg-[#fff8e7] p-3" data-testid="panel-identity-audit-summary">
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#8d681d]">IDENTITY AUDIT</div>
+          <p className="mt-1 text-[12px] leading-5 text-[#8d681d]" data-testid="text-identity-audit-summary">
+            {concernCount > 0
+              ? `${concernCount} ${concernCount === 1 ? 'concern' : 'concerns'} about what these files are, across ${filesWithConcerns} ${filesWithConcerns === 1 ? 'file' : 'files'}.`
+              : `${auditResults.length} ${auditResults.length === 1 ? 'observation' : 'observations'}, all resolved by evidence. Nothing needs your review.`}
+          </p>
+        </div>
+      ) : !auditQuery.isLoading ? (
+        <div className="border-l-2 border-[#b9d6cf] bg-[#eaf3ef] p-3" data-testid="panel-identity-audit-clean">
+          <div className="archive-mono text-[9px] tracking-[.12em] text-[#39736e]">IDENTITY AUDIT</div>
+          <p className="mt-1 text-[12px] leading-5 text-[#39736e]" data-testid="text-identity-audit-summary">
+            No identity problems found. Every observed file has a title and year the evidence agrees with.
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
         {cards.map((card) => (
@@ -295,15 +464,22 @@ export function MediaIdentityView() {
       {visible.length ? (
         <div className="space-y-2" data-testid="list-media-identity">
           {visible.map((result, index) => (
-            <IdentityRow key={`${result.classification}-${index}`} result={result} index={index} />
+            <IdentityRow
+              key={`${result.classification}-${index}`}
+              result={result}
+              index={index}
+              audits={auditsFor(result)}
+            />
           ))}
         </div>
       ) : (
         <div className="archive-panel p-8 text-center" data-testid="panel-media-identity-empty">
           <p className="text-[12px] leading-6 text-[#7d8c8f]">
-            {results.length
-              ? 'Nothing in this category right now.'
-              : 'No media has been observed yet. Run an archive scan and a Plex sync to build the picture.'}
+            {!results.length
+              ? 'No media has been observed yet. Run an archive scan and a Plex sync to build the picture.'
+              : filter === 'concerns'
+                ? 'No file currently needs an identity review.'
+                : 'Nothing in this category right now.'}
           </p>
         </div>
       )}

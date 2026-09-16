@@ -39,6 +39,8 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 
 ## Architecture decisions
 
+- **A capability is not product-complete when its backend exists.** It is complete when an operator can discover it at the moment it becomes relevant, understand its current state, act on it when appropriate, and see the verified result afterward. This has repeatedly been the real gap: acquisition imports, the identity audit and proposal retry were all fully implemented server-side and simply had nothing pointing at them. Before building a capability, check whether it already exists and is merely unreachable.
+- **No stage of a workflow may dead-end.** If the engine still permits a move, the surface names it; if it does not, the surface says why the road ends there. A failure that offers no next step is a defect even when the error message is accurate.
 - SQLite is initialized through Node's embedded `node:sqlite` runtime so a separate database service is not required for the Windows-first product.
 - The API never returns Plex tokens; configuration endpoints expose only safe status fields.
 - Intelligence/control-plane code must use abstract integration capabilities through the registry; adapters may report disconnected and must not return mocked external data.

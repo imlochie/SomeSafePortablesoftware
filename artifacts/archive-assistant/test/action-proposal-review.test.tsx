@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   preflightMutate: vi.fn(),
   revertMutate: vi.fn(),
   cancelMutate: vi.fn(),
+  retryMutate: vi.fn(),
   proposal: { current: null as ActionProposal | null },
 }));
 const { approveMutate, executeMutate, selectionMutate, preflightMutate } = mocks;
@@ -35,6 +36,7 @@ vi.mock('@workspace/api-client-react', async (importOriginal) => {
     useExecuteActionProposal: mutation(mocks.executeMutate),
     useRevertActionProposal: mutation(mocks.revertMutate),
     useCancelActionProposal: mutation(mocks.cancelMutate),
+    useRetryActionProposal: mutation(mocks.retryMutate),
   };
 });
 
@@ -654,5 +656,111 @@ describe('action proposal review surface', () => {
     mocks.proposal.current = proposal();
     renderReview();
     expect(screen.queryByTestId('panel-action-loop-closure')).not.toBeInTheDocument();
+  });
+
+  /*
+    A failed proposal used to be a dead end: the engine could retry it, the UI
+    never said so. These tests pin the recovery path to engine truth — the
+    retry budget, what survives a retry, and the fact that retry re-checks
+    rather than re-writes.
+  */
+  describe('recovering a stalled action', () => {
+    it('offers retry as the obvious next move when a proposal failed', () => {
+      mocks.proposal.current = proposal({
+        status: 'failed',
+        counts: { total: 2, selected: 2, pending: 0, completed: 0, failed: 2, skipped: 0, reverted: 0 },
+      });
+      renderReview();
+      expect(screen.getByTestId('button-retry-action-proposal')).toHaveTextContent('RETRY 2 FAILED CHANGES');
+    });
+
+    it('states the retry budget the engine will actually honour', () => {
+      mocks.proposal.current = proposal({
+        status: 'failed',
+        retryCount: 1,
+        maxRetries: 3,
+        counts: { total: 1, selected: 1, pending: 0, completed: 0, failed: 1, skipped: 0, reverted: 0 },
+      });
+      renderReview();
+      expect(screen.getByTestId('text-action-retry-budget')).toHaveTextContent('2 OF 3 ATTEMPTS REMAINING');
+    });
+
+    /*
+      The engine rejects a retry past maxRetries. Offering the button anyway
+      would be a promise the API breaks.
+    */
+    it('withdraws retry once the engine would refuse it', () => {
+      mocks.proposal.current = proposal({
+        status: 'failed',
+        retryCount: 3,
+        maxRetries: 3,
+        counts: { total: 1, selected: 1, pending: 0, completed: 0, failed: 1, skipped: 0, reverted: 0 },
+      });
+      renderReview();
+      expect(screen.queryByTestId('button-retry-action-proposal')).toBeNull();
+      expect(screen.getByTestId('text-action-next-exhausted')).toHaveTextContent('All 3 retry attempts have been used');
+    });
+
+    it('promises a re-check rather than a re-run, because that is what retry does', async () => {
+      mocks.proposal.current = proposal({
+        status: 'failed',
+        counts: { total: 1, selected: 1, pending: 0, completed: 0, failed: 1, skipped: 0, reverted: 0 },
+      });
+      renderReview();
+      expect(screen.getByTestId('text-action-next-retry')).toHaveTextContent('re-runs the safety checks');
+      expect(screen.getByTestId('text-action-next-retry')).toHaveTextContent('Nothing is written until you approve');
+      await userEvent.click(screen.getByTestId('button-retry-action-proposal'));
+      expect(mocks.retryMutate).toHaveBeenCalledWith({ id: 7 }, expect.anything());
+    });
+
+    /*
+      Retry resumes; it does not start over. A partially completed proposal has
+      real work on disk already, and the operator must know it is not repeated.
+    */
+    it('reassures that applied changes survive a retry', () => {
+      mocks.proposal.current = proposal({
+        status: 'partially_completed',
+        counts: { total: 3, selected: 3, pending: 0, completed: 2, failed: 1, skipped: 0, reverted: 0 },
+      });
+      renderReview();
+      expect(screen.getByTestId('text-action-next-kept')).toHaveTextContent('2 changes already applied and verified stay applied');
+      expect(screen.getByTestId('text-action-next-kept')).toHaveTextContent('resumes from there rather than starting over');
+    });
+
+    it('treats a cancelled proposal as recoverable, as the engine does', () => {
+      mocks.proposal.current = proposal({
+        status: 'cancelled',
+        counts: { total: 1, selected: 1, pending: 1, completed: 0, failed: 0, skipped: 0, reverted: 0 },
+      });
+      renderReview();
+      expect(screen.getByTestId('button-retry-action-proposal')).toHaveTextContent('RETRY');
+    });
+
+    /*
+      Retry re-runs preflight against the plan hash recorded at approval, which
+      is precisely what already mismatched. Offering retry here would spend a
+      finite attempt on a guaranteed identical failure.
+    */
+    it('refuses to offer retry for a failure retry cannot fix', () => {
+      mocks.proposal.current = proposal({
+        status: 'failed',
+        errorCode: 'PLAN_CHANGED',
+        errorMessage: 'The proposal changed after approval; re-approval is required.',
+        counts: { total: 1, selected: 1, pending: 1, completed: 0, failed: 0, skipped: 0, reverted: 0 },
+      });
+      renderReview();
+      expect(screen.queryByTestId('button-retry-action-proposal')).toBeNull();
+      expect(screen.getByTestId('text-action-next-plan-changed')).toHaveTextContent('would stop here again');
+      expect(screen.getByTestId('button-preflight-action-proposal')).toHaveTextContent('RE-CHECK');
+    });
+
+    it('says nothing about next steps when the action simply succeeded', () => {
+      mocks.proposal.current = proposal({
+        status: 'completed',
+        counts: { total: 1, selected: 1, pending: 0, completed: 1, failed: 0, skipped: 0, reverted: 0 },
+      });
+      renderReview();
+      expect(screen.queryByTestId('panel-action-next-steps')).toBeNull();
+    });
   });
 });
