@@ -11,6 +11,19 @@ mkdirSync(dirname(dbPath), { recursive: true });
 
 export const archiveDb = new DatabaseSync(dbPath);
 
+// Additive migration for the reusable batch-operation payload. Existing
+// single-file operations remain valid and keep their original semantics.
+try {
+  archiveDb.exec("ALTER TABLE archive_operation ADD COLUMN batch_json TEXT NOT NULL DEFAULT '{}'");
+} catch {
+  // Column already exists on databases created by a newer schema.
+}
+try {
+  archiveDb.exec("ALTER TABLE archive_operation ADD COLUMN proposal_id TEXT");
+} catch {
+  // Column already exists on databases created by a newer schema.
+}
+
 archiveDb.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA foreign_keys = ON;
@@ -91,6 +104,54 @@ archiveDb.exec(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (owner_id, rating_key)
   );
+  CREATE TABLE IF NOT EXISTS jellyfin_library (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    server_url TEXT NOT NULL,
+    library_key TEXT NOT NULL DEFAULT '',
+    library_type TEXT NOT NULL DEFAULT 'unknown',
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+    item_count INTEGER NOT NULL DEFAULT 0,
+    last_synced_at TEXT,
+    sync_status TEXT NOT NULL DEFAULT 'pending',
+    sync_error TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, server_url, library_key)
+  );
+  CREATE TABLE IF NOT EXISTS jellyfin_item (
+    id INTEGER PRIMARY KEY,
+    library_id INTEGER NOT NULL REFERENCES jellyfin_library(id) ON DELETE CASCADE,
+    item_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    year INTEGER,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    owner_id TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}',
+    thumb_url TEXT,
+    added_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_id, item_key)
+  );
+  CREATE TABLE IF NOT EXISTS jellyfin_media (
+    id INTEGER PRIMARY KEY,
+    item_id INTEGER NOT NULL REFERENCES jellyfin_item(id) ON DELETE CASCADE,
+    video_resolution TEXT,
+    video_codec TEXT,
+    audio_codec TEXT,
+    bitrate INTEGER,
+    duration_ms INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS jellyfin_part (
+    id INTEGER PRIMARY KEY,
+    media_id INTEGER NOT NULL REFERENCES jellyfin_media(id) ON DELETE CASCADE,
+    file_path TEXT NOT NULL,
+    size_bytes INTEGER,
+    checksum TEXT
+  );
+  CREATE INDEX IF NOT EXISTS jellyfin_item_library_id_idx ON jellyfin_item(library_id);
+  CREATE INDEX IF NOT EXISTS jellyfin_media_item_id_idx ON jellyfin_media(item_id);
+  CREATE INDEX IF NOT EXISTS jellyfin_part_media_id_idx ON jellyfin_part(media_id);
   CREATE TABLE IF NOT EXISTS archive_item (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL,
@@ -294,6 +355,20 @@ archiveDb.exec(`
   );
   CREATE INDEX IF NOT EXISTS review_item_decision_item_idx
     ON review_item_decision(review_item_id, created_at ASC, id ASC);
+  CREATE TABLE IF NOT EXISTS ordering_proposal (
+    id INTEGER PRIMARY KEY,
+    proposal_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    review_item_id INTEGER NOT NULL REFERENCES review_item(id),
+    collection_id TEXT NOT NULL,
+    proposal_version TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(owner_id, proposal_id),
+    UNIQUE(owner_id, proposal_version)
+  );
+  CREATE INDEX IF NOT EXISTS ordering_proposal_owner_idx ON ordering_proposal(owner_id, created_at DESC);
   CREATE TABLE IF NOT EXISTS acquisition_recommendation (
     id INTEGER PRIMARY KEY,
     owner_id TEXT NOT NULL,
@@ -329,6 +404,8 @@ archiveDb.exec(`
     source_id TEXT,
     source_path TEXT NOT NULL,
     destination_path TEXT NOT NULL,
+    batch_json TEXT NOT NULL DEFAULT '{}',
+    proposal_id TEXT,
     review_item_id INTEGER NOT NULL REFERENCES review_item(id),
     acquisition_job_id INTEGER REFERENCES acquisition_job(id) ON DELETE SET NULL,
     download_job_id INTEGER REFERENCES download_job(id) ON DELETE SET NULL,
@@ -385,6 +462,23 @@ archiveDb.exec(`
     operator_id TEXT,
     retention_class TEXT NOT NULL DEFAULT 'operational'
   );
+  CREATE TABLE IF NOT EXISTS webhook_delivery (
+    id INTEGER PRIMARY KEY,
+    provider TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    classification TEXT NOT NULL,
+    reason_code TEXT NOT NULL,
+    provider_event_id TEXT,
+    provider_job_id TEXT,
+    owner_id TEXT,
+    acquisition_job_id INTEGER,
+    detail TEXT NOT NULL,
+    deduplication TEXT
+  );
+  CREATE INDEX IF NOT EXISTS webhook_delivery_owner_received_idx
+    ON webhook_delivery(owner_id, received_at DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS webhook_delivery_received_idx
+    ON webhook_delivery(received_at);
   CREATE TABLE IF NOT EXISTS setting (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -677,6 +771,28 @@ archiveDb.exec(`
   CREATE INDEX IF NOT EXISTS local_media_identity_owner_type_idx ON local_media_identity(owner_id, media_type);
 `);
 ensureColumn("archive_scan", "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
+
+// Resumable scanning.
+//
+// `scan_run_id` identifies one logical pass over the archive. A pass that is
+// interrupted keeps its id, so the next scan can recognise it and continue
+// rather than restarting from the first file.
+//
+// `file_record.last_scan_run_id` records which pass last visited a file. That
+// is what makes resumption safe: the end-of-scan sweep that marks vanished
+// files `missing` previously relied on an in-memory set of paths seen during
+// the run, which a resumed scan cannot reconstruct for the files an earlier
+// segment already handled. Persisting the run id per file turns "was this file
+// seen during this pass?" into a durable question.
+//
+// `resumed_count` is operator-facing: how many times this pass was continued.
+ensureColumn("archive_scan", "scan_run_id", "TEXT");
+ensureColumn("archive_scan", "resumed_count", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("file_record", "last_scan_run_id", "TEXT");
+archiveDb.exec(`
+  CREATE INDEX IF NOT EXISTS file_record_scan_run_idx
+    ON file_record(owner_id, last_scan_run_id);
+`);
 for (const table of ["archive_item", "source_record", "download_job", "assistant_conversation", "system_event", "plex_library", "plex_item"]) {
   ensureColumn(table, "owner_id", `TEXT NOT NULL DEFAULT '${LEGACY_OWNER_ID}'`);
 }
@@ -723,6 +839,8 @@ const defaultSettings = {
   archiveScanConcurrency: 4,
   warningFreePercent: 15,
   criticalFreePercent: 5,
+  // Existing installs remain opt-in for Windows startup.
+  startWithWindows: false,
 } as const;
 
 const settingStatement = archiveDb.prepare(
@@ -764,7 +882,15 @@ if (eventCount.count === 0) {
 
 export type SettingsRecord = typeof defaultSettings;
 
-const legacyOwnedTables = [
+/**
+ * Every table whose rows carry an `owner_id` that can still hold the legacy
+ * sentinel. A table missing from this list keeps its pre-authentication rows
+ * stranded under LEGACY_OWNER_ID after a claim, where no authenticated user
+ * can ever read them. `legacyOwnedTablesCoverSchema` in the ownership tests
+ * derives the same set from the live schema and fails if the two diverge, so
+ * a new owned table cannot be added without being claimed here.
+ */
+export const legacyOwnedTables = [
   "archive_item",
   "source_record",
   "download_job",
@@ -772,6 +898,10 @@ const legacyOwnedTables = [
   "system_event",
   "plex_library",
   "plex_item",
+  "plex_show",
+  "plex_episode",
+  "jellyfin_library",
+  "jellyfin_item",
   "local_media_identity",
   "file_record",
 ] as const;

@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import { basename, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import type { SettingsRecord } from "../lib/archive-db";
+import { expandPath } from "../lib/expand-path";
 import { getLocalToolPaths } from "./local-tools";
 import {
   chooseArchiveVolume,
@@ -278,10 +279,6 @@ function validateSourceUrl(sourceUrl: string) {
   return parsed;
 }
 
-function expandPath(value: string) {
-  return value.startsWith("~/") ? join(process.env.HOME ?? process.cwd(), value.slice(2)) : value;
-}
-
 export function isPathWithin(candidate: string, root: string) {
   const candidatePath = resolve(expandPath(candidate));
   const rootPath = resolve(expandPath(root));
@@ -361,6 +358,27 @@ export function validateSafeDirectory(
   return target;
 }
 
+/**
+ * Windows reserved device names. These cannot be used as a filename's stem at
+ * any directory level, with or without an extension: opening "CON.mkv" opens
+ * the console device, not a file, so a write silently goes nowhere.
+ */
+const WINDOWS_RESERVED_NAMES = new Set([
+  "con", "prn", "aux", "nul",
+  "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+  "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+]);
+
+/**
+ * Prefixes a path segment that collides with a Windows reserved device name.
+ * The check ignores any extension ("Aux.mkv" is still the AUX device) but only
+ * matches the whole stem, so ordinary names like "Console" are untouched.
+ */
+export function escapeReservedName(segment: string) {
+  const stem = segment.split(".")[0] ?? "";
+  return WINDOWS_RESERVED_NAMES.has(stem.toLowerCase()) ? `_${segment}` : segment;
+}
+
 export function sanitizeFilename(value: string, extension: string) {
   const base = basename(value)
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
@@ -368,7 +386,8 @@ export function sanitizeFilename(value: string, extension: string) {
     .trim()
     .slice(0, 180) || "download";
   const suffix = `.${extension.replace(/^\./, "")}`;
-  return base.toLowerCase().endsWith(suffix.toLowerCase()) ? base : `${base}${suffix}`;
+  const named = base.toLowerCase().endsWith(suffix.toLowerCase()) ? base : `${base}${suffix}`;
+  return escapeReservedName(named);
 }
 
 export function validateFormatId(value: string | undefined) {

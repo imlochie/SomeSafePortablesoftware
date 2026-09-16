@@ -10,6 +10,7 @@ import {
   addEvent,
   archiveDb,
   claimLegacyData,
+  legacyOwnedTables,
   readEvents,
   readSettings,
   readUserSetting,
@@ -616,5 +617,37 @@ process.stdout.write(JSON.stringify({
     } finally {
       reopened.close();
     }
+  });
+});
+describe("legacy claim covers every owned table", () => {
+  test("legacyOwnedTables matches the tables the schema actually owns", () => {
+    // Derived from the live schema rather than restated by hand: a new table
+    // with an owner_id defaulting to the legacy sentinel would otherwise keep
+    // its pre-authentication rows permanently unreachable after a claim, and
+    // a hand-maintained expectation would be updated in the same commit that
+    // introduced the bug. This is how jellyfin_library/jellyfin_item were
+    // found to be missing.
+    const tables = archiveDb
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+      .all() as Array<{ name: string }>;
+
+    const ownedBySchema = tables
+      .filter(({ name }) => {
+        const columns = archiveDb.prepare(`PRAGMA table_info(${name})`).all() as Array<{
+          name: string;
+          dflt_value: string | null;
+        }>;
+        const ownerColumn = columns.find((column) => column.name === "owner_id");
+        // user_setting is keyed by owner and never holds legacy-sentinel rows.
+        return Boolean(ownerColumn?.dflt_value?.includes(LEGACY_OWNER_ID));
+      })
+      .map(({ name }) => name)
+      .sort();
+
+    assert.deepEqual(
+      [...legacyOwnedTables].sort(),
+      ownedBySchema,
+      "every table defaulting owner_id to the legacy sentinel must be claimed by claimLegacyData()",
+    );
   });
 });

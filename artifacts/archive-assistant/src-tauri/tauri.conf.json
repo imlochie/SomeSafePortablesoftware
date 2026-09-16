@@ -9,6 +9,14 @@
     "beforeBuildCommand": "node ./scripts/stage-node-runtime.mjs && node ./scripts/stage-media-tools.mjs && pnpm --dir ../.. --filter @workspace/api-server run build && pnpm --dir ../.. --filter @workspace/archive-assistant run build",
     "frontendDist": "../dist/public"
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg1REI0MEU1NzRENkMwRDUKUldUVndOWjA1VURiaGVvVmFuTFFxemJqQVlvZW1wKzRUdUIwVHhpVCt6OUZlVkNwdHQ2Mmh6ckw=",
+      "endpoints": [
+        "https://github.com/imlochie/SomeSafePortablesoftware/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "app": {
     "windows": [
       {
@@ -28,8 +36,17 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis"],
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/installer-hooks.nsi"
+      }
+    },
     "icon": ["icons/icon.png"],
-    "resources": ["../../api-server/dist", "runtime"]
+    "resources": {
+      "../../api-server/dist/": "api-server/dist/",
+      "runtime/": "runtime/"
+    }
   }
 }

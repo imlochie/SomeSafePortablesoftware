@@ -180,7 +180,10 @@ router.get("/archive-operations", (req, res) => {
 router.post("/archive-operations", (req, res) => {
   try {
     const body = Api.CreateArchiveOperationBody.parse(req.body);
-    const operation = createArchiveOperation(body, getAuthenticatedUserId(req));
+    const operation = createArchiveOperation({
+      ...body,
+      batch: body.batch?.map((item) => ({ ...item, error: item.error ?? undefined })),
+    }, getAuthenticatedUserId(req));
     res.status(201).json(Api.CreateArchiveOperationResponse.parse(operation));
   } catch (error) {
     res.status(400).json({ error: message(error) });

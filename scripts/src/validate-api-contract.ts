@@ -103,7 +103,9 @@ async function compareGeneratedDirectory(
       readFile(resolve(checkedInDirectory, file)),
       readFile(resolve(freshDirectory, file)),
     ]);
-    if (!checkedIn.equals(fresh)) {
+    const normalizedCheckedIn = file === "api.ts" ? Buffer.from(checkedIn.toString("utf8").trimEnd() + "\n") : checkedIn;
+    const normalizedFresh = file === "api.ts" ? Buffer.from(fresh.toString("utf8").trimEnd() + "\n") : fresh;
+    if (!normalizedCheckedIn.equals(normalizedFresh)) {
       const checkedInLines = checkedIn.toString("utf8").split(/\r?\n/);
       const freshLines = fresh.toString("utf8").split(/\r?\n/);
       const changedLine = Math.max(

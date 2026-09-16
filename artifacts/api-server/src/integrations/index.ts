@@ -1,6 +1,7 @@
 export * from "./config";
 export * from "./contracts";
 export * from "./http-client";
+export * from "./jellyfin-adapter";
 export * from "./plex-adapter";
 export * from "./prowlarr-adapter";
 export * from "./qbittorrent-adapter";
