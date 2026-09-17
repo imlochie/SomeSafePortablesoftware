@@ -79,9 +79,12 @@ export function addPowerRenameCompanions(plan: PowerRenamePlan, records: Compani
     const sourceBase = basename(mapping.sourcePath, extname(mapping.sourcePath));
     const destinationBase = basename(mapping.destinationPath, extname(mapping.destinationPath));
     for (const record of records) {
-      if (record.path === mapping.sourcePath || dirname(record.path) !== dirname(mapping.sourcePath)) continue;
-      const extension = extname(record.path).toLowerCase();
-      if (!sidecarExtensions.has(extension) || basename(record.path, extension) !== sourceBase) continue;
+      const sameDirectory = dirname(record.path).replaceAll("\\", "/").toLowerCase() === dirname(mapping.sourcePath).replaceAll("\\", "/").toLowerCase();
+      if (record.path === mapping.sourcePath || !sameDirectory) continue;
+      const rawExtension = extname(record.path);
+      const extension = rawExtension.toLowerCase();
+      const recordBase = basename(record.path).slice(0, -rawExtension.length);
+      if (!sidecarExtensions.has(extension) || recordBase !== sourceBase) continue;
       additions.push({ id: `companion-${record.id}`, sourcePath: record.path, destinationPath: join(dirname(mapping.destinationPath), `${destinationBase}${extension}`) });
     }
   }
