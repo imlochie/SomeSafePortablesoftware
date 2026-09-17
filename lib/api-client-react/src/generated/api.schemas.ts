@@ -3865,6 +3865,20 @@ page?: PageParameter;
 pageSize?: PageSizeParameter;
 };
 
+export type RefreshProvidersAfterArchiveOperationBodyProvidersItem = typeof RefreshProvidersAfterArchiveOperationBodyProvidersItem[keyof typeof RefreshProvidersAfterArchiveOperationBodyProvidersItem];
+
+
+export const RefreshProvidersAfterArchiveOperationBodyProvidersItem = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export type RefreshProvidersAfterArchiveOperationBody = {
+  providers?: RefreshProvidersAfterArchiveOperationBodyProvidersItem[];
+};
+
+export type RefreshProvidersAfterArchiveOperation202 = { [key: string]: unknown };
+
 export type CreatePowerRenamerPlanBody = {
   fileRecordIds: number[];
 };

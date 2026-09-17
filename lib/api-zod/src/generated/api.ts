@@ -3823,6 +3823,20 @@ export const GetArchiveReconciliationResponse = zod.object({
 
 
 /**
+ * @summary Explicitly refresh configured media providers after a verified operation
+ */
+export const RefreshProvidersAfterArchiveOperationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RefreshProvidersAfterArchiveOperationBody = zod.object({
+  "providers": zod.array(zod.enum(['plex', 'jellyfin'])).optional()
+})
+
+export const RefreshProvidersAfterArchiveOperationResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
  * @summary Create a researched, supervised Power Renamer plan
  */
 export const CreatePowerRenamerPlanBody = zod.object({

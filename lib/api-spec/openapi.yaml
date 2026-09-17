@@ -1633,6 +1633,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReconciliationReport"
+  /archive-operations/{id}/refresh-providers:
+    post:
+      operationId: refreshProvidersAfterArchiveOperation
+      tags: [archive]
+      summary: Explicitly refresh configured media providers after a verified operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                providers:
+                  type: array
+                  items: { type: string, enum: [plex, jellyfin] }
+      responses:
+        "202":
+          description: Provider refresh started or skipped because it is unconfigured
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
   /archive/power-renamer/plan:
     post:
       operationId: createPowerRenamerPlan

@@ -49,7 +49,9 @@ import { readReconciliationReport } from "../services/reconciliation";
 import { readNamingProposals } from "../services/naming-intelligence";
 import { readIdentityAudit } from "../services/identity-audit";
 import { createOrderingProposalSnapshot, readOrderingProposal, currentOrderingProposalValidation } from "../services/ordering-proposals";
-import { createArchiveOperation, listArchiveOperations } from "../services/archive-operations";
+import { createArchiveOperation, listArchiveOperations, readArchiveOperation } from "../services/archive-operations";
+import { getPlexConfig, startPlexSync } from "../services/plex";
+import { getJellyfinConfig, startJellyfinSync } from "../services/jellyfin";
 import { ensureReviewItem, readReviewItem } from "../services/review-queue";
 import { addPowerRenameCompanions, buildPowerRenamePlan, powerRenameSummary } from "../services/power-renamer";
 
@@ -294,6 +296,28 @@ router.post("/archive/power-renamer/operations", (req, res) => {
       })),
     }, ownerId);
     return res.status(201).json(operation);
+  } catch (error) {
+    return res.status(400).json({ error: errorMessage(error) });
+  }
+});
+
+router.post("/archive-operations/:id/refresh-providers", (req, res) => {
+  try {
+    const ownerId = getAuthenticatedUserId(req);
+    const operation = readArchiveOperation(Number(req.params.id), ownerId);
+    if (!operation) return res.status(404).json({ error: "Archive operation not found." });
+    if (operation.status !== "completed") return res.status(400).json({ error: "Provider refresh requires a completed and verified archive operation." });
+    const requested = req.body?.providers;
+    const providers = Array.isArray(requested) ? requested.filter((value: unknown): value is string => value === "plex" || value === "jellyfin") : ["plex", "jellyfin"];
+    const started: string[] = [];
+    const skipped: Array<{ provider: string; reason: string }> = [];
+    if (providers.includes("plex")) {
+      if (getPlexConfig(ownerId).configured) { startPlexSync(ownerId); started.push("plex"); } else skipped.push({ provider: "plex", reason: "Plex is not configured." });
+    }
+    if (providers.includes("jellyfin")) {
+      if (getJellyfinConfig(ownerId).configured) { startJellyfinSync(ownerId); started.push("jellyfin"); } else skipped.push({ provider: "jellyfin", reason: "Jellyfin is not configured." });
+    }
+    return res.status(202).json({ operationId: operation.id, started, skipped, notice: "Provider refresh was explicitly requested after verified filesystem changes." });
   } catch (error) {
     return res.status(400).json({ error: errorMessage(error) });
   }

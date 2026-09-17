@@ -114,6 +114,8 @@ import type {
   PlexInventory,
   ProgressAcquisitionJob,
   ReconciliationReport,
+  RefreshProvidersAfterArchiveOperation202,
+  RefreshProvidersAfterArchiveOperationBody,
   RequestArchiveAcquisition,
   ResearchAssistantCandidateParams,
   ResearchEvaluationResponse,
@@ -6988,6 +6990,78 @@ export function useGetArchiveReconciliation<TData = Awaited<ReturnType<typeof ge
 
 
 
+
+export const getRefreshProvidersAfterArchiveOperationUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive-operations/${id}/refresh-providers`
+}
+
+/**
+ * @summary Explicitly refresh configured media providers after a verified operation
+ */
+export const refreshProvidersAfterArchiveOperation = async (id: number,
+    refreshProvidersAfterArchiveOperationBody?: RefreshProvidersAfterArchiveOperationBody, options?: Parameters<typeof customFetch>[1]): Promise<RefreshProvidersAfterArchiveOperation202> => {
+
+  return customFetch<RefreshProvidersAfterArchiveOperation202>(getRefreshProvidersAfterArchiveOperationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(refreshProvidersAfterArchiveOperationBody)
+  }
+);}
+
+
+
+
+
+export const getRefreshProvidersAfterArchiveOperationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshProvidersAfterArchiveOperation>>, TError,{id: number;data?: BodyType<RefreshProvidersAfterArchiveOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshProvidersAfterArchiveOperation>>, TError,{id: number;data?: BodyType<RefreshProvidersAfterArchiveOperationBody>}, TContext> => {
+
+const mutationKey = ['refreshProvidersAfterArchiveOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshProvidersAfterArchiveOperation>>, {id: number;data?: BodyType<RefreshProvidersAfterArchiveOperationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  refreshProvidersAfterArchiveOperation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshProvidersAfterArchiveOperationMutationResult = NonNullable<Awaited<ReturnType<typeof refreshProvidersAfterArchiveOperation>>>
+    export type RefreshProvidersAfterArchiveOperationMutationBody = BodyType<RefreshProvidersAfterArchiveOperationBody> | undefined
+    export type RefreshProvidersAfterArchiveOperationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Explicitly refresh configured media providers after a verified operation
+ */
+export const useRefreshProvidersAfterArchiveOperation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshProvidersAfterArchiveOperation>>, TError,{id: number;data?: BodyType<RefreshProvidersAfterArchiveOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshProvidersAfterArchiveOperation>>,
+        TError,
+        {id: number;data?: BodyType<RefreshProvidersAfterArchiveOperationBody>},
+        TContext
+      > => {
+      return useMutation(getRefreshProvidersAfterArchiveOperationMutationOptions(options));
+    }
 
 export const getCreatePowerRenamerPlanUrl = () => {
 
