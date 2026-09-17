@@ -74,6 +74,8 @@ test("public proposal-backed operation lifecycle performs a swap and exact rollb
     assert.equal(await readFile(fixture.a, "utf8"), "A"); assert.equal(await readFile(fixture.b, "utf8"), "B");
     const rollbackAgain = await fixture.request(`/api/archive-operations/${operation.id}/rollback`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); assert.equal(rollbackAgain.status, 200);
     assert.equal(await readFile(fixture.a, "utf8"), "A"); assert.equal(await readFile(fixture.b, "utf8"), "B");
+    const refreshAfterRollback = await fixture.request(`/api/archive-operations/${operation.id}/refresh-providers`, { method: "POST", body: JSON.stringify({ confirmed: true, providers: ["plex"] }) });
+    assert.equal(refreshAfterRollback.status, 202);
   } finally { await fixture.cleanup(); }
 });
 

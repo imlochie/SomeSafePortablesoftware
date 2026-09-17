@@ -321,7 +321,7 @@ router.post("/archive-operations/:id/refresh-providers", (req, res) => {
     if (req.body?.confirmed !== true) return res.status(400).json({ error: "Explicit provider refresh confirmation is required." });
     const operation = readArchiveOperation(Number(req.params.id), ownerId);
     if (!operation) return res.status(404).json({ error: "Archive operation not found." });
-    if (operation.status !== "completed") return res.status(400).json({ error: "Provider refresh requires a completed and verified archive operation." });
+    if (!["completed", "rolled_back"].includes(operation.status)) return res.status(400).json({ error: "Provider refresh requires a completed or verified rolled-back archive operation." });
     const requested = req.body?.providers;
     if (Array.isArray(requested) && (requested.length === 0 || requested.some((value: unknown) => value !== "plex" && value !== "jellyfin"))) {
       return res.status(400).json({ error: "providers must contain one or more supported values: plex or jellyfin." });
