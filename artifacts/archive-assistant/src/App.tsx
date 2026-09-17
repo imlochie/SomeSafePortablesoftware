@@ -870,6 +870,9 @@ export function ArchivePage() {
   const [notice, setNotice] = useState('');
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
+  const [selectedNamingIds, setSelectedNamingIds] = useState<number[]>([]);
+  const [powerRenamerBusy, setPowerRenamerBusy] = useState(false);
+  const [powerRenamerNotice, setPowerRenamerNotice] = useState<string | null>(null);
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
   const [view, setView] = useState<'library' | 'local' | 'naming_proposals' | 'plex_only' | 'missing_media'>('library');
@@ -924,6 +927,19 @@ export function ArchivePage() {
   });
 
   const { data: namingProposals, isLoading: namingLoading, isError: namingError, refetch: refetchNaming } = useGetArchiveNamingProposals();
+
+  async function planPowerRenamer() {
+    if (!selectedNamingIds.length) return;
+    setPowerRenamerBusy(true); setPowerRenamerNotice(null);
+    try {
+      const response = await fetch(apiUrl('/api/archive/power-renamer/plan'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fileRecordIds: selectedNamingIds }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? 'Power Renamer could not create a supervised plan.');
+      setPowerRenamerNotice(`Plan created for ${result.summary.files} files. Review item ${result.reviewItemId} is pending approval; nothing has changed.`);
+      setSelectedNamingIds([]);
+    } catch (error) { setPowerRenamerNotice(error instanceof Error ? error.message : 'Power Renamer could not create a plan.'); }
+    finally { setPowerRenamerBusy(false); }
+  }
 
   const startScan = useStartArchiveScan();
   const bulkReview = useUpdateArchiveRecordReviews();
@@ -1125,8 +1141,14 @@ export function ArchivePage() {
                 <EmptyState icon={Sparkles} title="No naming proposals" description="The archive currently has no naming changes requiring review." />
               ) : (
                 <div className="space-y-3" data-testid="panel-naming-proposals">
+                  <div className="archive-panel border-l-2 border-[#39736e] bg-[#f1f8f5] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="archive-mono text-[9px] tracking-[.14em] text-[#39736e]">POWER RENAMER / SUPERVISED MODE</div><p className="mt-1 text-[12px] text-[#43545b]">Select safe proposals to build a collision-safe, reversible batch. Approval and preflight are still required.</p></div><button disabled={!selectedNamingIds.length || powerRenamerBusy} onClick={planPowerRenamer} className="bg-[#1d2b38] px-4 py-2 text-[10px] font-bold tracking-[.1em] text-white disabled:opacity-40">{powerRenamerBusy ? 'PLANNING…' : `PLAN ${selectedNamingIds.length || ''} RENAME${selectedNamingIds.length === 1 ? '' : 'S'}`}</button></div>
+                    {powerRenamerNotice && <p className="mt-3 text-[11px] font-semibold text-[#39736e]">{powerRenamerNotice}</p>}
+                  </div>
                   {namingProposals.results.map(proposal => (
+
                     <div key={proposal.fileRecordId} className="border border-[#e1e8e5] bg-white/50 p-4">
+                      {proposal.proposedPath && proposal.operation !== 'uncertain/no_action' && !proposal.collision && <label className="mb-3 flex items-center gap-2 text-[10px] font-bold tracking-[.08em] text-[#39736e]"><input type="checkbox" checked={selectedNamingIds.includes(proposal.fileRecordId)} onChange={() => setSelectedNamingIds(current => current.includes(proposal.fileRecordId) ? current.filter(id => id !== proposal.fileRecordId) : [...current, proposal.fileRecordId])} className="h-4 w-4 accent-[#39736e]" /> INCLUDE IN POWER RENAMER PLAN</label>}
                       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                         <div className="min-w-0">
                           <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">CURRENT</div>

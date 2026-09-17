@@ -48,8 +48,9 @@ import { readReconciliationReport } from "../services/reconciliation";
 import { readNamingProposals } from "../services/naming-intelligence";
 import { readIdentityAudit } from "../services/identity-audit";
 import { createOrderingProposalSnapshot, readOrderingProposal, currentOrderingProposalValidation } from "../services/ordering-proposals";
-import { listArchiveOperations } from "../services/archive-operations";
-import { readReviewItem } from "../services/review-queue";
+import { createArchiveOperation, listArchiveOperations } from "../services/archive-operations";
+import { ensureReviewItem, readReviewItem } from "../services/review-queue";
+import { buildPowerRenamePlan, powerRenameSummary } from "../services/power-renamer";
 
 const router: IRouter = Router();
 
@@ -228,6 +229,67 @@ router.get("/archive/naming-proposals", async (req, res, next) => {
     res.json(GetArchiveNamingProposalsResponse.parse(report));
   } catch (error) {
     next(error);
+  }
+});
+
+router.post("/archive/power-renamer/plan", async (req, res) => {
+  try {
+    const ownerId = getAuthenticatedUserId(req);
+    const requestedIds = Array.isArray(req.body?.fileRecordIds)
+      ? new Set(req.body.fileRecordIds.map((value: unknown) => Number(value)).filter((value: number) => Number.isInteger(value)))
+      : null;
+    if (!requestedIds || requestedIds.size === 0) return res.status(400).json({ error: "Select at least one naming proposal to plan." });
+    const report = await readNamingProposals(ownerId, { page: 1, pageSize: 500 });
+    const selected = report.results.filter((proposal) => requestedIds.has(Number(proposal.fileRecordId))).map((proposal) => ({
+      fileRecordId: Number(proposal.fileRecordId),
+      sourcePath: String(proposal.sourcePath),
+      proposedPath: proposal.proposedPath == null ? null : String(proposal.proposedPath),
+      confidence: String(proposal.confidence),
+      operation: String(proposal.operation),
+      collision: Boolean(proposal.collision),
+      mediaType: String(proposal.mediaType),
+      evidence: Array.isArray(proposal.evidence) ? proposal.evidence.map(String) : [],
+    }));
+    if (selected.length !== requestedIds.size) return res.status(400).json({ error: "One or more selected naming proposals are no longer available." });
+    const occupied = report.results.map((proposal) => String(proposal.sourcePath));
+    const plan = buildPowerRenamePlan(selected, occupied);
+    if (!plan.mappings.length) return res.status(400).json({ error: "No selected proposal is safe to plan.", plan });
+    const review = ensureReviewItem(ownerId, {
+      kind: "naming_proposal",
+      subjectKey: plan.planId,
+      title: "Review Power Renamer batch",
+      payload: { ...plan, summary: powerRenameSummary(plan) },
+    });
+    return res.status(201).json({ ...plan, summary: powerRenameSummary(plan), reviewItemId: review.id, reviewState: review.state });
+  } catch (error) {
+    return res.status(400).json({ error: errorMessage(error) });
+  }
+});
+
+router.post("/archive/power-renamer/operations", (req, res) => {
+  try {
+    const ownerId = getAuthenticatedUserId(req);
+    const review = readReviewItem(Number(req.body?.reviewItemId), ownerId);
+    if (!review || review.kind !== "naming_proposal" || review.state !== "approved") return res.status(400).json({ error: "An approved Power Renamer review item is required." });
+    const payload = review.payload;
+    const mappings = Array.isArray(payload.mappings) ? payload.mappings as Array<Record<string, unknown>> : [];
+    if (!mappings.length) return res.status(400).json({ error: "The approved Power Renamer plan has no mappings." });
+    const operation = createArchiveOperation({
+      action: "rename",
+      sourceKind: "power-renamer",
+      sourceId: String(payload.planId ?? review.subjectKey),
+      reviewItemId: review.id,
+      batch: mappings.map((mapping, index) => ({
+        id: String(mapping.id ?? `power-renamer-${index}`),
+        originalPath: String(mapping.sourcePath),
+        temporaryPath: `${String(mapping.sourcePath)}.archive-assistant-tmp-power-${index}`,
+        finalPath: String(mapping.destinationPath),
+        state: "planned" as const,
+      })),
+    }, ownerId);
+    return res.status(201).json(operation);
+  } catch (error) {
+    return res.status(400).json({ error: errorMessage(error) });
   }
 });
 
