@@ -68,7 +68,7 @@ export type CompanionRecord = { id: number; path: string };
 
 /** Add matching sidecars without guessing unrelated files. A sidecar must share
  * the exact video stem and use a known metadata/subtitle/artwork extension. */
-export function addPowerRenameCompanions(plan: PowerRenamePlan, records: CompanionRecord[]): PowerRenamePlan {
+export function addPowerRenameCompanions(plan: PowerRenamePlan, records: CompanionRecord[], occupiedPaths: Iterable<string> = []): PowerRenamePlan {
   const sidecarExtensions = new Set([".srt", ".vtt", ".ass", ".ssa", ".sub", ".idx", ".nfo", ".jpg", ".jpeg", ".png", ".webp"]);
   const additions: RenameMapping[] = [];
   for (const mapping of plan.mappings) {
@@ -83,7 +83,7 @@ export function addPowerRenameCompanions(plan: PowerRenamePlan, records: Compani
   }
   if (!additions.length) return plan;
   const mappings = [...plan.mappings, ...additions];
-  const collisionSafe = buildCollisionSafeRenamePlan(mappings);
+  const collisionSafe = buildCollisionSafeRenamePlan(mappings, occupiedPaths);
   if (collisionSafe.errors.length) return { ...plan, skipped: [...plan.skipped, ...collisionSafe.errors.map((reason) => ({ fileRecordId: 0, sourcePath: "", reason }))] };
   return { ...plan, mappings, steps: collisionSafe.steps, planId: `${plan.planId}-with-companions` };
 }

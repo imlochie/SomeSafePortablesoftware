@@ -261,7 +261,7 @@ router.post("/archive/power-renamer/plan", async (req, res) => {
     let plan = buildPowerRenamePlan(selected, occupied);
     if (!plan.mappings.length) return res.status(400).json({ error: "No selected proposal is safe to plan.", plan });
     const companionRows = archiveDb.prepare("SELECT id, path FROM file_record WHERE owner_id = ? AND scan_status = 'active'").all(ownerId) as Array<{ id: number; path: string }>;
-    plan = addPowerRenameCompanions(plan, companionRows);
+    plan = addPowerRenameCompanions(plan, companionRows, companionRows.map((row) => row.path));
     const review = ensureReviewItem(ownerId, {
       kind: "naming_proposal",
       subjectKey: plan.planId,

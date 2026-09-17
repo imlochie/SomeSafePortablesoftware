@@ -19,6 +19,8 @@ test("Power Renamer carries exact-match sidecars with the approved video rename"
   assert.equal(expanded.mappings.length, 3);
   assert.ok(expanded.mappings.some((mapping) => mapping.destinationPath.endsWith("Pilot.srt")));
   assert.ok(!expanded.mappings.some((mapping) => mapping.sourcePath.endsWith(".txt")));
+  const blocked = addPowerRenameCompanions(plan, [{ id: 9, path: "/archive/Show - S01E01.srt" }], ["/archive/Show/Season 01/Show - S01E01 - Pilot.srt"]);
+  assert.ok(blocked.skipped.some((item) => item.reason.includes("occupied")));
 });
 
 test("Power Renamer excludes collisions and uncertain proposals", () => {
