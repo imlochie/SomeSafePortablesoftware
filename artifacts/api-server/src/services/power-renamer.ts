@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
-import { basename, dirname, extname, join } from "node:path";
+import { posix, win32 } from "node:path";
 import { buildCollisionSafeRenamePlan, type RenameMapping } from "./rename-plan";
+
+function pathTools(path: string) {
+  return path.includes("\\") ? win32 : posix;
+}
+
+function pathBasename(path: string) { return pathTools(path).basename(path); }
+function pathDirname(path: string) { return pathTools(path).dirname(path); }
+function pathExtname(path: string) { return pathTools(path).extname(path); }
+function pathJoin(directory: string, filename: string) { return pathTools(directory).join(directory, filename); }
 
 export type PowerRenameCandidate = {
   fileRecordId: number;
@@ -76,16 +85,18 @@ export function addPowerRenameCompanions(plan: PowerRenamePlan, records: Compani
   const sidecarExtensions = new Set([".srt", ".vtt", ".ass", ".ssa", ".sub", ".idx", ".nfo", ".jpg", ".jpeg", ".png", ".webp"]);
   const additions: RenameMapping[] = [];
   for (const mapping of plan.mappings) {
-    const sourceBase = basename(mapping.sourcePath, extname(mapping.sourcePath));
-    const destinationBase = basename(mapping.destinationPath, extname(mapping.destinationPath));
+    const sourceExtension = pathExtname(mapping.sourcePath);
+    const destinationExtension = pathExtname(mapping.destinationPath);
+    const sourceBase = pathBasename(mapping.sourcePath).slice(0, -sourceExtension.length);
+    const destinationBase = pathBasename(mapping.destinationPath).slice(0, -destinationExtension.length);
     for (const record of records) {
-      const sameDirectory = dirname(record.path).replaceAll("\\", "/").toLowerCase() === dirname(mapping.sourcePath).replaceAll("\\", "/").toLowerCase();
+      const sameDirectory = pathDirname(record.path).replaceAll("\\", "/").toLowerCase() === pathDirname(mapping.sourcePath).replaceAll("\\", "/").toLowerCase();
       if (record.path === mapping.sourcePath || !sameDirectory) continue;
-      const rawExtension = extname(record.path);
+      const rawExtension = pathExtname(record.path);
       const extension = rawExtension.toLowerCase();
-      const recordBase = basename(record.path).slice(0, -rawExtension.length);
+      const recordBase = pathBasename(record.path).slice(0, -rawExtension.length);
       if (!sidecarExtensions.has(extension) || recordBase !== sourceBase) continue;
-      additions.push({ id: `companion-${record.id}`, sourcePath: record.path, destinationPath: join(dirname(mapping.destinationPath), `${destinationBase}${extension}`) });
+      additions.push({ id: `companion-${record.id}`, sourcePath: record.path, destinationPath: pathJoin(pathDirname(mapping.destinationPath), `${destinationBase}${extension}`) });
     }
   }
   if (!additions.length) return plan;
@@ -103,7 +114,7 @@ export function powerRenameSummary(plan: PowerRenamePlan) {
     files: plan.mappings.length,
     filesystemSteps: plan.steps.length,
     skipped: plan.skipped.length,
-    foldersAffected: new Set(plan.mappings.map((mapping) => dirname(mapping.destinationPath))).size,
-    examples: plan.mappings.slice(0, 5).map((mapping) => ({ from: basename(mapping.sourcePath), to: basename(mapping.destinationPath) })),
+    foldersAffected: new Set(plan.mappings.map((mapping) => pathDirname(mapping.destinationPath))).size,
+    examples: plan.mappings.slice(0, 5).map((mapping) => ({ from: pathBasename(mapping.sourcePath), to: pathBasename(mapping.destinationPath) })),
   };
 }

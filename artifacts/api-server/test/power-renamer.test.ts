@@ -33,6 +33,14 @@ test("Power Renamer carries exact-match sidecars with the approved video rename"
   assert.ok(blocked.skipped.some((item) => item.reason.includes("occupied")));
 });
 
+test("Power Renamer handles Windows sidecar paths without POSIX basename errors", () => {
+  const plan = buildPowerRenamePlan([{ fileRecordId: 12, sourcePath: "D:\\\\Shows\\\\Episode S01E01.mkv", proposedPath: "D:\\\\Shows\\\\Season 01\\\\Episode S01E01.mkv", confidence: "high", operation: "rename", collision: false, mediaType: "tv", researchGrade: "corroborated" }]);
+  const expanded = addPowerRenameCompanions(plan, [{ id: 13, path: "D:\\\\Shows\\\\Episode S01E01.NFO" }]);
+  assert.equal(expanded.mappings.length, 2);
+  assert.equal(expanded.mappings[1].destinationPath, "D:\\\\Shows\\\\Season 01\\\\Episode S01E01.nfo");
+  assert.equal(expanded.steps.some((step) => step.to.includes("Season 01")), true);
+});
+
 test("Power Renamer excludes collisions and uncertain proposals", () => {
   const plan = buildPowerRenamePlan([
     { fileRecordId: 3, sourcePath: "/archive/a.mkv", proposedPath: "/archive/existing.mkv", confidence: "high", operation: "rename", collision: true, mediaType: "tv" },
