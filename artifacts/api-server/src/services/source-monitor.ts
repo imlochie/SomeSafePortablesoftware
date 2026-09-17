@@ -62,6 +62,23 @@ function parseItems(body: string, kind: MonitorKind, baseUrl: string) {
     }
     return entries;
   }
+  const entries: Array<{ title: string; url: string | null; evidence: string[] }> = [];
+  // Many modern catalogues expose their listing content as ordinary server
+  // rendered links rather than RSS. Keep this deliberately generic: extract
+  // public link text and image alt text, but never execute page JavaScript or
+  // follow download links.
+  for (const match of body.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+    const attributes = match[1] ?? "";
+    const block = match[2] ?? "";
+    const href = attributes.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1] ?? null;
+    const imageAlt = block.match(/<img\b[^>]*\balt\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
+    const title = strip(block).replace(/^(view|watch|download)\s+(details?|now)\s*$/i, "").trim() || strip(imageAlt);
+    if (title.length < 2 || /^(home|menu|search|login|sign up|movies|series|anime|next|previous)$/i.test(title)) continue;
+    let url = href;
+    try { if (url) url = new URL(url, baseUrl).toString(); } catch { url = null; }
+    entries.push({ title: title.slice(0, 500), url, evidence: ["public HTML link", "public page metadata"] });
+  }
+  if (entries.length) return entries;
   const page = strip(body); return page ? [{ title: page.slice(0, 500), url: baseUrl, evidence: ["public HTML page text"] }] : [];
 }
 function detectKind(contentType: string, url: string, requested?: MonitorKind): MonitorKind {
