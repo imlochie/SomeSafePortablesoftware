@@ -311,6 +311,7 @@ async function persistPostflight(operation: ArchiveOperation, ownerId: string) {
 
 function normalizeBatch(input: CreateArchiveOperationInput): ArchiveBatchMapping[] {
   const batch = input.batch ?? [];
+  if (batch.length > 5000) throw new Error("Archive operation batches are limited to 5000 mappings.");
   const ids = new Set<string>();
   const sources = new Set<string>();
   const destinations = new Set<string>();
