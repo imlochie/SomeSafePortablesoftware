@@ -28,6 +28,16 @@ router.get("/integrations/status", async (req, res, next) => {
   }
 });
 
+router.post("/integrations/:id/test", async (req, res, next) => {
+  try {
+    const id = req.params.id as any;
+    if (!["plex", "jellyfin", "sonarr", "radarr", "prowlarr", "qbittorrent", "mpilot", "telegram"].includes(id)) return res.status(404).json({ error: "Integration is not supported." });
+    const status = (await integrationRegistry.getStatuses(getAuthenticatedUserId(req))).find((item) => item.id === id);
+    if (!status) return res.status(404).json({ error: "Integration status not found." });
+    return res.json({ testedAt: new Date().toISOString(), ...status });
+  } catch (error) { return next(error); }
+});
+
 router.get("/integrations/config", (_req, res) => {
   res.json({ integrations: readIntegrationConfigurationStatus() });
 });

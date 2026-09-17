@@ -391,6 +391,7 @@ export * from './systemEvent';
 export * from './systemEventLevel';
 export * from './systemEventRetentionClass';
 export * from './systemOverview';
+export * from './testIntegrationConnection200';
 export * from './updateAgentSourceMonitor200';
 export * from './updateAgentSourceMonitorBody';
 export * from './updateIntegrationConfiguration200';

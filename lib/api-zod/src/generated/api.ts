@@ -40,6 +40,16 @@ export const GetAgentCapabilitiesResponse = zod.object({
 
 
 /**
+ * @summary Test one integration plugin
+ */
+export const TestIntegrationConnectionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const TestIntegrationConnectionResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
  * @summary Get configured integration fields without exposing secrets
  */
 export const GetIntegrationConfigurationStatusResponse = zod.record(zod.string(), zod.unknown())

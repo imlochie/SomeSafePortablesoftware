@@ -3741,6 +3741,8 @@ export type PageParameter = number;
 
 export type PageSizeParameter = number;
 
+export type TestIntegrationConnection200 = { [key: string]: unknown };
+
 export type GetIntegrationConfigurationStatus200 = { [key: string]: unknown };
 
 export type UpdateIntegrationConfigurationBody = { [key: string]: unknown };

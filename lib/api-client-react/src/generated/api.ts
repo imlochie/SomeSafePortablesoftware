@@ -120,6 +120,7 @@ import type {
   SystemDependencies,
   SystemEvent,
   SystemOverview,
+  TestIntegrationConnection200,
   UpdateAgentSourceMonitor200,
   UpdateAgentSourceMonitorBody,
   UpdateIntegrationConfiguration200,
@@ -310,6 +311,77 @@ export function useGetAgentCapabilities<TData = Awaited<ReturnType<typeof getAge
 
 
 
+
+export const getTestIntegrationConnectionUrl = (id: string,) => {
+
+
+
+
+  return `/api/integrations/${id}/test`
+}
+
+/**
+ * @summary Test one integration plugin
+ */
+export const testIntegrationConnection = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<TestIntegrationConnection200> => {
+
+  return customFetch<TestIntegrationConnection200>(getTestIntegrationConnectionUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getTestIntegrationConnectionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testIntegrationConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testIntegrationConnection>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['testIntegrationConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testIntegrationConnection>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  testIntegrationConnection(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestIntegrationConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof testIntegrationConnection>>>
+
+    export type TestIntegrationConnectionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Test one integration plugin
+ */
+export const useTestIntegrationConnection = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testIntegrationConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testIntegrationConnection>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getTestIntegrationConnectionMutationOptions(options));
+    }
 
 export const getGetIntegrationConfigurationStatusUrl = () => {
 

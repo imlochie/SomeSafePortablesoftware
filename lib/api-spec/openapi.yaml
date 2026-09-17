@@ -60,6 +60,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentCapabilities"
+  /integrations/{id}/test:
+    post:
+      operationId: testIntegrationConnection
+      tags: [integrations]
+      summary: Test one integration plugin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Integration diagnostic, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
   /integrations/config:
     get:
       operationId: getIntegrationConfigurationStatus
