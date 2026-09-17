@@ -242,6 +242,40 @@ export interface AssistantRecommendation {
   personalAffinity?: AssistantRecommendationPersonalAffinity;
 }
 
+export type AgentContextSource = {
+  system: string;
+  contract: string;
+  ownerScoped: boolean;
+};
+
+export type AgentContextSafetyMode = typeof AgentContextSafetyMode[keyof typeof AgentContextSafetyMode];
+
+
+export const AgentContextSafetyMode = {
+  evidence_only: 'evidence_only',
+} as const;
+
+export type AgentContextSafety = {
+  mode: AgentContextSafetyMode;
+  approvalRequired: boolean;
+  preflightRequired: boolean;
+  directMutation: boolean;
+  providerExecution: boolean;
+  unknownsMustRemainExplicit: boolean;
+};
+
+export type AgentContextArchive = { [key: string]: unknown };
+
+export type AgentContextPersonal = { [key: string]: unknown };
+
+export interface AgentContext {
+  generatedAt: string;
+  source: AgentContextSource;
+  safety: AgentContextSafety;
+  archive: AgentContextArchive;
+  personal: AgentContextPersonal;
+}
+
 export type AgentCapabilitiesAgentMode = typeof AgentCapabilitiesAgentMode[keyof typeof AgentCapabilitiesAgentMode];
 
 

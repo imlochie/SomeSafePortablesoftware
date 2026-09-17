@@ -26,6 +26,7 @@ import type {
   AcquisitionWebhookAccepted,
   AcquisitionWebhookPayload,
   AgentCapabilities,
+  AgentContext,
   AppSettings,
   AppSettingsUpdate,
   ApprovedAcquisitionResult,
@@ -280,6 +281,83 @@ export function useGetAgentCapabilities<TData = Awaited<ReturnType<typeof getAge
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAgentCapabilitiesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAgentContextUrl = () => {
+
+
+
+
+  return `/api/agent/context`
+}
+
+/**
+ * @summary Get bounded evidence for an external reasoning agent
+ */
+export const getAgentContext = async ( options?: Parameters<typeof customFetch>[1]): Promise<AgentContext> => {
+
+  return customFetch<AgentContext>(getGetAgentContextUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgentContextQueryKey = () => {
+    return [
+    `/api/agent/context`
+    ] as const;
+    }
+
+
+export const getGetAgentContextQueryOptions = <TData = Awaited<ReturnType<typeof getAgentContext>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgentContextQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgentContext>>> = ({ signal }) => getAgentContext({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgentContext>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgentContextQueryResult = NonNullable<Awaited<ReturnType<typeof getAgentContext>>>
+export type GetAgentContextQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get bounded evidence for an external reasoning agent
+ */
+
+export function useGetAgentContext<TData = Awaited<ReturnType<typeof getAgentContext>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgentContextQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

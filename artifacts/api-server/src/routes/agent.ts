@@ -4,6 +4,7 @@ import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import { runtimeConfig } from "../lib/runtime-config";
 import { readEvents } from "../lib/archive-db";
 import { createArchiveOperation } from "../services/archive-operations";
+import { readAssistantOverview } from "../services/assistant-overview";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,63 @@ router.get("/agent/capabilities", (req, res) => {
       providerExecution: false,
     },
   }));
+});
+
+
+function redact(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value
+      .replace(/(?:[A-Za-z]:\\|\\\\|\/)(?:[^\s/\\]+[\/\\])+[^\s/\\]+/g, "[local path redacted]")
+      .replace(/\b(?:plex|jellyfin)_[a-z0-9_]+\b/gi, "[provider identifier redacted]");
+  }
+  if (Array.isArray(value)) return value.map(redact);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redact(item)]));
+  }
+  return value;
+}
+
+router.get("/agent/context", async (req, res, next) => {
+  try {
+    const overview = await readAssistantOverview(getAuthenticatedUserId(req));
+    const context = {
+      generatedAt: new Date().toISOString(),
+      source: { system: "archive-assistant", contract: "agent-context-v1", ownerScoped: true },
+      safety: {
+        mode: "evidence_only",
+        approvalRequired: true,
+        preflightRequired: true,
+        directMutation: false,
+        providerExecution: false,
+        unknownsMustRemainExplicit: true,
+      },
+      archive: {
+        summary: overview.summary,
+        activeWork: overview.activeWork,
+        informational: overview.informational,
+        attention: overview.attention.slice(0, 50),
+        groups: overview.groups.slice(0, 100),
+        blocked: overview.blocked.slice(0, 50),
+        uncertain: overview.uncertain.slice(0, 50),
+      },
+      personal: {
+        sourceStatus: overview.mediaExperience.sourceStatus,
+        summary: overview.mediaExperience.summary,
+        currentViewingMomentum: overview.mediaExperience.currentViewingMomentum,
+        personalizedBriefing: overview.personalizedBriefing.slice(0, 50),
+        viewingEvidence: overview.mediaExperience.items.slice(0, 250).map((item) => ({
+          key: item.key, title: item.title, provider: item.provider, itemType: item.itemType,
+          year: item.year, genres: item.genres, status: item.status, progressPercent: item.progressPercent,
+          playCount: item.playCount, lastWatchedAt: item.lastWatchedAt, watchedMinutes: item.watchedMinutes,
+          seriesTitle: item.seriesTitle, seasonNumber: item.seasonNumber, episodeNumber: item.episodeNumber,
+          seriesProgress: item.seriesProgress, isNextEpisode: item.isNextEpisode, evidence: item.evidence,
+        })),
+      },
+    };
+    res.json(redact(context));
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get("/events", (req, res) => {

@@ -60,6 +60,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentCapabilities"
+  /agent/context:
+    get:
+      operationId: getAgentContext
+      tags: [agent]
+      summary: Get bounded evidence for an external reasoning agent
+      responses:
+        "200":
+          description: Owner-scoped, redacted archive evidence and safety policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentContext"
+        "401":
+          description: Authentication required
   /events:
     get:
       operationId: streamAgentEvents
@@ -2096,6 +2110,30 @@ components:
             basedOn:
               type: array
               items: { type: string }
+    AgentContext:
+      type: object
+      required: [generatedAt, source, safety, archive, personal]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        source:
+          type: object
+          required: [system, contract, ownerScoped]
+          properties:
+            system: { type: string }
+            contract: { type: string }
+            ownerScoped: { type: boolean }
+        safety:
+          type: object
+          required: [mode, approvalRequired, preflightRequired, directMutation, providerExecution, unknownsMustRemainExplicit]
+          properties:
+            mode: { type: string, enum: [evidence_only] }
+            approvalRequired: { type: boolean }
+            preflightRequired: { type: boolean }
+            directMutation: { type: boolean }
+            providerExecution: { type: boolean }
+            unknownsMustRemainExplicit: { type: boolean }
+        archive: { type: object, additionalProperties: true }
+        personal: { type: object, additionalProperties: true }
     AgentCapabilities:
       type: object
       required: [agent, capabilities, operationPolicy]

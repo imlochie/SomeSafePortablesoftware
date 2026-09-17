@@ -343,3 +343,4 @@ export * from "./generated/types/webhookDeliveryResultClass";
 export * from "./generated/types/webhookProvider";
 export * from "./generated/types/webhookSecretStatus";
 export * from "./generated/types/webhookSecretStatusesResponse";
+export * from './generated/types';

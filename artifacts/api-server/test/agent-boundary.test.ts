@@ -38,6 +38,26 @@ describe("agent boundary", { concurrency: false }, () => {
     });
   });
 
+  test("context returns bounded redacted evidence without mutation authority", async () => {
+    const response = await fetch(`${baseUrl}/api/agent/context`);
+    assert.equal(response.status, 200);
+    const context = await response.json() as {
+      source: { contract: string; ownerScoped: boolean };
+      safety: { approvalRequired: boolean; preflightRequired: boolean; directMutation: boolean };
+      archive: { summary: unknown; attention: unknown[] };
+      personal: { viewingEvidence: unknown[] };
+    };
+    assert.equal(context.source.contract, "agent-context-v1");
+    assert.equal(context.source.ownerScoped, true);
+    assert.equal(context.safety.approvalRequired, true);
+    assert.equal(context.safety.preflightRequired, true);
+    assert.equal(context.safety.directMutation, false);
+    assert.ok(context.archive.summary);
+    assert.ok(Array.isArray(context.archive.attention));
+    assert.ok(Array.isArray(context.personal.viewingEvidence));
+    assert.doesNotMatch(JSON.stringify(context), /\/tmp\//);
+  });
+
   test("event stream returns owner-scoped persisted events and can disconnect", async () => {
     addEvent("info", "Agent boundary test event", "agent-test", ownerId);
     const controller = new AbortController();

@@ -40,6 +40,29 @@ export const GetAgentCapabilitiesResponse = zod.object({
 
 
 /**
+ * @summary Get bounded evidence for an external reasoning agent
+ */
+export const GetAgentContextResponse = zod.object({
+  "generatedAt": zod.coerce.date(),
+  "source": zod.object({
+  "system": zod.string(),
+  "contract": zod.string(),
+  "ownerScoped": zod.boolean()
+}),
+  "safety": zod.object({
+  "mode": zod.enum(['evidence_only']),
+  "approvalRequired": zod.boolean(),
+  "preflightRequired": zod.boolean(),
+  "directMutation": zod.boolean(),
+  "providerExecution": zod.boolean(),
+  "unknownsMustRemainExplicit": zod.boolean()
+}),
+  "archive": zod.record(zod.string(), zod.unknown()),
+  "personal": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
  * @summary Stream owner-scoped persisted system events
  */
 export const StreamAgentEventsResponse = zod.unknown()
