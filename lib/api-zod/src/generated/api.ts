@@ -3823,6 +3823,26 @@ export const GetArchiveReconciliationResponse = zod.object({
 
 
 /**
+ * @summary Create a researched, supervised Power Renamer plan
+ */
+export const CreatePowerRenamerPlanBody = zod.object({
+  "fileRecordIds": zod.array(zod.number())
+})
+
+export const CreatePowerRenamerPlanResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Create an approved Power Renamer archive operation
+ */
+export const CreatePowerRenamerOperationBody = zod.object({
+  "reviewItemId": zod.number()
+})
+
+export const CreatePowerRenamerOperationResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
  * @summary Get read-only naming proposals for owner-scoped archive records
  */
 
@@ -3911,6 +3931,9 @@ export const GetArchiveNamingProposalsResponse = zod.object({
   "operation": zod.enum(['rename', 'restructure', 'move', 'uncertain/no_action']),
   "reason": zod.string(),
   "evidence": zod.array(zod.string()),
+  "researchGrade": zod.enum(['corroborated', 'observed', 'blocked']),
+  "researchSources": zod.array(zod.string()),
+  "researchBlockers": zod.array(zod.string()),
   "mediaType": zod.enum(['movie', 'tv']),
   "volumeId": zod.string(),
   "archiveRoot": zod.string(),

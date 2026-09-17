@@ -3565,6 +3565,15 @@ export const NamingProposalResultOperation = {
   'uncertain/no_action': 'uncertain/no_action',
 } as const;
 
+export type NamingProposalResultResearchGrade = typeof NamingProposalResultResearchGrade[keyof typeof NamingProposalResultResearchGrade];
+
+
+export const NamingProposalResultResearchGrade = {
+  corroborated: 'corroborated',
+  observed: 'observed',
+  blocked: 'blocked',
+} as const;
+
 export type NamingProposalResultMediaType = typeof NamingProposalResultMediaType[keyof typeof NamingProposalResultMediaType];
 
 
@@ -3590,6 +3599,9 @@ export interface NamingProposalResult {
   operation: NamingProposalResultOperation;
   reason: string;
   evidence: string[];
+  researchGrade: NamingProposalResultResearchGrade;
+  researchSources: string[];
+  researchBlockers: string[];
   mediaType: NamingProposalResultMediaType;
   volumeId: string;
   archiveRoot: string;
@@ -3852,6 +3864,18 @@ page?: PageParameter;
  */
 pageSize?: PageSizeParameter;
 };
+
+export type CreatePowerRenamerPlanBody = {
+  fileRecordIds: number[];
+};
+
+export type CreatePowerRenamerPlan201 = { [key: string]: unknown };
+
+export type CreatePowerRenamerOperationBody = {
+  reviewItemId: number;
+};
+
+export type CreatePowerRenamerOperation201 = { [key: string]: unknown };
 
 export type GetArchiveNamingProposalsParams = {
 /**

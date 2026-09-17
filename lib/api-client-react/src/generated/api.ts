@@ -59,6 +59,10 @@ import type {
   CreateAgentSourceMonitor201,
   CreateArchiveOperation,
   CreateArchiveOrderingProposalBody,
+  CreatePowerRenamerOperation201,
+  CreatePowerRenamerOperationBody,
+  CreatePowerRenamerPlan201,
+  CreatePowerRenamerPlanBody,
   CreateReviewItem,
   CreateSourceMonitor,
   DiscoverArchiveMissingMediaParams,
@@ -6984,6 +6988,148 @@ export function useGetArchiveReconciliation<TData = Awaited<ReturnType<typeof ge
 
 
 
+
+export const getCreatePowerRenamerPlanUrl = () => {
+
+
+
+
+  return `/api/archive/power-renamer/plan`
+}
+
+/**
+ * @summary Create a researched, supervised Power Renamer plan
+ */
+export const createPowerRenamerPlan = async (createPowerRenamerPlanBody: CreatePowerRenamerPlanBody, options?: Parameters<typeof customFetch>[1]): Promise<CreatePowerRenamerPlan201> => {
+
+  return customFetch<CreatePowerRenamerPlan201>(getCreatePowerRenamerPlanUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createPowerRenamerPlanBody)
+  }
+);}
+
+
+
+
+
+export const getCreatePowerRenamerPlanMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPowerRenamerPlan>>, TError,{data: BodyType<CreatePowerRenamerPlanBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPowerRenamerPlan>>, TError,{data: BodyType<CreatePowerRenamerPlanBody>}, TContext> => {
+
+const mutationKey = ['createPowerRenamerPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPowerRenamerPlan>>, {data: BodyType<CreatePowerRenamerPlanBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPowerRenamerPlan(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePowerRenamerPlanMutationResult = NonNullable<Awaited<ReturnType<typeof createPowerRenamerPlan>>>
+    export type CreatePowerRenamerPlanMutationBody = BodyType<CreatePowerRenamerPlanBody>
+    export type CreatePowerRenamerPlanMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a researched, supervised Power Renamer plan
+ */
+export const useCreatePowerRenamerPlan = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPowerRenamerPlan>>, TError,{data: BodyType<CreatePowerRenamerPlanBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPowerRenamerPlan>>,
+        TError,
+        {data: BodyType<CreatePowerRenamerPlanBody>},
+        TContext
+      > => {
+      return useMutation(getCreatePowerRenamerPlanMutationOptions(options));
+    }
+
+export const getCreatePowerRenamerOperationUrl = () => {
+
+
+
+
+  return `/api/archive/power-renamer/operations`
+}
+
+/**
+ * @summary Create an approved Power Renamer archive operation
+ */
+export const createPowerRenamerOperation = async (createPowerRenamerOperationBody: CreatePowerRenamerOperationBody, options?: Parameters<typeof customFetch>[1]): Promise<CreatePowerRenamerOperation201> => {
+
+  return customFetch<CreatePowerRenamerOperation201>(getCreatePowerRenamerOperationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createPowerRenamerOperationBody)
+  }
+);}
+
+
+
+
+
+export const getCreatePowerRenamerOperationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPowerRenamerOperation>>, TError,{data: BodyType<CreatePowerRenamerOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPowerRenamerOperation>>, TError,{data: BodyType<CreatePowerRenamerOperationBody>}, TContext> => {
+
+const mutationKey = ['createPowerRenamerOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPowerRenamerOperation>>, {data: BodyType<CreatePowerRenamerOperationBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPowerRenamerOperation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePowerRenamerOperationMutationResult = NonNullable<Awaited<ReturnType<typeof createPowerRenamerOperation>>>
+    export type CreatePowerRenamerOperationMutationBody = BodyType<CreatePowerRenamerOperationBody>
+    export type CreatePowerRenamerOperationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create an approved Power Renamer archive operation
+ */
+export const useCreatePowerRenamerOperation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPowerRenamerOperation>>, TError,{data: BodyType<CreatePowerRenamerOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPowerRenamerOperation>>,
+        TError,
+        {data: BodyType<CreatePowerRenamerOperationBody>},
+        TContext
+      > => {
+      return useMutation(getCreatePowerRenamerOperationMutationOptions(options));
+    }
 
 export const getGetArchiveNamingProposalsUrl = (params?: GetArchiveNamingProposalsParams,) => {
   const normalizedParams = new URLSearchParams();

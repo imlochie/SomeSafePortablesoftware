@@ -9,6 +9,7 @@ import type { NamingCurrentIdentity } from './namingCurrentIdentity';
 import type { NamingProposalResultConfidence } from './namingProposalResultConfidence';
 import type { NamingProposalResultMediaType } from './namingProposalResultMediaType';
 import type { NamingProposalResultOperation } from './namingProposalResultOperation';
+import type { NamingProposalResultResearchGrade } from './namingProposalResultResearchGrade';
 import type { NamingProposedIdentity } from './namingProposedIdentity';
 
 export interface NamingProposalResult {
@@ -28,6 +29,9 @@ export interface NamingProposalResult {
   operation: NamingProposalResultOperation;
   reason: string;
   evidence: string[];
+  researchGrade: NamingProposalResultResearchGrade;
+  researchSources: string[];
+  researchBlockers: string[];
   mediaType: NamingProposalResultMediaType;
   volumeId: string;
   archiveRoot: string;
