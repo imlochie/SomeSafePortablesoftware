@@ -323,7 +323,10 @@ router.post("/archive-operations/:id/refresh-providers", (req, res) => {
     if (!operation) return res.status(404).json({ error: "Archive operation not found." });
     if (operation.status !== "completed") return res.status(400).json({ error: "Provider refresh requires a completed and verified archive operation." });
     const requested = req.body?.providers;
-    const providers = Array.isArray(requested) ? requested.filter((value: unknown): value is string => value === "plex" || value === "jellyfin") : ["plex", "jellyfin"];
+    if (Array.isArray(requested) && (requested.length === 0 || requested.some((value: unknown) => value !== "plex" && value !== "jellyfin"))) {
+      return res.status(400).json({ error: "providers must contain one or more supported values: plex or jellyfin." });
+    }
+    const providers = Array.isArray(requested) ? [...new Set(requested as string[])] : ["plex", "jellyfin"];
     const started: string[] = [];
     const skipped: Array<{ provider: string; reason: string }> = [];
     if (providers.includes("plex")) {
