@@ -60,4 +60,7 @@ test("batch preflight rejects duplicate sources and temporary-path conflicts", a
   const temporarySourceConflict = await preflightBatchFiles([{ ...mappings[0], temporaryPath: mappings[1].originalPath }, mappings[1]]);
   assert.equal(temporarySourceConflict.ok, false);
   assert.match(temporarySourceConflict.error ?? "", /Temporary path conflicts/);
+  const temporaryDestinationConflict = await preflightBatchFiles([{ ...mappings[0], finalPath: mappings[1].temporaryPath }, mappings[1]]);
+  assert.equal(temporaryDestinationConflict.ok, false);
+  assert.match(temporaryDestinationConflict.error ?? "", /Temporary path conflicts with a destination/);
 });

@@ -805,14 +805,15 @@ async function exists(path: string, deps: FileDeps) {
 export async function preflightBatchFiles(mappings: BatchFileState[], deps: FileDeps = fs): Promise<{ ok: boolean; error?: string }> {
   const sources = new Set(mappings.map((item) => item.originalPath.toLowerCase()));
   if (sources.size !== mappings.length) return { ok: false, error: "Duplicate source in batch." };
-  const temporaryPaths = new Set<string>();
-  const destinations = new Set<string>();
+  const temporaryPaths = new Set(mappings.map((item) => item.temporaryPath.toLowerCase()));
+  const destinations = new Set(mappings.map((item) => item.finalPath.toLowerCase()));
+  if ([...temporaryPaths].some((path) => destinations.has(path))) return { ok: false, error: "Temporary path conflicts with a destination path." };
+  const seenDestinations = new Set<string>();
   for (const item of mappings) {
     const temporary = item.temporaryPath.toLowerCase();
-    if (temporaryPaths.has(temporary) || sources.has(temporary)) return { ok: false, error: `Temporary path conflicts with another batch path: ${item.temporaryPath}` };
-    temporaryPaths.add(temporary);
-    if (destinations.has(item.finalPath.toLowerCase())) return { ok: false, error: `Duplicate destination: ${item.finalPath}` };
-    destinations.add(item.finalPath.toLowerCase());
+    if (sources.has(temporary)) return { ok: false, error: `Temporary path conflicts with another batch path: ${item.temporaryPath}` };
+    if (seenDestinations.has(item.finalPath.toLowerCase())) return { ok: false, error: `Duplicate destination: ${item.finalPath}` };
+    seenDestinations.add(item.finalPath.toLowerCase());
     if (!(await exists(item.originalPath, deps))) return { ok: false, error: `Source is missing: ${item.originalPath}` };
     if (await exists(item.temporaryPath, deps)) return { ok: false, error: `Temporary path is occupied: ${item.temporaryPath}` };
     if (await exists(item.finalPath, deps) && !sources.has(item.finalPath.toLowerCase())) return { ok: false, error: `Destination is occupied: ${item.finalPath}` };
