@@ -10,6 +10,7 @@ import { synthesizeViewingResearch } from "../services/research-synthesis";
 import { inspectMediaSource } from "../services/media";
 import { createJob, startJob } from "../services/download-engine";
 import { ensureReviewItem, readReviewItem } from "../services/review-queue";
+import { checkSourceMonitor, createSourceMonitor, deleteSourceMonitor, listMonitorNotifications, listSourceMonitors } from "../services/source-monitor";
 
 const router: IRouter = Router();
 
@@ -117,6 +118,33 @@ function buildInsightBrief(overview: Awaited<ReturnType<typeof readAssistantOver
     })),
   };
 }
+
+router.get("/agent/monitoring/sources", async (req, res, next) => {
+  try { return res.json({ sources: await listSourceMonitors(getAuthenticatedUserId(req), readSettings()), notifications: await listMonitorNotifications(getAuthenticatedUserId(req), readSettings()) }); }
+  catch (error) { return next(error); }
+});
+
+router.post("/agent/monitoring/sources", async (req, res, next) => {
+  try {
+    const body = req.body ?? {};
+    const url = typeof body.url === "string" ? body.url.trim() : "";
+    if (!url) return res.status(400).json({ error: "url is required" });
+    const targets = Array.isArray(body.targets) ? body.targets : [];
+    if (!targets.length) return res.status(400).json({ error: "at least one watch target is required" });
+    const source = await createSourceMonitor(getAuthenticatedUserId(req), { name: body.name, url, kind: body.kind, intervalMinutes: body.intervalMinutes, targets }, readSettings());
+    return res.status(201).json(source);
+  } catch (error) { return next(error); }
+});
+
+router.post("/agent/monitoring/sources/:id/check", async (req, res, next) => {
+  try { return res.json(await checkSourceMonitor(getAuthenticatedUserId(req), req.params.id, readSettings())); }
+  catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Source check failed." }); }
+});
+
+router.delete("/agent/monitoring/sources/:id", async (req, res, next) => {
+  try { await deleteSourceMonitor(getAuthenticatedUserId(req), req.params.id, readSettings()); return res.status(204).send(); }
+  catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Source monitor could not be deleted." }); }
+});
 
 router.post("/agent/downloads/inspect", async (req, res, next) => {
   try {

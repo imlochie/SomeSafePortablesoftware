@@ -38,6 +38,22 @@ describe("agent boundary", { concurrency: false }, () => {
     });
   });
 
+  test("source monitoring persists outside the archive database and scopes targets", async () => {
+    const create = await fetch(`${baseUrl}/api/agent/monitoring/sources`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Test public feed", url: "https://example.com/feed.xml", kind: "rss", intervalMinutes: 60, targets: [{ title: "Ted Lasso", mediaType: "episode" }] }),
+    });
+    assert.equal(create.status, 201);
+    const source = await create.json() as { id: string; targets: Array<{ title: string }> };
+    assert.equal(source.targets[0].title, "Ted Lasso");
+    const list = await fetch(`${baseUrl}/api/agent/monitoring/sources`);
+    assert.equal(list.status, 200);
+    const listed = await list.json() as { sources: Array<{ id: string }> };
+    assert.ok(listed.sources.some((item) => item.id === source.id));
+    const removed = await fetch(`${baseUrl}/api/agent/monitoring/sources/${source.id}`, { method: "DELETE" });
+    assert.equal(removed.status, 204);
+  });
+
   test("download source inspection selects highest quality and requires approval before queueing", async () => {
     const inspect = await fetch(`${baseUrl}/api/agent/downloads/inspect`, {
       method: "POST", headers: { "content-type": "application/json" },

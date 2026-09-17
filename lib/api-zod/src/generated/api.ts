@@ -40,6 +40,59 @@ export const GetAgentCapabilitiesResponse = zod.object({
 
 
 /**
+ * @summary List owner-scoped source monitors and notifications
+ */
+export const ListAgentSourceMonitorsResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Add a public or authorized source monitor
+ */
+
+export const createAgentSourceMonitorBodyIntervalMinutesMin = 5;
+export const createAgentSourceMonitorBodyIntervalMinutesMax = 1440;
+
+export const createAgentSourceMonitorBodyTargetsItemSeasonMin = 0;
+
+
+
+
+export const CreateAgentSourceMonitorBody = zod.object({
+  "name": zod.string().optional(),
+  "url": zod.string().min(1),
+  "kind": zod.enum(['rss', 'atom', 'json', 'html']).optional(),
+  "intervalMinutes": zod.number().min(createAgentSourceMonitorBodyIntervalMinutesMin).max(createAgentSourceMonitorBodyIntervalMinutesMax).optional(),
+  "targets": zod.array(zod.object({
+  "title": zod.string(),
+  "mediaType": zod.enum(['movie', 'series', 'episode']).optional(),
+  "season": zod.number().min(createAgentSourceMonitorBodyTargetsItemSeasonMin).optional()
+})).min(1)
+})
+
+export const CreateAgentSourceMonitorResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Check a source monitor now
+ */
+export const CheckAgentSourceMonitorParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const CheckAgentSourceMonitorResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Delete a source monitor
+ */
+export const DeleteAgentSourceMonitorParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteAgentSourceMonitorResponse = zod.void()
+
+
+/**
  * @summary Inspect a link and propose the highest-quality usable source
  */
 

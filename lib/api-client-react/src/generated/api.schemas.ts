@@ -242,6 +242,46 @@ export interface AssistantRecommendation {
   personalAffinity?: AssistantRecommendationPersonalAffinity;
 }
 
+export type CreateSourceMonitorKind = typeof CreateSourceMonitorKind[keyof typeof CreateSourceMonitorKind];
+
+
+export const CreateSourceMonitorKind = {
+  rss: 'rss',
+  atom: 'atom',
+  json: 'json',
+  html: 'html',
+} as const;
+
+export type CreateSourceMonitorTargetsItemMediaType = typeof CreateSourceMonitorTargetsItemMediaType[keyof typeof CreateSourceMonitorTargetsItemMediaType];
+
+
+export const CreateSourceMonitorTargetsItemMediaType = {
+  movie: 'movie',
+  series: 'series',
+  episode: 'episode',
+} as const;
+
+export type CreateSourceMonitorTargetsItem = {
+  title: string;
+  mediaType?: CreateSourceMonitorTargetsItemMediaType;
+  /** @minimum 0 */
+  season?: number;
+};
+
+export interface CreateSourceMonitor {
+  name?: string;
+  /** @minLength 1 */
+  url: string;
+  kind?: CreateSourceMonitorKind;
+  /**
+     * @minimum 5
+     * @maximum 1440
+     */
+  intervalMinutes?: number;
+  /** @minItems 1 */
+  targets: CreateSourceMonitorTargetsItem[];
+}
+
 export interface AgentDownloadInspectInput {
   /** @minLength 1 */
   sourceUrl: string;
@@ -3700,6 +3740,12 @@ export interface ErrorResponse {
 export type PageParameter = number;
 
 export type PageSizeParameter = number;
+
+export type ListAgentSourceMonitors200 = { [key: string]: unknown };
+
+export type CreateAgentSourceMonitor201 = { [key: string]: unknown };
+
+export type CheckAgentSourceMonitor200 = { [key: string]: unknown };
 
 export type ResearchAssistantCandidateParams = {
 query: string;

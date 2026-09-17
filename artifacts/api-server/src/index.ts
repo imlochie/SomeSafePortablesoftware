@@ -4,6 +4,7 @@ import { databasePathSource } from "./services/storage-diagnostics";
 import { runtimeConfig } from "./lib/runtime-config";
 import { reconcileInterruptedScans } from "./services/archive";
 import { startAcquisitionJobPolling } from "./services/acquisition-jobs";
+import { startSourceMonitorPolling } from "./services/source-monitor";
 
 const server = app.listen(runtimeConfig.port, runtimeConfig.host, (err) => {
   if (err) {
@@ -61,6 +62,7 @@ const server = app.listen(runtimeConfig.port, runtimeConfig.host, (err) => {
     `ARCHIVE_ASSISTANT_READY ${JSON.stringify({ port: address.port })}\n`,
   );
   const stopAcquisitionPolling = startAcquisitionJobPolling();
-  process.once("SIGTERM", stopAcquisitionPolling);
-  process.once("SIGINT", stopAcquisitionPolling);
+  const stopSourceMonitoring = startSourceMonitorPolling();
+  process.once("SIGTERM", () => { stopAcquisitionPolling(); stopSourceMonitoring(); });
+  process.once("SIGINT", () => { stopAcquisitionPolling(); stopSourceMonitoring(); });
 });

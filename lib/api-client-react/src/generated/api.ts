@@ -50,12 +50,15 @@ import type {
   AssistantOverview,
   AssistantWorkload,
   AssistantWorkloadLineage,
+  CheckAgentSourceMonitor200,
   CreateAcquisitionJob,
   CreateAgentInsight,
   CreateAgentResearch,
+  CreateAgentSourceMonitor201,
   CreateArchiveOperation,
   CreateArchiveOrderingProposalBody,
   CreateReviewItem,
+  CreateSourceMonitor,
   DiscoverArchiveMissingMediaParams,
   DownloadJob,
   DownloadJobInput,
@@ -78,6 +81,7 @@ import type {
   JellyfinInventory,
   LinkAcquisitionDownload,
   ListAcquisitionRecommendationsParams,
+  ListAgentSourceMonitors200,
   ListArchiveOperationsParams,
   ListReviewItemsParams,
   LocalMediaInspectInput,
@@ -300,6 +304,296 @@ export function useGetAgentCapabilities<TData = Awaited<ReturnType<typeof getAge
 
 
 
+
+export const getListAgentSourceMonitorsUrl = () => {
+
+
+
+
+  return `/api/agent/monitoring/sources`
+}
+
+/**
+ * @summary List owner-scoped source monitors and notifications
+ */
+export const listAgentSourceMonitors = async ( options?: Parameters<typeof customFetch>[1]): Promise<ListAgentSourceMonitors200> => {
+
+  return customFetch<ListAgentSourceMonitors200>(getListAgentSourceMonitorsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAgentSourceMonitorsQueryKey = () => {
+    return [
+    `/api/agent/monitoring/sources`
+    ] as const;
+    }
+
+
+export const getListAgentSourceMonitorsQueryOptions = <TData = Awaited<ReturnType<typeof listAgentSourceMonitors>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgentSourceMonitors>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAgentSourceMonitorsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAgentSourceMonitors>>> = ({ signal }) => listAgentSourceMonitors({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAgentSourceMonitors>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAgentSourceMonitorsQueryResult = NonNullable<Awaited<ReturnType<typeof listAgentSourceMonitors>>>
+export type ListAgentSourceMonitorsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List owner-scoped source monitors and notifications
+ */
+
+export function useListAgentSourceMonitors<TData = Awaited<ReturnType<typeof listAgentSourceMonitors>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgentSourceMonitors>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAgentSourceMonitorsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateAgentSourceMonitorUrl = () => {
+
+
+
+
+  return `/api/agent/monitoring/sources`
+}
+
+/**
+ * @summary Add a public or authorized source monitor
+ */
+export const createAgentSourceMonitor = async (createSourceMonitor: CreateSourceMonitor, options?: Parameters<typeof customFetch>[1]): Promise<CreateAgentSourceMonitor201> => {
+
+  return customFetch<CreateAgentSourceMonitor201>(getCreateAgentSourceMonitorUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSourceMonitor)
+  }
+);}
+
+
+
+
+
+export const getCreateAgentSourceMonitorMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgentSourceMonitor>>, TError,{data: BodyType<CreateSourceMonitor>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAgentSourceMonitor>>, TError,{data: BodyType<CreateSourceMonitor>}, TContext> => {
+
+const mutationKey = ['createAgentSourceMonitor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAgentSourceMonitor>>, {data: BodyType<CreateSourceMonitor>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAgentSourceMonitor(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAgentSourceMonitorMutationResult = NonNullable<Awaited<ReturnType<typeof createAgentSourceMonitor>>>
+    export type CreateAgentSourceMonitorMutationBody = BodyType<CreateSourceMonitor>
+    export type CreateAgentSourceMonitorMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add a public or authorized source monitor
+ */
+export const useCreateAgentSourceMonitor = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgentSourceMonitor>>, TError,{data: BodyType<CreateSourceMonitor>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAgentSourceMonitor>>,
+        TError,
+        {data: BodyType<CreateSourceMonitor>},
+        TContext
+      > => {
+      return useMutation(getCreateAgentSourceMonitorMutationOptions(options));
+    }
+
+export const getCheckAgentSourceMonitorUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent/monitoring/sources/${id}/check`
+}
+
+/**
+ * @summary Check a source monitor now
+ */
+export const checkAgentSourceMonitor = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<CheckAgentSourceMonitor200> => {
+
+  return customFetch<CheckAgentSourceMonitor200>(getCheckAgentSourceMonitorUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCheckAgentSourceMonitorMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkAgentSourceMonitor>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof checkAgentSourceMonitor>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['checkAgentSourceMonitor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof checkAgentSourceMonitor>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  checkAgentSourceMonitor(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CheckAgentSourceMonitorMutationResult = NonNullable<Awaited<ReturnType<typeof checkAgentSourceMonitor>>>
+
+    export type CheckAgentSourceMonitorMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Check a source monitor now
+ */
+export const useCheckAgentSourceMonitor = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkAgentSourceMonitor>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof checkAgentSourceMonitor>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getCheckAgentSourceMonitorMutationOptions(options));
+    }
+
+export const getDeleteAgentSourceMonitorUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent/monitoring/sources/${id}`
+}
+
+/**
+ * @summary Delete a source monitor
+ */
+export const deleteAgentSourceMonitor = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteAgentSourceMonitorUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteAgentSourceMonitorMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgentSourceMonitor>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAgentSourceMonitor>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteAgentSourceMonitor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAgentSourceMonitor>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAgentSourceMonitor(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAgentSourceMonitorMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAgentSourceMonitor>>>
+
+    export type DeleteAgentSourceMonitorMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a source monitor
+ */
+export const useDeleteAgentSourceMonitor = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgentSourceMonitor>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAgentSourceMonitor>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteAgentSourceMonitorMutationOptions(options));
+    }
 
 export const getInspectAgentDownloadSourceUrl = () => {
 
