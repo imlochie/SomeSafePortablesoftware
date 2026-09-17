@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import app from "../src/app";
 import { archiveDb, writeSettings } from "../src/lib/archive-db";
+import { ensureReviewItem } from "../src/services/review-queue";
 
 async function api() {
   const root = await mkdtemp(join(tmpdir(), "archive-ordering-http-"));
@@ -69,5 +70,27 @@ test("public proposal-backed operation lifecycle performs a swap and exact rollb
     assert.equal(await readFile(fixture.a, "utf8"), "A"); assert.equal(await readFile(fixture.b, "utf8"), "B");
     const rollbackAgain = await fixture.request(`/api/archive-operations/${operation.id}/rollback`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); assert.equal(rollbackAgain.status, 200);
     assert.equal(await readFile(fixture.a, "utf8"), "A"); assert.equal(await readFile(fixture.b, "utf8"), "B");
+  } finally { await fixture.cleanup(); }
+});
+
+test("Power Renamer refuses an approved plan when source identity changes", async () => {
+  const fixture = await api();
+  try {
+    const review = ensureReviewItem("__local__", {
+      kind: "naming_proposal",
+      subjectKey: "http-power-stale-plan",
+      title: "Stale Power Renamer plan",
+      payload: {
+        planId: "http-power-stale-plan",
+        mappings: [{ id: "record-a", sourcePath: fixture.a, destinationPath: join(fixture.root, "renamed-A.mp4") }],
+        expectedSourceIdentities: { [fixture.a]: `file_record:${fixture.aId}:a` },
+      },
+    });
+    const approved = await fixture.request(`/api/review-items/${review.id}/approve`, { method: "POST", body: "{}" });
+    assert.equal(approved.status, 200);
+    archiveDb.prepare("UPDATE file_record SET checksum = ? WHERE owner_id = ? AND id = ?").run("changed", "__local__", fixture.aId);
+    const response = await fixture.request("/api/archive/power-renamer/operations", { method: "POST", body: JSON.stringify({ reviewItemId: review.id }) });
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /STALE_POWER_RENAMER_PLAN/);
   } finally { await fixture.cleanup(); }
 });
