@@ -280,6 +280,13 @@ function validateSourceUrl(sourceUrl: string) {
 }
 
 export function isPathWithin(candidate: string, root: string) {
+  const candidatePortable = candidate.replaceAll("/", "\\");
+  const rootPortable = root.replaceAll("/", "\\");
+  if (/^[a-z]:\\/i.test(candidatePortable) || /^[a-z]:\\/i.test(rootPortable)) {
+    const left = candidatePortable.toLowerCase().replace(/[\\]+$/, "");
+    const right = rootPortable.toLowerCase().replace(/[\\]+$/, "");
+    return left === right || left.startsWith(`${right}\\`);
+  }
   const candidatePath = resolve(expandPath(candidate));
   const rootPath = resolve(expandPath(root));
   const insensitive = process.platform === "win32";

@@ -309,6 +309,10 @@ async function persistPostflight(operation: ArchiveOperation, ownerId: string) {
   }
 }
 
+function operationPath(value: string) {
+  return /^[a-z]:[\\/]/i.test(value) ? value.replaceAll("/", "\\") : resolve(value);
+}
+
 function normalizeBatch(input: CreateArchiveOperationInput): ArchiveBatchMapping[] {
   const batch = input.batch ?? [];
   if (batch.length > 5000) throw new Error("Archive operation batches are limited to 5000 mappings.");
@@ -318,9 +322,9 @@ function normalizeBatch(input: CreateArchiveOperationInput): ArchiveBatchMapping
   return batch.map((item) => {
     if (!item || typeof item.id !== "string" || !item.id.trim()) throw new Error("Every batch mapping requires an id.");
     if (ids.has(item.id)) throw new Error(`Duplicate batch mapping id: ${item.id}`);
-    const originalPath = resolve(item.originalPath);
-    const temporaryPath = resolve(item.temporaryPath);
-    const finalPath = resolve(item.finalPath);
+    const originalPath = operationPath(item.originalPath);
+    const temporaryPath = operationPath(item.temporaryPath);
+    const finalPath = operationPath(item.finalPath);
     if (originalPath === finalPath || originalPath === temporaryPath || temporaryPath === finalPath) throw new Error(`Batch mapping ${item.id} contains conflicting paths.`);
     if (sources.has(originalPath.toLowerCase())) throw new Error(`Duplicate batch source: ${originalPath}`);
     if (destinations.has(finalPath.toLowerCase())) throw new Error(`Duplicate batch destination: ${finalPath}`);
