@@ -61,6 +61,8 @@ type PlexEpisode = {
   showRatingKey: string | null;
 };
 
+type PlexMovie = { ratingKey: string; title: string; year: number | null };
+
 const canonicalVolumes: Volume[] = [
   { id: "d-movies", root: "D:\\Movies", mediaType: "movie" },
   { id: "d-tv", root: "D:\\Tv Shows", mediaType: "tv" },
@@ -356,12 +358,18 @@ function readPlexEpisodes(ownerId: string) {
   return index;
 }
 
+function readPlexMovies(ownerId: string) {
+  const rows = archiveDb.prepare(`SELECT rating_key, title, year FROM plex_item WHERE owner_id = ? AND item_type = 'movie'`).all(ownerId) as Array<{ rating_key: string; title: string; year: number | null }>;
+  return rows.map((row): PlexMovie => ({ ratingKey: row.rating_key, title: row.title, year: row.year == null ? null : Number(row.year) }));
+}
+
 export async function readNamingProposals(
   ownerId: string,
   filters: { page?: number; pageSize?: number; confidence?: string; operation?: string; pattern?: string; mediaType?: string; volume?: string; state?: string; uncertain?: boolean } = {},
 ) {
   const rows = readRows(ownerId);
   const plexByShow = readPlexEpisodes(ownerId);
+  const plexMovies = readPlexMovies(ownerId);
   const knownPaths = new Set(rows.map((row) => row.path.toLowerCase()));
   const proposals: Array<Record<string, unknown>> = [];
   for (let start = 0; start < rows.length; start += 500) {
@@ -373,27 +381,32 @@ export async function readNamingProposals(
       } else {
         const title = normalizeTitle(row.filename);
         const year = titleYear(row.filename);
+        const match = plexMovies.find((movie) => normalizeTitle(movie.title) === title && (year === null || movie.year === null || movie.year === year));
+        const proposedFilename = match ? `${match.title}${match.year ? ` (${match.year})` : ""}${extname(row.filename).toLowerCase()}` : null;
+        const destination = proposedFilename ? resolve(volume.root, proposedFilename) : null;
+        const collision = Boolean(destination && knownPaths.has(destination.toLowerCase()) && destination.toLowerCase() !== row.path.toLowerCase());
+        const corroborated = Boolean(match && destination && !collision);
         proposals.push({
           fileRecordId: row.id,
           localIdentityId: row.local_identity_id,
           sourcePath: row.path,
-          proposedPath: null,
+          proposedPath: corroborated ? destination : null,
           sourceFilename: row.filename,
-          proposedFilename: null,
+          proposedFilename: corroborated ? proposedFilename : null,
           currentIdentity: title ? { title, year } : null,
-          proposedIdentity: title ? { title, year } : null,
-          patternId: title ? "movie_title_year" : "unrecognized",
-          confidence: title ? "high" : "uncertain",
-          operation: "uncertain/no_action",
-          reason: "Movie naming is reported read-only; no automatic restructuring proposal is generated.",
-          evidence: title ? ["existing movie title normalization"] : ["empty normalized movie title"],
-          researchGrade: "blocked",
-          researchSources: ["filename"],
-          researchBlockers: ["movie restructuring is not enabled"],
+          proposedIdentity: match ? { title: normalizeTitle(match.title), year: match.year } : title ? { title, year } : null,
+          patternId: match ? "movie_plex_corroborated" : title ? "movie_title_year" : "unrecognized",
+          confidence: corroborated ? "high" : title ? "medium" : "uncertain",
+          operation: corroborated ? "rename" : "uncertain/no_action",
+          reason: corroborated ? "Plex title and year corroborate a deterministic movie filename." : collision ? "Movie destination collides with a known file record." : "Movie identity lacks sufficient independent corroboration for an executable rename.",
+          evidence: match ? ["filename title normalization", `Plex corroboration: ${match.ratingKey}`, ...(match.year ? [`Plex year: ${match.year}`] : [])] : title ? ["existing movie title normalization"] : ["empty normalized movie title"],
+          researchGrade: corroborated ? "corroborated" : "blocked",
+          researchSources: match ? ["filename", "plex"] : ["filename"],
+          researchBlockers: corroborated ? [] : [match ? "destination collision or missing deterministic path" : "independent Plex movie corroboration is required"],
           mediaType: volume.mediaType,
           volumeId: row.volume_id ?? volume.id,
           archiveRoot: row.archive_root ?? volume.root,
-          collision: false,
+          collision,
         });
       }
     }
