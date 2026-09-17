@@ -26,3 +26,15 @@ test("recovery inspection classifies conflicts and unknown states conservatively
   assert.equal(await state("completed", ["original", "final"]), "CONFLICT");
   assert.equal(await state("completed", []), "UNKNOWN");
 });
+
+test("recovery inspection understands a completed two-file swap", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archive-assistant-recovery-cycle-"));
+  await writeFile(join(root, "A"), "B-content");
+  await writeFile(join(root, "B"), "A-content");
+  const result = await inspectBatchOperation({ batch: [
+    { id: "a", originalPath: join(root, "A"), temporaryPath: join(root, "tmp-a"), finalPath: join(root, "B"), state: "completed" },
+    { id: "b", originalPath: join(root, "B"), temporaryPath: join(root, "tmp-b"), finalPath: join(root, "A"), state: "completed" },
+  ] } as never);
+  assert.deepEqual(result.map((item) => item.classification), ["CONFIRMED_FINAL", "CONFIRMED_FINAL"]);
+  await rm(root, { recursive: true, force: true });
+});
