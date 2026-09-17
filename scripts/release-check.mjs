@@ -15,33 +15,33 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const steps = [
   {
     name: "API contract alignment",
-    command: "pnpm",
-    args: ["run", "validate:api-contract"],
+    command: "corepack",
+    args: ["pnpm", "run", "validate:api-contract"],
   },
   {
     name: "Workspace typecheck",
-    command: "pnpm",
-    args: ["run", "typecheck"],
+    command: "corepack",
+    args: ["pnpm", "run", "typecheck"],
   },
   {
     name: "API server production bundle",
-    command: "pnpm",
-    args: ["--filter", "@workspace/api-server", "run", "build"],
+    command: "corepack",
+    args: ["pnpm", "--filter", "@workspace/api-server", "run", "build"],
   },
   {
     name: "Archive Assistant production bundle",
-    command: "pnpm",
-    args: ["--filter", "@workspace/archive-assistant", "run", "build"],
+    command: "corepack",
+    args: ["pnpm", "--filter", "@workspace/archive-assistant", "run", "build"],
   },
   {
     name: "API server tests",
-    command: "pnpm",
-    args: ["--filter", "@workspace/api-server", "run", "test"],
+    command: "corepack",
+    args: ["pnpm", "--filter", "@workspace/api-server", "run", "test"],
   },
   {
     name: "Archive Assistant tests",
-    command: "pnpm",
-    args: ["--filter", "@workspace/archive-assistant", "run", "test"],
+    command: "corepack",
+    args: ["pnpm", "--filter", "@workspace/archive-assistant", "run", "test"],
   },
 ];
 
