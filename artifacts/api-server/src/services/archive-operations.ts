@@ -804,6 +804,7 @@ async function exists(path: string, deps: FileDeps) {
 }
 
 export async function preflightBatchFiles(mappings: BatchFileState[], deps: FileDeps = fs): Promise<{ ok: boolean; error?: string }> {
+  if (mappings.length > 5000) return { ok: false, error: "Archive operation batches are limited to 5000 mappings." };
   const sources = new Set(mappings.map((item) => item.originalPath.toLowerCase()));
   if (sources.size !== mappings.length) return { ok: false, error: "Duplicate source in batch." };
   const temporaryPaths = new Set(mappings.map((item) => item.temporaryPath.toLowerCase()));
