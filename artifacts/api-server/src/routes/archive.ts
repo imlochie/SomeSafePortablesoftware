@@ -24,7 +24,7 @@ import {
   UpdateArchiveRecordReviewsResponse,
 } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
-import { archiveDb } from "../lib/archive-db";
+import { addEvent, archiveDb } from "../lib/archive-db";
 import {
   readArchiveScanLiveState,
   subscribeArchiveScanEvents,
@@ -312,11 +312,14 @@ router.post("/archive-operations/:id/refresh-providers", (req, res) => {
     const started: string[] = [];
     const skipped: Array<{ provider: string; reason: string }> = [];
     if (providers.includes("plex")) {
-      if (getPlexConfig(ownerId).configured) { startPlexSync(ownerId); started.push("plex"); } else skipped.push({ provider: "plex", reason: "Plex is not configured." });
+      if (!getPlexConfig(ownerId).configured) skipped.push({ provider: "plex", reason: "Plex is not configured." });
+      else { try { startPlexSync(ownerId); started.push("plex"); } catch (error) { skipped.push({ provider: "plex", reason: errorMessage(error) }); } }
     }
     if (providers.includes("jellyfin")) {
-      if (getJellyfinConfig(ownerId).configured) { startJellyfinSync(ownerId); started.push("jellyfin"); } else skipped.push({ provider: "jellyfin", reason: "Jellyfin is not configured." });
+      if (!getJellyfinConfig(ownerId).configured) skipped.push({ provider: "jellyfin", reason: "Jellyfin is not configured." });
+      else { try { startJellyfinSync(ownerId); started.push("jellyfin"); } catch (error) { skipped.push({ provider: "jellyfin", reason: errorMessage(error) }); } }
     }
+    addEvent("info", `Provider refresh requested after archive operation ${operation.id}. Started: ${started.join(", ") || "none"}.`, "archive-operations", ownerId);
     return res.status(202).json({ operationId: operation.id, started, skipped, notice: "Provider refresh was explicitly requested after verified filesystem changes." });
   } catch (error) {
     return res.status(400).json({ error: errorMessage(error) });
