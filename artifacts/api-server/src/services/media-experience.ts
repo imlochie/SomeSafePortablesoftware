@@ -165,3 +165,17 @@ export function readMediaExperience(ownerId: string) {
     watchlist: { status: "not_available" as const, items: [] as MediaExperienceItem[] },
   };
 }
+
+export function buildViewingPrioritySignals(media: ReturnType<typeof readMediaExperience>) {
+  const recentCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  return media.items.map((item) => {
+    const reasons: string[] = [];
+    let score = 0;
+    if (item.isNextEpisode) { score += 50; reasons.push("next unwatched episode"); }
+    if (item.status === "in_progress") { score += 35; reasons.push("currently in progress"); }
+    if (item.lastWatchedAt && Date.parse(item.lastWatchedAt) >= recentCutoff) { score += 25; reasons.push("watched within the last 30 days"); }
+    if (item.playCount >= 2) { score += 20; reasons.push(`rewatched ${item.playCount} times`); }
+    if (item.seriesProgress !== null && item.seriesProgress > 0) { score += Math.min(15, Math.round(item.seriesProgress / 10)); reasons.push(`series progress ${item.seriesProgress}%`); }
+    return { key: item.key, title: item.title, seriesTitle: item.seriesTitle, itemType: item.itemType, score, reasons };
+  }).filter((item) => item.score > 0).sort((left, right) => right.score - left.score || left.title.localeCompare(right.title)).slice(0, 100);
+}

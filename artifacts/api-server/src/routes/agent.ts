@@ -12,6 +12,7 @@ import { createJob, startJob } from "../services/download-engine";
 import { ensureReviewItem, readReviewItem } from "../services/review-queue";
 import { checkSourceMonitor, createSourceMonitor, deleteSourceMonitor, listMonitorNotifications, listSourceMonitors, markMonitorNotificationRead, updateSourceMonitor } from "../services/source-monitor";
 import { askArenaCanonical, arenaCanonicalStatus, arenaToolManifest } from "../services/arena-canonical-client";
+import { buildViewingPrioritySignals } from "../services/media-experience";
 
 const router: IRouter = Router();
 
@@ -285,7 +286,7 @@ router.post("/agent/research", async (req, res, next) => {
         "A missing external source or identity match remains unknown, not negative evidence.",
         ...(comparisonError ? [comparisonError] : []),
       ],
-      personalContext: { summary: overview.mediaExperience.summary, currentViewingMomentum: overview.mediaExperience.currentViewingMomentum, personalizedBriefing: overview.personalizedBriefing.slice(0, 50) },
+      personalContext: { summary: overview.mediaExperience.summary, currentViewingMomentum: overview.mediaExperience.currentViewingMomentum, prioritySignals: buildViewingPrioritySignals(overview.mediaExperience), personalizedBriefing: overview.personalizedBriefing.slice(0, 50) },
     }));
   } catch (error) {
     return next(error);
@@ -337,6 +338,7 @@ router.get("/agent/context", async (req, res, next) => {
         summary: overview.mediaExperience.summary,
         currentViewingMomentum: overview.mediaExperience.currentViewingMomentum,
         personalizedBriefing: overview.personalizedBriefing.slice(0, 50),
+        prioritySignals: buildViewingPrioritySignals(overview.mediaExperience),
         viewingEvidence: overview.mediaExperience.items.slice(0, 250).map((item) => ({
           key: item.key, title: item.title, provider: item.provider, itemType: item.itemType,
           year: item.year, genres: item.genres, status: item.status, progressPercent: item.progressPercent,

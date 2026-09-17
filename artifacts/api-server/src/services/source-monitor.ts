@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { SettingsRecord } from "../lib/archive-db";
-import { readMediaExperience } from "./media-experience";
+import { readMediaExperience, buildViewingPrioritySignals } from "./media-experience";
 import { resolveExternalIntegrationConfiguration } from "../integrations/config";
 import { readAssistantOverview } from "./assistant-overview";
 
@@ -116,7 +116,7 @@ export async function checkSourceMonitor(ownerId: string, id: string, settings: 
       if (!response.ok) throw new Error(`Source returned HTTP ${response.status}.`);
       const body = await response.text(); kind = detectKind(response.headers.get("content-type") ?? "", monitor.url, monitor.kind); items = parseItems(body, kind, monitor.url);
     }
-    const personal = readMediaExperience(ownerId).items;
+    const media = readMediaExperience(ownerId); const personal = media.items; const prioritySignals = buildViewingPrioritySignals(media);
     const overview = await readAssistantOverview(ownerId);
     const archiveSignals = [
       ...overview.recommendations.map((item) => item.title),
@@ -130,8 +130,9 @@ export async function checkSourceMonitor(ownerId: string, id: string, settings: 
       const rating = Number(title.match(/(?:⭐|rating\s*)(\d+(?:\.\d+)?)/i)?.[1] ?? NaN);
       const year = Number(title.match(/\b(20\d{2})\b/)?.[1] ?? NaN);
       const active = related.some((item) => item.isNextEpisode || item.status === "in_progress");
-      const reasons = [...(related.length ? ["related to your viewing evidence"] : []), ...(archiveRelated.length ? [`related to archive evidence: ${archiveRelated.slice(0, 3).join(", ")}`] : []), ...(active ? ["related series is active or has a next episode"] : []), ...(Number.isFinite(rating) && rating >= 7 ? [`public rating signal: ${rating}/10`] : []), ...(Number.isFinite(year) && year >= new Date().getFullYear() - 1 ? ["recent release-year signal"] : [])];
-      return { score: (related.length ? 60 : 0) + (archiveRelated.length ? 50 : 0) + (active ? 25 : 0) + (Number.isFinite(rating) && rating >= 7 ? 15 : 0) + (Number.isFinite(year) && year >= new Date().getFullYear() - 1 ? 10 : 0), reasons };
+      const priority = prioritySignals.filter((signal) => normalized.includes(normalize(signal.title)) || Boolean(signal.seriesTitle && normalized.includes(normalize(signal.seriesTitle))));
+      const reasons = [...(related.length ? ["related to your viewing evidence"] : []), ...(priority.length ? [`watch-history priority: ${priority[0].reasons.join(", ")}`] : []), ...(archiveRelated.length ? [`related to archive evidence: ${archiveRelated.slice(0, 3).join(", ")}`] : []), ...(active ? ["related series is active or has a next episode"] : []), ...(Number.isFinite(rating) && rating >= 7 ? [`public rating signal: ${rating}/10`] : []), ...(Number.isFinite(year) && year >= new Date().getFullYear() - 1 ? ["recent release-year signal"] : [])];
+      return { score: (related.length ? 60 : 0) + (priority.length ? Math.min(60, priority[0].score) : 0) + (archiveRelated.length ? 50 : 0) + (active ? 25 : 0) + (Number.isFinite(rating) && rating >= 7 ? 15 : 0) + (Number.isFinite(year) && year >= new Date().getFullYear() - 1 ? 10 : 0), reasons };
     };
     const matched = items.flatMap((item) => {
       const targets = monitor.targets.filter((target) => normalize(item.title).includes(normalize(target.title)));
