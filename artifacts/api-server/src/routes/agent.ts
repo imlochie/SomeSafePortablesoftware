@@ -13,6 +13,7 @@ import { ensureReviewItem, readReviewItem } from "../services/review-queue";
 import { checkSourceMonitor, createSourceMonitor, deleteSourceMonitor, listMonitorNotifications, listSourceMonitors, markMonitorNotificationRead, updateSourceMonitor } from "../services/source-monitor";
 import { askArenaCanonical, arenaCanonicalStatus, arenaToolManifest } from "../services/arena-canonical-client";
 import { buildViewingPrioritySignals, buildArchiveOriginResearch } from "../services/media-experience";
+import { recordArchiveOrderingBaseline } from "../services/archive-ordering-baselines";
 
 const router: IRouter = Router();
 
@@ -273,6 +274,8 @@ router.post("/agent/research", async (req, res, next) => {
       items: overview.discovery.upcoming.items.slice(0, 50),
       note: "Upcoming items come from synced provider release metadata; external release calendars are not assumed."
     } : { status: "not_requested", items: [] };
+    const originResearch = buildArchiveOriginResearch(overview.mediaExperience);
+    const orderingBaseline = await recordArchiveOrderingBaseline(ownerId, overview.mediaExperience.items, readSettings());
     return res.json(redact({
       kind: "archive_research_brief", contract: "agent-research-v1", generatedAt: new Date().toISOString(),
       question: query || null, ownerScoped: true,
@@ -286,7 +289,7 @@ router.post("/agent/research", async (req, res, next) => {
         "A missing external source or identity match remains unknown, not negative evidence.",
         ...(comparisonError ? [comparisonError] : []),
       ],
-      personalContext: { summary: overview.mediaExperience.summary, currentViewingMomentum: overview.mediaExperience.currentViewingMomentum, prioritySignals: buildViewingPrioritySignals(overview.mediaExperience), originResearch: buildArchiveOriginResearch(overview.mediaExperience), personalizedBriefing: overview.personalizedBriefing.slice(0, 50) },
+      personalContext: { summary: overview.mediaExperience.summary, currentViewingMomentum: overview.mediaExperience.currentViewingMomentum, prioritySignals: buildViewingPrioritySignals(overview.mediaExperience), originResearch, orderingBaseline, personalizedBriefing: overview.personalizedBriefing.slice(0, 50) },
     }));
   } catch (error) {
     return next(error);
