@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import {
   GetWebhookSecretStatusesResponse,
+  GetWebhookDeliveryHistoryQueryParams,
+  GetWebhookDeliveryHistoryResponse,
   ReplaceWebhookSecretBody,
   ReplaceWebhookSecretResponse,
 } from "@workspace/api-zod";
@@ -9,6 +11,7 @@ import { integrationRegistry } from "../integrations";
 import {
   readWebhookSecretStatuses,
   rotateWebhookSecret,
+  listWebhookDeliveryHistory,
   webhookProviders,
   type WebhookProvider,
 } from "../services/settings";
@@ -28,6 +31,16 @@ router.get("/integrations/webhooks", (_req, res) => {
   res.json(GetWebhookSecretStatusesResponse.parse({
     providers: readWebhookSecretStatuses(),
   }));
+});
+
+router.get("/integrations/webhooks/history", (req, res) => {
+  const parsed = GetWebhookDeliveryHistoryQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const result = listWebhookDeliveryHistory(getAuthenticatedUserId(req), parsed.data);
+  res.json(GetWebhookDeliveryHistoryResponse.parse(result));
 });
 
 router.put("/integrations/webhooks/:provider", (req, res) => {

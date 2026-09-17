@@ -12,7 +12,9 @@ import {
 } from "../services/acquisition-jobs";
 import {
   recordWebhookDelivery,
+  recordWebhookDeliveryHistory,
   webhookProviders,
+  type WebhookDeliveryClassification,
   type WebhookDeliveryResultClass,
   type WebhookProvider,
 } from "../services/settings";
@@ -39,6 +41,17 @@ function recordDelivery(provider: string, result: WebhookDeliveryResultClass) {
   }
 }
 
+function recordHistory(
+  provider: string,
+  input: Omit<Parameters<typeof recordWebhookDeliveryHistory>[0], "provider"> & {
+    classification: WebhookDeliveryClassification;
+  },
+) {
+  if (webhookProviders.includes(provider as WebhookProvider)) {
+    recordWebhookDeliveryHistory({ ...input, provider: provider as WebhookProvider });
+  }
+}
+
 router.post(
   "/:provider",
   (req, res) => {
@@ -48,6 +61,11 @@ router.post(
     }
     if (!Buffer.isBuffer(req.body)) {
       recordDelivery(provider, "malformed");
+      recordHistory(provider, {
+        classification: "malformed",
+        reasonCode: "raw_body_required",
+        detail: "Webhook body was not received as raw JSON.",
+      });
       return res.status(400).json({ error: "Acquisition webhook body must be raw JSON." });
     }
     try {
@@ -61,10 +79,27 @@ router.post(
       );
       if (!event) {
         recordDelivery(provider, "accepted");
+        recordHistory(provider, {
+          classification: "ignored",
+          reasonCode: "non_media_event",
+          detail: "Authenticated provider notification did not contain an acquisition job reference.",
+          deduplication: null,
+        });
         return res.status(202).json({ accepted: true, status: "ignored" });
       }
       const result = handleAcquisitionWebhook(provider as AcquisitionProviderId, event);
+      const classification = result.status as Extract<WebhookDeliveryClassification, "processed" | "ignored" | "duplicate">;
       recordDelivery(provider, "accepted");
+      recordHistory(provider, {
+        classification,
+        reasonCode: classification === "processed" ? "matched_acquisition_job" : classification === "duplicate" ? "provider_event_replayed" : "no_matching_acquisition_job",
+        providerEventId: event.eventId ?? null,
+        providerJobId: event.providerJobId,
+        resolvedOwnerId: result.job?.ownerId ?? null,
+        acquisitionJobId: result.job?.id ?? null,
+        detail: event.detail,
+        deduplication: event.eventId ? "event_id" : "unavailable",
+      });
       return res.status(202).json({
         accepted: true,
         status: result.status,
@@ -72,13 +107,28 @@ router.post(
     } catch (error) {
       if (error instanceof IntegrationWebhookAuthenticationError) {
         recordDelivery(provider, "rejected");
+        recordHistory(provider, {
+          classification: "rejected",
+          reasonCode: "invalid_signature",
+          detail: "Provider webhook signature was rejected.",
+        });
         return res.status(401).json({ error: errorMessage(error) });
       }
       if (error instanceof IntegrationUnavailableError) {
         recordDelivery(provider, "unavailable");
+        recordHistory(provider, {
+          classification: "unavailable",
+          reasonCode: "webhook_authentication_unavailable",
+          detail: "Webhook authentication could not be performed because provider configuration is unavailable.",
+        });
         return res.status(503).json({ error: errorMessage(error) });
       }
       recordDelivery(provider, "malformed");
+      recordHistory(provider, {
+        classification: "malformed",
+        reasonCode: "provider_payload_invalid",
+        detail: errorMessage(error),
+      });
       return res.status(400).json({ error: errorMessage(error) });
     }
   },

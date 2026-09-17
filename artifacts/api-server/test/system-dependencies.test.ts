@@ -4,7 +4,7 @@ import { describe, test } from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GetSystemDependenciesResponse } from "@workspace/api-zod";
-import { readSettings } from "../src/lib/archive-db";
+import { readSettings, writeSettings } from "../src/lib/archive-db";
 import { resolveRuntimeConfig } from "../src/lib/runtime-config";
 import { getLocalToolPaths } from "../src/services/local-tools";
 import {
@@ -82,6 +82,19 @@ describe("system dependency status", { concurrency: false }, () => {
       ffmpeg: "/operator/bin/ffmpeg",
       ffprobe: "/operator/bin/ffprobe",
     });
+  });
+
+  test("defaults Windows startup to disabled and persists an explicit preference", () => {
+    const before = readSettings();
+    try {
+      assert.equal(before.startWithWindows, false);
+      writeSettings({ startWithWindows: true });
+      assert.equal(readSettings().startWithWindows, true);
+      writeSettings({ startWithWindows: false });
+      assert.equal(readSettings().startWithWindows, false);
+    } finally {
+      writeSettings({ startWithWindows: before.startWithWindows });
+    }
   });
 
   test("keeps explicit settings overrides ahead of managed tools", () => {
