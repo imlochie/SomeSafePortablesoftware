@@ -40,6 +40,36 @@ export const GetAgentCapabilitiesResponse = zod.object({
 
 
 /**
+ * @summary Compare archive, provider, viewing, and external research evidence
+ */
+export const createAgentResearchBriefBodyQueryMax = 1000;
+
+export const createAgentResearchBriefBodyIncludeComparisonsDefault = true;
+export const createAgentResearchBriefBodyIncludeUpcomingDefault = true;
+
+export const CreateAgentResearchBriefBody = zod.object({
+  "query": zod.string().max(createAgentResearchBriefBodyQueryMax).optional(),
+  "includeComparisons": zod.boolean().default(createAgentResearchBriefBodyIncludeComparisonsDefault),
+  "includeUpcoming": zod.boolean().default(createAgentResearchBriefBodyIncludeUpcomingDefault)
+})
+
+export const CreateAgentResearchBriefResponse = zod.object({
+  "kind": zod.enum(['archive_research_brief']),
+  "contract": zod.enum(['agent-research-v1']),
+  "generatedAt": zod.coerce.date(),
+  "question": zod.string().nullish(),
+  "ownerScoped": zod.boolean(),
+  "sourcePolicy": zod.record(zod.string(), zod.unknown()),
+  "upcoming": zod.record(zod.string(), zod.unknown()),
+  "recent": zod.array(zod.record(zod.string(), zod.unknown())),
+  "queryResearch": zod.record(zod.string(), zod.unknown()),
+  "comparisons": zod.record(zod.string(), zod.unknown()),
+  "comparisonLimitations": zod.array(zod.string()),
+  "personalContext": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
  * @summary Build a prioritized evidence brief for a reasoning agent
  */
 export const createAgentInsightBriefBodyQuestionMax = 2000;

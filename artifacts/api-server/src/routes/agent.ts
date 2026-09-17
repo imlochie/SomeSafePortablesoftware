@@ -5,6 +5,8 @@ import { runtimeConfig } from "../lib/runtime-config";
 import { readEvents } from "../lib/archive-db";
 import { createArchiveOperation } from "../services/archive-operations";
 import { readAssistantOverview } from "../services/assistant-overview";
+import { researchCandidate } from "../services/media-research";
+import { synthesizeViewingResearch } from "../services/research-synthesis";
 
 const router: IRouter = Router();
 
@@ -112,6 +114,57 @@ function buildInsightBrief(overview: Awaited<ReturnType<typeof readAssistantOver
     })),
   };
 }
+
+router.post("/agent/research", async (req, res, next) => {
+  try {
+    const body = req.body ?? {};
+    const query = typeof body.query === "string" ? body.query.trim() : "";
+    if (query.length > 1000) return res.status(400).json({ error: "query must be 1000 characters or fewer" });
+    const ownerId = getAuthenticatedUserId(req);
+    const overview = await readAssistantOverview(ownerId);
+    const includeComparisons = body.includeComparisons !== false;
+    const includeUpcoming = body.includeUpcoming !== false;
+    const queryResearch = query ? await researchCandidate(ownerId, query) : { status: "not_requested" as const, items: [] };
+    let comparisons: Awaited<ReturnType<typeof synthesizeViewingResearch>> | null = null;
+    let comparisonError: string | null = null;
+    if (includeComparisons) {
+      try {
+        comparisons = await synthesizeViewingResearch(ownerId);
+      } catch (error) {
+        comparisonError = error instanceof Error ? error.message : "External comparison was unavailable.";
+      }
+    }
+    const sources = [
+      { id: "archive", role: "archive truth and local inventory", available: true },
+      { id: "plex-jellyfin", role: "synced provider metadata and viewing history", available: overview.mediaExperience.sourceStatus === "provider_metadata" },
+      { id: "tvmaze", role: "show search, release metadata, cast and crew relationships", available: queryResearch.status === "available" || comparisons?.source?.includes("tvmaze") === true },
+      { id: "imdb", role: "independent audience and popularity evidence", available: Boolean(process.env.IMDB_API_URL_TEMPLATE?.trim() && process.env.IMDB_API_TOKEN?.trim()), limitation: "Requires explicit IMDb API configuration." },
+    ];
+    const upcoming = includeUpcoming ? {
+      status: overview.discovery.upcoming.status,
+      reason: overview.discovery.upcoming.reason,
+      items: overview.discovery.upcoming.items.slice(0, 50),
+      note: "Upcoming items come from synced provider release metadata; external release calendars are not assumed."
+    } : { status: "not_requested", items: [] };
+    return res.json(redact({
+      kind: "archive_research_brief", contract: "agent-research-v1", generatedAt: new Date().toISOString(),
+      question: query || null, ownerScoped: true,
+      sourcePolicy: { sources, no_source_is_treated_as_authoritative_for_personal_taste: true },
+      upcoming,
+      recent: includeUpcoming ? overview.discovery.recentlyReleased.items.slice(0, 50) : [],
+      queryResearch,
+      comparisons: comparisons ? { status: comparisons.status, source: comparisons.source, items: comparisons.items.slice(0, 50), bounds: comparisons.bounds, identityUncertain: comparisons.identityUncertain } : { status: "unavailable", reason: comparisonError ?? "not_requested", items: [] },
+      comparisonLimitations: [
+        "Ratings and popularity are external signals, not evidence of what this user will enjoy.",
+        "A missing external source or identity match remains unknown, not negative evidence.",
+        ...(comparisonError ? [comparisonError] : []),
+      ],
+      personalContext: { summary: overview.mediaExperience.summary, currentViewingMomentum: overview.mediaExperience.currentViewingMomentum, personalizedBriefing: overview.personalizedBriefing.slice(0, 50) },
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.post("/agent/insights", async (req, res, next) => {
   try {

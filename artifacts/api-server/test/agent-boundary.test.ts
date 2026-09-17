@@ -38,6 +38,27 @@ describe("agent boundary", { concurrency: false }, () => {
     });
   });
 
+  test("research returns source-aware upcoming media and comparison limitations", async () => {
+    const response = await fetch(`${baseUrl}/api/agent/research`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ includeComparisons: true, includeUpcoming: true }),
+    });
+    assert.equal(response.status, 200);
+    const brief = await response.json() as {
+      kind: string; contract: string; ownerScoped: boolean; sourcePolicy: { sources: unknown[] };
+      upcoming: { items: unknown[] }; recent: unknown[]; comparisons: { items: unknown[] }; comparisonLimitations: string[];
+    };
+    assert.equal(brief.kind, "archive_research_brief");
+    assert.equal(brief.contract, "agent-research-v1");
+    assert.equal(brief.ownerScoped, true);
+    assert.ok(brief.sourcePolicy.sources.some((source: any) => source.id === "tvmaze"));
+    assert.ok(Array.isArray(brief.upcoming.items));
+    assert.ok(Array.isArray(brief.recent));
+    assert.ok(Array.isArray(brief.comparisons.items));
+    assert.ok(brief.comparisonLimitations.some((item) => item.includes("external signals")));
+  });
+
   test("insights returns a prioritized reasoning brief rather than raw archive rows", async () => {
     const response = await fetch(`${baseUrl}/api/agent/insights`, {
       method: "POST",

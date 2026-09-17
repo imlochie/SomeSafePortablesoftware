@@ -242,6 +242,55 @@ export interface AssistantRecommendation {
   personalAffinity?: AssistantRecommendationPersonalAffinity;
 }
 
+export interface CreateAgentResearch {
+  /** @maxLength 1000 */
+  query?: string;
+  includeComparisons?: boolean;
+  includeUpcoming?: boolean;
+}
+
+export type AgentResearchBriefKind = typeof AgentResearchBriefKind[keyof typeof AgentResearchBriefKind];
+
+
+export const AgentResearchBriefKind = {
+  archive_research_brief: 'archive_research_brief',
+} as const;
+
+export type AgentResearchBriefContract = typeof AgentResearchBriefContract[keyof typeof AgentResearchBriefContract];
+
+
+export const AgentResearchBriefContract = {
+  'agent-research-v1': 'agent-research-v1',
+} as const;
+
+export type AgentResearchBriefSourcePolicy = { [key: string]: unknown };
+
+export type AgentResearchBriefUpcoming = { [key: string]: unknown };
+
+export type AgentResearchBriefRecentItem = { [key: string]: unknown };
+
+export type AgentResearchBriefQueryResearch = { [key: string]: unknown };
+
+export type AgentResearchBriefComparisons = { [key: string]: unknown };
+
+export type AgentResearchBriefPersonalContext = { [key: string]: unknown };
+
+export interface AgentResearchBrief {
+  kind: AgentResearchBriefKind;
+  contract: AgentResearchBriefContract;
+  generatedAt: string;
+  /** @nullable */
+  question?: string | null;
+  ownerScoped: boolean;
+  sourcePolicy: AgentResearchBriefSourcePolicy;
+  upcoming: AgentResearchBriefUpcoming;
+  recent: AgentResearchBriefRecentItem[];
+  queryResearch: AgentResearchBriefQueryResearch;
+  comparisons: AgentResearchBriefComparisons;
+  comparisonLimitations: string[];
+  personalContext: AgentResearchBriefPersonalContext;
+}
+
 export interface CreateAgentInsight {
   /**
      * @minLength 1

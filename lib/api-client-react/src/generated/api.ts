@@ -28,6 +28,7 @@ import type {
   AgentCapabilities,
   AgentContext,
   AgentInsightBrief,
+  AgentResearchBrief,
   AppSettings,
   AppSettingsUpdate,
   ApprovedAcquisitionResult,
@@ -47,6 +48,7 @@ import type {
   AssistantWorkloadLineage,
   CreateAcquisitionJob,
   CreateAgentInsight,
+  CreateAgentResearch,
   CreateArchiveOperation,
   CreateArchiveOrderingProposalBody,
   CreateReviewItem,
@@ -294,6 +296,77 @@ export function useGetAgentCapabilities<TData = Awaited<ReturnType<typeof getAge
 
 
 
+
+export const getCreateAgentResearchBriefUrl = () => {
+
+
+
+
+  return `/api/agent/research`
+}
+
+/**
+ * @summary Compare archive, provider, viewing, and external research evidence
+ */
+export const createAgentResearchBrief = async (createAgentResearch?: CreateAgentResearch, options?: Parameters<typeof customFetch>[1]): Promise<AgentResearchBrief> => {
+
+  return customFetch<AgentResearchBrief>(getCreateAgentResearchBriefUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createAgentResearch)
+  }
+);}
+
+
+
+
+
+export const getCreateAgentResearchBriefMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgentResearchBrief>>, TError,{data?: BodyType<CreateAgentResearch>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAgentResearchBrief>>, TError,{data?: BodyType<CreateAgentResearch>}, TContext> => {
+
+const mutationKey = ['createAgentResearchBrief'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAgentResearchBrief>>, {data?: BodyType<CreateAgentResearch>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAgentResearchBrief(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAgentResearchBriefMutationResult = NonNullable<Awaited<ReturnType<typeof createAgentResearchBrief>>>
+    export type CreateAgentResearchBriefMutationBody = BodyType<CreateAgentResearch> | undefined
+    export type CreateAgentResearchBriefMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Compare archive, provider, viewing, and external research evidence
+ */
+export const useCreateAgentResearchBrief = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgentResearchBrief>>, TError,{data?: BodyType<CreateAgentResearch>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAgentResearchBrief>>,
+        TError,
+        {data?: BodyType<CreateAgentResearch>},
+        TContext
+      > => {
+      return useMutation(getCreateAgentResearchBriefMutationOptions(options));
+    }
 
 export const getCreateAgentInsightBriefUrl = () => {
 

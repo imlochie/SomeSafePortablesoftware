@@ -60,6 +60,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentCapabilities"
+  /agent/research:
+    post:
+      operationId: createAgentResearchBrief
+      tags: [agent, research]
+      summary: Compare archive, provider, viewing, and external research evidence
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentResearch"
+      responses:
+        "200":
+          description: Research brief with source comparison, upcoming media, and limitations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResearchBrief"
+        "400":
+          description: Invalid research request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /agent/insights:
     post:
       operationId: createAgentInsightBrief
@@ -2134,6 +2158,28 @@ components:
             basedOn:
               type: array
               items: { type: string }
+    CreateAgentResearch:
+      type: object
+      properties:
+        query: { type: string, maxLength: 1000 }
+        includeComparisons: { type: boolean, default: true }
+        includeUpcoming: { type: boolean, default: true }
+    AgentResearchBrief:
+      type: object
+      required: [kind, contract, generatedAt, ownerScoped, sourcePolicy, upcoming, recent, queryResearch, comparisons, comparisonLimitations, personalContext]
+      properties:
+        kind: { type: string, enum: [archive_research_brief] }
+        contract: { type: string, enum: [agent-research-v1] }
+        generatedAt: { type: string, format: date-time }
+        question: { type: [string, "null"] }
+        ownerScoped: { type: boolean }
+        sourcePolicy: { type: object, additionalProperties: true }
+        upcoming: { type: object, additionalProperties: true }
+        recent: { type: array, items: { type: object, additionalProperties: true } }
+        queryResearch: { type: object, additionalProperties: true }
+        comparisons: { type: object, additionalProperties: true }
+        comparisonLimitations: { type: array, items: { type: string } }
+        personalContext: { type: object, additionalProperties: true }
     CreateAgentInsight:
       type: object
       required: [question]
