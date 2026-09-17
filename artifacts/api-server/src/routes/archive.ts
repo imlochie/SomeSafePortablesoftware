@@ -243,9 +243,12 @@ router.post("/archive/power-renamer/plan", async (req, res) => {
       : null;
     if (!requestedIds || requestedIds.size === 0) return res.status(400).json({ error: "Select at least one naming proposal to plan." });
     const report = await readNamingProposals(ownerId, { page: 1, pageSize: 500 });
+    const sourceRows = archiveDb.prepare("SELECT id, checksum, fingerprint, size_bytes FROM file_record WHERE owner_id = ?").all(ownerId) as Array<{ id: number; checksum: string | null; fingerprint: string | null; size_bytes: number | null }>;
+    const sourceById = new Map(sourceRows.map((row) => [row.id, row]));
     const selected = report.results.filter((proposal) => requestedIds.has(Number(proposal.fileRecordId))).map((proposal) => ({
       fileRecordId: Number(proposal.fileRecordId),
       sourcePath: String(proposal.sourcePath),
+      sourceIdentity: (() => { const row = sourceById.get(Number(proposal.fileRecordId)); return `file_record:${Number(proposal.fileRecordId)}:${row?.checksum ?? row?.fingerprint ?? row?.size_bytes ?? "unknown"}`; })(),
       proposedPath: proposal.proposedPath == null ? null : String(proposal.proposedPath),
       confidence: String(proposal.confidence),
       operation: String(proposal.operation),
@@ -260,8 +263,9 @@ router.post("/archive/power-renamer/plan", async (req, res) => {
     const occupied = report.results.map((proposal) => String(proposal.sourcePath));
     let plan = buildPowerRenamePlan(selected, occupied);
     if (!plan.mappings.length) return res.status(400).json({ error: "No selected proposal is safe to plan.", plan });
-    const companionRows = archiveDb.prepare("SELECT id, path FROM file_record WHERE owner_id = ? AND scan_status = 'active'").all(ownerId) as Array<{ id: number; path: string }>;
-    plan = addPowerRenameCompanions(plan, companionRows, companionRows.map((row) => row.path));
+    const companionRows = archiveDb.prepare("SELECT id, path, checksum, fingerprint, size_bytes FROM file_record WHERE owner_id = ? AND scan_status = 'active'").all(ownerId) as Array<{ id: number; path: string; checksum: string | null; fingerprint: string | null; size_bytes: number | null }>;
+    const companionRecords = companionRows.map((row) => ({ id: row.id, path: row.path, identity: `file_record:${row.id}:${row.checksum ?? row.fingerprint ?? row.size_bytes ?? "unknown"}` }));
+    plan = addPowerRenameCompanions(plan, companionRecords, companionRows.map((row) => row.path));
     const review = ensureReviewItem(ownerId, {
       kind: "naming_proposal",
       subjectKey: plan.planId,
@@ -282,6 +286,15 @@ router.post("/archive/power-renamer/operations", (req, res) => {
     const payload = review.payload;
     const mappings = Array.isArray(payload.mappings) ? payload.mappings as Array<Record<string, unknown>> : [];
     if (!mappings.length) return res.status(400).json({ error: "The approved Power Renamer plan has no mappings." });
+    const expected = payload.expectedSourceIdentities && typeof payload.expectedSourceIdentities === "object" ? payload.expectedSourceIdentities as Record<string, unknown> : {};
+    for (const mapping of mappings) {
+      const originalPath = String(mapping.sourcePath);
+      const expectedIdentity = expected[originalPath];
+      if (typeof expectedIdentity !== "string") return res.status(400).json({ error: `Power Renamer plan has no source identity for ${originalPath}.` });
+      const row = archiveDb.prepare("SELECT id, checksum, fingerprint, size_bytes, scan_status FROM file_record WHERE owner_id = ? AND path = ?").get(ownerId, originalPath) as { id: number; checksum: string | null; fingerprint: string | null; size_bytes: number | null; scan_status: string } | undefined;
+      const currentIdentity = row ? `file_record:${row.id}:${row.checksum ?? row.fingerprint ?? row.size_bytes ?? "unknown"}` : null;
+      if (!row || row.scan_status !== "active" || currentIdentity !== expectedIdentity) return res.status(409).json({ error: `STALE_POWER_RENAMER_PLAN: source changed or disappeared: ${originalPath}` });
+    }
     const operation = createArchiveOperation({
       action: "rename",
       sourceKind: "power-renamer",

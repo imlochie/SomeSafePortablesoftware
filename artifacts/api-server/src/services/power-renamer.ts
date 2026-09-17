@@ -10,6 +10,7 @@ export type PowerRenameCandidate = {
   operation: string;
   collision: boolean;
   mediaType: string;
+  sourceIdentity?: string;
   researchGrade?: string;
   researchSources?: string[];
   researchBlockers?: string[];
@@ -20,6 +21,7 @@ export type PowerRenamePlan = {
   planId: string;
   mode: "supervised";
   mappings: RenameMapping[];
+  expectedSourceIdentities: Record<string, string>;
   steps: ReturnType<typeof buildCollisionSafeRenamePlan>["steps"];
   skipped: Array<{ fileRecordId: number; sourcePath: string; reason: string }>;
   safeguards: string[];
@@ -46,12 +48,14 @@ export function buildPowerRenamePlan(candidates: PowerRenameCandidate[], occupie
   }));
   const collisionSafe = buildCollisionSafeRenamePlan(mappings, occupiedPaths);
   for (const error of collisionSafe.errors) skipped.push({ fileRecordId: Number(error.match(/record-(\d+)/)?.[1] ?? 0), sourcePath: "", reason: error });
-  const planBody = { mappings, skipped };
+  const expectedSourceIdentities = Object.fromEntries(eligible.filter((candidate) => candidate.sourceIdentity).map((candidate) => [candidate.sourcePath, candidate.sourceIdentity!]));
+  const planBody = { mappings, expectedSourceIdentities, skipped };
   const planId = `power-renamer-${createHash("sha256").update(JSON.stringify(planBody)).digest("hex").slice(0, 24)}`;
   return {
     planId,
     mode: "supervised",
     mappings,
+    expectedSourceIdentities,
     steps: collisionSafe.steps,
     skipped,
     safeguards: [
@@ -64,7 +68,7 @@ export function buildPowerRenamePlan(candidates: PowerRenameCandidate[], occupie
   };
 }
 
-export type CompanionRecord = { id: number; path: string };
+export type CompanionRecord = { id: number; path: string; identity?: string };
 
 /** Add matching sidecars without guessing unrelated files. A sidecar must share
  * the exact video stem and use a known metadata/subtitle/artwork extension. */
@@ -82,10 +86,12 @@ export function addPowerRenameCompanions(plan: PowerRenamePlan, records: Compani
     }
   }
   if (!additions.length) return plan;
+  const expectedSourceIdentities = { ...plan.expectedSourceIdentities };
+  for (const record of records) if (additions.some((mapping) => mapping.sourcePath === record.path) && record.identity) expectedSourceIdentities[record.path] = record.identity;
   const mappings = [...plan.mappings, ...additions];
   const collisionSafe = buildCollisionSafeRenamePlan(mappings, occupiedPaths);
   if (collisionSafe.errors.length) return { ...plan, skipped: [...plan.skipped, ...collisionSafe.errors.map((reason) => ({ fileRecordId: 0, sourcePath: "", reason }))] };
-  return { ...plan, mappings, steps: collisionSafe.steps, planId: `${plan.planId}-with-companions` };
+  return { ...plan, mappings, expectedSourceIdentities, steps: collisionSafe.steps, planId: `${plan.planId}-with-companions` };
 }
 
 export function powerRenameSummary(plan: PowerRenamePlan) {
