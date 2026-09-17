@@ -47,6 +47,8 @@ import type {
   ArchiveReview,
   ArchiveReviewUpdate,
   ArchiveScan,
+  AskArenaCanonical200,
+  AskArenaCanonicalBody,
   AssistantOverview,
   AssistantWorkload,
   AssistantWorkloadLineage,
@@ -69,6 +71,8 @@ import type {
   GetArchiveIdentityAuditParams,
   GetArchiveNamingProposalsParams,
   GetArchiveReconciliationParams,
+  GetArenaCanonicalStatus200,
+  GetArenaCanonicalTools200,
   GetAssistantArchiveHealth200,
   GetAssistantToolCatalog200,
   GetIntegrationConfigurationStatus200,
@@ -234,6 +238,231 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+
+export const getGetArenaCanonicalStatusUrl = () => {
+
+
+
+
+  return `/api/agent/canonical/status`
+}
+
+/**
+ * @summary Get Arena Canonical bridge status
+ */
+export const getArenaCanonicalStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<GetArenaCanonicalStatus200> => {
+
+  return customFetch<GetArenaCanonicalStatus200>(getGetArenaCanonicalStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArenaCanonicalStatusQueryKey = () => {
+    return [
+    `/api/agent/canonical/status`
+    ] as const;
+    }
+
+
+export const getGetArenaCanonicalStatusQueryOptions = <TData = Awaited<ReturnType<typeof getArenaCanonicalStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArenaCanonicalStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArenaCanonicalStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArenaCanonicalStatus>>> = ({ signal }) => getArenaCanonicalStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArenaCanonicalStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArenaCanonicalStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getArenaCanonicalStatus>>>
+export type GetArenaCanonicalStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get Arena Canonical bridge status
+ */
+
+export function useGetArenaCanonicalStatus<TData = Awaited<ReturnType<typeof getArenaCanonicalStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArenaCanonicalStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArenaCanonicalStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetArenaCanonicalToolsUrl = () => {
+
+
+
+
+  return `/api/agent/canonical/tools`
+}
+
+/**
+ * @summary Get the Archive Assistant tool manifest for Arena Canonical
+ */
+export const getArenaCanonicalTools = async ( options?: Parameters<typeof customFetch>[1]): Promise<GetArenaCanonicalTools200> => {
+
+  return customFetch<GetArenaCanonicalTools200>(getGetArenaCanonicalToolsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArenaCanonicalToolsQueryKey = () => {
+    return [
+    `/api/agent/canonical/tools`
+    ] as const;
+    }
+
+
+export const getGetArenaCanonicalToolsQueryOptions = <TData = Awaited<ReturnType<typeof getArenaCanonicalTools>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArenaCanonicalTools>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArenaCanonicalToolsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArenaCanonicalTools>>> = ({ signal }) => getArenaCanonicalTools({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArenaCanonicalTools>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArenaCanonicalToolsQueryResult = NonNullable<Awaited<ReturnType<typeof getArenaCanonicalTools>>>
+export type GetArenaCanonicalToolsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the Archive Assistant tool manifest for Arena Canonical
+ */
+
+export function useGetArenaCanonicalTools<TData = Awaited<ReturnType<typeof getArenaCanonicalTools>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArenaCanonicalTools>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArenaCanonicalToolsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAskArenaCanonicalUrl = () => {
+
+
+
+
+  return `/api/agent/canonical/ask`
+}
+
+/**
+ * @summary Ask Arena Canonical to reason over owner-scoped archive evidence
+ */
+export const askArenaCanonical = async (askArenaCanonicalBody: AskArenaCanonicalBody, options?: Parameters<typeof customFetch>[1]): Promise<AskArenaCanonical200> => {
+
+  return customFetch<AskArenaCanonical200>(getAskArenaCanonicalUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(askArenaCanonicalBody)
+  }
+);}
+
+
+
+
+
+export const getAskArenaCanonicalMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof askArenaCanonical>>, TError,{data: BodyType<AskArenaCanonicalBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof askArenaCanonical>>, TError,{data: BodyType<AskArenaCanonicalBody>}, TContext> => {
+
+const mutationKey = ['askArenaCanonical'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof askArenaCanonical>>, {data: BodyType<AskArenaCanonicalBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  askArenaCanonical(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AskArenaCanonicalMutationResult = NonNullable<Awaited<ReturnType<typeof askArenaCanonical>>>
+    export type AskArenaCanonicalMutationBody = BodyType<AskArenaCanonicalBody>
+    export type AskArenaCanonicalMutationError = ErrorType<void>
+
+    /**
+ * @summary Ask Arena Canonical to reason over owner-scoped archive evidence
+ */
+export const useAskArenaCanonical = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof askArenaCanonical>>, TError,{data: BodyType<AskArenaCanonicalBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof askArenaCanonical>>,
+        TError,
+        {data: BodyType<AskArenaCanonicalBody>},
+        TContext
+      > => {
+      return useMutation(getAskArenaCanonicalMutationOptions(options));
+    }
 
 export const getGetAgentCapabilitiesUrl = () => {
 

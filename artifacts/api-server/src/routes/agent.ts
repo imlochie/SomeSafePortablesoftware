@@ -11,12 +11,24 @@ import { inspectMediaSource } from "../services/media";
 import { createJob, startJob } from "../services/download-engine";
 import { ensureReviewItem, readReviewItem } from "../services/review-queue";
 import { checkSourceMonitor, createSourceMonitor, deleteSourceMonitor, listMonitorNotifications, listSourceMonitors, markMonitorNotificationRead, updateSourceMonitor } from "../services/source-monitor";
+import { askArenaCanonical, arenaCanonicalStatus, arenaToolManifest } from "../services/arena-canonical-client";
 
 const router: IRouter = Router();
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : "The agent request failed.";
 }
+
+router.get("/agent/canonical/status", (_req, res) => { res.json(arenaCanonicalStatus()); });
+router.get("/agent/canonical/tools", (_req, res) => { res.json(arenaToolManifest()); });
+router.post("/agent/canonical/ask", async (req, res, next) => {
+  try {
+    const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
+    if (!question) return res.status(400).json({ error: "question is required" });
+    if (question.length > 2000) return res.status(400).json({ error: "question must be 2000 characters or fewer" });
+    return res.json(await askArenaCanonical(getAuthenticatedUserId(req), question));
+  } catch (error) { return next(error); }
+});
 
 router.get("/agent/capabilities", (req, res) => {
   // These describe the server-enforced boundary, not a bearer token with

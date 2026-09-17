@@ -48,6 +48,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /agent/canonical/status:
+    get:
+      operationId: getArenaCanonicalStatus
+      tags: [agent]
+      summary: Get Arena Canonical bridge status
+      responses:
+        "200": { description: Bridge status, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /agent/canonical/tools:
+    get:
+      operationId: getArenaCanonicalTools
+      tags: [agent]
+      summary: Get the Archive Assistant tool manifest for Arena Canonical
+      responses:
+        "200": { description: Agent tool manifest, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /agent/canonical/ask:
+    post:
+      operationId: askArenaCanonical
+      tags: [agent]
+      summary: Ask Arena Canonical to reason over owner-scoped archive evidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [question], additionalProperties: true }
+      responses:
+        "200": { description: Evidence-grounded answer, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "400": { description: Invalid question }
+        "503": { description: Arena Canonical is not configured }
   /agent/capabilities:
     get:
       operationId: getAgentCapabilities

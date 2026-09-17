@@ -3742,6 +3742,14 @@ export type PageParameter = number;
 
 export type PageSizeParameter = number;
 
+export type GetArenaCanonicalStatus200 = { [key: string]: unknown };
+
+export type GetArenaCanonicalTools200 = { [key: string]: unknown };
+
+export type AskArenaCanonicalBody = { [key: string]: unknown };
+
+export type AskArenaCanonical200 = { [key: string]: unknown };
+
 export type TestIntegrationConnection200 = { [key: string]: unknown };
 
 export type GetIntegrationConfigurationStatus200 = { [key: string]: unknown };

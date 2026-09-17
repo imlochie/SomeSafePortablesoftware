@@ -18,6 +18,26 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Get Arena Canonical bridge status
+ */
+export const GetArenaCanonicalStatusResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Get the Archive Assistant tool manifest for Arena Canonical
+ */
+export const GetArenaCanonicalToolsResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Ask Arena Canonical to reason over owner-scoped archive evidence
+ */
+export const AskArenaCanonicalBody = zod.record(zod.string(), zod.unknown())
+
+export const AskArenaCanonicalResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
  * @summary Get the server-enforced agent boundary
  */
 export const GetAgentCapabilitiesResponse = zod.object({
