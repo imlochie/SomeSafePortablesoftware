@@ -875,6 +875,7 @@ export function ArchivePage() {
   const [powerRenamerNotice, setPowerRenamerNotice] = useState<string | null>(null);
   const [powerRenamerPlan, setPowerRenamerPlan] = useState<{ reviewItemId: number; files: number } | null>(null);
   const [powerRenamerOperation, setPowerRenamerOperation] = useState<{ id: number; status: string } | null>(null);
+  const [powerProviderStatus, setPowerProviderStatus] = useState<string | null>(null);
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
   const [view, setView] = useState<'library' | 'local' | 'naming_proposals' | 'plex_only' | 'missing_media'>('library');
@@ -965,7 +966,14 @@ export function ArchivePage() {
           const response = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/refresh-providers`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmed: true, providers: ['plex', 'jellyfin'] }) });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error ?? 'Provider refresh could not start.');
-          setPowerRenamerNotice(`Provider refresh requested. Started: ${result.started.join(', ') || 'none configured'}.`);
+          const statusResponse = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/provider-status`));
+          const statusResult = await statusResponse.json();
+          if (statusResponse.ok) {
+            const plex = statusResult.providers?.plex?.syncStatus ?? 'unknown';
+            const jellyfin = statusResult.providers?.jellyfin?.syncStatus ?? 'unknown';
+            setPowerProviderStatus(`Plex: ${plex} · Jellyfin: ${jellyfin}`);
+          }
+          setPowerRenamerNotice(`Provider refresh requested. Started: ${result.started.join(', ') || 'none configured'}. Poll status before treating reconciliation as complete.`);
         } else {
           const path = action === 'preflight' ? 'preflight' : 'execute';
           const body = action === 'execute' ? { confirmed: true } : {};
@@ -1183,7 +1191,7 @@ export function ArchivePage() {
                   <div className="archive-panel border-l-2 border-[#39736e] bg-[#f1f8f5] p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="archive-mono text-[9px] tracking-[.14em] text-[#39736e]">POWER RENAMER / SUPERVISED MODE</div><p className="mt-1 text-[12px] text-[#43545b]">Select safe proposals to build a collision-safe, reversible batch. Approval and preflight are still required.</p></div><button disabled={!selectedNamingIds.length || powerRenamerBusy} onClick={planPowerRenamer} className="bg-[#1d2b38] px-4 py-2 text-[10px] font-bold tracking-[.1em] text-white disabled:opacity-40">{powerRenamerBusy ? 'PLANNING…' : `PLAN ${selectedNamingIds.length || ''} RENAME${selectedNamingIds.length === 1 ? '' : 'S'}`}</button></div>
                     {powerRenamerNotice && <p className="mt-3 text-[11px] font-semibold text-[#39736e]">{powerRenamerNotice}</p>}
-                    {powerRenamerPlan && <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#d9e8e1] pt-3"><span className="archive-mono mr-2 text-[9px] text-[#39736e]">PLAN / {powerRenamerPlan.files} FILES / REVIEW #{powerRenamerPlan.reviewItemId}</span><button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('approve')} className="border border-[#39736e] px-3 py-2 text-[9px] font-bold text-[#39736e] disabled:opacity-40">APPROVE PLAN</button><button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('create')} className="bg-[#1d2b38] px-3 py-2 text-[9px] font-bold text-white disabled:opacity-40">CREATE OPERATION</button>{powerRenamerOperation?.status === 'planned' && <button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('preflight')} className="border px-3 py-2 text-[9px] font-bold disabled:opacity-40">PREFLIGHT</button>}{powerRenamerOperation?.status === 'ready' && <button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('execute')} className="bg-[#39736e] px-3 py-2 text-[9px] font-bold text-white disabled:opacity-40">EXECUTE</button>}{powerRenamerOperation?.status === 'completed' && <button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('refresh')} className="border border-[#39736e] px-3 py-2 text-[9px] font-bold text-[#39736e] disabled:opacity-40">REFRESH PROVIDERS</button>}{powerRenamerOperation && <span className="archive-mono text-[9px] text-[#7f9194]">OPERATION {powerRenamerOperation.id} / {powerRenamerOperation.status.toUpperCase()}</span>}</div>}
+                    {powerRenamerPlan && <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#d9e8e1] pt-3"><span className="archive-mono mr-2 text-[9px] text-[#39736e]">PLAN / {powerRenamerPlan.files} FILES / REVIEW #{powerRenamerPlan.reviewItemId}</span><button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('approve')} className="border border-[#39736e] px-3 py-2 text-[9px] font-bold text-[#39736e] disabled:opacity-40">APPROVE PLAN</button><button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('create')} className="bg-[#1d2b38] px-3 py-2 text-[9px] font-bold text-white disabled:opacity-40">CREATE OPERATION</button>{powerRenamerOperation?.status === 'planned' && <button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('preflight')} className="border px-3 py-2 text-[9px] font-bold disabled:opacity-40">PREFLIGHT</button>}{powerRenamerOperation?.status === 'ready' && <button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('execute')} className="bg-[#39736e] px-3 py-2 text-[9px] font-bold text-white disabled:opacity-40">EXECUTE</button>}{powerRenamerOperation?.status === 'completed' && <button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('refresh')} className="border border-[#39736e] px-3 py-2 text-[9px] font-bold text-[#39736e] disabled:opacity-40">REFRESH PROVIDERS</button>}{powerRenamerOperation && <span className="archive-mono text-[9px] text-[#7f9194]">OPERATION {powerRenamerOperation.id} / {powerRenamerOperation.status.toUpperCase()}</span>}{powerProviderStatus && <span className="archive-mono text-[9px] text-[#39736e]">PROVIDERS / {powerProviderStatus.toUpperCase()}</span>}</div>}
                   </div>
                   {namingProposals.results.map(proposal => (
 
