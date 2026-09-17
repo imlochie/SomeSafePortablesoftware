@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildPowerRenamePlan } from "../src/services/power-renamer";
+import { addPowerRenameCompanions, buildPowerRenamePlan } from "../src/services/power-renamer";
 
 test("Power Renamer builds a supervised collision-safe cycle plan", () => {
   const plan = buildPowerRenamePlan([
@@ -11,6 +11,14 @@ test("Power Renamer builds a supervised collision-safe cycle plan", () => {
   assert.equal(plan.mappings.length, 2);
   assert.equal(plan.steps.filter((step) => step.temporary).length, 2);
   assert.match(plan.safeguards.join(" "), /Approval/);
+});
+
+test("Power Renamer carries exact-match sidecars with the approved video rename", () => {
+  const plan = buildPowerRenamePlan([{ fileRecordId: 5, sourcePath: "/archive/Show - S01E01.mkv", proposedPath: "/archive/Show/Season 01/Show - S01E01 - Pilot.mkv", confidence: "high", operation: "restructure", collision: false, mediaType: "tv", researchGrade: "corroborated" }]);
+  const expanded = addPowerRenameCompanions(plan, [{ id: 6, path: "/archive/Show - S01E01.srt" }, { id: 7, path: "/archive/Show - S01E01.nfo" }, { id: 8, path: "/archive/Show - S01E01.txt" }]);
+  assert.equal(expanded.mappings.length, 3);
+  assert.ok(expanded.mappings.some((mapping) => mapping.destinationPath.endsWith("Pilot.srt")));
+  assert.ok(!expanded.mappings.some((mapping) => mapping.sourcePath.endsWith(".txt")));
 });
 
 test("Power Renamer excludes collisions and uncertain proposals", () => {

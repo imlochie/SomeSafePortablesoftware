@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { basename, dirname } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { buildCollisionSafeRenamePlan, type RenameMapping } from "./rename-plan";
 
 export type PowerRenameCandidate = {
@@ -62,6 +62,30 @@ export function buildPowerRenamePlan(candidates: PowerRenameCandidate[], occupie
       "Video contents, Plex metadata, and files outside this plan are not changed.",
     ],
   };
+}
+
+export type CompanionRecord = { id: number; path: string };
+
+/** Add matching sidecars without guessing unrelated files. A sidecar must share
+ * the exact video stem and use a known metadata/subtitle/artwork extension. */
+export function addPowerRenameCompanions(plan: PowerRenamePlan, records: CompanionRecord[]): PowerRenamePlan {
+  const sidecarExtensions = new Set([".srt", ".vtt", ".ass", ".ssa", ".sub", ".idx", ".nfo", ".jpg", ".jpeg", ".png", ".webp"]);
+  const additions: RenameMapping[] = [];
+  for (const mapping of plan.mappings) {
+    const sourceBase = basename(mapping.sourcePath, extname(mapping.sourcePath));
+    const destinationBase = basename(mapping.destinationPath, extname(mapping.destinationPath));
+    for (const record of records) {
+      if (record.path === mapping.sourcePath || dirname(record.path) !== dirname(mapping.sourcePath)) continue;
+      const extension = extname(record.path).toLowerCase();
+      if (!sidecarExtensions.has(extension) || basename(record.path, extension) !== sourceBase) continue;
+      additions.push({ id: `companion-${record.id}`, sourcePath: record.path, destinationPath: join(dirname(mapping.destinationPath), `${destinationBase}${extension}`) });
+    }
+  }
+  if (!additions.length) return plan;
+  const mappings = [...plan.mappings, ...additions];
+  const collisionSafe = buildCollisionSafeRenamePlan(mappings);
+  if (collisionSafe.errors.length) return { ...plan, skipped: [...plan.skipped, ...collisionSafe.errors.map((reason) => ({ fileRecordId: 0, sourcePath: "", reason }))] };
+  return { ...plan, mappings, steps: collisionSafe.steps, planId: `${plan.planId}-with-companions` };
 }
 
 export function powerRenameSummary(plan: PowerRenamePlan) {

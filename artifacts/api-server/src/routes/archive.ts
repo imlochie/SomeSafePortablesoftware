@@ -24,6 +24,7 @@ import {
   UpdateArchiveRecordReviewsResponse,
 } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
+import { archiveDb } from "../lib/archive-db";
 import {
   readArchiveScanLiveState,
   subscribeArchiveScanEvents,
@@ -50,7 +51,7 @@ import { readIdentityAudit } from "../services/identity-audit";
 import { createOrderingProposalSnapshot, readOrderingProposal, currentOrderingProposalValidation } from "../services/ordering-proposals";
 import { createArchiveOperation, listArchiveOperations } from "../services/archive-operations";
 import { ensureReviewItem, readReviewItem } from "../services/review-queue";
-import { buildPowerRenamePlan, powerRenameSummary } from "../services/power-renamer";
+import { addPowerRenameCompanions, buildPowerRenamePlan, powerRenameSummary } from "../services/power-renamer";
 
 const router: IRouter = Router();
 
@@ -255,8 +256,10 @@ router.post("/archive/power-renamer/plan", async (req, res) => {
     }));
     if (selected.length !== requestedIds.size) return res.status(400).json({ error: "One or more selected naming proposals are no longer available." });
     const occupied = report.results.map((proposal) => String(proposal.sourcePath));
-    const plan = buildPowerRenamePlan(selected, occupied);
+    let plan = buildPowerRenamePlan(selected, occupied);
     if (!plan.mappings.length) return res.status(400).json({ error: "No selected proposal is safe to plan.", plan });
+    const companionRows = archiveDb.prepare("SELECT id, path FROM file_record WHERE owner_id = ? AND scan_status = 'active'").all(ownerId) as Array<{ id: number; path: string }>;
+    plan = addPowerRenameCompanions(plan, companionRows);
     const review = ensureReviewItem(ownerId, {
       kind: "naming_proposal",
       subjectKey: plan.planId,
