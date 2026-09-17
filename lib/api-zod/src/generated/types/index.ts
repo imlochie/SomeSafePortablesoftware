@@ -198,6 +198,7 @@ export * from './findingSeverity';
 export * from './getAcquisitionJobsParams';
 export * from './getArchiveIdentityAuditParams';
 export * from './getArchiveNamingProposalsParams';
+export * from './getArchiveOperationProviderStatus200';
 export * from './getArchiveReconciliationParams';
 export * from './getArenaCanonicalStatus200';
 export * from './getArenaCanonicalTools200';

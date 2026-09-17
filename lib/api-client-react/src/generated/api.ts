@@ -74,6 +74,7 @@ import type {
   GetAcquisitionJobsParams,
   GetArchiveIdentityAuditParams,
   GetArchiveNamingProposalsParams,
+  GetArchiveOperationProviderStatus200,
   GetArchiveReconciliationParams,
   GetArenaCanonicalStatus200,
   GetArenaCanonicalTools200,
@@ -6979,6 +6980,83 @@ export function useGetArchiveReconciliation<TData = Awaited<ReturnType<typeof ge
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetArchiveReconciliationQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetArchiveOperationProviderStatusUrl = (id: number,) => {
+
+
+
+
+  return `/api/archive-operations/${id}/provider-status`
+}
+
+/**
+ * @summary Read provider reconciliation status for an archive operation
+ */
+export const getArchiveOperationProviderStatus = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<GetArchiveOperationProviderStatus200> => {
+
+  return customFetch<GetArchiveOperationProviderStatus200>(getGetArchiveOperationProviderStatusUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveOperationProviderStatusQueryKey = (id: number,) => {
+    return [
+    `/api/archive-operations/${id}/provider-status`
+    ] as const;
+    }
+
+
+export const getGetArchiveOperationProviderStatusQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveOperationProviderStatus>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveOperationProviderStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveOperationProviderStatusQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveOperationProviderStatus>>> = ({ signal }) => getArchiveOperationProviderStatus(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveOperationProviderStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveOperationProviderStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveOperationProviderStatus>>>
+export type GetArchiveOperationProviderStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read provider reconciliation status for an archive operation
+ */
+
+export function useGetArchiveOperationProviderStatus<TData = Awaited<ReturnType<typeof getArchiveOperationProviderStatus>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveOperationProviderStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveOperationProviderStatusQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

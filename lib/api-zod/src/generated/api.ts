@@ -3823,6 +3823,16 @@ export const GetArchiveReconciliationResponse = zod.object({
 
 
 /**
+ * @summary Read provider reconciliation status for an archive operation
+ */
+export const GetArchiveOperationProviderStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetArchiveOperationProviderStatusResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
  * @summary Explicitly refresh configured media providers after a verified operation
  */
 export const RefreshProvidersAfterArchiveOperationParams = zod.object({

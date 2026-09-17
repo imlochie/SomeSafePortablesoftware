@@ -60,6 +60,11 @@ test("public proposal-backed operation lifecycle performs a swap and exact rollb
     assert.equal(await readFile(fixture.a, "utf8"), "B"); assert.equal(await readFile(fixture.b, "utf8"), "A");
     const executeAgain = await fixture.request(`/api/archive-operations/${operation.id}/execute`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); assert.equal(executeAgain.status, 200);
     assert.equal(await readFile(fixture.a, "utf8"), "B"); assert.equal(await readFile(fixture.b, "utf8"), "A");
+    const providerStatus = await fixture.request(`/api/archive-operations/${operation.id}/provider-status`);
+    assert.equal(providerStatus.status, 200);
+    const providerStatusBody = await providerStatus.json() as Record<string, any>;
+    assert.equal(providerStatusBody.operationId, operation.id);
+    assert.ok(providerStatusBody.providers);
     const refreshWithoutConfirmation = await fixture.request(`/api/archive-operations/${operation.id}/refresh-providers`, { method: "POST", body: JSON.stringify({ providers: ["plex"] }) });
     assert.equal(refreshWithoutConfirmation.status, 400);
     const refreshWithInvalidProvider = await fixture.request(`/api/archive-operations/${operation.id}/refresh-providers`, { method: "POST", body: JSON.stringify({ confirmed: true, providers: ["unknown"] }) });

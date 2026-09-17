@@ -315,6 +315,17 @@ router.post("/archive/power-renamer/operations", (req, res) => {
   }
 });
 
+router.get("/archive-operations/:id/provider-status", (req, res) => {
+  try {
+    const ownerId = getAuthenticatedUserId(req);
+    const operation = readArchiveOperation(Number(req.params.id), ownerId);
+    if (!operation) return res.status(404).json({ error: "Archive operation not found." });
+    return res.json({ operationId: operation.id, operationStatus: operation.status, providers: { plex: getPlexConfig(ownerId), jellyfin: getJellyfinConfig(ownerId) }, checkedAt: new Date().toISOString() });
+  } catch (error) {
+    return res.status(400).json({ error: errorMessage(error) });
+  }
+});
+
 router.post("/archive-operations/:id/refresh-providers", (req, res) => {
   try {
     const ownerId = getAuthenticatedUserId(req);

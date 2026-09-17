@@ -1633,6 +1633,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReconciliationReport"
+  /archive-operations/{id}/provider-status:
+    get:
+      operationId: getArchiveOperationProviderStatus
+      tags: [archive]
+      summary: Read provider reconciliation status for an archive operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Current owner-scoped provider status
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
   /archive-operations/{id}/refresh-providers:
     post:
       operationId: refreshProvidersAfterArchiveOperation

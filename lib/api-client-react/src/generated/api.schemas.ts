@@ -3865,6 +3865,8 @@ page?: PageParameter;
 pageSize?: PageSizeParameter;
 };
 
+export type GetArchiveOperationProviderStatus200 = { [key: string]: unknown };
+
 export type RefreshProvidersAfterArchiveOperationBodyProvidersItem = typeof RefreshProvidersAfterArchiveOperationBodyProvidersItem[keyof typeof RefreshProvidersAfterArchiveOperationBodyProvidersItem];
 
 
