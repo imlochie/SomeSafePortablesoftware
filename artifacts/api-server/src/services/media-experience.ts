@@ -22,6 +22,8 @@ export type MediaExperienceItem = {
   seriesProgress: number | null;
   isNextEpisode: boolean;
   evidence: string[];
+  libraryName: string | null;
+  mediaOrigin: "canonical_series" | "youtube_channel_archive" | "personal_media_archive" | "unknown";
 };
 
 function text(value: unknown) {
@@ -44,12 +46,20 @@ function metadataJson(value: unknown) {
 function itemType(value: unknown): MediaExperienceItem["itemType"] {
   return value === "movie" || value === "show" || value === "episode" ? value : "unknown";
 }
+function mediaOrigin(libraryName: string | null, metadata: Record<string, unknown>, title: string): MediaExperienceItem["mediaOrigin"] {
+  const signal = `${libraryName ?? ""} ${String(metadata.uploader ?? metadata.channelTitle ?? metadata.channel ?? "")} ${title}`.toLowerCase();
+  if (/youtube|yt channel|creator archive|channel archive/.test(signal)) return "youtube_channel_archive";
+  if (/personal|home archive|my archive|family archive|private collection/.test(signal)) return "personal_media_archive";
+  if (/episode|season|series|show|tv/.test(signal)) return "canonical_series";
+  return "unknown";
+}
 
 function plexItems(ownerId: string): MediaExperienceItem[] {
   const rows = archiveDb.prepare(`
-    SELECT i.rating_key, i.title, i.item_type, i.year, i.metadata_json,
+    SELECT i.rating_key, i.title, i.item_type, i.year, i.metadata_json, l.name AS library_name,
       COALESCE(MAX(m.duration_ms), 0) AS duration_ms
     FROM plex_item i
+    JOIN plex_library l ON l.id = i.library_id AND l.owner_id = i.owner_id
     LEFT JOIN plex_media m ON m.item_id = i.id
     WHERE i.owner_id = ?
     GROUP BY i.id
@@ -78,15 +88,17 @@ function plexItems(ownerId: string): MediaExperienceItem[] {
       seriesProgress: null,
       isNextEpisode: false,
       evidence: ["Plex library metadata",  ...(playCount ? [`Plex view count: ${playCount}`] : []), ...(offsetMs ? ["Plex playback offset"] : [])],
+      libraryName: text(row.library_name), mediaOrigin: mediaOrigin(text(row.library_name), metadata, String(row.title)),
     };
   });
 }
 
 function jellyfinItems(ownerId: string): MediaExperienceItem[] {
   const rows = archiveDb.prepare(`
-    SELECT i.item_key, i.title, i.item_type, i.year, i.metadata_json,
+    SELECT i.item_key, i.title, i.item_type, i.year, i.metadata_json, l.name AS library_name,
       COALESCE(MAX(m.duration_ms), 0) AS duration_ms
     FROM jellyfin_item i
+    JOIN jellyfin_library l ON l.id = i.library_id AND l.owner_id = i.owner_id
     LEFT JOIN jellyfin_media m ON m.item_id = i.id
     WHERE i.owner_id = ?
     GROUP BY i.id
@@ -115,6 +127,7 @@ function jellyfinItems(ownerId: string): MediaExperienceItem[] {
       seriesProgress: null,
       isNextEpisode: false,
       evidence: ["Jellyfin user playback metadata",  ...(playCount ? [`Jellyfin play count: ${playCount}`] : []), ...(positionMs ? ["Jellyfin playback position"] : [])],
+      libraryName: text(row.library_name), mediaOrigin: mediaOrigin(text(row.library_name), metadata, String(row.title)),
     };
   });
 }
@@ -176,6 +189,6 @@ export function buildViewingPrioritySignals(media: ReturnType<typeof readMediaEx
     if (item.lastWatchedAt && Date.parse(item.lastWatchedAt) >= recentCutoff) { score += 25; reasons.push("watched within the last 30 days"); }
     if (item.playCount >= 2) { score += 20; reasons.push(`rewatched ${item.playCount} times`); }
     if (item.seriesProgress !== null && item.seriesProgress > 0) { score += Math.min(15, Math.round(item.seriesProgress / 10)); reasons.push(`series progress ${item.seriesProgress}%`); }
-    return { key: item.key, title: item.title, seriesTitle: item.seriesTitle, itemType: item.itemType, score, reasons };
+    return { key: item.key, title: item.title, seriesTitle: item.seriesTitle, itemType: item.itemType, libraryName: item.libraryName, mediaOrigin: item.mediaOrigin, score, reasons };
   }).filter((item) => item.score > 0).sort((left, right) => right.score - left.score || left.title.localeCompare(right.title)).slice(0, 100);
 }

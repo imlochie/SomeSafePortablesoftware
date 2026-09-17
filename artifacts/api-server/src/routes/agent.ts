@@ -340,7 +340,7 @@ router.get("/agent/context", async (req, res, next) => {
         personalizedBriefing: overview.personalizedBriefing.slice(0, 50),
         prioritySignals: buildViewingPrioritySignals(overview.mediaExperience),
         viewingEvidence: overview.mediaExperience.items.slice(0, 250).map((item) => ({
-          key: item.key, title: item.title, provider: item.provider, itemType: item.itemType,
+          key: item.key, title: item.title, provider: item.provider, itemType: item.itemType, libraryName: item.libraryName, mediaOrigin: item.mediaOrigin,
           year: item.year, genres: item.genres, status: item.status, progressPercent: item.progressPercent,
           playCount: item.playCount, lastWatchedAt: item.lastWatchedAt, watchedMinutes: item.watchedMinutes,
           seriesTitle: item.seriesTitle, seasonNumber: item.seasonNumber, episodeNumber: item.episodeNumber,
