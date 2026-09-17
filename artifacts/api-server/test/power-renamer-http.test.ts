@@ -12,14 +12,24 @@ test("Power Renamer plans, approves, and creates a researched operation", async 
   const paths = ["D:\\Tv Shows\\Research Show\\Research Show S01E01.mkv", "D:\\Tv Shows\\Research Show\\Research Show S01E02.mkv"];
   const insertFile = archiveDb.prepare("INSERT INTO file_record (path, size_bytes, checksum, fingerprint, owner_id, filename, relative_path, scan_status, archive_root) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)");
   const ids = paths.map((path, index) => Number(insertFile.run(path, 100 + index, `checksum-${index}`, null, owner, path.split("\\").pop(), path, root).lastInsertRowid));
+  const moviePath = "D:\\Movies\\Research Film.2020.1080p.mkv";
+  const movieId = Number(insertFile.run(moviePath, 300, "movie-checksum", null, owner, moviePath.split("\\").pop(), moviePath, root).lastInsertRowid);
   const library = Number(archiveDb.prepare("INSERT INTO plex_library (name, server_url, library_key, library_type, owner_id) VALUES (?, ?, ?, ?, ?)").run("Research TV", "http://plex.test", "research", "show", owner).lastInsertRowid);
   const insertPlex = archiveDb.prepare("INSERT INTO plex_item (library_id, rating_key, title, item_type, metadata_json, owner_id) VALUES (?, ?, ?, 'episode', ?, ?)");
   insertPlex.run(library, "research-1", "Episode 1", JSON.stringify({ grandparentTitle: "Research Show", parentIndex: 1, index: 1 }), owner);
   insertPlex.run(library, "research-2", "Episode 2", JSON.stringify({ grandparentTitle: "Research Show", parentIndex: 1, index: 2 }), owner);
+  archiveDb.prepare("INSERT INTO plex_item (library_id, rating_key, title, item_type, year, metadata_json, owner_id) VALUES (?, ?, ?, 'movie', ?, '{}', ?)").run(library, "research-movie", "Research Film", 2020, owner);
   const server = createServer(app); await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address(); assert.ok(address && typeof address === "object");
   const request = (path: string, init: RequestInit = {}) => fetch(`http://127.0.0.1:${address.port}${path}`, { ...init, headers: { "content-type": "application/json", ...(init.headers ?? {}) } });
   try {
+    const namingResponse = await request("/api/archive/naming-proposals?pageSize=500");
+    assert.equal(namingResponse.status, 200);
+    const naming = await namingResponse.json() as Record<string, any>;
+    const movieProposal = naming.results.find((item: Record<string, any>) => item.fileRecordId === movieId);
+    assert.equal(movieProposal.researchGrade, "corroborated");
+    assert.equal(movieProposal.patternId, "movie_plex_corroborated");
+    assert.equal(movieProposal.operation, "rename");
     const planResponse = await request("/api/archive/power-renamer/plan", { method: "POST", body: JSON.stringify({ fileRecordIds: ids }) });
     assert.equal(planResponse.status, 201);
     const plan = await planResponse.json() as Record<string, any>;
@@ -39,6 +49,6 @@ test("Power Renamer plans, approves, and creates a researched operation", async 
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     archiveDb.prepare("DELETE FROM plex_item WHERE owner_id = ?").run(owner);
     archiveDb.prepare("DELETE FROM plex_library WHERE owner_id = ?").run(owner);
-    archiveDb.prepare("DELETE FROM file_record WHERE owner_id = ? AND id IN (?, ?)").run(owner, ids[0], ids[1]);
+    archiveDb.prepare("DELETE FROM file_record WHERE owner_id = ? AND id IN (?, ?, ?)").run(owner, ids[0], ids[1], movieId);
   }
 });
