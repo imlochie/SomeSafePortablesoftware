@@ -38,6 +38,7 @@ const testFiles = [
   "batch-recovery-inspection.test.ts",
   "ordering-http.test.ts",
   "ordering-http-failure.test.ts",
+  "power-renamer.test.ts",
   "acquisition-approval.test.ts",
   "finding-severity.test.ts",
   "review-sync-severity.test.ts",
