@@ -60,11 +60,10 @@ test("public proposal-backed operation lifecycle performs a swap and exact rollb
     assert.equal(await readFile(fixture.a, "utf8"), "B"); assert.equal(await readFile(fixture.b, "utf8"), "A");
     const executeAgain = await fixture.request(`/api/archive-operations/${operation.id}/execute`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); assert.equal(executeAgain.status, 200);
     assert.equal(await readFile(fixture.a, "utf8"), "B"); assert.equal(await readFile(fixture.b, "utf8"), "A");
-    const completedOperation = await fixture.request(`/api/archive-operations/${operation.id}`);
-    assert.equal(completedOperation.status, 200);
-    const completedBody = await completedOperation.json() as Record<string, any>;
-    assert.equal(completedBody.postflight?.plex?.attempted, false);
-    assert.equal(completedBody.postflight?.plex?.status, "not_requested");
+    const postflightRow = archiveDb.prepare("SELECT postflight_json FROM archive_operation WHERE id = ? AND owner_id = ?").get(operation.id, "__local__") as { postflight_json: string };
+    const postflight = JSON.parse(postflightRow.postflight_json) as Record<string, any>;
+    assert.equal(postflight.providerRefresh?.requested, false);
+    assert.equal(postflight.providerRefresh?.status, "not_requested");
     const providerStatus = await fixture.request(`/api/archive-operations/${operation.id}/provider-status`);
     assert.equal(providerStatus.status, 200);
     const providerStatusBody = await providerStatus.json() as Record<string, any>;

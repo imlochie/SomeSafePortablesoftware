@@ -591,7 +591,12 @@ export async function executeArchiveOperation(
       error_code: result.state === "completed" ? null : "BATCH_EXECUTION_FAILED",
       error_message: result.error ?? null,
       completed_at: result.state === "completed" ? new Date().toISOString() : null,
-      postflight_json: JSON.stringify({ state: result.state, completed: completed.filter((item) => item.state === "completed").length, total: completed.length }),
+      postflight_json: JSON.stringify({
+        state: result.state,
+        completed: completed.filter((item) => item.state === "completed").length,
+        total: completed.length,
+        providerRefresh: { requested: false, status: "not_requested", notice: "Provider refresh requires explicit operator confirmation." },
+      }),
     });
     const outcome = readArchiveOperation(id, ownerId)!;
     appendEvent(outcome, ownerId, result.state === "completed" ? "completed" : "failed", result.state === "completed" ? "Batch filesystem operation completed." : "Batch filesystem operation partially failed.", { batch: true, mappings: completed });
