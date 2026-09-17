@@ -88,7 +88,7 @@ export const createAgentSourceMonitorBodyTargetsItemSeasonMin = 0;
 export const CreateAgentSourceMonitorBody = zod.object({
   "name": zod.string().optional(),
   "url": zod.string().min(1),
-  "kind": zod.enum(['rss', 'atom', 'json', 'html']).optional(),
+  "kind": zod.enum(['rss', 'atom', 'json', 'html', 'telegram']).optional(),
   "intervalMinutes": zod.number().min(createAgentSourceMonitorBodyIntervalMinutesMin).max(createAgentSourceMonitorBodyIntervalMinutesMax).optional(),
   "discovery": zod.boolean().default(createAgentSourceMonitorBodyDiscoveryDefault),
   "targets": zod.array(zod.object({

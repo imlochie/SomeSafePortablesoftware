@@ -46,7 +46,7 @@ router.put("/integrations/config/:id", (req, res) => {
   const id = req.params.id as any;
   if (!["sonarr", "radarr", "prowlarr", "qbittorrent", "mpilot", "telegram"].includes(id)) return res.status(404).json({ error: "Integration is not configurable." });
   try {
-    const allowed = ["endpoint", "apiKey", "username", "password", "rootFolderPath", "qualityProfileId", "languageProfileId", "webhookSecret"];
+    const allowed = ["endpoint", "apiKey", "username", "password", "rootFolderPath", "qualityProfileId", "languageProfileId", "webhookSecret", "chatId"];
     const input = Object.fromEntries(Object.entries(req.body ?? {}).filter(([key, value]) => allowed.includes(key) && value !== undefined));
     saveIntegrationConfiguration(id, input); integrationRegistry.reload();
     return res.json({ ok: true, id, configured: readIntegrationConfigurationStatus().find((item) => item.id === id) });

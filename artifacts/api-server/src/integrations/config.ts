@@ -12,6 +12,7 @@ export interface IntegrationConfiguration {
   rootFolderPath?: string | null;
   qualityProfileId?: number | null;
   languageProfileId?: number | null;
+  chatId?: string | null;
 }
 
 // Plex and Jellyfin are service-backed adapters: their credentials live in
@@ -83,6 +84,7 @@ export function resolveExternalIntegrationConfiguration(
       endpoint: null,
       credentialsConfigured: Boolean(value("telegram", "apiKey", "TELEGRAM_BOT_TOKEN")),
       apiKey: value("telegram", "apiKey", "TELEGRAM_BOT_TOKEN") as string | null,
+      chatId: value("telegram", "chatId", "TELEGRAM_CHAT_ID") as string | null,
     },
   };
 }

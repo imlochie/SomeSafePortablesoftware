@@ -10,7 +10,7 @@ const plugins: Plugin[] = [
   { id: 'prowlarr', name: 'Prowlarr', fields: [{ key: 'endpoint', label: 'URL' }, { key: 'apiKey', label: 'API key', secret: true }] },
   { id: 'qbittorrent', name: 'qBittorrent', fields: [{ key: 'endpoint', label: 'URL' }, { key: 'username', label: 'Username' }, { key: 'password', label: 'Password', secret: true }] },
   { id: 'mpilot', name: 'MPilot', fields: [{ key: 'endpoint', label: 'URL' }, { key: 'apiKey', label: 'API key', secret: true }] },
-  { id: 'telegram', name: 'Telegram', fields: [{ key: 'apiKey', label: 'Bot token', secret: true }] },
+  { id: 'telegram', name: 'Telegram source handoff', fields: [{ key: 'apiKey', label: 'Bot token', secret: true }, { key: 'chatId', label: 'Source chat/channel ID' }] },
 ];
 
 function PluginConfig({ plugin, configured, onSaved }: { plugin: Plugin; configured: boolean; onSaved: () => void }) {

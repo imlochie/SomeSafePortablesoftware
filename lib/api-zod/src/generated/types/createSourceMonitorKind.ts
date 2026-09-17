@@ -14,4 +14,5 @@ export const CreateSourceMonitorKind = {
   atom: 'atom',
   json: 'json',
   html: 'html',
+  telegram: 'telegram',
 } as const;

@@ -3,9 +3,10 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { SettingsRecord } from "../lib/archive-db";
 import { readMediaExperience } from "./media-experience";
+import { resolveExternalIntegrationConfiguration } from "../integrations/config";
 import { readAssistantOverview } from "./assistant-overview";
 
-type MonitorKind = "rss" | "atom" | "json" | "html";
+type MonitorKind = "rss" | "atom" | "json" | "html" | "telegram";
 export type SourceMonitor = {
   id: string;
   ownerId: string;
@@ -49,6 +50,7 @@ function text(value: unknown) { return typeof value === "string" ? value.trim() 
 function normalize(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
 function boundedInterval(value: unknown) { const n = Number(value); return Number.isFinite(n) ? Math.max(5, Math.min(24 * 60, Math.floor(n))) : 60; }
 function safeUrl(value: string) { const url = new URL(value); if (!["http:", "https:"].includes(url.protocol)) throw new Error("Only public HTTP(S) sources can be monitored."); return url.toString(); }
+function sourceUrl(value: string, kind?: MonitorKind) { return kind === "telegram" ? (value.startsWith("telegram://") ? value : `telegram://${value}`) : safeUrl(value); }
 function strip(value: string) { return value.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); }
 function parseItems(body: string, kind: MonitorKind, baseUrl: string) {
   if (kind === "json") {
@@ -94,16 +96,26 @@ function detectKind(contentType: string, url: string, requested?: MonitorKind): 
 export async function listSourceMonitors(ownerId: string, settings: SettingsRecord) { const s = await readStore(settings); return s.monitors.filter((m) => m.ownerId === ownerId); }
 export async function listMonitorNotifications(ownerId: string, settings: SettingsRecord) { const s = await readStore(settings); return s.notifications.filter((n) => n.ownerId === ownerId).slice(-100).reverse(); }
 export async function createSourceMonitor(ownerId: string, input: { name: string; url: string; kind?: MonitorKind; intervalMinutes?: number; targets?: SourceMonitor["targets"]; discovery?: boolean }, settings: SettingsRecord) {
-  const now = new Date().toISOString(); const source: SourceMonitor = { id: randomUUID(), ownerId, name: text(input.name) || new URL(input.url).hostname, url: safeUrl(input.url), kind: input.kind ?? "html", enabled: true, intervalMinutes: boundedInterval(input.intervalMinutes), targets: (input.targets ?? []).filter((t) => text(t.title)).map((t) => ({ ...t, title: text(t.title) })), discovery: input.discovery === true, lastCheckedAt: null, lastSuccessfulCheckAt: null, lastFingerprint: null, lastError: null, createdAt: now, updatedAt: now };
+  const now = new Date().toISOString(); const source: SourceMonitor = { id: randomUUID(), ownerId, name: text(input.name) || new URL(input.url).hostname, url: sourceUrl(input.url, input.kind), kind: input.kind ?? "html", enabled: true, intervalMinutes: boundedInterval(input.intervalMinutes), targets: (input.targets ?? []).filter((t) => text(t.title)).map((t) => ({ ...t, title: text(t.title) })), discovery: input.discovery === true, lastCheckedAt: null, lastSuccessfulCheckAt: null, lastFingerprint: null, lastError: null, createdAt: now, updatedAt: now };
   const store = await readStore(settings); store.monitors.push(source); await writeStore(settings, store); return source;
 }
 export async function checkSourceMonitor(ownerId: string, id: string, settings: SettingsRecord) {
   const store = await readStore(settings); const monitor = store.monitors.find((m) => m.ownerId === ownerId && m.id === id); if (!monitor) throw new Error("Source monitor not found.");
   const checked = new Date().toISOString(); monitor.lastCheckedAt = checked;
   try {
-    const response = await fetch(monitor.url, { headers: { Accept: "application/rss+xml, application/atom+xml, application/json, text/html" }, signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) throw new Error(`Source returned HTTP ${response.status}.`);
-    const body = await response.text(); const kind = detectKind(response.headers.get("content-type") ?? "", monitor.url, monitor.kind); const items = parseItems(body, kind, monitor.url);
+    let kind = monitor.kind; let items: Array<{ title: string; url: string | null; evidence: string[] }>;
+    if (kind === "telegram") {
+      const configuration = resolveExternalIntegrationConfiguration(); const token = configuration.telegram.apiKey; const chatId = monitor.url.replace(/^telegram:\/\//, "");
+      if (!token) throw new Error("Telegram bot token is not configured.");
+      const api = `https://api.telegram.org/bot${encodeURIComponent(token)}/getUpdates?limit=100&allowed_updates=${encodeURIComponent(JSON.stringify(["message", "channel_post"]))}`;
+      const response = await fetch(api, { signal: AbortSignal.timeout(15_000) }); if (!response.ok) throw new Error(`Telegram returned HTTP ${response.status}.`); const payload = await response.json() as any;
+      const updates = Array.isArray(payload.result) ? payload.result : [];
+      items = updates.flatMap((update: any) => { const message = update.message ?? update.channel_post; const chat = message?.chat; if (!message || String(chat?.id ?? "") !== chatId) return []; const body = String(message.text ?? message.caption ?? ""); const link = body.match(/https?:\/\/[^\s)]+/)?.[0] ?? null; return body ? [{ title: body.slice(0, 500), url: link, evidence: ["Telegram message", "configured bot source"] }] : []; });
+    } else {
+      const response = await fetch(monitor.url, { headers: { Accept: "application/rss+xml, application/atom+xml, application/json, text/html" }, signal: AbortSignal.timeout(15_000) });
+      if (!response.ok) throw new Error(`Source returned HTTP ${response.status}.`);
+      const body = await response.text(); kind = detectKind(response.headers.get("content-type") ?? "", monitor.url, monitor.kind); items = parseItems(body, kind, monitor.url);
+    }
     const personal = readMediaExperience(ownerId).items;
     const overview = await readAssistantOverview(ownerId);
     const archiveSignals = [
@@ -137,7 +149,7 @@ export async function checkSourceMonitor(ownerId: string, id: string, settings: 
 export async function updateSourceMonitor(ownerId: string, id: string, input: { name?: string; url?: string; enabled?: boolean; intervalMinutes?: number; targets?: SourceMonitor["targets"]; discovery?: boolean }, settings: SettingsRecord) {
   const store = await readStore(settings); const monitor = store.monitors.find((item) => item.ownerId === ownerId && item.id === id); if (!monitor) throw new Error("Source monitor not found.");
   if (input.name !== undefined) monitor.name = text(input.name) || monitor.name;
-  if (input.url !== undefined) monitor.url = safeUrl(input.url);
+  if (input.url !== undefined) monitor.url = sourceUrl(input.url, monitor.kind);
   if (input.enabled !== undefined) monitor.enabled = input.enabled;
   if (input.intervalMinutes !== undefined) monitor.intervalMinutes = boundedInterval(input.intervalMinutes);
   if (input.targets !== undefined) monitor.targets = input.targets.filter((item) => text(item.title)).map((item) => ({ ...item, title: text(item.title) }));
