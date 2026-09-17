@@ -10,7 +10,7 @@ import { synthesizeViewingResearch } from "../services/research-synthesis";
 import { inspectMediaSource } from "../services/media";
 import { createJob, startJob } from "../services/download-engine";
 import { ensureReviewItem, readReviewItem } from "../services/review-queue";
-import { checkSourceMonitor, createSourceMonitor, deleteSourceMonitor, listMonitorNotifications, listSourceMonitors } from "../services/source-monitor";
+import { checkSourceMonitor, createSourceMonitor, deleteSourceMonitor, listMonitorNotifications, listSourceMonitors, markMonitorNotificationRead, updateSourceMonitor } from "../services/source-monitor";
 
 const router: IRouter = Router();
 
@@ -135,6 +135,16 @@ router.post("/agent/monitoring/sources", async (req, res, next) => {
     const source = await createSourceMonitor(getAuthenticatedUserId(req), { name: body.name, url, kind: body.kind, intervalMinutes: body.intervalMinutes, targets, discovery }, readSettings());
     return res.status(201).json(source);
   } catch (error) { return next(error); }
+});
+
+router.patch("/agent/monitoring/sources/:id", async (req, res, next) => {
+  try { return res.json(await updateSourceMonitor(getAuthenticatedUserId(req), req.params.id, req.body ?? {}, readSettings())); }
+  catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Source monitor could not be updated." }); }
+});
+
+router.post("/agent/monitoring/notifications/:id/read", async (req, res, next) => {
+  try { return res.json(await markMonitorNotificationRead(getAuthenticatedUserId(req), req.params.id, readSettings())); }
+  catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Notification could not be updated." }); }
 });
 
 router.post("/agent/monitoring/sources/:id/check", async (req, res, next) => {

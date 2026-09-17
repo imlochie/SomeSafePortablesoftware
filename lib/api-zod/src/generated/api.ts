@@ -92,6 +92,16 @@ export const CreateAgentSourceMonitorResponse = zod.record(zod.string(), zod.unk
 
 
 /**
+ * @summary Mark a monitoring notification as read
+ */
+export const MarkAgentMonitorNotificationReadParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const MarkAgentMonitorNotificationReadResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
  * @summary Check a source monitor now
  */
 export const CheckAgentSourceMonitorParams = zod.object({
@@ -99,6 +109,18 @@ export const CheckAgentSourceMonitorParams = zod.object({
 })
 
 export const CheckAgentSourceMonitorResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Update a source monitor
+ */
+export const UpdateAgentSourceMonitorParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateAgentSourceMonitorBody = zod.record(zod.string(), zod.unknown())
+
+export const UpdateAgentSourceMonitorResponse = zod.record(zod.string(), zod.unknown())
 
 
 /**

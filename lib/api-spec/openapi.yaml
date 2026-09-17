@@ -119,6 +119,18 @@ paths:
           content:
             application/json:
               schema: { type: object, additionalProperties: true }
+  /agent/monitoring/notifications/{id}/read:
+    post:
+      operationId: markAgentMonitorNotificationRead
+      tags: [agent, monitoring]
+      summary: Mark a monitoring notification as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Updated notification, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
   /agent/monitoring/sources/{id}/check:
     post:
       operationId: checkAgentSourceMonitor
@@ -136,6 +148,22 @@ paths:
             application/json:
               schema: { type: object, additionalProperties: true }
   /agent/monitoring/sources/{id}:
+    patch:
+      operationId: updateAgentSourceMonitor
+      tags: [agent, monitoring]
+      summary: Update a source monitor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200": { description: Updated monitor, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
     delete:
       operationId: deleteAgentSourceMonitor
       tags: [agent, monitoring]

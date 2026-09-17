@@ -134,6 +134,20 @@ export async function checkSourceMonitor(ownerId: string, id: string, settings: 
     return { monitor, matched, notifications, sourceKind: kind, checkedAt: checked };
   } catch (error) { monitor.lastError = error instanceof Error ? error.message : "Source check failed."; monitor.updatedAt = checked; await writeStore(settings, store); throw error; }
 }
+export async function updateSourceMonitor(ownerId: string, id: string, input: { name?: string; url?: string; enabled?: boolean; intervalMinutes?: number; targets?: SourceMonitor["targets"]; discovery?: boolean }, settings: SettingsRecord) {
+  const store = await readStore(settings); const monitor = store.monitors.find((item) => item.ownerId === ownerId && item.id === id); if (!monitor) throw new Error("Source monitor not found.");
+  if (input.name !== undefined) monitor.name = text(input.name) || monitor.name;
+  if (input.url !== undefined) monitor.url = safeUrl(input.url);
+  if (input.enabled !== undefined) monitor.enabled = input.enabled;
+  if (input.intervalMinutes !== undefined) monitor.intervalMinutes = boundedInterval(input.intervalMinutes);
+  if (input.targets !== undefined) monitor.targets = input.targets.filter((item) => text(item.title)).map((item) => ({ ...item, title: text(item.title) }));
+  if (input.discovery !== undefined) monitor.discovery = input.discovery;
+  monitor.updatedAt = new Date().toISOString(); await writeStore(settings, store); return monitor;
+}
+export async function markMonitorNotificationRead(ownerId: string, id: string, settings: SettingsRecord) {
+  const store = await readStore(settings); const notification = store.notifications.find((item) => item.ownerId === ownerId && item.id === id); if (!notification) throw new Error("Monitor notification not found."); notification.read = true; await writeStore(settings, store); return notification;
+}
+
 export async function deleteSourceMonitor(ownerId: string, id: string, settings: SettingsRecord) { const store = await readStore(settings); const before = store.monitors.length; store.monitors = store.monitors.filter((m) => !(m.ownerId === ownerId && m.id === id)); if (store.monitors.length === before) throw new Error("Source monitor not found."); await writeStore(settings, store); }
 
 export function startSourceMonitorPolling() {

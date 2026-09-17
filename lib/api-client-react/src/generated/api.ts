@@ -88,6 +88,7 @@ import type {
   LocalMediaInspectInput,
   LocalMediaInspection,
   LookupArchiveMediaParams,
+  MarkAgentMonitorNotificationRead200,
   MediaInspectInput,
   MediaInspection,
   MediaLookupResponse,
@@ -119,6 +120,8 @@ import type {
   SystemDependencies,
   SystemEvent,
   SystemOverview,
+  UpdateAgentSourceMonitor200,
+  UpdateAgentSourceMonitorBody,
   UpdateIntegrationConfiguration200,
   UpdateIntegrationConfigurationBody,
   WebhookDeliveryHistoryResponse,
@@ -605,6 +608,77 @@ export const useCreateAgentSourceMonitor = <TError = ErrorType<unknown>,
       return useMutation(getCreateAgentSourceMonitorMutationOptions(options));
     }
 
+export const getMarkAgentMonitorNotificationReadUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent/monitoring/notifications/${id}/read`
+}
+
+/**
+ * @summary Mark a monitoring notification as read
+ */
+export const markAgentMonitorNotificationRead = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<MarkAgentMonitorNotificationRead200> => {
+
+  return customFetch<MarkAgentMonitorNotificationRead200>(getMarkAgentMonitorNotificationReadUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkAgentMonitorNotificationReadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markAgentMonitorNotificationRead>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markAgentMonitorNotificationRead>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['markAgentMonitorNotificationRead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markAgentMonitorNotificationRead>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  markAgentMonitorNotificationRead(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkAgentMonitorNotificationReadMutationResult = NonNullable<Awaited<ReturnType<typeof markAgentMonitorNotificationRead>>>
+
+    export type MarkAgentMonitorNotificationReadMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Mark a monitoring notification as read
+ */
+export const useMarkAgentMonitorNotificationRead = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markAgentMonitorNotificationRead>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markAgentMonitorNotificationRead>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getMarkAgentMonitorNotificationReadMutationOptions(options));
+    }
+
 export const getCheckAgentSourceMonitorUrl = (id: string,) => {
 
 
@@ -674,6 +748,78 @@ export const useCheckAgentSourceMonitor = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCheckAgentSourceMonitorMutationOptions(options));
+    }
+
+export const getUpdateAgentSourceMonitorUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent/monitoring/sources/${id}`
+}
+
+/**
+ * @summary Update a source monitor
+ */
+export const updateAgentSourceMonitor = async (id: string,
+    updateAgentSourceMonitorBody: UpdateAgentSourceMonitorBody, options?: Parameters<typeof customFetch>[1]): Promise<UpdateAgentSourceMonitor200> => {
+
+  return customFetch<UpdateAgentSourceMonitor200>(getUpdateAgentSourceMonitorUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateAgentSourceMonitorBody)
+  }
+);}
+
+
+
+
+
+export const getUpdateAgentSourceMonitorMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgentSourceMonitor>>, TError,{id: string;data: BodyType<UpdateAgentSourceMonitorBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAgentSourceMonitor>>, TError,{id: string;data: BodyType<UpdateAgentSourceMonitorBody>}, TContext> => {
+
+const mutationKey = ['updateAgentSourceMonitor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAgentSourceMonitor>>, {id: string;data: BodyType<UpdateAgentSourceMonitorBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAgentSourceMonitor(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAgentSourceMonitorMutationResult = NonNullable<Awaited<ReturnType<typeof updateAgentSourceMonitor>>>
+    export type UpdateAgentSourceMonitorMutationBody = BodyType<UpdateAgentSourceMonitorBody>
+    export type UpdateAgentSourceMonitorMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a source monitor
+ */
+export const useUpdateAgentSourceMonitor = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgentSourceMonitor>>, TError,{id: string;data: BodyType<UpdateAgentSourceMonitorBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAgentSourceMonitor>>,
+        TError,
+        {id: string;data: BodyType<UpdateAgentSourceMonitorBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateAgentSourceMonitorMutationOptions(options));
     }
 
 export const getDeleteAgentSourceMonitorUrl = (id: string,) => {

@@ -3751,7 +3751,13 @@ export type ListAgentSourceMonitors200 = { [key: string]: unknown };
 
 export type CreateAgentSourceMonitor201 = { [key: string]: unknown };
 
+export type MarkAgentMonitorNotificationRead200 = { [key: string]: unknown };
+
 export type CheckAgentSourceMonitor200 = { [key: string]: unknown };
+
+export type UpdateAgentSourceMonitorBody = { [key: string]: unknown };
+
+export type UpdateAgentSourceMonitor200 = { [key: string]: unknown };
 
 export type ResearchAssistantCandidateParams = {
 query: string;
