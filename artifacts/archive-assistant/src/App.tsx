@@ -1148,7 +1148,7 @@ export function ArchivePage() {
                   {namingProposals.results.map(proposal => (
 
                     <div key={proposal.fileRecordId} className="border border-[#e1e8e5] bg-white/50 p-4">
-                      {proposal.proposedPath && proposal.operation !== 'uncertain/no_action' && !proposal.collision && <label className="mb-3 flex items-center gap-2 text-[10px] font-bold tracking-[.08em] text-[#39736e]"><input type="checkbox" checked={selectedNamingIds.includes(proposal.fileRecordId)} onChange={() => setSelectedNamingIds(current => current.includes(proposal.fileRecordId) ? current.filter(id => id !== proposal.fileRecordId) : [...current, proposal.fileRecordId])} className="h-4 w-4 accent-[#39736e]" /> INCLUDE IN POWER RENAMER PLAN</label>}
+                      {proposal.proposedPath && proposal.operation !== 'uncertain/no_action' && !proposal.collision && proposal.researchGrade === 'corroborated' && <label className="mb-3 flex items-center gap-2 text-[10px] font-bold tracking-[.08em] text-[#39736e]"><input type="checkbox" checked={selectedNamingIds.includes(proposal.fileRecordId)} onChange={() => setSelectedNamingIds(current => current.includes(proposal.fileRecordId) ? current.filter(id => id !== proposal.fileRecordId) : [...current, proposal.fileRecordId])} className="h-4 w-4 accent-[#39736e]" /> INCLUDE IN POWER RENAMER PLAN</label>}
                       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                         <div className="min-w-0">
                           <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">CURRENT</div>
@@ -1162,6 +1162,7 @@ export function ArchivePage() {
                       <div className="mt-4 flex flex-wrap gap-x-3 gap-y-2 border-t border-[#edf1ef] pt-3">
                         <span className="archive-mono text-[9px] text-[#7f9194]">CONFIDENCE / {proposal.confidence.toUpperCase()}</span>
                         <span className="archive-mono text-[9px] text-[#7f9194]">OPERATION / {proposal.operation.toUpperCase()}</span>
+                        <span className={`archive-mono text-[9px] ${proposal.researchGrade === 'corroborated' ? 'text-[#39736e]' : 'text-[#a77517]'}`}>RESEARCH / {(proposal.researchGrade ?? 'blocked').toUpperCase()}</span>
                         <span className="archive-mono text-[9px] text-[#7f9194]">PATTERN / {proposal.patternId}</span>
                         <span className="archive-mono text-[9px] text-[#7f9194]">MEDIA TYPE / {proposal.mediaType.toUpperCase()}</span>
                         <span className="archive-mono text-[9px] text-[#7f9194]">VOLUME / {proposal.volumeId}</span>

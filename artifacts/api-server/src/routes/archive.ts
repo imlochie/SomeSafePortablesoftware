@@ -248,6 +248,9 @@ router.post("/archive/power-renamer/plan", async (req, res) => {
       operation: String(proposal.operation),
       collision: Boolean(proposal.collision),
       mediaType: String(proposal.mediaType),
+      researchGrade: String(proposal.researchGrade ?? "blocked"),
+      researchSources: Array.isArray(proposal.researchSources) ? proposal.researchSources.map(String) : [],
+      researchBlockers: Array.isArray(proposal.researchBlockers) ? proposal.researchBlockers.map(String) : [],
       evidence: Array.isArray(proposal.evidence) ? proposal.evidence.map(String) : [],
     }));
     if (selected.length !== requestedIds.size) return res.status(400).json({ error: "One or more selected naming proposals are no longer available." });

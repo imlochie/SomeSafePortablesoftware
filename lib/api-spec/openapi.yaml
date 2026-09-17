@@ -1633,6 +1633,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReconciliationReport"
+  /archive/power-renamer/plan:
+    post:
+      operationId: createPowerRenamerPlan
+      tags: [archive]
+      summary: Create a researched, supervised Power Renamer plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileRecordIds]
+              properties:
+                fileRecordIds:
+                  type: array
+                  items: { type: number }
+      responses:
+        "201":
+          description: Supervised rename plan awaiting approval
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /archive/power-renamer/operations:
+    post:
+      operationId: createPowerRenamerOperation
+      tags: [archive]
+      summary: Create an approved Power Renamer archive operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reviewItemId]
+              properties:
+                reviewItemId: { type: number }
+      responses:
+        "201":
+          description: Approved operation awaiting preflight
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
   /archive/naming-proposals:
     get:
       operationId: getArchiveNamingProposals
@@ -5053,7 +5095,7 @@ components:
         - $ref: "#/components/schemas/NamingMovieIdentity"
     NamingProposalResult:
       type: object
-      required: [fileRecordId, localIdentityId, sourcePath, proposedPath, sourceFilename, proposedFilename, currentIdentity, proposedIdentity, patternId, confidence, operation, reason, evidence, mediaType, volumeId, archiveRoot, collision]
+      required: [fileRecordId, localIdentityId, sourcePath, proposedPath, sourceFilename, proposedFilename, currentIdentity, proposedIdentity, patternId, confidence, operation, reason, evidence, researchGrade, researchSources, researchBlockers, mediaType, volumeId, archiveRoot, collision]
       properties:
         fileRecordId: { type: number }
         localIdentityId: { type: ["number", "null"] }
@@ -5078,6 +5120,15 @@ components:
           enum: [rename, restructure, move, uncertain/no_action]
         reason: { type: string }
         evidence:
+          type: array
+          items: { type: string }
+        researchGrade:
+          type: string
+          enum: [corroborated, observed, blocked]
+        researchSources:
+          type: array
+          items: { type: string }
+        researchBlockers:
           type: array
           items: { type: string }
         mediaType:

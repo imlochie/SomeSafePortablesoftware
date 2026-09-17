@@ -5,6 +5,19 @@ import { localEpisodeIdentity, normalizeTitle, titleYear } from "./archive";
 
 export type NamingConfidence = "high" | "medium" | "low" | "uncertain";
 export type ProposalOperation = "rename" | "restructure" | "move" | "uncertain/no_action";
+export type NamingResearchGrade = "corroborated" | "observed" | "blocked";
+
+function researchGrade(candidate: Candidate | null, resolvedCandidate: Candidate | null, destination: string | null) : { grade: NamingResearchGrade; sources: string[]; blockers: string[] } {
+  const sources = new Set<string>();
+  if (candidate?.source) sources.add(candidate.source);
+  if (resolvedCandidate?.evidence.some((item) => item.startsWith("Plex corroboration:"))) sources.add("plex");
+  const blockers: string[] = [];
+  if (!destination) blockers.push("no deterministic destination");
+  if (resolvedCandidate?.ambiguity !== "resolved") blockers.push("identity is not resolved");
+  if (resolvedCandidate?.confidence !== "high") blockers.push("confidence is below high");
+  const grade: NamingResearchGrade = blockers.length ? "blocked" : sources.size >= 2 ? "corroborated" : "observed";
+  return { grade, sources: [...sources], blockers };
+}
 
 type LocalRow = {
   id: number;
@@ -256,7 +269,8 @@ function makeProposal(row: LocalRow, volume: Volume, candidate: Candidate | null
   const destination = resolvedCandidate ? proposedPath(row, volume, resolvedCandidate) : null;
   const normalizedDestination = destination?.toLowerCase() ?? null;
   const collision = Boolean(normalizedDestination && knownPaths.has(normalizedDestination) && normalizedDestination !== row.path.toLowerCase());
-  const executable = Boolean(destination && !collision && resolvedCandidate?.confidence === "high");
+  const research = researchGrade(candidate, resolvedCandidate, destination);
+  const executable = Boolean(destination && !collision && research.grade === "corroborated");
   const operation: ProposalOperation = collision
     ? "uncertain/no_action"
     : executable && destination
@@ -285,8 +299,11 @@ function makeProposal(row: LocalRow, volume: Volume, candidate: Candidate | null
     patternId: resolvedCandidate?.patternId ?? "unrecognized",
     confidence: resolvedCandidate?.confidence ?? "uncertain",
     operation,
-    reason: collision ? "Proposed destination collides with a known file record." : resolvedCandidate?.evidence.join("; ") ?? "No safe naming convention recognized.",
+    reason: collision ? "Proposed destination collides with a known file record." : research.grade !== "corroborated" ? `Research gate: ${research.blockers.join("; ") || "an independent corroborating source is required"}.` : resolvedCandidate?.evidence.join("; ") ?? "No safe naming convention recognized.",
     evidence: resolvedCandidate?.evidence ?? [],
+    researchGrade: research.grade,
+    researchSources: research.sources,
+    researchBlockers: research.blockers,
     mediaType: volume.mediaType,
     volumeId: row.volume_id ?? volume.id,
     archiveRoot: row.archive_root ?? volume.root,
@@ -369,6 +386,9 @@ export async function readNamingProposals(
           operation: "uncertain/no_action",
           reason: "Movie naming is reported read-only; no automatic restructuring proposal is generated.",
           evidence: title ? ["existing movie title normalization"] : ["empty normalized movie title"],
+          researchGrade: "blocked",
+          researchSources: ["filename"],
+          researchBlockers: ["movie restructuring is not enabled"],
           mediaType: volume.mediaType,
           volumeId: row.volume_id ?? volume.id,
           archiveRoot: row.archive_root ?? volume.root,

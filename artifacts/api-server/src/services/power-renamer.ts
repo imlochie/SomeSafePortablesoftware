@@ -10,6 +10,9 @@ export type PowerRenameCandidate = {
   operation: string;
   collision: boolean;
   mediaType: string;
+  researchGrade?: string;
+  researchSources?: string[];
+  researchBlockers?: string[];
   evidence?: string[];
 };
 
@@ -32,6 +35,7 @@ export function buildPowerRenamePlan(candidates: PowerRenameCandidate[], occupie
   const eligible = candidates.filter((candidate) => {
     if (!candidate.proposedPath) { skipped.push({ fileRecordId: candidate.fileRecordId, sourcePath: candidate.sourcePath, reason: "No executable destination was proposed." }); return false; }
     if (candidate.operation === "uncertain/no_action" || candidate.collision) { skipped.push({ fileRecordId: candidate.fileRecordId, sourcePath: candidate.sourcePath, reason: candidate.collision ? "Destination collision requires manual resolution." : "Naming evidence is uncertain." }); return false; }
+    if (candidate.researchGrade !== "corroborated") { skipped.push({ fileRecordId: candidate.fileRecordId, sourcePath: candidate.sourcePath, reason: `Research gate is ${candidate.researchGrade ?? "unknown"}; independent corroboration is required.` }); return false; }
     if (candidate.sourcePath === candidate.proposedPath) { skipped.push({ fileRecordId: candidate.fileRecordId, sourcePath: candidate.sourcePath, reason: "Source and destination are identical." }); return false; }
     return true;
   });

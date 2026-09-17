@@ -4,8 +4,8 @@ import { buildPowerRenamePlan } from "../src/services/power-renamer";
 
 test("Power Renamer builds a supervised collision-safe cycle plan", () => {
   const plan = buildPowerRenamePlan([
-    { fileRecordId: 1, sourcePath: "/archive/A.mkv", proposedPath: "/archive/B.mkv", confidence: "high", operation: "rename", collision: false, mediaType: "tv" },
-    { fileRecordId: 2, sourcePath: "/archive/B.mkv", proposedPath: "/archive/A.mkv", confidence: "high", operation: "rename", collision: false, mediaType: "tv" },
+    { fileRecordId: 1, sourcePath: "/archive/A.mkv", proposedPath: "/archive/B.mkv", confidence: "high", operation: "rename", collision: false, mediaType: "tv", researchGrade: "corroborated" },
+    { fileRecordId: 2, sourcePath: "/archive/B.mkv", proposedPath: "/archive/A.mkv", confidence: "high", operation: "rename", collision: false, mediaType: "tv", researchGrade: "corroborated" },
   ], ["/archive/A.mkv", "/archive/B.mkv"]);
   assert.equal(plan.mode, "supervised");
   assert.equal(plan.mappings.length, 2);
