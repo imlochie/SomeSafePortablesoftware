@@ -51,13 +51,15 @@ import WorkloadDetailPage from '@/pages/workload-detail';
 import IntelligentOrderingPage from '@/pages/intelligent-ordering';
 import ArchiveHealthPage from '@/pages/archive-health';
 import SourcesPage from '@/pages/sources';
+import JellyfinPage from '@/pages/jellyfin';
+import MonitoringPage from '@/pages/monitoring';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 
 const queryClient = new QueryClient();
 const navItems = [
   { label: 'HOME', href: '/user-portal', icon: Activity }, { label: 'ASSISTANT', href: '/assistant', icon: Bot }, { label: 'DISCOVER', href: '/discover', icon: Compass },
   { label: 'QUEUE', href: '/queue', icon: Download }, { label: 'ARCHIVE', href: '/archive', icon: Archive },
-  { label: 'PLEX', href: '/plex', icon: PlaySquare }, { label: 'SOURCES', href: '/sources', icon: FolderOpen },
+  { label: 'PLEX', href: '/plex', icon: PlaySquare }, { label: 'JELLYFIN', href: '/jellyfin', icon: PlaySquare }, { label: 'SOURCES', href: '/sources', icon: FolderOpen }, { label: 'MONITORING', href: '/monitoring', icon: RefreshCw },
   { label: 'HISTORY', href: '/history', icon: History }, { label: 'SETTINGS', href: '/settings', icon: SettingsIcon },
 ];
 const authMode = import.meta.env.VITE_AUTH_MODE === 'clerk' ? 'clerk' : 'local';
@@ -1539,7 +1541,7 @@ function Workspace() {
   const { isLoaded, isSignedIn } = useAppAuth();
   if (!isLoaded) return <AuthLoading />;
   if (!isSignedIn) return <Redirect to="/" />;
-  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/workload/:workloadId" component={WorkloadDetailPage} /><Route path="/archive/ordering/:proposalId" component={IntelligentOrderingPage} /><Route path="/archive/health" component={ArchiveHealthPage} /><Route path="/assistant" component={AssistantPage} /><Route path="/discover" component={DiscoverPage} /><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcesPage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
+  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/workload/:workloadId" component={WorkloadDetailPage} /><Route path="/archive/ordering/:proposalId" component={IntelligentOrderingPage} /><Route path="/archive/health" component={ArchiveHealthPage} /><Route path="/assistant" component={AssistantPage} /><Route path="/discover" component={DiscoverPage} /><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/plex" component={PlexPage} /><Route path="/jellyfin" component={JellyfinPage} /><Route path="/sources" component={SourcesPage} /><Route path="/monitoring" component={MonitoringPage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
 }
 
 function Router() {
