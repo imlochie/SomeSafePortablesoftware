@@ -7,7 +7,7 @@ import { inspectLocalMedia, isPathWithin } from "./media";
 import { findArchiveVolumeForPath, getArchiveScanRoots } from "./storage";
 import { readReviewItem } from "./review-queue";
 import { readAcquisitionJob } from "./acquisition-jobs";
-import { getPlexConfig, syncPlexInventory } from "./plex";
+import { getPlexConfig } from "./plex";
 import { readArchiveScan, startArchiveScan } from "./archive";
 import { readReconciliationReport } from "./reconciliation";
 import { readOrderingProposal, validateOrderingProposal, currentOrderingProposalValidation } from "./ordering-proposals";
@@ -246,31 +246,17 @@ async function persistPostflight(operation: ArchiveOperation, ownerId: string) {
   } catch (error) {
     errors.push(error instanceof Error ? error.message : "Archive scan failed.");
   }
-  try {
-    const plex = getPlexConfig(ownerId);
-    outcome.plex = {
-      configured: plex.configured,
-      attempted: plex.configured,
-      status: plex.syncStatus,
-      error: plex.lastError,
-    };
-    if (plex.configured) {
-      await syncPlexInventory(ownerId);
-      const refreshed = getPlexConfig(ownerId);
-      outcome.plex = {
-        configured: true,
-        attempted: true,
-        status: refreshed.syncStatus,
-        error: refreshed.lastError,
-        lastSuccessfulSyncAt: refreshed.lastSuccessfulSyncAt,
-      };
-      if (refreshed.syncStatus === "sync_error") {
-        errors.push(refreshed.lastError ?? "Plex synchronization failed.");
-      }
-    }
-  } catch (error) {
-    errors.push(error instanceof Error ? error.message : "Plex refresh failed.");
-  }
+  // Provider refresh is deliberately not part of filesystem postflight. A
+  // completed rename must not silently trigger network work or mutate provider
+  // inventories; callers must make an explicit, supervised refresh request.
+  const plex = getPlexConfig(ownerId);
+  outcome.plex = {
+    configured: plex.configured,
+    attempted: false,
+    status: "not_requested",
+    currentStatus: plex.syncStatus,
+    error: plex.lastError,
+  };
   try {
     outcome.reconciliation = await readReconciliationReport(ownerId, 1, 25);
   } catch (error) {
