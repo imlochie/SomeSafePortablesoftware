@@ -337,8 +337,12 @@ router.post("/archive-operations/:id/refresh-providers", (req, res) => {
       if (!getJellyfinConfig(ownerId).configured) skipped.push({ provider: "jellyfin", reason: "Jellyfin is not configured." });
       else { try { startJellyfinSync(ownerId); started.push("jellyfin"); } catch (error) { skipped.push({ provider: "jellyfin", reason: errorMessage(error) }); } }
     }
+    const providerStates = {
+      plex: getPlexConfig(ownerId),
+      jellyfin: getJellyfinConfig(ownerId),
+    };
     addEvent("info", `Provider refresh requested after archive operation ${operation.id}. Started: ${started.join(", ") || "none"}.`, "archive-operations", ownerId);
-    return res.status(202).json({ operationId: operation.id, started, skipped, notice: "Provider refresh was explicitly requested after verified filesystem changes." });
+    return res.status(202).json({ operationId: operation.id, started, skipped, providerStates, requestedAt: new Date().toISOString(), notice: "Provider refresh was explicitly requested after verified filesystem changes. Poll provider status before treating reconciliation as complete." });
   } catch (error) {
     return res.status(400).json({ error: errorMessage(error) });
   }
