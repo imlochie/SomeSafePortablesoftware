@@ -39,6 +39,7 @@ const testFiles = [
   "ordering-http.test.ts",
   "ordering-http-failure.test.ts",
   "power-renamer.test.ts",
+  "media-experience-ordering.test.ts",
   "acquisition-approval.test.ts",
   "finding-severity.test.ts",
   "review-sync-severity.test.ts",

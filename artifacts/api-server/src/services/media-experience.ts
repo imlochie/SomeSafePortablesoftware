@@ -208,12 +208,30 @@ export function buildArchiveOriginResearch(media: ReturnType<typeof readMediaExp
         : origin === "canonical_series"
           ? "Use season, episode, release, cast, and creator research when identity confidence supports it."
           : "Classify further before applying external research.";
-    const orderingGuidance = [...new Map(items.filter((item) => item.itemType === "episode" && item.episodeNumber !== null && item.releaseDate && item.seriesTitle).map((item) => [item.seriesTitle!, item])).values()].map((seed) => {
-      const episodes = items.filter((item) => item.seriesTitle === seed.seriesTitle && item.itemType === "episode" && item.episodeNumber !== null && item.releaseDate).sort((a, b) => a.episodeNumber! - b.episodeNumber!);
+    const orderingGuidance = [...new Set(items.filter((item) => item.itemType === "episode" && item.episodeNumber !== null && item.seriesTitle).map((item) => item.seriesTitle!))].map((collection) => {
+      // Plex and Jellyfin can both describe the same episode. Collapse exact
+      // season/episode/date duplicates before inferring chronology so provider
+      // duplication cannot manufacture a false ordering signal.
+      const episodes = [...new Map(items.filter((item) => item.seriesTitle === collection && item.itemType === "episode" && item.episodeNumber !== null && item.releaseDate && Number.isFinite(Date.parse(item.releaseDate!))).map((item) => [`${item.seasonNumber}:${item.episodeNumber}:${item.releaseDate}`, item])).values()].sort((a, b) => a.episodeNumber! - b.episodeNumber!);
       const dates = episodes.map((item) => Date.parse(item.releaseDate!));
       const descending = episodes.length >= 2 && dates.every((date, index) => index === 0 || date <= dates[index - 1]);
       const ascending = episodes.length >= 2 && dates.every((date, index) => index === 0 || date >= dates[index - 1]);
-      return { collection: seed.seriesTitle, itemCount: episodes.length, currentOrder: descending ? "newest_to_oldest" : ascending ? "oldest_to_newest" : "mixed", recommendedOrder: "oldest_to_newest", proposal: descending ? "reverse_episode_numbers" : "no_change", confidence: descending || ascending ? "high" : "low", reason: descending ? "Episode numbers run newest to oldest by publication date; reverse numbering so viewing starts with the earliest upload." : ascending ? "Episode numbers already follow publication chronology." : "Publication dates conflict, so no safe reorder is proposed.", changes: descending ? episodes.map((item, index) => ({ key: item.key, title: item.title, currentEpisode: item.episodeNumber, proposedEpisode: episodes.length - index })) : [] };
+      const numbered = items.filter((item) => item.seriesTitle === collection && item.itemType === "episode" && item.episodeNumber !== null);
+      const undatedCount = numbered.filter((item) => !item.releaseDate || !Number.isFinite(Date.parse(item.releaseDate))).length;
+      const maxEpisode = Math.max(0, ...numbered.map((item) => item.episodeNumber!));
+      const latest = episodes.length ? [...episodes].sort((a, b) => Date.parse(b.releaseDate!) - Date.parse(a.releaseDate!))[0] : null;
+      const sourceProviders = [...new Set(episodes.map((item) => item.provider))];
+      const proposal = descending ? "reverse_episode_numbers" : "no_change";
+      return {
+        collection, itemCount: episodes.length, currentOrder: descending ? "newest_to_oldest" : ascending ? "oldest_to_newest" : "mixed", recommendedOrder: "oldest_to_newest", proposal,
+        confidence: descending || ascending ? "high" : "low",
+        reason: descending ? "Episode numbers run newest to oldest by publication date; reverse numbering so viewing starts with the earliest upload." : ascending ? "Episode numbers already follow publication chronology." : "Publication dates conflict, so no safe reorder is proposed.",
+        evidence: ["explicit episode numbers", `publication dates from ${sourceProviders.join(" and ") || "no provider"}`, ...(descending || ascending ? ["publication dates are monotonic"] : [])],
+        provenance: episodes.map((item) => ({ key: item.key, provider: item.provider, releaseDate: item.releaseDate, evidence: item.evidence.filter((value) => /metadata|date|Plex|Jellyfin/i.test(value)) })),
+        unknowns: [...(undatedCount ? [`${undatedCount} numbered item(s) have no valid publication date`] : []), ...(episodes.length < 2 ? ["fewer than two dated numbered items"] : [])],
+        incremental: { highestEpisodeNumber: maxEpisode || null, latestPublicationDate: latest?.releaseDate ?? null, canSafelyAppend: Boolean(ascending && undatedCount === 0), warning: descending ? "New uploads may continue the acquisition inversion; re-run research after each archive sync." : null },
+        changes: descending ? episodes.map((item, index) => ({ key: item.key, title: item.title, currentEpisode: item.episodeNumber, proposedEpisode: episodes.length - index })) : []
+      };
     });
     return { origin, libraryName, itemCount: items.length, activeCount: items.filter((item) => item.status === "in_progress").length, recentWatchedCount: recent.length, repeatedCount: repeated.length, nextEpisodeCount: items.filter((item) => item.isNextEpisode).length, topItems: [...items].sort((a, b) => b.playCount - a.playCount || String(b.lastWatchedAt).localeCompare(String(a.lastWatchedAt))).slice(0, 10).map((item) => ({ key: item.key, title: item.title, seriesTitle: item.seriesTitle, playCount: item.playCount, lastWatchedAt: item.lastWatchedAt, status: item.status })), orderingGuidance, researchPolicy: policy };
   });
