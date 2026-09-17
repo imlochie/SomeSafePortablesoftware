@@ -85,7 +85,11 @@ async function relatedCredits(seedId: string) {
 
 export async function researchFromViewingHistory(ownerId: string) {
   const media = readMediaExperience(ownerId);
-  const watched = media.items.filter((item) => item.status !== "unwatched").slice(0, 20);
+  // TVMaze relationship research is meaningful for canonical scripted series only.
+  // YouTube/channel archives and personal media are researched from their own
+  // viewing cadence instead of being incorrectly forced through TV metadata.
+  const watched = media.items.filter((item) => item.status !== "unwatched" && item.mediaOrigin === "canonical_series").slice(0, 20);
+  const excludedOrigins = [...new Set(media.items.filter((item) => item.status !== "unwatched" && item.mediaOrigin !== "canonical_series").map((item) => item.mediaOrigin))];
   const aggregated = new Map<string, HistoryResearchCandidate>();
   let identityUncertain = 0;
   for (const watchedItem of watched) {
@@ -115,5 +119,5 @@ export async function researchFromViewingHistory(ownerId: string) {
     }
   }
   const items = [...aggregated.values()].filter((item) => item.archiveState !== "present").slice(0, 100);
-  return { status: watched.length ? "available" as const : "limited" as const, source: "tvmaze" as const, items, bounds: { maxWatchedSeeds: 20, maxCandidates: 100 }, identityUncertain };
+  return { status: watched.length ? "available" as const : "limited" as const, source: "tvmaze" as const, items, bounds: { maxWatchedSeeds: 20, maxCandidates: 100 }, identityUncertain, excludedOrigins, researchPolicy: "TVMaze relationships are limited to canonical scripted series; archive-native sources use origin-aware viewing research." };
 }

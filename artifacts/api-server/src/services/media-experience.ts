@@ -192,3 +192,22 @@ export function buildViewingPrioritySignals(media: ReturnType<typeof readMediaEx
     return { key: item.key, title: item.title, seriesTitle: item.seriesTitle, itemType: item.itemType, libraryName: item.libraryName, mediaOrigin: item.mediaOrigin, score, reasons };
   }).filter((item) => item.score > 0).sort((left, right) => right.score - left.score || left.title.localeCompare(right.title)).slice(0, 100);
 }
+
+export function buildArchiveOriginResearch(media: ReturnType<typeof readMediaExperience>) {
+  const recentCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const groups = new Map<string, typeof media.items>();
+  for (const item of media.items) { const key = `${item.mediaOrigin}:${item.libraryName ?? "unknown"}`; groups.set(key, [...(groups.get(key) ?? []), item]); }
+  return [...groups.entries()].map(([key, items]) => {
+    const [origin, libraryName] = key.split(":");
+    const recent = items.filter((item) => item.lastWatchedAt && Date.parse(item.lastWatchedAt) >= recentCutoff);
+    const repeated = items.filter((item) => item.playCount >= 2);
+    const policy = origin === "youtube_channel_archive"
+      ? "Treat as a channel/upload stream: prioritize recent uploads, repeated channels, and viewing cadence; do not force TV episode metadata research."
+      : origin === "personal_media_archive"
+        ? "Treat as personal archive evidence: use viewing behavior, never infer public release availability."
+        : origin === "canonical_series"
+          ? "Use season, episode, release, cast, and creator research when identity confidence supports it."
+          : "Classify further before applying external research.";
+    return { origin, libraryName, itemCount: items.length, activeCount: items.filter((item) => item.status === "in_progress").length, recentWatchedCount: recent.length, repeatedCount: repeated.length, nextEpisodeCount: items.filter((item) => item.isNextEpisode).length, topItems: [...items].sort((a, b) => b.playCount - a.playCount || String(b.lastWatchedAt).localeCompare(String(a.lastWatchedAt))).slice(0, 10).map((item) => ({ key: item.key, title: item.title, seriesTitle: item.seriesTitle, playCount: item.playCount, lastWatchedAt: item.lastWatchedAt, status: item.status })), researchPolicy: policy };
+  });
+}
