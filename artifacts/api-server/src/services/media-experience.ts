@@ -2,6 +2,39 @@ import { archiveDb } from "../lib/archive-db";
 
 type ProviderRow = Record<string, unknown>;
 
+export type ArchiveOrderingSnapshotItem = {
+  key: string;
+  episodeNumber: number;
+  releaseDate: string;
+};
+
+export type ArchiveOrderingChange = {
+  collection: string;
+  added: ArchiveOrderingSnapshotItem[];
+  removed: ArchiveOrderingSnapshotItem[];
+  changed: Array<{ before: ArchiveOrderingSnapshotItem; after: ArchiveOrderingSnapshotItem }>;
+  safeIncrementalProposal: boolean;
+  reason: string;
+};
+
+/** Compare a previously reviewed archive with the latest provider evidence.
+ * This is pure and does not persist or mutate either snapshot. */
+export function compareArchiveOrderingSnapshots(collection: string, previous: ArchiveOrderingSnapshotItem[], current: ArchiveOrderingSnapshotItem[]): ArchiveOrderingChange {
+  const before = new Map(previous.map((item) => [item.key, item]));
+  const after = new Map(current.map((item) => [item.key, item]));
+  const added = current.filter((item) => !before.has(item.key));
+  const removed = previous.filter((item) => !after.has(item.key));
+  const changed = current.flatMap((item) => {
+    const old = before.get(item.key);
+    return old && (old.episodeNumber !== item.episodeNumber || old.releaseDate !== item.releaseDate) ? [{ before: old, after: item }] : [];
+  });
+  const combined = [...current].sort((left, right) => left.episodeNumber - right.episodeNumber);
+  const dates = combined.map((item) => Date.parse(item.releaseDate));
+  const monotonic = dates.every((date, index) => Number.isFinite(date) && (index === 0 || date >= dates[index - 1]));
+  const safeIncrementalProposal = added.length > 0 && removed.length === 0 && changed.length === 0 && monotonic;
+  return { collection, added, removed, changed, safeIncrementalProposal, reason: safeIncrementalProposal ? "Only new dated items were added and the complete current sequence remains chronological." : removed.length || changed.length ? "Existing archive evidence changed, so a full review is required." : "New items lack sufficient monotonic chronology for an incremental proposal." };
+}
+
 export type MediaExperienceItem = {
   key: string;
   provider: "plex" | "jellyfin";

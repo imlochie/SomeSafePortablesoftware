@@ -69,7 +69,8 @@ const canonicalVolumes: Volume[] = [
 ];
 
 function volumeForPath(path: string) {
-  const target = resolve(path).replaceAll("/", "\\").toLowerCase().replace(/[\\]+$/, "");
+  const raw = path.replaceAll("/", "\\");
+  const target = (/^[a-z]:\\/i.test(raw) ? raw : resolve(path).replaceAll("/", "\\")).toLowerCase().replace(/[\\]+$/, "");
   return canonicalVolumes.find((volume) => {
     const root = volume.root.toLowerCase();
     return target === root || target.startsWith(`${root}\\`);

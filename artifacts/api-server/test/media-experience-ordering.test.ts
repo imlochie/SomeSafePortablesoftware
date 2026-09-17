@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildArchiveOriginResearch } from "../src/services/media-experience";
+import { buildArchiveOriginResearch, compareArchiveOrderingSnapshots } from "../src/services/media-experience";
 
 const item = (episodeNumber: number, releaseDate: string, key: string, provider: "plex" | "jellyfin" = "plex") => ({
   key, provider, title: `Upload ${episodeNumber}`, itemType: "episode", year: null, releaseDate, genres: [], durationMinutes: null,
@@ -21,4 +21,14 @@ test("archive ordering collapses provider duplicates and records date provenance
   assert.equal(guidance.itemCount, 3);
   assert.equal(guidance.provenance.length, 3);
   assert.equal(guidance.incremental.canSafelyAppend, false);
+});
+
+test("incremental archive comparison only proposes safe append changes", () => {
+  const previous = [{ key: "one", episodeNumber: 1, releaseDate: "2025-01-01" }];
+  const safe = compareArchiveOrderingSnapshots("Archive Channel", previous, [...previous, { key: "two", episodeNumber: 2, releaseDate: "2025-02-01" }]);
+  assert.equal(safe.safeIncrementalProposal, true);
+  assert.equal(safe.added.length, 1);
+  const changed = compareArchiveOrderingSnapshots("Archive Channel", previous, [{ key: "one", episodeNumber: 1, releaseDate: "2025-03-01" }]);
+  assert.equal(changed.safeIncrementalProposal, false);
+  assert.match(changed.reason, /full review/);
 });
