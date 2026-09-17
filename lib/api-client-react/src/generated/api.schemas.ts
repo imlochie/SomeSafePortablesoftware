@@ -242,6 +242,60 @@ export interface AssistantRecommendation {
   personalAffinity?: AssistantRecommendationPersonalAffinity;
 }
 
+export interface CreateAgentInsight {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  question: string;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  maxActions?: number;
+  includeOperationPlans?: boolean;
+}
+
+export type AgentInsightBriefKind = typeof AgentInsightBriefKind[keyof typeof AgentInsightBriefKind];
+
+
+export const AgentInsightBriefKind = {
+  archive_insight_brief: 'archive_insight_brief',
+} as const;
+
+export type AgentInsightBriefContract = typeof AgentInsightBriefContract[keyof typeof AgentInsightBriefContract];
+
+
+export const AgentInsightBriefContract = {
+  'agent-insight-v1': 'agent-insight-v1',
+} as const;
+
+export type AgentInsightBriefSource = { [key: string]: unknown };
+
+export type AgentInsightBriefSafety = { [key: string]: unknown };
+
+export type AgentInsightBriefSnapshot = { [key: string]: unknown };
+
+export type AgentInsightBriefPrioritizedEvidenceItem = { [key: string]: unknown };
+
+export type AgentInsightBriefPersonalSignals = { [key: string]: unknown };
+
+export type AgentInsightBriefUnknownsItem = { [key: string]: unknown };
+
+export interface AgentInsightBrief {
+  kind: AgentInsightBriefKind;
+  contract: AgentInsightBriefContract;
+  generatedAt: string;
+  question: string;
+  source: AgentInsightBriefSource;
+  safety: AgentInsightBriefSafety;
+  answerRequirements: string[];
+  snapshot: AgentInsightBriefSnapshot;
+  prioritizedEvidence: AgentInsightBriefPrioritizedEvidenceItem[];
+  personalSignals: AgentInsightBriefPersonalSignals;
+  unknowns: AgentInsightBriefUnknownsItem[];
+}
+
 export type AgentContextSource = {
   system: string;
   contract: string;

@@ -27,6 +27,7 @@ import type {
   AcquisitionWebhookPayload,
   AgentCapabilities,
   AgentContext,
+  AgentInsightBrief,
   AppSettings,
   AppSettingsUpdate,
   ApprovedAcquisitionResult,
@@ -45,6 +46,7 @@ import type {
   AssistantWorkload,
   AssistantWorkloadLineage,
   CreateAcquisitionJob,
+  CreateAgentInsight,
   CreateArchiveOperation,
   CreateArchiveOrderingProposalBody,
   CreateReviewItem,
@@ -292,6 +294,77 @@ export function useGetAgentCapabilities<TData = Awaited<ReturnType<typeof getAge
 
 
 
+
+export const getCreateAgentInsightBriefUrl = () => {
+
+
+
+
+  return `/api/agent/insights`
+}
+
+/**
+ * @summary Build a prioritized evidence brief for a reasoning agent
+ */
+export const createAgentInsightBrief = async (createAgentInsight: CreateAgentInsight, options?: Parameters<typeof customFetch>[1]): Promise<AgentInsightBrief> => {
+
+  return customFetch<AgentInsightBrief>(getCreateAgentInsightBriefUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createAgentInsight)
+  }
+);}
+
+
+
+
+
+export const getCreateAgentInsightBriefMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgentInsightBrief>>, TError,{data: BodyType<CreateAgentInsight>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAgentInsightBrief>>, TError,{data: BodyType<CreateAgentInsight>}, TContext> => {
+
+const mutationKey = ['createAgentInsightBrief'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAgentInsightBrief>>, {data: BodyType<CreateAgentInsight>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAgentInsightBrief(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAgentInsightBriefMutationResult = NonNullable<Awaited<ReturnType<typeof createAgentInsightBrief>>>
+    export type CreateAgentInsightBriefMutationBody = BodyType<CreateAgentInsight>
+    export type CreateAgentInsightBriefMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Build a prioritized evidence brief for a reasoning agent
+ */
+export const useCreateAgentInsightBrief = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgentInsightBrief>>, TError,{data: BodyType<CreateAgentInsight>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAgentInsightBrief>>,
+        TError,
+        {data: BodyType<CreateAgentInsight>},
+        TContext
+      > => {
+      return useMutation(getCreateAgentInsightBriefMutationOptions(options));
+    }
 
 export const getGetAgentContextUrl = () => {
 

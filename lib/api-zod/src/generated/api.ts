@@ -40,6 +40,37 @@ export const GetAgentCapabilitiesResponse = zod.object({
 
 
 /**
+ * @summary Build a prioritized evidence brief for a reasoning agent
+ */
+export const createAgentInsightBriefBodyQuestionMax = 2000;
+
+export const createAgentInsightBriefBodyMaxActionsDefault = 3;
+export const createAgentInsightBriefBodyMaxActionsMax = 5;
+
+export const createAgentInsightBriefBodyIncludeOperationPlansDefault = true;
+
+export const CreateAgentInsightBriefBody = zod.object({
+  "question": zod.string().min(1).max(createAgentInsightBriefBodyQuestionMax),
+  "maxActions": zod.number().min(1).max(createAgentInsightBriefBodyMaxActionsMax).default(createAgentInsightBriefBodyMaxActionsDefault),
+  "includeOperationPlans": zod.boolean().default(createAgentInsightBriefBodyIncludeOperationPlansDefault)
+})
+
+export const CreateAgentInsightBriefResponse = zod.object({
+  "kind": zod.enum(['archive_insight_brief']),
+  "contract": zod.enum(['agent-insight-v1']),
+  "generatedAt": zod.coerce.date(),
+  "question": zod.string(),
+  "source": zod.record(zod.string(), zod.unknown()),
+  "safety": zod.record(zod.string(), zod.unknown()),
+  "answerRequirements": zod.array(zod.string()),
+  "snapshot": zod.record(zod.string(), zod.unknown()),
+  "prioritizedEvidence": zod.array(zod.record(zod.string(), zod.unknown())),
+  "personalSignals": zod.record(zod.string(), zod.unknown()),
+  "unknowns": zod.array(zod.record(zod.string(), zod.unknown()))
+})
+
+
+/**
  * @summary Get bounded evidence for an external reasoning agent
  */
 export const GetAgentContextResponse = zod.object({

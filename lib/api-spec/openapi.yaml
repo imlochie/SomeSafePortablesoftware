@@ -60,6 +60,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentCapabilities"
+  /agent/insights:
+    post:
+      operationId: createAgentInsightBrief
+      tags: [agent]
+      summary: Build a prioritized evidence brief for a reasoning agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentInsight"
+      responses:
+        "200":
+          description: Prioritized, redacted evidence brief; it does not execute changes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentInsightBrief"
+        "400":
+          description: Invalid insight request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /agent/context:
     get:
       operationId: getAgentContext
@@ -2110,6 +2134,28 @@ components:
             basedOn:
               type: array
               items: { type: string }
+    CreateAgentInsight:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string, minLength: 1, maxLength: 2000 }
+        maxActions: { type: number, minimum: 1, maximum: 5, default: 3 }
+        includeOperationPlans: { type: boolean, default: true }
+    AgentInsightBrief:
+      type: object
+      required: [kind, contract, generatedAt, question, source, safety, answerRequirements, snapshot, prioritizedEvidence, personalSignals, unknowns]
+      properties:
+        kind: { type: string, enum: [archive_insight_brief] }
+        contract: { type: string, enum: [agent-insight-v1] }
+        generatedAt: { type: string, format: date-time }
+        question: { type: string }
+        source: { type: object, additionalProperties: true }
+        safety: { type: object, additionalProperties: true }
+        answerRequirements: { type: array, items: { type: string } }
+        snapshot: { type: object, additionalProperties: true }
+        prioritizedEvidence: { type: array, items: { type: object, additionalProperties: true } }
+        personalSignals: { type: object, additionalProperties: true }
+        unknowns: { type: array, items: { type: object, additionalProperties: true } }
     AgentContext:
       type: object
       required: [generatedAt, source, safety, archive, personal]

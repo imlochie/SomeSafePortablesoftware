@@ -42,6 +42,94 @@ function redact(value: unknown): unknown {
   return value;
 }
 
+function insightPriority(priority: string, state: string, itemCount: number) {
+  const priorityScores: Record<string, number> = { critical: 100, high: 75, medium: 50, low: 25, info: 0 };
+  const priorityScore = priorityScores[priority] ?? 0;
+  const stateScore = state === "actionable" ? 20 : state === "uncertain" ? 10 : state === "blocked" ? 5 : 0;
+  return priorityScore + stateScore + Math.min(itemCount, 20);
+}
+
+function buildInsightBrief(overview: Awaited<ReturnType<typeof readAssistantOverview>>, question: string, maxActions: number, includeOperationPlans: boolean) {
+  const candidates = overview.groups
+    .map((group) => ({
+      id: group.id,
+      type: group.type,
+      title: group.title,
+      state: group.state,
+      priority: group.priority,
+      confidence: group.confidence,
+      itemCount: group.itemCount,
+      evidence: group.evidence,
+      whyItMatters: group.type === "identity"
+        ? "Identity ambiguity can contaminate provider matching, naming, and later automation."
+        : group.type === "duplicate"
+          ? "Duplicate evidence can affect storage decisions, but interchangeability must be verified before removal."
+          : group.type === "integrity"
+            ? "Integrity findings can indicate a playback risk, but inspection limits must not be treated as proof of corruption."
+            : group.type === "rename"
+              ? "High-confidence naming work can improve provider matching without changing media bytes."
+              : group.type === "download"
+                ? "Acquisition should be weighed against storage, availability, and the user's viewing signals."
+                : "This finding may affect archive correctness and should be evaluated with its evidence.",
+      recommendedAction: group.recommendedAction,
+      risk: group.state === "uncertain" ? "medium" : group.state === "blocked" ? "high" : group.priority === "critical" ? "high" : "low",
+      reversible: group.type !== "duplicate",
+      score: insightPriority(group.priority, group.state, group.itemCount),
+    }))
+    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
+    .slice(0, maxActions)
+    .map(({ score: _score, ...candidate }) => candidate);
+
+  return {
+    kind: "archive_insight_brief",
+    contract: "agent-insight-v1",
+    generatedAt: new Date().toISOString(),
+    question,
+    source: { system: "archive-assistant", ownerScoped: true },
+    safety: { approvalRequired: true, preflightRequired: true, directMutation: false, providerExecution: false },
+    answerRequirements: [
+      "Answer the user's question directly; do not restate raw counts as the conclusion.",
+      "Cite the supplied evidence IDs or group IDs for every material claim.",
+      "Separate known facts, likely interpretations, and unknowns.",
+      "Explain why the recommendation matters to this user's archive or viewing patterns.",
+      includeOperationPlans ? "If proposing a change, describe benefit, risk, reversibility, and use the operation planning boundary." : "Do not propose an operation plan unless the user explicitly asks for one.",
+    ],
+    snapshot: {
+      summary: overview.summary,
+      activeWork: overview.activeWork,
+      informational: overview.informational,
+      lastScan: overview.summary.lastScan,
+    },
+    prioritizedEvidence: candidates,
+    personalSignals: {
+      sourceStatus: overview.mediaExperience.sourceStatus,
+      summary: overview.mediaExperience.summary,
+      currentViewingMomentum: overview.mediaExperience.currentViewingMomentum,
+      personalizedBriefing: overview.personalizedBriefing.slice(0, maxActions * 3),
+    },
+    unknowns: overview.uncertain.slice(0, maxActions * 3).map((item) => ({
+      id: item.id, title: item.title, confidence: item.confidence, explanation: item.explanation, evidence: item.evidence,
+    })),
+  };
+}
+
+router.post("/agent/insights", async (req, res, next) => {
+  try {
+    const body = req.body ?? {};
+    const question = typeof body.question === "string" ? body.question.trim() : "";
+    if (!question) return res.status(400).json({ error: "question is required" });
+    if (question.length > 2000) return res.status(400).json({ error: "question must be 2000 characters or fewer" });
+    const maxActions = typeof body.maxActions === "number" && Number.isInteger(body.maxActions)
+      ? Math.max(1, Math.min(5, body.maxActions))
+      : 3;
+    const includeOperationPlans = body.includeOperationPlans !== false;
+    const overview = await readAssistantOverview(getAuthenticatedUserId(req));
+    return res.json(redact(buildInsightBrief(overview, question, maxActions, includeOperationPlans)));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get("/agent/context", async (req, res, next) => {
   try {
     const overview = await readAssistantOverview(getAuthenticatedUserId(req));

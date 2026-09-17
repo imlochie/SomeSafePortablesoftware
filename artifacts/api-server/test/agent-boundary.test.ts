@@ -38,6 +38,29 @@ describe("agent boundary", { concurrency: false }, () => {
     });
   });
 
+  test("insights returns a prioritized reasoning brief rather than raw archive rows", async () => {
+    const response = await fetch(`${baseUrl}/api/agent/insights`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: "What should I fix first this weekend?", maxActions: 2 }),
+    });
+    assert.equal(response.status, 200);
+    const brief = await response.json() as {
+      kind: string; contract: string; question: string; answerRequirements: string[];
+      safety: { approvalRequired: boolean; preflightRequired: boolean; directMutation: boolean };
+      prioritizedEvidence: unknown[]; unknowns: unknown[];
+    };
+    assert.equal(brief.kind, "archive_insight_brief");
+    assert.equal(brief.contract, "agent-insight-v1");
+    assert.equal(brief.question, "What should I fix first this weekend?");
+    assert.equal(brief.prioritizedEvidence.length <= 2, true);
+    assert.ok(brief.answerRequirements.some((item) => item.includes("known facts")));
+    assert.equal(brief.safety.approvalRequired, true);
+    assert.equal(brief.safety.preflightRequired, true);
+    assert.equal(brief.safety.directMutation, false);
+    assert.ok(Array.isArray(brief.unknowns));
+  });
+
   test("context returns bounded redacted evidence without mutation authority", async () => {
     const response = await fetch(`${baseUrl}/api/agent/context`);
     assert.equal(response.status, 200);
