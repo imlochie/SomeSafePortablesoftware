@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { SettingsRecord } from "../lib/archive-db";
+import { readMediaExperience } from "./media-experience";
 
 type MonitorKind = "rss" | "atom" | "json" | "html";
 export type SourceMonitor = {
@@ -13,6 +14,7 @@ export type SourceMonitor = {
   enabled: boolean;
   intervalMinutes: number;
   targets: Array<{ title: string; mediaType?: "movie" | "series" | "episode"; season?: number }>;
+  discovery: boolean;
   lastCheckedAt: string | null;
   lastSuccessfulCheckAt: string | null;
   lastFingerprint: string | null;
@@ -90,8 +92,8 @@ function detectKind(contentType: string, url: string, requested?: MonitorKind): 
 
 export async function listSourceMonitors(ownerId: string, settings: SettingsRecord) { const s = await readStore(settings); return s.monitors.filter((m) => m.ownerId === ownerId); }
 export async function listMonitorNotifications(ownerId: string, settings: SettingsRecord) { const s = await readStore(settings); return s.notifications.filter((n) => n.ownerId === ownerId).slice(-100).reverse(); }
-export async function createSourceMonitor(ownerId: string, input: { name: string; url: string; kind?: MonitorKind; intervalMinutes?: number; targets: SourceMonitor["targets"] }, settings: SettingsRecord) {
-  const now = new Date().toISOString(); const source: SourceMonitor = { id: randomUUID(), ownerId, name: text(input.name) || new URL(input.url).hostname, url: safeUrl(input.url), kind: input.kind ?? "html", enabled: true, intervalMinutes: boundedInterval(input.intervalMinutes), targets: input.targets.filter((t) => text(t.title)).map((t) => ({ ...t, title: text(t.title) })), lastCheckedAt: null, lastSuccessfulCheckAt: null, lastFingerprint: null, lastError: null, createdAt: now, updatedAt: now };
+export async function createSourceMonitor(ownerId: string, input: { name: string; url: string; kind?: MonitorKind; intervalMinutes?: number; targets?: SourceMonitor["targets"]; discovery?: boolean }, settings: SettingsRecord) {
+  const now = new Date().toISOString(); const source: SourceMonitor = { id: randomUUID(), ownerId, name: text(input.name) || new URL(input.url).hostname, url: safeUrl(input.url), kind: input.kind ?? "html", enabled: true, intervalMinutes: boundedInterval(input.intervalMinutes), targets: (input.targets ?? []).filter((t) => text(t.title)).map((t) => ({ ...t, title: text(t.title) })), discovery: input.discovery === true, lastCheckedAt: null, lastSuccessfulCheckAt: null, lastFingerprint: null, lastError: null, createdAt: now, updatedAt: now };
   const store = await readStore(settings); store.monitors.push(source); await writeStore(settings, store); return source;
 }
 export async function checkSourceMonitor(ownerId: string, id: string, settings: SettingsRecord) {
@@ -101,10 +103,25 @@ export async function checkSourceMonitor(ownerId: string, id: string, settings: 
     const response = await fetch(monitor.url, { headers: { Accept: "application/rss+xml, application/atom+xml, application/json, text/html" }, signal: AbortSignal.timeout(15_000) });
     if (!response.ok) throw new Error(`Source returned HTTP ${response.status}.`);
     const body = await response.text(); const kind = detectKind(response.headers.get("content-type") ?? "", monitor.url, monitor.kind); const items = parseItems(body, kind, monitor.url);
-    const matched = items.filter((item) => monitor.targets.some((target) => normalize(item.title).includes(normalize(target.title))));
+    const personal = readMediaExperience(ownerId).items;
+    const scoreDiscovery = (title: string) => {
+      const normalized = normalize(title);
+      const related = personal.filter((item) => normalized.includes(normalize(item.title)) || Boolean(item.seriesTitle && normalized.includes(normalize(item.seriesTitle))));
+      const rating = Number(title.match(/(?:⭐|rating\s*)(\d+(?:\.\d+)?)/i)?.[1] ?? NaN);
+      const year = Number(title.match(/\b(20\d{2})\b/)?.[1] ?? NaN);
+      const active = related.some((item) => item.isNextEpisode || item.status === "in_progress");
+      const reasons = [...(related.length ? ["related to your viewing evidence"] : []), ...(active ? ["related series is active or has a next episode"] : []), ...(Number.isFinite(rating) && rating >= 7 ? [`public rating signal: ${rating}/10`] : []), ...(Number.isFinite(year) && year >= new Date().getFullYear() - 1 ? ["recent release-year signal"] : [])];
+      return { score: (related.length ? 60 : 0) + (active ? 25 : 0) + (Number.isFinite(rating) && rating >= 7 ? 15 : 0) + (Number.isFinite(year) && year >= new Date().getFullYear() - 1 ? 10 : 0), reasons };
+    };
+    const matched = items.flatMap((item) => {
+      const targets = monitor.targets.filter((target) => normalize(item.title).includes(normalize(target.title)));
+      if (targets.length) return targets.map((target) => ({ ...item, matchedTarget: target.title, discoveryScore: 100, discoveryReasons: ["matched configured watch target"] }));
+      if (monitor.discovery) { const scored = scoreDiscovery(item.title); if (scored.score >= 60) return [{ ...item, matchedTarget: "autonomous discovery", discoveryScore: scored.score, discoveryReasons: scored.reasons }]; }
+      return [];
+    });
     const fingerprint = matched.map((item) => `${item.title}|${item.url ?? ""}`).join("\n"); const isNew = fingerprint !== monitor.lastFingerprint;
     const notifications: MonitorNotification[] = [];
-    if (isNew && matched.length) for (const item of matched) for (const target of monitor.targets.filter((t) => normalize(item.title).includes(normalize(t.title)))) notifications.push({ id: randomUUID(), monitorId: monitor.id, ownerId, title: item.title, matchedTarget: target.title, url: item.url, evidence: item.evidence, firstSeenAt: checked, read: false });
+    if (isNew && matched.length) for (const item of matched) notifications.push({ id: randomUUID(), monitorId: monitor.id, ownerId, title: item.title, matchedTarget: item.matchedTarget, url: item.url, evidence: [...item.evidence, ...item.discoveryReasons, `discovery score: ${item.discoveryScore}`], firstSeenAt: checked, read: false });
     monitor.lastFingerprint = fingerprint; monitor.lastSuccessfulCheckAt = checked; monitor.lastError = null; monitor.updatedAt = checked; store.notifications.push(...notifications); await writeStore(settings, store);
     return { monitor, matched, notifications, sourceKind: kind, checkedAt: checked };
   } catch (error) { monitor.lastError = error instanceof Error ? error.message : "Source check failed."; monitor.updatedAt = checked; await writeStore(settings, store); throw error; }

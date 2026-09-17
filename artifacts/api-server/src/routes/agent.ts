@@ -130,8 +130,9 @@ router.post("/agent/monitoring/sources", async (req, res, next) => {
     const url = typeof body.url === "string" ? body.url.trim() : "";
     if (!url) return res.status(400).json({ error: "url is required" });
     const targets = Array.isArray(body.targets) ? body.targets : [];
-    if (!targets.length) return res.status(400).json({ error: "at least one watch target is required" });
-    const source = await createSourceMonitor(getAuthenticatedUserId(req), { name: body.name, url, kind: body.kind, intervalMinutes: body.intervalMinutes, targets }, readSettings());
+    const discovery = body.discovery === true;
+    if (!targets.length && !discovery) return res.status(400).json({ error: "at least one watch target or discovery mode is required" });
+    const source = await createSourceMonitor(getAuthenticatedUserId(req), { name: body.name, url, kind: body.kind, intervalMinutes: body.intervalMinutes, targets, discovery }, readSettings());
     return res.status(201).json(source);
   } catch (error) { return next(error); }
 });

@@ -46,12 +46,23 @@ describe("agent boundary", { concurrency: false }, () => {
     assert.equal(create.status, 201);
     const source = await create.json() as { id: string; targets: Array<{ title: string }> };
     assert.equal(source.targets[0].title, "Ted Lasso");
+    const discoveryCreate = await fetch(`${baseUrl}/api/agent/monitoring/sources`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Autonomous discovery test", url: "https://example.com/catalog", kind: "html", discovery: true }),
+    });
+    assert.equal(discoveryCreate.status, 201);
+    const discovery = await discoveryCreate.json() as { id: string; discovery: boolean; targets: unknown[] };
+    assert.equal(discovery.discovery, true);
+    assert.deepEqual(discovery.targets, []);
+
     const list = await fetch(`${baseUrl}/api/agent/monitoring/sources`);
     assert.equal(list.status, 200);
     const listed = await list.json() as { sources: Array<{ id: string }> };
     assert.ok(listed.sources.some((item) => item.id === source.id));
     const removed = await fetch(`${baseUrl}/api/agent/monitoring/sources/${source.id}`, { method: "DELETE" });
     assert.equal(removed.status, 204);
+    const removedDiscovery = await fetch(`${baseUrl}/api/agent/monitoring/sources/${discovery.id}`, { method: "DELETE" });
+    assert.equal(removedDiscovery.status, 204);
   });
 
   test("download source inspection selects highest quality and requires approval before queueing", async () => {

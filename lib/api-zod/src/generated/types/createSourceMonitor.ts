@@ -18,6 +18,6 @@ export interface CreateSourceMonitor {
      * @maximum 1440
      */
   intervalMinutes?: number;
-  /** @minItems 1 */
-  targets: CreateSourceMonitorTargetsItem[];
+  discovery?: boolean;
+  targets?: CreateSourceMonitorTargetsItem[];
 }

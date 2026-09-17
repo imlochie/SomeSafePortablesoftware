@@ -52,8 +52,8 @@ export const ListAgentSourceMonitorsResponse = zod.record(zod.string(), zod.unkn
 export const createAgentSourceMonitorBodyIntervalMinutesMin = 5;
 export const createAgentSourceMonitorBodyIntervalMinutesMax = 1440;
 
+export const createAgentSourceMonitorBodyDiscoveryDefault = false;
 export const createAgentSourceMonitorBodyTargetsItemSeasonMin = 0;
-
 
 
 
@@ -62,11 +62,12 @@ export const CreateAgentSourceMonitorBody = zod.object({
   "url": zod.string().min(1),
   "kind": zod.enum(['rss', 'atom', 'json', 'html']).optional(),
   "intervalMinutes": zod.number().min(createAgentSourceMonitorBodyIntervalMinutesMin).max(createAgentSourceMonitorBodyIntervalMinutesMax).optional(),
+  "discovery": zod.boolean().default(createAgentSourceMonitorBodyDiscoveryDefault),
   "targets": zod.array(zod.object({
   "title": zod.string(),
   "mediaType": zod.enum(['movie', 'series', 'episode']).optional(),
   "season": zod.number().min(createAgentSourceMonitorBodyTargetsItemSeasonMin).optional()
-})).min(1)
+})).optional()
 })
 
 export const CreateAgentSourceMonitorResponse = zod.record(zod.string(), zod.unknown())

@@ -2262,15 +2262,15 @@ components:
               items: { type: string }
     CreateSourceMonitor:
       type: object
-      required: [url, targets]
+      required: [url]
       properties:
         name: { type: string }
         url: { type: string, minLength: 1 }
         kind: { type: string, enum: [rss, atom, json, html] }
         intervalMinutes: { type: number, minimum: 5, maximum: 1440 }
+        discovery: { type: boolean, default: false }
         targets:
           type: array
-          minItems: 1
           items:
             type: object
             required: [title]
