@@ -60,6 +60,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentCapabilities"
+  /integrations/config:
+    get:
+      operationId: getIntegrationConfigurationStatus
+      tags: [integrations]
+      summary: Get configured integration fields without exposing secrets
+      responses:
+        "200":
+          description: Integration configuration status
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /integrations/config/{id}:
+    put:
+      operationId: updateIntegrationConfiguration
+      tags: [integrations]
+      summary: Save local configuration for an integration plugin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Configuration saved
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400": { description: Invalid configuration }
   /agent/monitoring/sources:
     get:
       operationId: listAgentSourceMonitors

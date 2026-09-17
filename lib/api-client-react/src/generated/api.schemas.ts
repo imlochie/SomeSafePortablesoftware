@@ -3741,6 +3741,12 @@ export type PageParameter = number;
 
 export type PageSizeParameter = number;
 
+export type GetIntegrationConfigurationStatus200 = { [key: string]: unknown };
+
+export type UpdateIntegrationConfigurationBody = { [key: string]: unknown };
+
+export type UpdateIntegrationConfiguration200 = { [key: string]: unknown };
+
 export type ListAgentSourceMonitors200 = { [key: string]: unknown };
 
 export type CreateAgentSourceMonitor201 = { [key: string]: unknown };

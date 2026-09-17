@@ -31,7 +31,7 @@ export interface ResolvedCapability<K extends IntegrationCapability> {
 }
 
 export class IntegrationRegistry {
-  private readonly adaptersById: ReadonlyMap<IntegrationId, MediaIntegrationAdapter>;
+  private adaptersById: ReadonlyMap<IntegrationId, MediaIntegrationAdapter>;
 
   constructor(adapters: readonly MediaIntegrationAdapter[]) {
     const ids = adapters.map((adapter) => adapter.id);
@@ -39,6 +39,11 @@ export class IntegrationRegistry {
       throw new Error("Integration registry cannot contain duplicate adapter IDs.");
     }
     this.adaptersById = new Map(adapters.map((adapter) => [adapter.id, adapter]));
+  }
+
+  reload(env: NodeJS.ProcessEnv = process.env) {
+    const fresh = createDefaultIntegrationRegistry(env);
+    this.adaptersById = fresh.adaptersById;
   }
 
   getAdapter(id: IntegrationId) {

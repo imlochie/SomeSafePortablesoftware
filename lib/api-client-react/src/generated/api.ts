@@ -71,6 +71,7 @@ import type {
   GetArchiveReconciliationParams,
   GetAssistantArchiveHealth200,
   GetAssistantToolCatalog200,
+  GetIntegrationConfigurationStatus200,
   GetPlexHierarchyParams,
   GetWebhookDeliveryHistoryParams,
   HealthStatus,
@@ -118,6 +119,8 @@ import type {
   SystemDependencies,
   SystemEvent,
   SystemOverview,
+  UpdateIntegrationConfiguration200,
+  UpdateIntegrationConfigurationBody,
   WebhookDeliveryHistoryResponse,
   WebhookSecretStatus,
   WebhookSecretStatusesResponse
@@ -304,6 +307,155 @@ export function useGetAgentCapabilities<TData = Awaited<ReturnType<typeof getAge
 
 
 
+
+export const getGetIntegrationConfigurationStatusUrl = () => {
+
+
+
+
+  return `/api/integrations/config`
+}
+
+/**
+ * @summary Get configured integration fields without exposing secrets
+ */
+export const getIntegrationConfigurationStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<GetIntegrationConfigurationStatus200> => {
+
+  return customFetch<GetIntegrationConfigurationStatus200>(getGetIntegrationConfigurationStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetIntegrationConfigurationStatusQueryKey = () => {
+    return [
+    `/api/integrations/config`
+    ] as const;
+    }
+
+
+export const getGetIntegrationConfigurationStatusQueryOptions = <TData = Awaited<ReturnType<typeof getIntegrationConfigurationStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrationConfigurationStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetIntegrationConfigurationStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getIntegrationConfigurationStatus>>> = ({ signal }) => getIntegrationConfigurationStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getIntegrationConfigurationStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetIntegrationConfigurationStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getIntegrationConfigurationStatus>>>
+export type GetIntegrationConfigurationStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get configured integration fields without exposing secrets
+ */
+
+export function useGetIntegrationConfigurationStatus<TData = Awaited<ReturnType<typeof getIntegrationConfigurationStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrationConfigurationStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetIntegrationConfigurationStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateIntegrationConfigurationUrl = (id: string,) => {
+
+
+
+
+  return `/api/integrations/config/${id}`
+}
+
+/**
+ * @summary Save local configuration for an integration plugin
+ */
+export const updateIntegrationConfiguration = async (id: string,
+    updateIntegrationConfigurationBody: UpdateIntegrationConfigurationBody, options?: Parameters<typeof customFetch>[1]): Promise<UpdateIntegrationConfiguration200> => {
+
+  return customFetch<UpdateIntegrationConfiguration200>(getUpdateIntegrationConfigurationUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateIntegrationConfigurationBody)
+  }
+);}
+
+
+
+
+
+export const getUpdateIntegrationConfigurationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateIntegrationConfiguration>>, TError,{id: string;data: BodyType<UpdateIntegrationConfigurationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateIntegrationConfiguration>>, TError,{id: string;data: BodyType<UpdateIntegrationConfigurationBody>}, TContext> => {
+
+const mutationKey = ['updateIntegrationConfiguration'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateIntegrationConfiguration>>, {id: string;data: BodyType<UpdateIntegrationConfigurationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateIntegrationConfiguration(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateIntegrationConfigurationMutationResult = NonNullable<Awaited<ReturnType<typeof updateIntegrationConfiguration>>>
+    export type UpdateIntegrationConfigurationMutationBody = BodyType<UpdateIntegrationConfigurationBody>
+    export type UpdateIntegrationConfigurationMutationError = ErrorType<void>
+
+    /**
+ * @summary Save local configuration for an integration plugin
+ */
+export const useUpdateIntegrationConfiguration = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateIntegrationConfiguration>>, TError,{id: string;data: BodyType<UpdateIntegrationConfigurationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateIntegrationConfiguration>>,
+        TError,
+        {id: string;data: BodyType<UpdateIntegrationConfigurationBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateIntegrationConfigurationMutationOptions(options));
+    }
 
 export const getListAgentSourceMonitorsUrl = () => {
 

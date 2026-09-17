@@ -8,6 +8,7 @@ import {
 } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import { integrationRegistry } from "../integrations";
+import { readIntegrationConfigurationStatus, saveIntegrationConfiguration } from "../integrations/persisted-config";
 import {
   readWebhookSecretStatuses,
   rotateWebhookSecret,
@@ -25,6 +26,21 @@ router.get("/integrations/status", async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+router.get("/integrations/config", (_req, res) => {
+  res.json({ integrations: readIntegrationConfigurationStatus() });
+});
+
+router.put("/integrations/config/:id", (req, res) => {
+  const id = req.params.id as any;
+  if (!["sonarr", "radarr", "prowlarr", "qbittorrent", "mpilot", "telegram"].includes(id)) return res.status(404).json({ error: "Integration is not configurable." });
+  try {
+    const allowed = ["endpoint", "apiKey", "username", "password", "rootFolderPath", "qualityProfileId", "languageProfileId", "webhookSecret"];
+    const input = Object.fromEntries(Object.entries(req.body ?? {}).filter(([key, value]) => allowed.includes(key) && value !== undefined));
+    saveIntegrationConfiguration(id, input); integrationRegistry.reload();
+    return res.json({ ok: true, id, configured: readIntegrationConfigurationStatus().find((item) => item.id === id) });
+  } catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Configuration could not be saved." }); }
 });
 
 router.get("/integrations/webhooks", (_req, res) => {

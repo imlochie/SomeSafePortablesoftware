@@ -40,6 +40,24 @@ export const GetAgentCapabilitiesResponse = zod.object({
 
 
 /**
+ * @summary Get configured integration fields without exposing secrets
+ */
+export const GetIntegrationConfigurationStatusResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Save local configuration for an integration plugin
+ */
+export const UpdateIntegrationConfigurationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateIntegrationConfigurationBody = zod.record(zod.string(), zod.unknown())
+
+export const UpdateIntegrationConfigurationResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
  * @summary List owner-scoped source monitors and notifications
  */
 export const ListAgentSourceMonitorsResponse = zod.record(zod.string(), zod.unknown())

@@ -1,4 +1,5 @@
 import type { ExternalIntegrationId } from "./contracts";
+import { persistedIntegrationConfiguration } from "./persisted-config";
 
 export interface IntegrationConfiguration {
   endpoint: string | null;
@@ -42,42 +43,46 @@ function optionalInteger(env: NodeJS.ProcessEnv, key: string) {
 export function resolveExternalIntegrationConfiguration(
   env: NodeJS.ProcessEnv = process.env,
 ): ExternalIntegrationConfiguration {
+  const stored = persistedIntegrationConfiguration(env);
+  const value = (id: ExternalIntegrationId, key: string, envKey: string) => stored[id][key as keyof typeof stored[typeof id]] ?? readValue(env, envKey);
+  const integer = (id: ExternalIntegrationId, key: string, envKey: string) => { const raw = value(id, key, envKey); return raw == null || raw === "" ? null : Number(raw); };
   return {
     sonarr: {
-      endpoint: readValue(env, "SONARR_URL"),
-      credentialsConfigured: hasAll(env, ["SONARR_API_KEY"]),
-      webhookSecret: readValue(env, "SONARR_WEBHOOK_SECRET"),
-      apiKey: readValue(env, "SONARR_API_KEY"),
-      rootFolderPath: readValue(env, "SONARR_ROOT_FOLDER"),
-      qualityProfileId: optionalInteger(env, "SONARR_QUALITY_PROFILE_ID"),
-      languageProfileId: optionalInteger(env, "SONARR_LANGUAGE_PROFILE_ID"),
+      endpoint: value("sonarr", "endpoint", "SONARR_URL") as string | null,
+      credentialsConfigured: Boolean(value("sonarr", "apiKey", "SONARR_API_KEY")),
+      webhookSecret: value("sonarr", "webhookSecret", "SONARR_WEBHOOK_SECRET") as string | null,
+      apiKey: value("sonarr", "apiKey", "SONARR_API_KEY") as string | null,
+      rootFolderPath: value("sonarr", "rootFolderPath", "SONARR_ROOT_FOLDER") as string | null,
+      qualityProfileId: integer("sonarr", "qualityProfileId", "SONARR_QUALITY_PROFILE_ID"),
+      languageProfileId: integer("sonarr", "languageProfileId", "SONARR_LANGUAGE_PROFILE_ID"),
     },
     radarr: {
-      endpoint: readValue(env, "RADARR_URL"),
-      credentialsConfigured: hasAll(env, ["RADARR_API_KEY"]),
+      endpoint: value("radarr", "endpoint", "RADARR_URL") as string | null,
+      credentialsConfigured: Boolean(value("radarr", "apiKey", "RADARR_API_KEY")),
       webhookSecret: readValue(env, "RADARR_WEBHOOK_SECRET"),
-      apiKey: readValue(env, "RADARR_API_KEY"),
-      rootFolderPath: readValue(env, "RADARR_ROOT_FOLDER"),
+      apiKey: value("radarr", "apiKey", "RADARR_API_KEY") as string | null,
+      rootFolderPath: value("radarr", "rootFolderPath", "RADARR_ROOT_FOLDER") as string | null,
       qualityProfileId: optionalInteger(env, "RADARR_QUALITY_PROFILE_ID"),
     },
     prowlarr: {
-      endpoint: readValue(env, "PROWLARR_URL"),
-      credentialsConfigured: hasAll(env, ["PROWLARR_API_KEY"]),
-      apiKey: readValue(env, "PROWLARR_API_KEY"),
+      endpoint: value("prowlarr", "endpoint", "PROWLARR_URL") as string | null,
+      credentialsConfigured: Boolean(value("prowlarr", "apiKey", "PROWLARR_API_KEY")),
+      apiKey: value("prowlarr", "apiKey", "PROWLARR_API_KEY") as string | null,
     },
     qbittorrent: {
-      endpoint: readValue(env, "QBITTORRENT_URL"),
-      credentialsConfigured: hasAll(env, ["QBITTORRENT_USERNAME", "QBITTORRENT_PASSWORD"]),
-      username: readValue(env, "QBITTORRENT_USERNAME"),
-      password: readValue(env, "QBITTORRENT_PASSWORD"),
+      endpoint: value("qbittorrent", "endpoint", "QBITTORRENT_URL") as string | null,
+      credentialsConfigured: Boolean(value("qbittorrent", "username", "QBITTORRENT_USERNAME") && value("qbittorrent", "password", "QBITTORRENT_PASSWORD")),
+      username: value("qbittorrent", "username", "QBITTORRENT_USERNAME") as string | null,
+      password: value("qbittorrent", "password", "QBITTORRENT_PASSWORD") as string | null,
     },
     mpilot: {
-      endpoint: readValue(env, "MPILOT_URL"),
-      credentialsConfigured: hasAll(env, ["MPILOT_API_KEY"]),
+      endpoint: value("mpilot", "endpoint", "MPILOT_URL") as string | null,
+      credentialsConfigured: Boolean(value("mpilot", "apiKey", "MPILOT_API_KEY")),
     },
     telegram: {
       endpoint: null,
-      credentialsConfigured: hasAll(env, ["TELEGRAM_BOT_TOKEN"]),
+      credentialsConfigured: Boolean(value("telegram", "apiKey", "TELEGRAM_BOT_TOKEN")),
+      apiKey: value("telegram", "apiKey", "TELEGRAM_BOT_TOKEN") as string | null,
     },
   };
 }
