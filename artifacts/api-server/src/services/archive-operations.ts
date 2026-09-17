@@ -455,6 +455,14 @@ export async function preflightArchiveOperation(
     throw new Error("The operation approval is no longer valid.");
   }
   if (operation.batch.length) {
+    const unsafePath = operation.batch.find((item) => !pathAllowed(item.originalPath) || !pathAllowed(item.temporaryPath) || !pathAllowed(item.finalPath));
+    if (unsafePath) {
+      const message = `Batch path is outside configured Archive Assistant directories: ${unsafePath.originalPath} -> ${unsafePath.finalPath}`;
+      updateOperation(id, ownerId, { status: "failed", error_code: "PREFLIGHT_FAILED", error_message: message, preflight_json: JSON.stringify({ ok: false, error: message, checkedAt: new Date().toISOString() }) });
+      const failed = readArchiveOperation(id, ownerId)!;
+      appendEvent(failed, ownerId, "failed", message, { phase: "preflight", batch: true, pathBoundary: true });
+      return failed;
+    }
     const result = await preflightBatchFiles(operation.batch.map((item) => ({ ...item })), {
       stat: dependencies.stat,
       access: dependencies.access,
