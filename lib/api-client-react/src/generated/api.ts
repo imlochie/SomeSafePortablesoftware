@@ -27,6 +27,10 @@ import type {
   AcquisitionWebhookPayload,
   AgentCapabilities,
   AgentContext,
+  AgentDownloadInspectInput,
+  AgentDownloadQueueInput,
+  AgentDownloadQueued,
+  AgentDownloadSelection,
   AgentInsightBrief,
   AgentResearchBrief,
   AppSettings,
@@ -296,6 +300,148 @@ export function useGetAgentCapabilities<TData = Awaited<ReturnType<typeof getAge
 
 
 
+
+export const getInspectAgentDownloadSourceUrl = () => {
+
+
+
+
+  return `/api/agent/downloads/inspect`
+}
+
+/**
+ * @summary Inspect a link and propose the highest-quality usable source
+ */
+export const inspectAgentDownloadSource = async (agentDownloadInspectInput: AgentDownloadInspectInput, options?: Parameters<typeof customFetch>[1]): Promise<AgentDownloadSelection> => {
+
+  return customFetch<AgentDownloadSelection>(getInspectAgentDownloadSourceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(agentDownloadInspectInput)
+  }
+);}
+
+
+
+
+
+export const getInspectAgentDownloadSourceMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inspectAgentDownloadSource>>, TError,{data: BodyType<AgentDownloadInspectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof inspectAgentDownloadSource>>, TError,{data: BodyType<AgentDownloadInspectInput>}, TContext> => {
+
+const mutationKey = ['inspectAgentDownloadSource'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof inspectAgentDownloadSource>>, {data: BodyType<AgentDownloadInspectInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  inspectAgentDownloadSource(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InspectAgentDownloadSourceMutationResult = NonNullable<Awaited<ReturnType<typeof inspectAgentDownloadSource>>>
+    export type InspectAgentDownloadSourceMutationBody = BodyType<AgentDownloadInspectInput>
+    export type InspectAgentDownloadSourceMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Inspect a link and propose the highest-quality usable source
+ */
+export const useInspectAgentDownloadSource = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inspectAgentDownloadSource>>, TError,{data: BodyType<AgentDownloadInspectInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof inspectAgentDownloadSource>>,
+        TError,
+        {data: BodyType<AgentDownloadInspectInput>},
+        TContext
+      > => {
+      return useMutation(getInspectAgentDownloadSourceMutationOptions(options));
+    }
+
+export const getQueueAgentDownloadUrl = () => {
+
+
+
+
+  return `/api/agent/downloads/queue`
+}
+
+/**
+ * @summary Queue an approved highest-quality download
+ */
+export const queueAgentDownload = async (agentDownloadQueueInput: AgentDownloadQueueInput, options?: Parameters<typeof customFetch>[1]): Promise<AgentDownloadQueued> => {
+
+  return customFetch<AgentDownloadQueued>(getQueueAgentDownloadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(agentDownloadQueueInput)
+  }
+);}
+
+
+
+
+
+export const getQueueAgentDownloadMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof queueAgentDownload>>, TError,{data: BodyType<AgentDownloadQueueInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof queueAgentDownload>>, TError,{data: BodyType<AgentDownloadQueueInput>}, TContext> => {
+
+const mutationKey = ['queueAgentDownload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof queueAgentDownload>>, {data: BodyType<AgentDownloadQueueInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  queueAgentDownload(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type QueueAgentDownloadMutationResult = NonNullable<Awaited<ReturnType<typeof queueAgentDownload>>>
+    export type QueueAgentDownloadMutationBody = BodyType<AgentDownloadQueueInput>
+    export type QueueAgentDownloadMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Queue an approved highest-quality download
+ */
+export const useQueueAgentDownload = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof queueAgentDownload>>, TError,{data: BodyType<AgentDownloadQueueInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof queueAgentDownload>>,
+        TError,
+        {data: BodyType<AgentDownloadQueueInput>},
+        TContext
+      > => {
+      return useMutation(getQueueAgentDownloadMutationOptions(options));
+    }
 
 export const getCreateAgentResearchBriefUrl = () => {
 

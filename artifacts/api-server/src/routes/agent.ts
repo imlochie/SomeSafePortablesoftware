@@ -2,11 +2,14 @@ import { Router, type IRouter } from "express";
 import * as Api from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import { runtimeConfig } from "../lib/runtime-config";
-import { readEvents } from "../lib/archive-db";
+import { readEvents, readSettings } from "../lib/archive-db";
 import { createArchiveOperation } from "../services/archive-operations";
 import { readAssistantOverview } from "../services/assistant-overview";
 import { researchCandidate } from "../services/media-research";
 import { synthesizeViewingResearch } from "../services/research-synthesis";
+import { inspectMediaSource } from "../services/media";
+import { createJob, startJob } from "../services/download-engine";
+import { ensureReviewItem, readReviewItem } from "../services/review-queue";
 
 const router: IRouter = Router();
 
@@ -114,6 +117,70 @@ function buildInsightBrief(overview: Awaited<ReturnType<typeof readAssistantOver
     })),
   };
 }
+
+router.post("/agent/downloads/inspect", async (req, res, next) => {
+  try {
+    const body = req.body ?? {};
+    const sourceUrl = typeof body.sourceUrl === "string" ? body.sourceUrl.trim() : "";
+    if (!sourceUrl) return res.status(400).json({ error: "sourceUrl is required" });
+    const inspection = await inspectMediaSource(sourceUrl, readSettings(), body.forceRefresh === true);
+    const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : inspection.metadata.title;
+    const ownerId = getAuthenticatedUserId(req);
+    const review = ensureReviewItem(ownerId, {
+      kind: "operation_approval",
+      subjectKey: `agent-download:${inspection.metadata.sourceId ?? sourceUrl}`,
+      title: `Download highest quality source: ${title}`,
+      payload: {
+        sourceUrl, title, selectedFormatId: inspection.recommendedFormatId,
+        selectedVideoFormatId: inspection.recommendedVideoFormatId,
+        selectedAudioFormatId: inspection.recommendedAudioFormatId,
+        recommendationExplanation: inspection.recommendationExplanation,
+      },
+    });
+    return res.json(redact({
+      kind: "download_source_selection", contract: "agent-download-v1",
+      source: inspection.metadata,
+      selected: {
+        formatId: inspection.recommendedFormatId, videoFormatId: inspection.recommendedVideoFormatId,
+        audioFormatId: inspection.recommendedAudioFormatId, explanation: inspection.recommendationExplanation,
+      },
+      alternatives: inspection.formats.slice(0, 50),
+      review: { id: review.id, state: review.state, approvalRequired: true },
+      safety: { queuedOnlyUntilApproval: true, directMutation: false, postDownloadVerification: true },
+    }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/agent/downloads/queue", (req, res, next) => {
+  try {
+    const body = req.body ?? {};
+    const ownerId = getAuthenticatedUserId(req);
+    const reviewItemId = Number(body.reviewItemId);
+    if (!Number.isInteger(reviewItemId) || reviewItemId < 1) return res.status(400).json({ error: "An approved reviewItemId is required" });
+    const review = readReviewItem(reviewItemId, ownerId);
+    if (!review || review.kind !== "operation_approval") return res.status(400).json({ error: "Download approval review item not found" });
+    if (review.state !== "approved") return res.status(400).json({ error: "Download requires explicit approval before queueing" });
+    const payload = review.payload;
+    const sourceUrl = typeof body.sourceUrl === "string" ? body.sourceUrl : payload.sourceUrl;
+    const title = typeof body.title === "string" ? body.title : payload.title;
+    if (sourceUrl !== payload.sourceUrl || title !== payload.title) return res.status(400).json({ error: "Download request does not match the approved source plan" });
+    const job = createJob({
+      sourceUrl, title, sourceSite: typeof body.sourceSite === "string" ? body.sourceSite : undefined,
+      selectedFormatId: typeof body.selectedFormatId === "string" ? body.selectedFormatId : String(payload.selectedFormatId ?? "best"),
+      selectedVideoFormatId: typeof body.selectedVideoFormatId === "string" ? body.selectedVideoFormatId : (payload.selectedVideoFormatId as string | undefined),
+      selectedAudioFormatId: typeof body.selectedAudioFormatId === "string" ? body.selectedAudioFormatId : (payload.selectedAudioFormatId as string | undefined),
+      outputContainer: body.outputContainer, temporaryDirectory: body.temporaryDirectory,
+      destinationDirectory: body.destinationDirectory, finalFilename: body.finalFilename,
+    }, ownerId);
+    if (!job) throw new Error("Download job could not be read after queueing.");
+    const started = body.start === true ? startJob(job.id, ownerId) : job;
+    return res.status(201).json(redact({ kind: "download_queued", contract: "agent-download-v1", job: started, started: body.start === true, verification: "post_download_ffprobe_and_archive_move" }));
+  } catch (error) {
+    return next(error);
+  }
+});
 
 router.post("/agent/research", async (req, res, next) => {
   try {

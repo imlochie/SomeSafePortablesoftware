@@ -38,6 +38,31 @@ describe("agent boundary", { concurrency: false }, () => {
     });
   });
 
+  test("download source inspection selects highest quality and requires approval before queueing", async () => {
+    const inspect = await fetch(`${baseUrl}/api/agent/downloads/inspect`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sourceUrl: "https://example.com/watch?v=archive-agent-test", title: "Agent test source" }),
+    });
+    assert.equal(inspect.status, 200);
+    const proposal = await inspect.json() as {
+      contract: string; selected: { formatId: string | null; videoFormatId: string | null; audioFormatId: string | null }; review: { id: number; state: string };
+      safety: { queuedOnlyUntilApproval: boolean; postDownloadVerification: boolean };
+    };
+    assert.equal(proposal.contract, "agent-download-v1");
+    assert.equal(proposal.selected.videoFormatId, "401");
+    assert.equal(proposal.selected.audioFormatId, "251");
+    assert.equal(proposal.review.state, "pending");
+    assert.equal(proposal.safety.queuedOnlyUntilApproval, true);
+    assert.equal(proposal.safety.postDownloadVerification, true);
+
+    const queue = await fetch(`${baseUrl}/api/agent/downloads/queue`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reviewItemId: proposal.review.id }),
+    });
+    assert.equal(queue.status, 400);
+    assert.match(String((await queue.json()).error), /approval/i);
+  });
+
   test("research returns source-aware upcoming media and comparison limitations", async () => {
     const response = await fetch(`${baseUrl}/api/agent/research`, {
       method: "POST",

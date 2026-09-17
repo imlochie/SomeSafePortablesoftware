@@ -60,6 +60,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentCapabilities"
+  /agent/downloads/inspect:
+    post:
+      operationId: inspectAgentDownloadSource
+      tags: [agent, downloads]
+      summary: Inspect a link and propose the highest-quality usable source
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentDownloadInspectInput"
+      responses:
+        "200":
+          description: Source formats and approval-gated selection proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDownloadSelection"
+        "400":
+          description: Source inspection failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /agent/downloads/queue:
+    post:
+      operationId: queueAgentDownload
+      tags: [agent, downloads]
+      summary: Queue an approved highest-quality download
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentDownloadQueueInput"
+      responses:
+        "201":
+          description: Approved download queued or started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDownloadQueued"
+        "400":
+          description: Approval or download request invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /agent/research:
     post:
       operationId: createAgentResearchBrief
@@ -2158,6 +2206,48 @@ components:
             basedOn:
               type: array
               items: { type: string }
+    AgentDownloadInspectInput:
+      type: object
+      required: [sourceUrl]
+      properties:
+        sourceUrl: { type: string, minLength: 1 }
+        title: { type: string }
+        forceRefresh: { type: boolean, default: false }
+    AgentDownloadQueueInput:
+      type: object
+      required: [reviewItemId]
+      properties:
+        reviewItemId: { type: number, minimum: 1 }
+        sourceUrl: { type: string }
+        title: { type: string }
+        selectedFormatId: { type: string }
+        selectedVideoFormatId: { type: [string, "null"] }
+        selectedAudioFormatId: { type: [string, "null"] }
+        outputContainer: { type: string, enum: [mp4, mkv, webm] }
+        temporaryDirectory: { type: string }
+        destinationDirectory: { type: string }
+        finalFilename: { type: string }
+        start: { type: boolean, default: false }
+    AgentDownloadSelection:
+      type: object
+      required: [kind, contract, source, selected, alternatives, review, safety]
+      properties:
+        kind: { type: string, enum: [download_source_selection] }
+        contract: { type: string, enum: [agent-download-v1] }
+        source: { type: object, additionalProperties: true }
+        selected: { type: object, additionalProperties: true }
+        alternatives: { type: array, items: { type: object, additionalProperties: true } }
+        review: { type: object, additionalProperties: true }
+        safety: { type: object, additionalProperties: true }
+    AgentDownloadQueued:
+      type: object
+      required: [kind, contract, job, started, verification]
+      properties:
+        kind: { type: string, enum: [download_queued] }
+        contract: { type: string, enum: [agent-download-v1] }
+        job: { type: object, additionalProperties: true }
+        started: { type: boolean }
+        verification: { type: string }
     CreateAgentResearch:
       type: object
       properties:

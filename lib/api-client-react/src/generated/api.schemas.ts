@@ -242,6 +242,97 @@ export interface AssistantRecommendation {
   personalAffinity?: AssistantRecommendationPersonalAffinity;
 }
 
+export interface AgentDownloadInspectInput {
+  /** @minLength 1 */
+  sourceUrl: string;
+  title?: string;
+  forceRefresh?: boolean;
+}
+
+export type AgentDownloadQueueInputOutputContainer = typeof AgentDownloadQueueInputOutputContainer[keyof typeof AgentDownloadQueueInputOutputContainer];
+
+
+export const AgentDownloadQueueInputOutputContainer = {
+  mp4: 'mp4',
+  mkv: 'mkv',
+  webm: 'webm',
+} as const;
+
+export interface AgentDownloadQueueInput {
+  /** @minimum 1 */
+  reviewItemId: number;
+  sourceUrl?: string;
+  title?: string;
+  selectedFormatId?: string;
+  /** @nullable */
+  selectedVideoFormatId?: string | null;
+  /** @nullable */
+  selectedAudioFormatId?: string | null;
+  outputContainer?: AgentDownloadQueueInputOutputContainer;
+  temporaryDirectory?: string;
+  destinationDirectory?: string;
+  finalFilename?: string;
+  start?: boolean;
+}
+
+export type AgentDownloadSelectionKind = typeof AgentDownloadSelectionKind[keyof typeof AgentDownloadSelectionKind];
+
+
+export const AgentDownloadSelectionKind = {
+  download_source_selection: 'download_source_selection',
+} as const;
+
+export type AgentDownloadSelectionContract = typeof AgentDownloadSelectionContract[keyof typeof AgentDownloadSelectionContract];
+
+
+export const AgentDownloadSelectionContract = {
+  'agent-download-v1': 'agent-download-v1',
+} as const;
+
+export type AgentDownloadSelectionSource = { [key: string]: unknown };
+
+export type AgentDownloadSelectionSelected = { [key: string]: unknown };
+
+export type AgentDownloadSelectionAlternativesItem = { [key: string]: unknown };
+
+export type AgentDownloadSelectionReview = { [key: string]: unknown };
+
+export type AgentDownloadSelectionSafety = { [key: string]: unknown };
+
+export interface AgentDownloadSelection {
+  kind: AgentDownloadSelectionKind;
+  contract: AgentDownloadSelectionContract;
+  source: AgentDownloadSelectionSource;
+  selected: AgentDownloadSelectionSelected;
+  alternatives: AgentDownloadSelectionAlternativesItem[];
+  review: AgentDownloadSelectionReview;
+  safety: AgentDownloadSelectionSafety;
+}
+
+export type AgentDownloadQueuedKind = typeof AgentDownloadQueuedKind[keyof typeof AgentDownloadQueuedKind];
+
+
+export const AgentDownloadQueuedKind = {
+  download_queued: 'download_queued',
+} as const;
+
+export type AgentDownloadQueuedContract = typeof AgentDownloadQueuedContract[keyof typeof AgentDownloadQueuedContract];
+
+
+export const AgentDownloadQueuedContract = {
+  'agent-download-v1': 'agent-download-v1',
+} as const;
+
+export type AgentDownloadQueuedJob = { [key: string]: unknown };
+
+export interface AgentDownloadQueued {
+  kind: AgentDownloadQueuedKind;
+  contract: AgentDownloadQueuedContract;
+  job: AgentDownloadQueuedJob;
+  started: boolean;
+  verification: string;
+}
+
 export interface CreateAgentResearch {
   /** @maxLength 1000 */
   query?: string;

@@ -40,6 +40,58 @@ export const GetAgentCapabilitiesResponse = zod.object({
 
 
 /**
+ * @summary Inspect a link and propose the highest-quality usable source
+ */
+
+export const inspectAgentDownloadSourceBodyForceRefreshDefault = false;
+
+export const InspectAgentDownloadSourceBody = zod.object({
+  "sourceUrl": zod.string().min(1),
+  "title": zod.string().optional(),
+  "forceRefresh": zod.boolean().default(inspectAgentDownloadSourceBodyForceRefreshDefault)
+})
+
+export const InspectAgentDownloadSourceResponse = zod.object({
+  "kind": zod.enum(['download_source_selection']),
+  "contract": zod.enum(['agent-download-v1']),
+  "source": zod.record(zod.string(), zod.unknown()),
+  "selected": zod.record(zod.string(), zod.unknown()),
+  "alternatives": zod.array(zod.record(zod.string(), zod.unknown())),
+  "review": zod.record(zod.string(), zod.unknown()),
+  "safety": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
+ * @summary Queue an approved highest-quality download
+ */
+
+export const queueAgentDownloadBodyStartDefault = false;
+
+export const QueueAgentDownloadBody = zod.object({
+  "reviewItemId": zod.number().min(1),
+  "sourceUrl": zod.string().optional(),
+  "title": zod.string().optional(),
+  "selectedFormatId": zod.string().optional(),
+  "selectedVideoFormatId": zod.string().nullish(),
+  "selectedAudioFormatId": zod.string().nullish(),
+  "outputContainer": zod.enum(['mp4', 'mkv', 'webm']).optional(),
+  "temporaryDirectory": zod.string().optional(),
+  "destinationDirectory": zod.string().optional(),
+  "finalFilename": zod.string().optional(),
+  "start": zod.boolean().default(queueAgentDownloadBodyStartDefault)
+})
+
+export const QueueAgentDownloadResponse = zod.object({
+  "kind": zod.enum(['download_queued']),
+  "contract": zod.enum(['agent-download-v1']),
+  "job": zod.record(zod.string(), zod.unknown()),
+  "started": zod.boolean(),
+  "verification": zod.string()
+})
+
+
+/**
  * @summary Compare archive, provider, viewing, and external research evidence
  */
 export const createAgentResearchBriefBodyQueryMax = 1000;
