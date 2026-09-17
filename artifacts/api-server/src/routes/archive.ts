@@ -248,7 +248,7 @@ router.post("/archive/power-renamer/plan", async (req, res) => {
     const selected = report.results.filter((proposal) => requestedIds.has(Number(proposal.fileRecordId))).map((proposal) => ({
       fileRecordId: Number(proposal.fileRecordId),
       sourcePath: String(proposal.sourcePath),
-      sourceIdentity: (() => { const row = sourceById.get(Number(proposal.fileRecordId)); return `file_record:${Number(proposal.fileRecordId)}:${row?.checksum ?? row?.fingerprint ?? row?.size_bytes ?? "unknown"}`; })(),
+      sourceIdentity: (() => { const row = sourceById.get(Number(proposal.fileRecordId)); return `file_record:${Number(proposal.fileRecordId)}:${row?.checksum ?? row?.fingerprint ?? "unknown"}`; })(),
       proposedPath: proposal.proposedPath == null ? null : String(proposal.proposedPath),
       confidence: String(proposal.confidence),
       operation: String(proposal.operation),
@@ -264,7 +264,7 @@ router.post("/archive/power-renamer/plan", async (req, res) => {
     let plan = buildPowerRenamePlan(selected, occupied);
     if (!plan.mappings.length) return res.status(400).json({ error: "No selected proposal is safe to plan.", plan });
     const companionRows = archiveDb.prepare("SELECT id, path, checksum, fingerprint, size_bytes FROM file_record WHERE owner_id = ? AND scan_status = 'active'").all(ownerId) as Array<{ id: number; path: string; checksum: string | null; fingerprint: string | null; size_bytes: number | null }>;
-    const companionRecords = companionRows.map((row) => ({ id: row.id, path: row.path, identity: `file_record:${row.id}:${row.checksum ?? row.fingerprint ?? row.size_bytes ?? "unknown"}` }));
+    const companionRecords = companionRows.map((row) => ({ id: row.id, path: row.path, identity: `file_record:${row.id}:${row.checksum ?? row.fingerprint ?? "unknown"}` }));
     plan = addPowerRenameCompanions(plan, companionRecords, companionRows.map((row) => row.path));
     const review = ensureReviewItem(ownerId, {
       kind: "naming_proposal",
@@ -291,6 +291,7 @@ router.post("/archive/power-renamer/operations", (req, res) => {
       const originalPath = String(mapping.sourcePath);
       const expectedIdentity = expected[originalPath];
       if (typeof expectedIdentity !== "string") return res.status(400).json({ error: `Power Renamer plan has no source identity for ${originalPath}.` });
+      if (expectedIdentity.endsWith(":unknown")) return res.status(409).json({ error: `INSUFFICIENT_POWER_RENAMER_IDENTITY: ${originalPath} has no stable checksum or fingerprint.` });
       const row = archiveDb.prepare("SELECT id, checksum, fingerprint, size_bytes, scan_status FROM file_record WHERE owner_id = ? AND path = ?").get(ownerId, originalPath) as { id: number; checksum: string | null; fingerprint: string | null; size_bytes: number | null; scan_status: string } | undefined;
       const currentIdentity = row ? `file_record:${row.id}:${row.checksum ?? row.fingerprint ?? row.size_bytes ?? "unknown"}` : null;
       if (!row || row.scan_status !== "active" || currentIdentity !== expectedIdentity) return res.status(409).json({ error: `STALE_POWER_RENAMER_PLAN: source changed or disappeared: ${originalPath}` });
