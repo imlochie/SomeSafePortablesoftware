@@ -1649,7 +1649,9 @@ paths:
           application/json:
             schema:
               type: object
+              required: [confirmed]
               properties:
+                confirmed: { type: boolean }
                 providers:
                   type: array
                   items: { type: string, enum: [plex, jellyfin] }

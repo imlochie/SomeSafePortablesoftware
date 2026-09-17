@@ -3874,6 +3874,7 @@ export const RefreshProvidersAfterArchiveOperationBodyProvidersItem = {
 } as const;
 
 export type RefreshProvidersAfterArchiveOperationBody = {
+  confirmed: boolean;
   providers?: RefreshProvidersAfterArchiveOperationBodyProvidersItem[];
 };
 

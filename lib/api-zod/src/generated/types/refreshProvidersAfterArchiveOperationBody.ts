@@ -8,5 +8,6 @@
 import type { RefreshProvidersAfterArchiveOperationBodyProvidersItem } from './refreshProvidersAfterArchiveOperationBodyProvidersItem';
 
 export type RefreshProvidersAfterArchiveOperationBody = {
+  confirmed: boolean;
   providers?: RefreshProvidersAfterArchiveOperationBodyProvidersItem[];
 };

@@ -53,14 +53,14 @@ test("public proposal-backed operation lifecycle performs a swap and exact rollb
     const operationResponse = await fixture.request("/api/archive-operations", { method: "POST", body: JSON.stringify({ proposalId: proposal.proposalId, action: "rename", sourceKind: "ordering" }) });
     assert.equal(operationResponse.status, 201); const operation = await operationResponse.json() as Record<string, any>;
     assert.equal(operation.proposalId, proposal.proposalId); assert.equal(operation.batch.length, 2);
-    const refreshBeforeCompletion = await fixture.request(`/api/archive-operations/${operation.id}/refresh-providers`, { method: "POST", body: JSON.stringify({ providers: ["plex"] }) });
+    const refreshBeforeCompletion = await fixture.request(`/api/archive-operations/${operation.id}/refresh-providers`, { method: "POST", body: JSON.stringify({ confirmed: true, providers: ["plex"] }) });
     assert.equal(refreshBeforeCompletion.status, 400);
     const preflight = await fixture.request(`/api/archive-operations/${operation.id}/preflight`, { method: "POST", body: "{}" }); assert.equal(preflight.status, 200);
     const execute = await fixture.request(`/api/archive-operations/${operation.id}/execute`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); assert.equal(execute.status, 200);
     assert.equal(await readFile(fixture.a, "utf8"), "B"); assert.equal(await readFile(fixture.b, "utf8"), "A");
     const executeAgain = await fixture.request(`/api/archive-operations/${operation.id}/execute`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); assert.equal(executeAgain.status, 200);
     assert.equal(await readFile(fixture.a, "utf8"), "B"); assert.equal(await readFile(fixture.b, "utf8"), "A");
-    const refreshBeforeRollback = await fixture.request(`/api/archive-operations/${operation.id}/refresh-providers`, { method: "POST", body: JSON.stringify({ providers: ["plex", "jellyfin"] }) });
+    const refreshBeforeRollback = await fixture.request(`/api/archive-operations/${operation.id}/refresh-providers`, { method: "POST", body: JSON.stringify({ confirmed: true, providers: ["plex", "jellyfin"] }) });
     assert.equal(refreshBeforeRollback.status, 202);
     const refreshBody = await refreshBeforeRollback.json() as Record<string, any>;
     assert.ok(Array.isArray(refreshBody.started));

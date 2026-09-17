@@ -962,7 +962,7 @@ export function ArchivePage() {
       } else {
         if (!powerRenamerOperation) throw new Error('Create the operation first.');
         if (action === 'refresh') {
-          const response = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/refresh-providers`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ providers: ['plex', 'jellyfin'] }) });
+          const response = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/refresh-providers`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmed: true, providers: ['plex', 'jellyfin'] }) });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error ?? 'Provider refresh could not start.');
           setPowerRenamerNotice(`Provider refresh requested. Started: ${result.started.join(', ') || 'none configured'}.`);

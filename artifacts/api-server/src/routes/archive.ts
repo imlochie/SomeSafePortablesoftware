@@ -318,6 +318,7 @@ router.post("/archive/power-renamer/operations", (req, res) => {
 router.post("/archive-operations/:id/refresh-providers", (req, res) => {
   try {
     const ownerId = getAuthenticatedUserId(req);
+    if (req.body?.confirmed !== true) return res.status(400).json({ error: "Explicit provider refresh confirmation is required." });
     const operation = readArchiveOperation(Number(req.params.id), ownerId);
     if (!operation) return res.status(404).json({ error: "Archive operation not found." });
     if (operation.status !== "completed") return res.status(400).json({ error: "Provider refresh requires a completed and verified archive operation." });

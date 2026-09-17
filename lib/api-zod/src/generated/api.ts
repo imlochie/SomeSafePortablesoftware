@@ -3830,6 +3830,7 @@ export const RefreshProvidersAfterArchiveOperationParams = zod.object({
 })
 
 export const RefreshProvidersAfterArchiveOperationBody = zod.object({
+  "confirmed": zod.boolean(),
   "providers": zod.array(zod.enum(['plex', 'jellyfin'])).optional()
 })
 
