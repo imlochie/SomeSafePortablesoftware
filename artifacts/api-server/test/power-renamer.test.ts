@@ -13,6 +13,15 @@ test("Power Renamer builds a supervised collision-safe cycle plan", () => {
   assert.match(plan.safeguards.join(" "), /Approval/);
 });
 
+test("collision-safe cycles avoid occupied temporary paths", () => {
+  const plan = buildPowerRenamePlan([
+    { fileRecordId: 10, sourcePath: "/archive/A.mkv", proposedPath: "/archive/B.mkv", confidence: "high", operation: "rename", collision: false, mediaType: "tv", researchGrade: "corroborated" },
+    { fileRecordId: 11, sourcePath: "/archive/B.mkv", proposedPath: "/archive/A.mkv", confidence: "high", operation: "rename", collision: false, mediaType: "tv", researchGrade: "corroborated" },
+  ], ["/archive/A.mkv", "/archive/B.mkv", "/archive/A.mkv.archive-assistant-tmp-0"]);
+  assert.equal(plan.steps[0].to, "/archive/A.mkv.archive-assistant-tmp-1");
+  assert.notEqual(plan.steps[0].to.toLowerCase(), plan.steps[1].to.toLowerCase());
+});
+
 test("Power Renamer carries exact-match sidecars with the approved video rename", () => {
   const plan = buildPowerRenamePlan([{ fileRecordId: 5, sourcePath: "/archive/Show - S01E01.mkv", proposedPath: "/archive/Show/Season 01/Show - S01E01 - Pilot.mkv", confidence: "high", operation: "restructure", collision: false, mediaType: "tv", researchGrade: "corroborated" }]);
   const expanded = addPowerRenameCompanions(plan, [{ id: 6, path: "/archive/Show - S01E01.srt" }, { id: 7, path: "/archive/Show - S01E01.nfo" }, { id: 8, path: "/archive/Show - S01E01.txt" }]);

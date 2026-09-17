@@ -20,11 +20,19 @@ export function buildCollisionSafeRenamePlan(mappings: RenameMapping[], occupied
   if (errors.length) return { steps: [], errors };
   const steps: RenamePlanStep[] = [];
   const remaining = mappings.filter((mapping) => mapping.sourcePath.toLowerCase() !== mapping.destinationPath.toLowerCase());
+  const reserved = new Set([...occupied, ...mappings.flatMap((mapping) => [mapping.sourcePath.toLowerCase(), mapping.destinationPath.toLowerCase()])]);
   let temporaryIndex = 0;
   // First move every source to a unique sibling temporary name. This breaks
-  // A→B/B→A and larger cycles without overwriting any destination.
+  // A→B/B→A and larger cycles without overwriting any destination. Temporary
+  // names are checked against all known paths too: an unrelated pre-existing
+  // `file.mkv.archive-assistant-tmp-0` must not be overwritten accidentally.
   for (const mapping of remaining) {
-    steps.push({ id: mapping.id, from: mapping.sourcePath, to: `${mapping.sourcePath}.archive-assistant-tmp-${temporaryIndex++}`, temporary: true });
+    let temporaryPath = `${mapping.sourcePath}.archive-assistant-tmp-${temporaryIndex++}`;
+    while (reserved.has(temporaryPath.toLowerCase())) {
+      temporaryPath = `${mapping.sourcePath}.archive-assistant-tmp-${temporaryIndex++}`;
+    }
+    reserved.add(temporaryPath.toLowerCase());
+    steps.push({ id: mapping.id, from: mapping.sourcePath, to: temporaryPath, temporary: true });
   }
   for (const mapping of remaining) {
     const temporary = steps.find((step) => step.id === mapping.id && step.temporary)!;
