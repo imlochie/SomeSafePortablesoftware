@@ -51,3 +51,13 @@ test("batch preflight rejects an unrelated destination occupant", async () => {
   assert.equal(await readFile(join(root, "A"), "utf8"), "A");
   assert.equal(await readFile(join(root, "D"), "utf8"), "unrelated");
 });
+
+test("batch preflight rejects duplicate sources and temporary-path conflicts", async () => {
+  const { root, mappings } = await fixture();
+  const duplicateSource = await preflightBatchFiles([mappings[0], { ...mappings[1], originalPath: mappings[0].originalPath }]);
+  assert.equal(duplicateSource.ok, false);
+  assert.match(duplicateSource.error ?? "", /Duplicate source/);
+  const temporarySourceConflict = await preflightBatchFiles([{ ...mappings[0], temporaryPath: mappings[1].originalPath }, mappings[1]]);
+  assert.equal(temporarySourceConflict.ok, false);
+  assert.match(temporarySourceConflict.error ?? "", /Temporary path conflicts/);
+});
