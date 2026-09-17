@@ -116,6 +116,8 @@ import type {
   ResearchHistoryResponse,
   ResearchResponse,
   ResearchSynthesisResponse,
+  ResolveAgentDownloadRedirects200,
+  ResolveAgentDownloadRedirectsBody,
   ReviewDecisionInput,
   ReviewItem,
   ReviewSyncResult,
@@ -1192,6 +1194,77 @@ export const useDeleteAgentSourceMonitor = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteAgentSourceMonitorMutationOptions(options));
+    }
+
+export const getResolveAgentDownloadRedirectsUrl = () => {
+
+
+
+
+  return `/api/agent/downloads/resolve`
+}
+
+/**
+ * @summary Follow ordinary public HTTP redirects without bypassing access controls
+ */
+export const resolveAgentDownloadRedirects = async (resolveAgentDownloadRedirectsBody: ResolveAgentDownloadRedirectsBody, options?: Parameters<typeof customFetch>[1]): Promise<ResolveAgentDownloadRedirects200> => {
+
+  return customFetch<ResolveAgentDownloadRedirects200>(getResolveAgentDownloadRedirectsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(resolveAgentDownloadRedirectsBody)
+  }
+);}
+
+
+
+
+
+export const getResolveAgentDownloadRedirectsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveAgentDownloadRedirects>>, TError,{data: BodyType<ResolveAgentDownloadRedirectsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolveAgentDownloadRedirects>>, TError,{data: BodyType<ResolveAgentDownloadRedirectsBody>}, TContext> => {
+
+const mutationKey = ['resolveAgentDownloadRedirects'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolveAgentDownloadRedirects>>, {data: BodyType<ResolveAgentDownloadRedirectsBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  resolveAgentDownloadRedirects(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolveAgentDownloadRedirectsMutationResult = NonNullable<Awaited<ReturnType<typeof resolveAgentDownloadRedirects>>>
+    export type ResolveAgentDownloadRedirectsMutationBody = BodyType<ResolveAgentDownloadRedirectsBody>
+    export type ResolveAgentDownloadRedirectsMutationError = ErrorType<void>
+
+    /**
+ * @summary Follow ordinary public HTTP redirects without bypassing access controls
+ */
+export const useResolveAgentDownloadRedirects = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolveAgentDownloadRedirects>>, TError,{data: BodyType<ResolveAgentDownloadRedirectsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolveAgentDownloadRedirects>>,
+        TError,
+        {data: BodyType<ResolveAgentDownloadRedirectsBody>},
+        TContext
+      > => {
+      return useMutation(getResolveAgentDownloadRedirectsMutationOptions(options));
     }
 
 export const getInspectAgentDownloadSourceUrl = () => {

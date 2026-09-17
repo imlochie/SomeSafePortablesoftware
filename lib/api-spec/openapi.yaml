@@ -215,6 +215,19 @@ paths:
           schema: { type: string }
       responses:
         "204": { description: Deleted }
+  /agent/downloads/resolve:
+    post:
+      operationId: resolveAgentDownloadRedirects
+      tags: [agent, downloads]
+      summary: Follow ordinary public HTTP redirects without bypassing access controls
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [sourceUrl], additionalProperties: true }
+      responses:
+        "200": { description: Public redirect chain, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "400": { description: Redirect resolution stopped or failed }
   /agent/downloads/inspect:
     post:
       operationId: inspectAgentDownloadSource

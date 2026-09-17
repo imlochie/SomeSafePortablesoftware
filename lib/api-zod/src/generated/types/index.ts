@@ -373,6 +373,8 @@ export * from './researchSynthesisEvidence';
 export * from './researchSynthesisResponse';
 export * from './researchSynthesisResponseSource';
 export * from './researchSynthesisResponseStatus';
+export * from './resolveAgentDownloadRedirects200';
+export * from './resolveAgentDownloadRedirectsBody';
 export * from './reviewDecisionInput';
 export * from './reviewItem';
 export * from './reviewItemDecision';

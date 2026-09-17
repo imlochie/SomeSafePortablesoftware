@@ -164,6 +164,14 @@ export const DeleteAgentSourceMonitorResponse = zod.void()
 
 
 /**
+ * @summary Follow ordinary public HTTP redirects without bypassing access controls
+ */
+export const ResolveAgentDownloadRedirectsBody = zod.record(zod.string(), zod.unknown())
+
+export const ResolveAgentDownloadRedirectsResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
  * @summary Inspect a link and propose the highest-quality usable source
  */
 

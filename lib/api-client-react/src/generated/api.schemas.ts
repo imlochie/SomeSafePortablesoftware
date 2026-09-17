@@ -3770,6 +3770,10 @@ export type UpdateAgentSourceMonitorBody = { [key: string]: unknown };
 
 export type UpdateAgentSourceMonitor200 = { [key: string]: unknown };
 
+export type ResolveAgentDownloadRedirectsBody = { [key: string]: unknown };
+
+export type ResolveAgentDownloadRedirects200 = { [key: string]: unknown };
+
 export type ResearchAssistantCandidateParams = {
 query: string;
 };

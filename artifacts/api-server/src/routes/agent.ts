@@ -7,7 +7,7 @@ import { createArchiveOperation } from "../services/archive-operations";
 import { readAssistantOverview } from "../services/assistant-overview";
 import { researchCandidate } from "../services/media-research";
 import { synthesizeViewingResearch } from "../services/research-synthesis";
-import { inspectMediaSource } from "../services/media";
+import { inspectMediaSource, resolvePublicRedirects } from "../services/media";
 import { createJob, startJob } from "../services/download-engine";
 import { ensureReviewItem, readReviewItem } from "../services/review-queue";
 import { checkSourceMonitor, createSourceMonitor, deleteSourceMonitor, listMonitorNotifications, listSourceMonitors, markMonitorNotificationRead, updateSourceMonitor } from "../services/source-monitor";
@@ -167,6 +167,14 @@ router.post("/agent/monitoring/sources/:id/check", async (req, res, next) => {
 router.delete("/agent/monitoring/sources/:id", async (req, res, next) => {
   try { await deleteSourceMonitor(getAuthenticatedUserId(req), req.params.id, readSettings()); return res.status(204).send(); }
   catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Source monitor could not be deleted." }); }
+});
+
+router.post("/agent/downloads/resolve", async (req, res, next) => {
+  try {
+    const sourceUrl = typeof req.body?.sourceUrl === "string" ? req.body.sourceUrl.trim() : "";
+    if (!sourceUrl) return res.status(400).json({ error: "sourceUrl is required" });
+    return res.json({ kind: "public_redirect_resolution", contract: "agent-download-v1", ...(await resolvePublicRedirects(sourceUrl)) });
+  } catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Public redirect resolution failed." }); }
 });
 
 router.post("/agent/downloads/inspect", async (req, res, next) => {

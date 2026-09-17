@@ -396,6 +396,20 @@ export function validateFormatId(value: string | undefined) {
   return id;
 }
 
+export async function resolvePublicRedirects(sourceUrl: string, maxHops = 8) {
+  let current = new URL(sourceUrl);
+  const chain = [current.toString()];
+  for (let hop = 0; hop < maxHops; hop += 1) {
+    if (!["http:", "https:"].includes(current.protocol)) throw new Error("Redirect resolution stopped at a non-public protocol.");
+    const response = await fetch(current, { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(10_000) });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return { finalUrl: current.toString(), chain, stopped: response.status === 401 || response.status === 403 ? "access_boundary" : "complete" as const };
+    const location = response.headers.get("location");
+    if (!location) return { finalUrl: current.toString(), chain, stopped: "missing_location" as const };
+    current = new URL(location, current); chain.push(current.toString());
+  }
+  return { finalUrl: current.toString(), chain, stopped: "hop_limit" as const };
+}
+
 export async function inspectMediaSource(url: string, settings: SettingsRecord, forceRefresh = false) {
   const parsedUrl = validateSourceUrl(url);
   const cacheKey = parsedUrl.toString();
