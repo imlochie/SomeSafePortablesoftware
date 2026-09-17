@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { SettingsRecord } from "../lib/archive-db";
 import { readMediaExperience } from "./media-experience";
+import { readAssistantOverview } from "./assistant-overview";
 
 type MonitorKind = "rss" | "atom" | "json" | "html";
 export type SourceMonitor = {
@@ -104,14 +105,21 @@ export async function checkSourceMonitor(ownerId: string, id: string, settings: 
     if (!response.ok) throw new Error(`Source returned HTTP ${response.status}.`);
     const body = await response.text(); const kind = detectKind(response.headers.get("content-type") ?? "", monitor.url, monitor.kind); const items = parseItems(body, kind, monitor.url);
     const personal = readMediaExperience(ownerId).items;
+    const overview = await readAssistantOverview(ownerId);
+    const archiveSignals = [
+      ...overview.recommendations.map((item) => item.title),
+      ...overview.groups.map((item) => item.title),
+      ...overview.personalizedBriefing.map((item) => item.title),
+    ];
     const scoreDiscovery = (title: string) => {
       const normalized = normalize(title);
       const related = personal.filter((item) => normalized.includes(normalize(item.title)) || Boolean(item.seriesTitle && normalized.includes(normalize(item.seriesTitle))));
+      const archiveRelated = archiveSignals.filter((signal) => normalized.includes(normalize(signal)) || normalize(signal).includes(normalized));
       const rating = Number(title.match(/(?:⭐|rating\s*)(\d+(?:\.\d+)?)/i)?.[1] ?? NaN);
       const year = Number(title.match(/\b(20\d{2})\b/)?.[1] ?? NaN);
       const active = related.some((item) => item.isNextEpisode || item.status === "in_progress");
-      const reasons = [...(related.length ? ["related to your viewing evidence"] : []), ...(active ? ["related series is active or has a next episode"] : []), ...(Number.isFinite(rating) && rating >= 7 ? [`public rating signal: ${rating}/10`] : []), ...(Number.isFinite(year) && year >= new Date().getFullYear() - 1 ? ["recent release-year signal"] : [])];
-      return { score: (related.length ? 60 : 0) + (active ? 25 : 0) + (Number.isFinite(rating) && rating >= 7 ? 15 : 0) + (Number.isFinite(year) && year >= new Date().getFullYear() - 1 ? 10 : 0), reasons };
+      const reasons = [...(related.length ? ["related to your viewing evidence"] : []), ...(archiveRelated.length ? [`related to archive evidence: ${archiveRelated.slice(0, 3).join(", ")}`] : []), ...(active ? ["related series is active or has a next episode"] : []), ...(Number.isFinite(rating) && rating >= 7 ? [`public rating signal: ${rating}/10`] : []), ...(Number.isFinite(year) && year >= new Date().getFullYear() - 1 ? ["recent release-year signal"] : [])];
+      return { score: (related.length ? 60 : 0) + (archiveRelated.length ? 50 : 0) + (active ? 25 : 0) + (Number.isFinite(rating) && rating >= 7 ? 15 : 0) + (Number.isFinite(year) && year >= new Date().getFullYear() - 1 ? 10 : 0), reasons };
     };
     const matched = items.flatMap((item) => {
       const targets = monitor.targets.filter((target) => normalize(item.title).includes(normalize(target.title)));
