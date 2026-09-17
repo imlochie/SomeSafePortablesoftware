@@ -60,6 +60,8 @@ test("public proposal-backed operation lifecycle performs a swap and exact rollb
     assert.equal(await readFile(fixture.a, "utf8"), "B"); assert.equal(await readFile(fixture.b, "utf8"), "A");
     const executeAgain = await fixture.request(`/api/archive-operations/${operation.id}/execute`, { method: "POST", body: JSON.stringify({ confirmed: true }) }); assert.equal(executeAgain.status, 200);
     assert.equal(await readFile(fixture.a, "utf8"), "B"); assert.equal(await readFile(fixture.b, "utf8"), "A");
+    const refreshWithoutConfirmation = await fixture.request(`/api/archive-operations/${operation.id}/refresh-providers`, { method: "POST", body: JSON.stringify({ providers: ["plex"] }) });
+    assert.equal(refreshWithoutConfirmation.status, 400);
     const refreshBeforeRollback = await fixture.request(`/api/archive-operations/${operation.id}/refresh-providers`, { method: "POST", body: JSON.stringify({ confirmed: true, providers: ["plex", "jellyfin"] }) });
     assert.equal(refreshBeforeRollback.status, 202);
     const refreshBody = await refreshBeforeRollback.json() as Record<string, any>;
