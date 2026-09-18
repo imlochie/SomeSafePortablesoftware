@@ -233,6 +233,15 @@ describe("archive operation filesystem safety", { concurrency: false }, () => {
 });
 
 describe("archive operation idempotency and recovery", { concurrency: false }, () => {
+  test("startup reconciliation marks interrupted operations for recovery", async () => {
+    const { operation, owner } = await approvedOperation("import");
+    archiveDb.prepare("UPDATE archive_operation SET status = 'executing' WHERE id = ? AND owner_id = ?").run(operation.id, owner);
+    assert.equal(operations.reconcileInterruptedArchiveOperations(), 1);
+    const recovered = operations.readArchiveOperation(operation.id, owner);
+    assert.equal(recovered?.status, "recovery_required");
+    assert.equal(recovered?.errorCode, "RECOVERY_REQUIRED");
+  });
+
   test("does not auto-resolve an ambiguous batch rollback", async () => {
     const owner = "safety-owner-ambiguous-recovery";
     const source = join(root, "ambiguous-source.mkv");

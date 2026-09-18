@@ -877,6 +877,18 @@ export async function revertBatchFiles(
 
 export type BatchRecoveryClassification = "CONFIRMED_NOT_STARTED" | "CONFIRMED_TEMPORARY" | "CONFIRMED_FINAL" | "CONFIRMED_REVERTED" | "CONFLICT" | "UNKNOWN";
 
+export function reconcileInterruptedArchiveOperations() {
+  const result = archiveDb.prepare(`
+    UPDATE archive_operation
+    SET status = 'recovery_required',
+        error_code = 'RECOVERY_REQUIRED',
+        error_message = 'The application restarted before this operation finished.',
+        updated_at = CURRENT_TIMESTAMP
+    WHERE status = 'executing'
+  `).run();
+  return Number(result.changes ?? 0);
+}
+
 export async function inspectBatchOperation(
   operation: ArchiveOperation,
   dependencies: Pick<OperationDependencies, "stat"> = defaultDependencies(),
@@ -906,3 +918,7 @@ export async function inspectBatchOperation(
   }
   return results;
 }
+
+// Reclassify operations that were executing when the API process stopped.
+// Filesystem inspection and operator approval are required before any retry.
+reconcileInterruptedArchiveOperations();
