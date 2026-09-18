@@ -17,7 +17,20 @@ type RefreshRow = {
   snapshot_reference: string | null;
 };
 
+export function validateProviderRefreshSemantics(input: {
+  status: string;
+  snapshotCompleteness: string;
+  authoritative: boolean;
+}) {
+  const valid = (input.status === "synced" && input.snapshotCompleteness === "complete")
+    || (input.status === "sync_error" && ["partial", "unknown"].includes(input.snapshotCompleteness) && !input.authoritative)
+    || (input.status === "syncing" && input.snapshotCompleteness === "unknown" && !input.authoritative);
+  if (!valid) throw new Error("Provider refresh status, completeness, and authority are inconsistent.");
+}
+
 function mapRefresh(row: RefreshRow) {
+  const authoritative = row.authoritative === 1;
+  validateProviderRefreshSemantics({ status: row.status, snapshotCompleteness: row.snapshot_completeness, authoritative });
   return {
     refreshId: row.refresh_id,
     provider: row.provider,
@@ -26,7 +39,7 @@ function mapRefresh(row: RefreshRow) {
     status: row.status,
     snapshotCompleteness: row.snapshot_completeness,
     itemCount: row.item_count,
-    authoritative: row.authoritative === 1,
+    authoritative,
     reason: row.reason,
     snapshotReference: row.snapshot_reference,
   };

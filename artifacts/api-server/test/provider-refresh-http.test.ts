@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { after, describe, test } from "node:test";
 import app from "../src/app";
 import { archiveDb } from "../src/lib/archive-db";
+import { validateProviderRefreshSemantics } from "../src/services/provider-refresh";
 
 process.env.ARCHIVE_ASSISTANT_ALLOW_TEST_AUTH = "1";
 
@@ -30,6 +31,14 @@ describe("provider refresh HTTP boundary", { concurrency: false }, () => {
   let baseUrl = "";
   const ownerA = `refresh-http-a-${Date.now()}`;
   const ownerB = `refresh-http-b-${Date.now()}`;
+
+  test("refresh semantic combinations reject impossible authority states", () => {
+    validateProviderRefreshSemantics({ status: 'synced', snapshotCompleteness: 'complete', authoritative: true });
+    validateProviderRefreshSemantics({ status: 'sync_error', snapshotCompleteness: 'partial', authoritative: false });
+    validateProviderRefreshSemantics({ status: 'sync_error', snapshotCompleteness: 'unknown', authoritative: false });
+    assert.throws(() => validateProviderRefreshSemantics({ status: 'synced', snapshotCompleteness: 'partial', authoritative: true }));
+    assert.throws(() => validateProviderRefreshSemantics({ status: 'sync_error', snapshotCompleteness: 'unknown', authoritative: true }));
+  });
 
   test("state and history preserve attempted, successful, and authoritative refreshes", async () => {
     ({ server, baseUrl } = await start());
