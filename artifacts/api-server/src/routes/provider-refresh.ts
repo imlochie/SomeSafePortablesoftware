@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { GetProviderRefreshStateQueryParams, GetProviderRefreshStateResponse, ListProviderRefreshHistoryQueryParams, ListProviderRefreshHistoryResponse } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import { providerNames, readProviderRefreshHistory, readProviderRefreshState, type ProviderName } from "../services/provider-refresh";
 
@@ -11,7 +12,8 @@ function provider(value: unknown): ProviderName {
 
 router.get("/provider/refresh", (req, res) => {
   try {
-    res.json(readProviderRefreshState(getAuthenticatedUserId(req), provider(req.query.provider)));
+    const query = GetProviderRefreshStateQueryParams.parse(req.query);
+    res.json(GetProviderRefreshStateResponse.parse(readProviderRefreshState(getAuthenticatedUserId(req), provider(query.provider))));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Invalid provider." });
   }
@@ -19,9 +21,9 @@ router.get("/provider/refresh", (req, res) => {
 
 router.get("/provider/refresh/history", (req, res) => {
   try {
-    const page = typeof req.query.page === "string" ? Number(req.query.page) : 1;
-    const pageSize = typeof req.query.pageSize === "string" ? Number(req.query.pageSize) : 25;
-    res.json(readProviderRefreshHistory(getAuthenticatedUserId(req), provider(req.query.provider), page, pageSize));
+    const query = ListProviderRefreshHistoryQueryParams.parse(req.query);
+    const result = readProviderRefreshHistory(getAuthenticatedUserId(req), provider(query.provider), query.page, query.pageSize);
+    res.json(ListProviderRefreshHistoryResponse.parse(result));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Invalid provider." });
   }

@@ -627,7 +627,7 @@ export async function syncJellyfinInventory(ownerId: string) {
     INSERT INTO provider_refresh
       (refresh_id, owner_id, provider, started_at, status, snapshot_completeness, authoritative, snapshot_reference)
     VALUES (?, ?, 'jellyfin', ?, 'syncing', 'unknown', 0, ?)
-  `).run(refreshId, ownerId, startedAt, `jellyfin:${ownerId}`);
+  `).run(refreshId, ownerId, startedAt, `provider-refresh:${refreshId}`);
   writeState(ownerId, {
     jellyfinSyncStatus: "syncing",
     jellyfinLastAttemptedRefreshId: refreshId,

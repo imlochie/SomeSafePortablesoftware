@@ -595,7 +595,7 @@ export async function syncPlexInventory(ownerId: string) {
     INSERT INTO provider_refresh
       (refresh_id, owner_id, provider, started_at, status, snapshot_completeness, authoritative, snapshot_reference)
     VALUES (?, ?, 'plex', ?, 'syncing', 'unknown', 0, ?)
-  `).run(refreshId, ownerId, startedAt, `plex:${ownerId}`);
+  `).run(refreshId, ownerId, startedAt, `provider-refresh:${refreshId}`);
   writeState(ownerId, {
     plexSyncStatus: "syncing",
     plexLastAttemptedRefreshId: refreshId,

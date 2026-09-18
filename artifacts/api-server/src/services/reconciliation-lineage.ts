@@ -18,6 +18,12 @@ export function readReconciliationFindingLineage(ownerId: string, reviewItemId: 
   `).get(ownerId, reviewItemId) as { id: number; evidence_key: string; observed_at: string; payload_json: string } | undefined;
   const payload = finding.payload;
   const snapshot = payload.snapshot && typeof payload.snapshot === "object" ? payload.snapshot as Record<string, unknown> : null;
+  const refresh = snapshot?.refreshId && typeof snapshot.provider === "string"
+    ? archiveDb.prepare(`
+        SELECT snapshot_reference FROM provider_refresh
+        WHERE owner_id = ? AND provider = ? AND refresh_id = ?
+      `).get(ownerId, snapshot.provider, snapshot.refreshId) as { snapshot_reference: string | null } | undefined
+    : undefined;
   return {
     finding: {
       reviewItemId: finding.id,
@@ -36,7 +42,7 @@ export function readReconciliationFindingLineage(ownerId: string, reviewItemId: 
       provider: typeof snapshot.provider === "string" ? snapshot.provider : null,
       refreshId: typeof snapshot.refreshId === "string" ? snapshot.refreshId : null,
       capturedAt: typeof snapshot.capturedAt === "string" ? snapshot.capturedAt : null,
-      snapshotReference: null,
+      snapshotReference: refresh?.snapshot_reference ?? null,
     } : null,
     previousObservation: previous ? {
       observationId: previous.id,
