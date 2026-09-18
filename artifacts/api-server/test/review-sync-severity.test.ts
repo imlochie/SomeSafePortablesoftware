@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, before, describe, test } from "node:test";
 import { readWorkload } from "../src/services/workload";
+import { readReconciliationReport } from "../src/services/reconciliation";
 
 /**
  * The classifier is unit tested in finding-severity.test.ts. This file proves
@@ -194,9 +195,17 @@ describe("review sync severity gating", { concurrency: false }, () => {
     `).run('/media/Matched Film.2024.mkv', 1000, 'matched-checksum', owner, 'Matched Film.2024.mkv', 'Matched Film.2024.mkv', '/media');
     invalidate(owner);
     await reviewSync.syncControlPlaneReviewItems(owner);
+    const reconciliation = await readReconciliationReport(owner, 1, 100);
+    assert.equal(reconciliation.summary.matchedCount, 1);
+    assert.equal(reconciliation.summary.qualityConflictCount, 0);
     const workload = await readWorkload(owner);
     assert.equal(workload.items.some((item) => item.title.includes('Matched Film')), false);
     assert.equal(workload.counts.needs_you, 0);
+    await reviewSync.syncControlPlaneReviewItems(owner);
+    const reviewCount = (archiveDb.prepare(
+      "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding'",
+    ).get(owner) as { count: number }).count;
+    assert.equal(reviewCount, 0);
   });
 
   test("a missing file escalates to a decision even with no other evidence", async () => {
