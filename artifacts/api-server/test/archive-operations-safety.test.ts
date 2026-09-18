@@ -19,6 +19,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { archiveDb } from "../src/lib/archive-db";
 import { after, before, describe, test } from "node:test";
 
 let review: typeof import("../src/services/review-queue");
@@ -232,6 +233,33 @@ describe("archive operation filesystem safety", { concurrency: false }, () => {
 });
 
 describe("archive operation idempotency and recovery", { concurrency: false }, () => {
+  test("does not auto-resolve an ambiguous batch rollback", async () => {
+    const owner = "safety-owner-ambiguous-recovery";
+    const source = join(root, "ambiguous-source.mkv");
+    const destination = join(root, "ambiguous-destination.mkv");
+    await fs.writeFile(source, "source");
+    await fs.writeFile(destination, "destination");
+    const item = review.ensureReviewItem(owner, {
+      kind: "operation_approval",
+      subjectKey: "ambiguous-recovery",
+      title: "Ambiguous recovery",
+      payload: { sourcePath: source, destinationPath: destination },
+    });
+    review.approveReviewItem(item.id, owner);
+    const operation = operations.createArchiveOperation({
+      action: "rename",
+      sourceKind: "test",
+      sourceId: "ambiguous-recovery",
+      reviewItemId: item.id,
+      batch: [{ id: "ambiguous", originalPath: source, temporaryPath: join(root, "ambiguous.tmp"), finalPath: destination, state: "completed" }],
+    }, owner);
+    archiveDb.prepare("UPDATE archive_operation SET status = 'completed', batch_json = ? WHERE id = ? AND owner_id = ?")
+      .run(JSON.stringify(operation.batch), operation.id, owner);
+    const recovered = await operations.rollbackArchiveOperation(operation.id, owner, true, realDependencies());
+    assert.equal(recovered.status, "recovery_required");
+    assert.equal(await fs.readFile(source, "utf8"), "source");
+    assert.equal(await fs.readFile(destination, "utf8"), "destination");
+  });
   test("returns the completed operation unchanged when executed twice", async () => {
     const { operation, owner, destination } = await approvedOperation("import");
     const dependencies = realDependencies();
