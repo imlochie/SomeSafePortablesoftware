@@ -190,6 +190,11 @@ export function ensureReviewItem(
   if (!ownerId.trim()) throw new Error("A review owner is required.");
   if (!input.subjectKey.trim()) throw new Error("A review subject key is required.");
   if (!input.title.trim()) throw new Error("A review title is required.");
+  const existingRow = archiveDb.prepare(`
+    SELECT id, state, payload_json FROM review_item
+    WHERE owner_id = ? AND kind = ? AND subject_key = ?
+  `).get(ownerId, input.kind, input.subjectKey) as { id: number; state: string; payload_json: string } | undefined;
+  const wasSuperseded = existingRow?.state === "rejected" && json(existingRow.payload_json).lifecycleStatus === "superseded";
   archiveDb.prepare(`
     INSERT INTO review_item
       (owner_id, kind, subject_key, title, state, payload_json)
@@ -203,6 +208,21 @@ export function ensureReviewItem(
     SELECT * FROM review_item
     WHERE owner_id = ? AND kind = ? AND subject_key = ?
   `).get(ownerId, input.kind, input.subjectKey) as Record<string, unknown>;
+  if (wasSuperseded) {
+    const now = new Date().toISOString();
+    archiveDb.prepare(`
+      UPDATE review_item
+      SET state = 'reopened', note = NULL, decision_at = ?, decided_by = 'system', updated_at = ?
+      WHERE id = ? AND owner_id = ?
+    `).run(now, now, Number(row.id), ownerId);
+    archiveDb.prepare(`
+      INSERT INTO review_item_decision
+        (review_item_id, owner_id, from_state, to_state, note, decided_by, created_at)
+      VALUES (?, ?, 'rejected', 'reopened', 'A new observation made this relationship actionable again.', 'system', ?)
+    `).run(Number(row.id), ownerId, now);
+    const reopened = archiveDb.prepare("SELECT * FROM review_item WHERE id = ? AND owner_id = ?").get(Number(row.id), ownerId) as Record<string, unknown>;
+    return mapItem(reopened, ownerId);
+  }
   return mapItem(row, ownerId);
 }
 

@@ -173,8 +173,15 @@ describe("review sync severity gating", { concurrency: false }, () => {
     const historical = reviewQueue.readReviewItem(item.id, ownerId);
     assert.equal(historical?.state, 'rejected');
     assert.equal(historical?.payload.lifecycleStatus, 'superseded');
+    const reactivated = reviewQueue.ensureReviewItem(ownerId, {
+      kind: 'archive_finding',
+      subjectKey: item.subjectKey,
+      title: item.title,
+      payload: { classification: 'plex_only', evidenceKey: 'reactivated-evidence' },
+    });
+    assert.equal(reactivated.state, 'reopened');
     const updatedWorkload = await readWorkload(ownerId);
-    assert.equal(updatedWorkload.items.some((work) => work.id === `review:${item.id}`), false);
+    assert.equal(updatedWorkload.items.filter((work) => work.id === `review:${item.id}`).length, 1);
     assert.ok(result.archiveFindingItems > 0);
   });
 
