@@ -20,6 +20,7 @@ const testFiles = [
   "media-profile.test.ts",
   "ownership.test.ts",
   "ownership-http.test.ts",
+  "operation-ownership-http.test.ts",
   "integrations.test.ts",
   "network-target.test.ts",
   "jellyfin.test.ts",
