@@ -1550,6 +1550,90 @@ export const UpdateSettingsResponse = zod.object({
 
 
 /**
+ * @summary Read provider refresh state and current authority
+ */
+export const GetProviderRefreshStateQueryParams = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin'])
+})
+
+export const GetProviderRefreshStateResponse = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "lastAttemptedRefresh": zod.object({
+  "refreshId": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['syncing', 'synced', 'sync_error']),
+  "snapshotCompleteness": zod.enum(['complete', 'partial', 'unknown']),
+  "itemCount": zod.number().nullable(),
+  "authoritative": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "snapshotReference": zod.string().nullable()
+}).nullable(),
+  "lastSuccessfulRefresh": zod.object({
+  "refreshId": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['syncing', 'synced', 'sync_error']),
+  "snapshotCompleteness": zod.enum(['complete', 'partial', 'unknown']),
+  "itemCount": zod.number().nullable(),
+  "authoritative": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "snapshotReference": zod.string().nullable()
+}).nullable(),
+  "currentAuthoritativeRefresh": zod.object({
+  "refreshId": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['syncing', 'synced', 'sync_error']),
+  "snapshotCompleteness": zod.enum(['complete', 'partial', 'unknown']),
+  "itemCount": zod.number().nullable(),
+  "authoritative": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "snapshotReference": zod.string().nullable()
+}).nullable()
+})
+
+
+/**
+ * @summary List bounded provider refresh history
+ */
+
+export const listProviderRefreshHistoryQueryPageSizeMax = 100;
+
+
+
+export const ListProviderRefreshHistoryQueryParams = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(listProviderRefreshHistoryQueryPageSizeMax).optional()
+})
+
+export const ListProviderRefreshHistoryResponse = zod.object({
+  "results": zod.array(zod.object({
+  "refreshId": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['syncing', 'synced', 'sync_error']),
+  "snapshotCompleteness": zod.enum(['complete', 'partial', 'unknown']),
+  "itemCount": zod.number().nullable(),
+  "authoritative": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "snapshotReference": zod.string().nullable()
+})),
+  "pagination": zod.object({
+  "page": zod.number(),
+  "pageSize": zod.number(),
+  "total": zod.number(),
+  "totalPages": zod.number()
+})
+})
+
+
+/**
  * @summary Get Plex configuration status
  */
 export const getPlexConfigResponseLibraryCountMin = 0;

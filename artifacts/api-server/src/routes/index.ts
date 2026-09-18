@@ -12,6 +12,7 @@ import integrationsRouter from "./integrations";
 import acquisitionJobsRouter from "./acquisition-jobs";
 import controlPlaneRouter from "./control-plane";
 import agentRouter from "./agent";
+import providerRefreshRouter from "./provider-refresh";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(integrationsRouter);
 router.use(acquisitionJobsRouter);
 router.use(controlPlaneRouter);
 router.use(agentRouter);
+router.use(providerRefreshRouter);
 
 export default router;

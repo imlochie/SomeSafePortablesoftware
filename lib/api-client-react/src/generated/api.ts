@@ -82,6 +82,7 @@ import type {
   GetAssistantToolCatalog200,
   GetIntegrationConfigurationStatus200,
   GetPlexHierarchyParams,
+  GetProviderRefreshStateParams,
   GetWebhookDeliveryHistoryParams,
   HealthStatus,
   IdentityAuditReport,
@@ -93,6 +94,7 @@ import type {
   ListAcquisitionRecommendationsParams,
   ListAgentSourceMonitors200,
   ListArchiveOperationsParams,
+  ListProviderRefreshHistoryParams,
   ListReviewItemsParams,
   LocalMediaInspectInput,
   LocalMediaInspection,
@@ -114,6 +116,8 @@ import type {
   PlexHierarchy,
   PlexInventory,
   ProgressAcquisitionJob,
+  ProviderRefreshHistory,
+  ProviderRefreshState,
   ReconciliationReport,
   RefreshProvidersAfterArchiveOperation202,
   RefreshProvidersAfterArchiveOperationBody,
@@ -3092,6 +3096,174 @@ export const useUpdateSettings = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getUpdateSettingsMutationOptions(options));
     }
+
+export const getGetProviderRefreshStateUrl = (params: GetProviderRefreshStateParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/provider/refresh?${stringifiedParams}` : `/api/provider/refresh`
+}
+
+/**
+ * @summary Read provider refresh state and current authority
+ */
+export const getProviderRefreshState = async (params: GetProviderRefreshStateParams, options?: Parameters<typeof customFetch>[1]): Promise<ProviderRefreshState> => {
+
+  return customFetch<ProviderRefreshState>(getGetProviderRefreshStateUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetProviderRefreshStateQueryKey = (params?: GetProviderRefreshStateParams,) => {
+    return [
+    `/api/provider/refresh`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetProviderRefreshStateQueryOptions = <TData = Awaited<ReturnType<typeof getProviderRefreshState>>, TError = ErrorType<unknown>>(params: GetProviderRefreshStateParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProviderRefreshState>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetProviderRefreshStateQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProviderRefreshState>>> = ({ signal }) => getProviderRefreshState(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProviderRefreshState>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetProviderRefreshStateQueryResult = NonNullable<Awaited<ReturnType<typeof getProviderRefreshState>>>
+export type GetProviderRefreshStateQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read provider refresh state and current authority
+ */
+
+export function useGetProviderRefreshState<TData = Awaited<ReturnType<typeof getProviderRefreshState>>, TError = ErrorType<unknown>>(
+ params: GetProviderRefreshStateParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProviderRefreshState>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetProviderRefreshStateQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListProviderRefreshHistoryUrl = (params: ListProviderRefreshHistoryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/provider/refresh/history?${stringifiedParams}` : `/api/provider/refresh/history`
+}
+
+/**
+ * @summary List bounded provider refresh history
+ */
+export const listProviderRefreshHistory = async (params: ListProviderRefreshHistoryParams, options?: Parameters<typeof customFetch>[1]): Promise<ProviderRefreshHistory> => {
+
+  return customFetch<ProviderRefreshHistory>(getListProviderRefreshHistoryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListProviderRefreshHistoryQueryKey = (params?: ListProviderRefreshHistoryParams,) => {
+    return [
+    `/api/provider/refresh/history`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListProviderRefreshHistoryQueryOptions = <TData = Awaited<ReturnType<typeof listProviderRefreshHistory>>, TError = ErrorType<unknown>>(params: ListProviderRefreshHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProviderRefreshHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListProviderRefreshHistoryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProviderRefreshHistory>>> = ({ signal }) => listProviderRefreshHistory(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listProviderRefreshHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListProviderRefreshHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof listProviderRefreshHistory>>>
+export type ListProviderRefreshHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List bounded provider refresh history
+ */
+
+export function useListProviderRefreshHistory<TData = Awaited<ReturnType<typeof listProviderRefreshHistory>>, TError = ErrorType<unknown>>(
+ params: ListProviderRefreshHistoryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProviderRefreshHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListProviderRefreshHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetPlexConfigUrl = () => {
 

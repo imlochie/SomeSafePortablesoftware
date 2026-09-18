@@ -43,6 +43,7 @@ import { getAuthenticatedUserId } from "../src/middlewares/requireAuth";
 import { readReconciliationReport } from "../src/services/reconciliation";
 import { syncControlPlaneReviewItems } from "../src/services/review-sync";
 import { readWorkload } from "../src/services/workload";
+import { readProviderRefreshHistory, readProviderRefreshState } from "../src/services/provider-refresh";
 import { resolveRuntimeConfig, runtimeConfig } from "../src/lib/runtime-config";
 
 const ownerA = runtimeConfig.localOwnerId;
@@ -367,6 +368,11 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(firstRefreshAudit.snapshot_completeness, "complete");
       assert.equal(firstRefreshAudit.authoritative, 1);
       assert.equal(firstRefreshAudit.item_count, 2);
+      const refreshStateAfterFirst = readProviderRefreshState(ownerA, "plex");
+      assert.equal(refreshStateAfterFirst.lastAttemptedRefresh?.refreshId, firstSuccessfulRefreshId);
+      assert.equal(refreshStateAfterFirst.lastSuccessfulRefresh?.refreshId, firstSuccessfulRefreshId);
+      assert.equal(refreshStateAfterFirst.currentAuthoritativeRefresh?.refreshId, firstSuccessfulRefreshId);
+      assert.ok(readProviderRefreshHistory(ownerA, "plex").results.some((refresh) => refresh.refreshId === firstSuccessfulRefreshId));
       const completeInventory = readPlexInventory(ownerA);
       const completeRefreshId = firstConfig.lastSuccessfulRefreshId;
       omitBeta = true;
@@ -383,6 +389,10 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(partialRefreshAudit.status, "sync_error");
       assert.equal(partialRefreshAudit.snapshot_completeness, "partial");
       assert.equal(partialRefreshAudit.authoritative, 0);
+      const refreshStateAfterPartial = readProviderRefreshState(ownerA, "plex");
+      assert.equal(refreshStateAfterPartial.lastAttemptedRefresh?.refreshId, partialConfig.lastAttemptedRefreshId);
+      assert.equal(refreshStateAfterPartial.lastSuccessfulRefresh?.refreshId, completeRefreshId);
+      assert.equal(refreshStateAfterPartial.currentAuthoritativeRefresh?.refreshId, completeRefreshId);
       assert.deepEqual(readPlexInventory(ownerA), completeInventory);
 
       failSecondLibrary = false;

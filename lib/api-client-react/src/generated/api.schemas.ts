@@ -1813,6 +1813,72 @@ export interface AppSettingsUpdate {
   startWithWindows?: boolean;
 }
 
+export type ProviderRefreshProvider = typeof ProviderRefreshProvider[keyof typeof ProviderRefreshProvider];
+
+
+export const ProviderRefreshProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export type ProviderRefreshStatus = typeof ProviderRefreshStatus[keyof typeof ProviderRefreshStatus];
+
+
+export const ProviderRefreshStatus = {
+  syncing: 'syncing',
+  synced: 'synced',
+  sync_error: 'sync_error',
+} as const;
+
+export type ProviderRefreshSnapshotCompleteness = typeof ProviderRefreshSnapshotCompleteness[keyof typeof ProviderRefreshSnapshotCompleteness];
+
+
+export const ProviderRefreshSnapshotCompleteness = {
+  complete: 'complete',
+  partial: 'partial',
+  unknown: 'unknown',
+} as const;
+
+export interface ProviderRefresh {
+  refreshId: string;
+  provider: ProviderRefreshProvider;
+  startedAt: string;
+  completedAt: string | null;
+  status: ProviderRefreshStatus;
+  snapshotCompleteness: ProviderRefreshSnapshotCompleteness;
+  itemCount: number | null;
+  authoritative: boolean;
+  reason: string | null;
+  snapshotReference: string | null;
+}
+
+export type ProviderRefreshStateProvider = typeof ProviderRefreshStateProvider[keyof typeof ProviderRefreshStateProvider];
+
+
+export const ProviderRefreshStateProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export interface ProviderRefreshState {
+  provider: ProviderRefreshStateProvider;
+  lastAttemptedRefresh: ProviderRefresh | null;
+  lastSuccessfulRefresh: ProviderRefresh | null;
+  currentAuthoritativeRefresh: ProviderRefresh | null;
+}
+
+export type ProviderRefreshHistoryPagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export interface ProviderRefreshHistory {
+  results: ProviderRefresh[];
+  pagination: ProviderRefreshHistoryPagination;
+}
+
 export type PlexConfigStatus = typeof PlexConfigStatus[keyof typeof PlexConfigStatus];
 
 
@@ -3804,6 +3870,39 @@ export type ResolveAgentDownloadRedirects200 = { [key: string]: unknown };
 export type ResearchAssistantCandidateParams = {
 query: string;
 };
+
+export type GetProviderRefreshStateParams = {
+provider: GetProviderRefreshStateProvider;
+};
+
+export type GetProviderRefreshStateProvider = typeof GetProviderRefreshStateProvider[keyof typeof GetProviderRefreshStateProvider];
+
+
+export const GetProviderRefreshStateProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export type ListProviderRefreshHistoryParams = {
+provider: ListProviderRefreshHistoryProvider;
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+pageSize?: number;
+};
+
+export type ListProviderRefreshHistoryProvider = typeof ListProviderRefreshHistoryProvider[keyof typeof ListProviderRefreshHistoryProvider];
+
+
+export const ListProviderRefreshHistoryProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
 
 export type GetPlexHierarchyParams = {
 /**

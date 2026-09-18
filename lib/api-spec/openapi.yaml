@@ -597,6 +597,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppSettings"
+  /provider/refresh:
+    get:
+      operationId: getProviderRefreshState
+      summary: Read provider refresh state and current authority
+      parameters:
+        - { name: provider, in: query, required: true, schema: { type: string, enum: [plex, jellyfin] } }
+      responses:
+        '200':
+          description: Provider refresh state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderRefreshState' }
+  /provider/refresh/history:
+    get:
+      operationId: listProviderRefreshHistory
+      summary: List bounded provider refresh history
+      parameters:
+        - { name: provider, in: query, required: true, schema: { type: string, enum: [plex, jellyfin] } }
+        - { name: page, in: query, required: false, schema: { type: number, minimum: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: number, minimum: 1, maximum: 100 } }
+      responses:
+        '200':
+          description: Provider refresh history
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderRefreshHistory' }
   /plex/config:
     get:
       operationId: getPlexConfig
@@ -3425,6 +3451,41 @@ components:
           maximum: 25
         startWithWindows:
           type: boolean
+    ProviderRefresh:
+      type: object
+      required: [refreshId, provider, startedAt, completedAt, status, snapshotCompleteness, itemCount, authoritative, reason, snapshotReference]
+      properties:
+        refreshId: { type: string }
+        provider: { type: string, enum: [plex, jellyfin] }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [syncing, synced, sync_error] }
+        snapshotCompleteness: { type: string, enum: [complete, partial, unknown] }
+        itemCount: { type: number, nullable: true }
+        authoritative: { type: boolean }
+        reason: { type: string, nullable: true }
+        snapshotReference: { type: string, nullable: true }
+    ProviderRefreshState:
+      type: object
+      required: [provider, lastAttemptedRefresh, lastSuccessfulRefresh, currentAuthoritativeRefresh]
+      properties:
+        provider: { type: string, enum: [plex, jellyfin] }
+        lastAttemptedRefresh: { allOf: [{ $ref: '#/components/schemas/ProviderRefresh' }], nullable: true }
+        lastSuccessfulRefresh: { allOf: [{ $ref: '#/components/schemas/ProviderRefresh' }], nullable: true }
+        currentAuthoritativeRefresh: { allOf: [{ $ref: '#/components/schemas/ProviderRefresh' }], nullable: true }
+    ProviderRefreshHistory:
+      type: object
+      required: [results, pagination]
+      properties:
+        results: { type: array, items: { $ref: '#/components/schemas/ProviderRefresh' } }
+        pagination:
+          type: object
+          required: [page, pageSize, total, totalPages]
+          properties:
+            page: { type: number }
+            pageSize: { type: number }
+            total: { type: number }
+            totalPages: { type: number }
     PlexConfig:
       type: object
       required: [serverUrl, configured, hasToken, status, connectionStatus, syncStatus, lastAttemptedAt, lastSuccessfulSyncAt, lastError, serverName, libraryCount, itemCount, mediaCount]
