@@ -464,7 +464,13 @@ describe("user ownership", { concurrency: false }, () => {
         "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key = ? AND state IN ('pending', 'reopened')",
       ).get(reconciliationOwner, qualityItem?.subject_key) as { count: number }).count, 1);
       const workloadAfterEvidenceChange = await readWorkload(reconciliationOwner);
-      assert.equal(workloadAfterEvidenceChange.items.filter((item) => item.reviewItemId === qualityItem?.id).length, 1);
+      const explainedItem = workloadAfterEvidenceChange.items.find((item) => item.reviewItemId === qualityItem?.id);
+      assert.ok(explainedItem);
+      assert.equal(explainedItem?.currentObservationId, observations[1].id);
+      assert.equal(explainedItem?.evidenceKey, observations[1].evidence_key);
+      assert.ok(explainedItem?.observedAt);
+      assert.equal(explainedItem?.changeContext?.previousObservationId, observations[0].id);
+      assert.equal(explainedItem?.changeContext?.previousEvidenceKey, observations[0].evidence_key);
       await syncControlPlaneReviewItems(reconciliationOwner);
       assert.equal((archiveDb.prepare(
         "SELECT COUNT(*) AS count FROM review_item_observation WHERE owner_id = ? AND subject_key = ?",

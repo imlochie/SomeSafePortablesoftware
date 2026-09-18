@@ -14,6 +14,12 @@ export type WorkloadItem = {
   provider: string | null;
   refreshId: string | null;
   evidenceKey: string | null;
+  observedAt: string | null;
+  changeContext: {
+    previousObservationId: number;
+    previousEvidenceKey: string;
+    previousObservedAt: string;
+  } | null;
   summary: string;
   state: WorkloadState;
   needsUserAction: boolean;
@@ -68,7 +74,7 @@ export async function readWorkload(ownerId: string): Promise<Workload> {
     items.push({
       id: `download:${job.id}`, title: job.title,
       reviewItemId: null, findingClassification: null, currentObservationId: null,
-      provider: null, refreshId: null, evidenceKey: null,
+      provider: null, refreshId: null, evidenceKey: null, observedAt: null, changeContext: null,
       summary: job.status === "complete" ? "The file was downloaded and verified." : job.errorMessage ?? `The system is ${job.currentPhase ?? job.status}.`,
       state, needsUserAction: job.status === "recovery_required" || job.status === "failed",
       nextStep: job.status === "complete" ? "Find the outcome in History." : job.status === "failed" ? "Review the result before trying again." : job.status === "queued" ? "Start the job when you are ready." : job.status === "paused" ? "Resume the job when you are ready." : "The system will continue and verify the result.",
@@ -95,6 +101,8 @@ export async function readWorkload(ownerId: string): Promise<Workload> {
         ? String((review.payload.snapshot as { refreshId: string }).refreshId)
         : null,
       evidenceKey: review.evidenceKey,
+      observedAt: review.observedAt,
+      changeContext: review.changeContext,
       summary: state === "dismissed" ? "This was dismissed and is no longer active." : "The system is waiting for your decision.",
       state, needsUserAction: state === "needs_you",
       nextStep: state === "needs_you" ? "Review the explanation before deciding." : state === "waiting" ? "Reopen it when you want to continue." : "See the related outcome.",
@@ -107,7 +115,7 @@ export async function readWorkload(ownerId: string): Promise<Workload> {
     items.push({
       id: "health:archive-scan", title: scan.status === "scanning" ? "An archive scan is running" : "An archive scan needs attention",
       reviewItemId: null, findingClassification: null, currentObservationId: null,
-      provider: null, refreshId: null, evidenceKey: null,
+      provider: null, refreshId: null, evidenceKey: null, observedAt: null, changeContext: null,
       summary: scan.status === "scanning" ? "The current scan state is being tracked." : "The previous scan was interrupted; review it before starting another.",
       state: scan.status === "scanning" ? "being_handled" : "needs_you", needsUserAction: scan.status === "interrupted",
       nextStep: scan.status === "scanning" ? "Wait for the scan to finish." : "Review the scan state before continuing.",
@@ -141,6 +149,12 @@ type ReviewSummary = {
   payload: Record<string, unknown>;
   currentObservationId: number | null;
   evidenceKey: string | null;
+  observedAt: string | null;
+  changeContext: {
+    previousObservationId: number;
+    previousEvidenceKey: string;
+    previousObservedAt: string;
+  } | null;
 };
 
 function isSupersededPayload(value: unknown) {
@@ -160,10 +174,14 @@ function readReviewCounts(ownerId: string) {
 function readRecentReviews(ownerId: string): ReviewSummary[] {
   const rows = archiveDb.prepare(`
     SELECT r.id, r.kind, r.title, r.state, r.payload_json, r.updated_at,
-           o.id AS current_observation_id, o.evidence_key AS current_evidence_key
+           o.id AS current_observation_id, o.evidence_key AS current_evidence_key, o.observed_at AS current_observed_at,
+           p.id AS previous_observation_id, p.evidence_key AS previous_evidence_key, p.observed_at AS previous_observed_at
     FROM review_item r
     LEFT JOIN review_item_observation o
       ON o.review_item_id = r.id AND o.owner_id = r.owner_id AND o.status = 'active'
+    LEFT JOIN review_item_observation p
+      ON p.review_item_id = r.id AND p.owner_id = r.owner_id AND p.status = 'superseded'
+      AND p.id = (SELECT MAX(p2.id) FROM review_item_observation p2 WHERE p2.review_item_id = r.id AND p2.owner_id = r.owner_id AND p2.status = 'superseded')
     WHERE r.owner_id = ? AND r.state IN ('pending', 'reopened', 'deferred', 'approved', 'rejected')
     ORDER BY r.updated_at DESC, r.id DESC LIMIT 20
   `).all(ownerId) as Array<{
@@ -175,6 +193,10 @@ function readRecentReviews(ownerId: string): ReviewSummary[] {
     updated_at: string;
     current_observation_id?: number | null;
     current_evidence_key?: string | null;
+    current_observed_at?: string | null;
+    previous_observation_id?: number | null;
+    previous_evidence_key?: string | null;
+    previous_observed_at?: string | null;
   }>;
   return rows
     .filter((row) => !isSupersededPayload(row.payload_json))
@@ -186,6 +208,14 @@ function readRecentReviews(ownerId: string): ReviewSummary[] {
         payload,
         currentObservationId: row.current_observation_id == null ? null : Number(row.current_observation_id),
         evidenceKey: row.current_evidence_key ?? (typeof payload.evidenceKey === "string" ? payload.evidenceKey : null),
+        observedAt: row.current_observed_at ?? null,
+        changeContext: row.previous_observation_id == null || !row.previous_evidence_key || !row.previous_observed_at
+          ? null
+          : {
+            previousObservationId: Number(row.previous_observation_id),
+            previousEvidenceKey: row.previous_evidence_key,
+            previousObservedAt: row.previous_observed_at,
+          },
       };
     });
 }
