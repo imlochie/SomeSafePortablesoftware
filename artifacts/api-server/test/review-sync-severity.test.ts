@@ -161,6 +161,19 @@ describe("review sync severity gating", { concurrency: false }, () => {
     const workload = await readWorkload(ownerId);
     assert.ok(workload.items.some((work) => work.id === `review:${item?.id}`));
     assert.ok(workload.counts.needs_you > 0);
+
+    archiveDb.prepare(`
+      INSERT INTO file_record
+        (path, size_bytes, checksum, owner_id, filename, relative_path, scan_status, archive_root)
+      VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+    `).run('/media/Unarchived Film.2025.mkv', 1000, 'provider-now-local', ownerId, 'Unarchived Film.2025.mkv', 'Unarchived Film.2025.mkv', '/media');
+    invalidate(ownerId);
+    await reviewSync.syncControlPlaneReviewItems(ownerId);
+    const historical = reviewQueue.readReviewItem(item.id, ownerId);
+    assert.equal(historical?.state, 'rejected');
+    assert.equal(historical?.payload.lifecycleStatus, 'superseded');
+    const updatedWorkload = await readWorkload(ownerId);
+    assert.equal(updatedWorkload.items.some((work) => work.id === `review:${item.id}`), false);
     assert.ok(result.archiveFindingItems > 0);
   });
 

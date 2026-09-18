@@ -140,6 +140,44 @@ export function listReviewItems(
   `).all(...values) as Array<Record<string, unknown>>).map((row) => mapItem(row, ownerId));
 }
 
+export function supersedeReviewItems(ownerId: string, subjectPrefix: string, currentSubjectKeys: ReadonlySet<string>, reason: string) {
+  const rows = archiveDb.prepare(`
+    SELECT id, subject_key, state, payload_json
+    FROM review_item
+    WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE ?
+      AND state IN ('pending', 'reopened', 'deferred')
+  `).all(ownerId, `${subjectPrefix}%`) as Array<Record<string, unknown>>;
+  const now = new Date().toISOString();
+  let count = 0;
+  archiveDb.exec("BEGIN IMMEDIATE");
+  try {
+    for (const row of rows) {
+      const subjectKey = String(row.subject_key);
+      if (currentSubjectKeys.has(subjectKey)) continue;
+      const payload = json(row.payload_json);
+      payload.lifecycleStatus = "superseded";
+      payload.supersededAt = now;
+      payload.supersessionReason = reason;
+      archiveDb.prepare(`
+        UPDATE review_item
+        SET state = 'rejected', note = ?, decision_at = ?, decided_by = 'system', payload_json = ?, updated_at = ?
+        WHERE id = ? AND owner_id = ?
+      `).run(reason, now, JSON.stringify(payload), now, Number(row.id), ownerId);
+      archiveDb.prepare(`
+        INSERT INTO review_item_decision
+          (review_item_id, owner_id, from_state, to_state, note, decided_by, created_at)
+        VALUES (?, ?, ?, 'rejected', ?, 'system', ?)
+      `).run(Number(row.id), ownerId, String(row.state), reason, now);
+      count += 1;
+    }
+    archiveDb.exec("COMMIT");
+  } catch (error) {
+    archiveDb.exec("ROLLBACK");
+    throw error;
+  }
+  return count;
+}
+
 export function ensureReviewItem(
   ownerId: string,
   input: {

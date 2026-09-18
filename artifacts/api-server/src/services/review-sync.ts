@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readArchiveInventory } from "./archive";
 import { readNamingProposals } from "./naming-intelligence";
-import { ensureReviewItem } from "./review-queue";
+import { ensureReviewItem, supersedeReviewItems } from "./review-queue";
 import { classifyFinding, summariseSeverity, type FindingClassification } from "./finding-severity";
 
 function evidenceHash(value: unknown) {
@@ -51,6 +51,14 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
   }
 
   const inventory = readArchiveInventory(ownerId);
+  // A provider-only relationship has a stable identity even as its evidence
+  // changes. Supersede active observations that are absent from this complete
+  // persisted snapshot, but never infer absence from a failed refresh: this
+  // function only consumes the provider inventory already persisted by refresh.
+  const currentProviderOnlySubjects = new Set(
+    inventory.plexOnly.map((item) => `provider-only:${item.provider}:${item.ratingKey}`),
+  );
+  supersedeReviewItems(ownerId, "provider-only:", currentProviderOnlySubjects, "A later provider snapshot no longer reports this item as provider-only.");
   let archiveFindingItems = 0;
   let informationalFindings = 0;
   const classifications: FindingClassification[] = [];
@@ -71,6 +79,11 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
       integrityClassification: record.integrityClassification,
     });
     classifications.push(classification);
+    const subjectKey = `archive-finding:${record.id}`;
+    const currentArchiveSubjects = classification.reviewRequired ? new Set([subjectKey]) : new Set<string>();
+    supersedeReviewItems(ownerId, `archive-finding:${record.id}`, currentArchiveSubjects, classification.reviewRequired
+      ? "A later archive observation superseded this finding evidence."
+      : "A later archive observation resolved this finding.");
     // Informational findings remain queryable through the archive inventory.
     // They are simply not placed in front of the operator as decisions, which
     // is what made the review queue unusable.
@@ -80,7 +93,7 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
     }
     ensureReviewItem(ownerId, {
       kind: "archive_finding",
-      subjectKey: `archive-finding:${record.id}:${record.qualityStatus}:${record.reviewEvidenceKey}`,
+      subjectKey,
       title: `Review ${record.filename}`,
       payload: {
         classification: ["lower_quality_version", "higher_quality_available"].includes(record.qualityStatus)

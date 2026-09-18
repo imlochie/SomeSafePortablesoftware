@@ -111,6 +111,15 @@ function readScanSummary(ownerId: string): ScanSummary {
 }
 
 type ReviewSummary = { id: number; kind: string; title: string; state: ReviewItemState; updatedAt: string };
+
+function isSupersededPayload(value: unknown) {
+  try {
+    const payload = JSON.parse(String(value ?? "{}")) as { lifecycleStatus?: unknown };
+    return payload.lifecycleStatus === "superseded";
+  } catch {
+    return false;
+  }
+}
 function readReviewCounts(ownerId: string) {
   const rows = archiveDb.prepare("SELECT state, COUNT(*) AS count FROM review_item WHERE owner_id = ? GROUP BY state").all(ownerId) as Array<{ state: ReviewItemState; count: number }>;
   const count = (state: ReviewItemState) => Number(rows.find((row) => row.state === state)?.count ?? 0);
@@ -119,10 +128,12 @@ function readReviewCounts(ownerId: string) {
 
 function readRecentReviews(ownerId: string): ReviewSummary[] {
   const rows = archiveDb.prepare(`
-    SELECT id, kind, title, state, updated_at
+    SELECT id, kind, title, state, payload_json, updated_at
     FROM review_item
     WHERE owner_id = ? AND state IN ('pending', 'reopened', 'deferred', 'approved', 'rejected')
     ORDER BY updated_at DESC, id DESC LIMIT 20
-  `).all(ownerId) as Array<{ id: number; kind: string; title: string; state: ReviewItemState; updated_at: string }>;
-  return rows.map((row) => ({ id: Number(row.id), kind: row.kind, title: row.title, state: row.state, updatedAt: row.updated_at }));
+  `).all(ownerId) as Array<{ id: number; kind: string; title: string; state: ReviewItemState; payload_json: string; updated_at: string }>;
+  return rows
+    .filter((row) => !isSupersededPayload(row.payload_json))
+    .map((row) => ({ id: Number(row.id), kind: row.kind, title: row.title, state: row.state, updatedAt: row.updated_at }));
 }
