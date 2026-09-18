@@ -32,6 +32,7 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 - `lib/api-spec/openapi.yaml` — API contract source of truth.
 - `install.ps1`, `start.ps1`, `start.bat`, `README.md` — Windows local setup and launch.
 - `docs/archive-goals-freeze-review.md` — original-goal classifications, accepted freeze boundaries, and bounded remaining work.
+- `docs/usage-intelligence-direction.md` — accepted direction for the usage/watch-observation layer. Direction only; no usage concept is implemented today.
 
 ## Architecture decisions
 

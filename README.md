@@ -292,6 +292,14 @@ Archive Intelligence
     ↓
 AI Assistant
 
+Alongside that progression, the product observes the archive across three
+layers: library ("what exists?"), health ("is it okay?"), and usage ("what
+happens?"). Library and health are implemented. Usage — watch observations,
+sessions, habits, and archive evolution over time — is an accepted future
+direction with no current implementation. See
+[`docs/usage-intelligence-direction.md`](docs/usage-intelligence-direction.md)
+for its boundaries, provider-truth limits, and build order.
+
 The immediate focus is the operational core.
 
 That means turning the existing data structures and interface foundations into real, observable application behaviour before expanding into AI-driven features.
