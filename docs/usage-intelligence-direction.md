@@ -107,7 +107,79 @@ Those second-category metrics are the ones the proposal leans on hardest for
 the habits surface. They should be presented as accruing, with a visible
 "collecting since" date, never computed from backfilled data as if equivalent.
 
-### What still must be designed in
+### The provenance-window rule
+
+Every metric declares the window its evidence actually covers, and the two
+windows are never silently merged:
+
+```
+Historical metrics    play history, available since 2019
+Session metrics       session tracking, since 19 September 2026
+```
+
+The failure this prevents is specific and would be easy to ship by accident:
+
+> "Your average session length since 2019 is 47 minutes."
+
+That number is unsupportable — the numerator comes from instrumentation that
+began in 2026 while the denominator implies seven years. The honest form states
+both windows and refuses the blend. The same rule kills silent extrapolation in
+comparisons: a year-over-year change may only be computed where both windows
+have comparable evidence grades, and a statement spanning the instrumentation
+boundary must either be scoped to the instrumented period or be declined.
+
+This is the reconciliation layer's existing epistemic discipline — evidence,
+confidence, and honest `uncertain` — applied to behavioural analytics. Arena
+can reason about a gap it is told about. It cannot detect one that has been
+papered over.
+
+### Ingestion path: API first, private database as a justified exception
+
+The architectural default is API ingestion through the existing Plex adapter.
+A direct read of `com.plexapp.plugins.library.db` is permitted only as a
+deliberate, documented exception — justified by a concrete problem such as an
+API backfill proving unworkable at 100k+ historical events, not by convenience.
+
+If that exception is ever taken, it carries a hard contract:
+
+```
+private Plex database
+        ↓   read-only, never written
+   importer (sole owner of Plex's internal schema)
+        ↓   normalised watch observations
+   Archive Assistant truth model
+```
+
+No part of the application outside that importer may know Plex's internal
+schema exists. No `metadata_item_views` column names in services, contracts,
+or the UI. If Plex changes its schema, exactly one module breaks, and it fails
+loudly rather than silently producing wrong history. The importer must also
+treat the database as read-only and tolerate the file being locked by a running
+server — Plex ships its own SQLite build for a reason, and writing to that file
+from outside is out of scope permanently, not merely deferred.
+
+This mirrors the existing integration-adapter boundary: external systems are
+replaceable providers, and their internals never leak into the control plane.
+
+### Scope filters the adapter must apply
+
+Plex history is server-wide, so an ingestion that takes it verbatim will
+silently import things that are not the owner's archive behaviour:
+
+- **Other accounts.** History carries `accountID`; a shared server records
+  friends' and managed users' plays. Attribution is required before any
+  "your viewing" claim.
+- **Live TV and DVR.** Playback with no durable archive item behind it. This is
+  not archive history and would inflate every consumption metric.
+- **Music and photos.** `metadataType` spans all library types; the archive
+  concern is movies and episodes unless deliberately widened.
+
+Each of these is filterable from fields the history endpoint already returns
+(`accountID`, `librarySectionID`, `type`), so the filtering is cheap — but it
+must be explicit and recorded, because a metric computed over an unstated scope
+is not reproducible.
+
+## What still must be designed in
 
 1. **Archive Assistant accumulates its own durable copy.** Even where Plex
    retains history, Archive Assistant should not depend on it remaining
@@ -130,6 +202,62 @@ the habits surface. They should be presented as accruing, with a visible
    read through the owner token report the owner rather than the viewing
    user.[15] Treat a manual mark as a library-state claim in a separate evidence
    class, not as an observed session.
+
+## Archive history: the ownership relation is first-class
+
+History outliving deletion is not an awkward edge case to filter out. It is a
+relation the media servers do not model as an archive concept, because they
+have no concept of an archive that persists across deletion. Archive Assistant
+does.
+
+Every resolved watch observation therefore carries an **ownership relation**,
+derived and recomputable rather than stored as a flag:
+
+```
+WATCH OBSERVATION
+        │
+        ├── currently owned          → item present in file_record / identity
+        ├── previously owned         → we hold evidence it left the archive
+        └── never matched            → no archive evidence, either way
+```
+
+The middle branch is the valuable one, and the third is the honest one. They
+must not be collapsed: "previously owned" is a claim requiring evidence, while
+"never matched" is an admission of ignorance. Conflating them would manufacture
+an archive history that never happened.
+
+**This repository can already evidence the distinction**, which is why the
+taxonomy is derivable rather than speculative:
+
+- `archive_operation` records owner-scoped `delete`, `move`, and `rename`
+  actions with `source_path`, `destination_path`, status, and timestamps. A
+  confirmed delete is direct, high-confidence evidence that an item left the
+  archive, and *when*.
+- `file_record.scan_status` distinguishes `active` / `missing` / `error`. A
+  `missing` record is weaker evidence — an unplugged drive is not a deletion —
+  and must be graded as such, not treated as removal.
+- Library-state snapshots (below) supply the fallback: presence in an earlier
+  snapshot and absence later implies departure, with the snapshot interval as
+  the uncertainty window.
+
+So the relation should carry a confidence grade and its evidence source, in the
+same spirit as the existing reconciliation classifications
+(`local_only` / `plex_only` / `duplicate` / `uncertain`). An item that vanished
+before Archive Assistant was ever installed is legitimately `never matched` —
+and saying so is better than inventing a departure date.
+
+The four-way relation in the proposal then falls out naturally, and each cell
+is answerable with evidence:
+
+| | Owned now | Not owned now |
+| --- | --- | --- |
+| **Watched** | active part of the archive | archive history — watched, then removed |
+| **Not watched** | dead storage candidate | outside the archive entirely |
+
+The questions worth asking sit in the off-diagonal: what did I repeatedly watch
+before removing it, what did I acquire and watch once and then delete, and what
+do I own today that I have never touched. The last of those is the one with
+teeth, and it is exactly the one that must carry its coverage denominator.
 
 ## Derived metrics are recomputable, not remembered opinions
 
@@ -216,6 +344,31 @@ backfilled:
 
 Everything else can wait, because Plex is holding it for you.
 
+### Why snapshots and watch history must interleave
+
+Behavioural history alone cannot separate two very different events. Both look
+identical from watch data — plays simply stop:
+
+```
+snapshot t0  →  watch history  →  snapshot t1  →  watch history  →  snapshot t2
+```
+
+Against that interleaving, the archive becomes legible:
+
+- present at `t1`, absent at `t2`, plays stop → **you removed it**
+- present at both, plays stop → **you stopped watching it**
+
+Only the second is a behavioural signal. Reading the first as disengagement
+would be a straightforward analytical error, and it is the error a
+usage-only model is guaranteed to make. Where an `archive_operation` delete
+exists, it dates the departure precisely and the snapshot interval is only a
+fallback.
+
+This is also what makes the "dead storage" question safe to ask: an item can
+only be dead storage if it was continuously present and continuously unwatched
+across a known-covered window. Absent snapshots, that sentence has no
+denominator.
+
 ## A caveat on differentiation
 
 The claim that the usage layer may be more differentiated than archive
@@ -234,8 +387,15 @@ favour — and it is a one-time advantage, since Tautulli catches up from its ow
 install date onward.
 
 What none of them can do is join usage against archive truth, because none of
-them model files, quality, integrity, storage, or acquisition. The questions
-that are structurally unavailable to them are the ones worth building:
+them model files, quality, integrity, storage, or acquisition — nor an archive
+that persists across deletion. YouTube Studio is analytically strong because it
+owns both the content and the viewing behaviour. The personal equivalent is
+archive plus behaviour plus archive evolution plus provider truth, and no media
+server is positioned to assemble it: Plex is a media server, and its history is
+a byproduct rather than the product.
+
+The questions that are structurally unavailable to them are the ones worth
+building:
 
 - Which terabytes are dead storage — never watched, and also large?
 - Which acquisitions entered viewing life, and which never did?
@@ -257,8 +417,13 @@ the defensible surface. Not the hours-watched bar chart.
   another application's private database and require its bundled SQLite build.
   The existing integration-adapter boundary points firmly at the API; this
   should be decided explicitly rather than by drift.
-- Is a Plex play with no matching archive item — history rows persist after
-  deletion — dead data, or its own interesting class ("watched, then removed")?
+- How long should the library-state snapshot interval be? It sets the
+  resolution of every "previously owned" departure date that is not backed by
+  an `archive_operation` record.
+- Should `file_record.scan_status = 'missing'` ever age into "previously
+  owned"? An offline drive and a deletion are indistinguishable at a point in
+  time but diverge over months. Any such rule is an inference and needs an
+  explicit confidence grade.
 - What is the minimum play duration that constitutes a watch, and is that a
   stored rule or a recompute-time parameter? Making it recompute-time keeps old
   observations honest.
