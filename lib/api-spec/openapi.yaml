@@ -2658,16 +2658,31 @@ components:
         generatedAt: { type: string, format: date-time }
     AssistantWorkloadItem:
       type: object
-      required: [id, title, summary, state, needsUserAction, nextStep, destination, source, sourceId, evidence, confidence, lastConfirmedAt, freshness]
+      required: [id, title, reviewItemId, findingClassification, currentObservationId, provider, refreshId, evidenceKey, observedAt, changeContext, summary, state, needsUserAction, nextStep, destination, source, sourceId, evidence, confidence, lastConfirmedAt, freshness]
       properties:
         id: { type: string }
         title: { type: string }
+        reviewItemId: { type: number, nullable: true }
+        findingClassification: { type: string, nullable: true }
+        currentObservationId: { type: number, nullable: true }
+        provider: { type: string, nullable: true }
+        refreshId: { type: string, nullable: true }
+        evidenceKey: { type: string, nullable: true }
+        observedAt: { type: string, format: date-time, nullable: true }
+        changeContext:
+          type: object
+          nullable: true
+          required: [previousObservationId, previousEvidenceKey, previousObservedAt]
+          properties:
+            previousObservationId: { type: number }
+            previousEvidenceKey: { type: string }
+            previousObservedAt: { type: string, format: date-time }
         summary: { type: string }
         state: { type: string, enum: [needs_you, being_handled, waiting, interesting, completed, dismissed, blocked, uncertain] }
         needsUserAction: { type: boolean }
         nextStep: { type: string }
         destination: { type: string, enum: [assistant, queue, history] }
-        source: { type: string, enum: [assistant, download, review] }
+        source: { type: string, enum: [assistant, download, review, health] }
         sourceId: { type: string }
         evidence: { type: array, items: { type: string } }
         confidence: { type: [string, "null"] }

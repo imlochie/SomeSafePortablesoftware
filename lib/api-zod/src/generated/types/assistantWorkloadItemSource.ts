@@ -13,4 +13,5 @@ export const AssistantWorkloadItemSource = {
   assistant: 'assistant',
   download: 'download',
   review: 'review',
+  health: 'health',
 } as const;

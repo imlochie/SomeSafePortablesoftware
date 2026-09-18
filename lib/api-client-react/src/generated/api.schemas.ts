@@ -628,6 +628,7 @@ export const AssistantWorkloadItemSource = {
   assistant: 'assistant',
   download: 'download',
   review: 'review',
+  health: 'health',
 } as const;
 
 export type AssistantWorkloadItemFreshness = typeof AssistantWorkloadItemFreshness[keyof typeof AssistantWorkloadItemFreshness];
@@ -640,9 +641,23 @@ export const AssistantWorkloadItemFreshness = {
   unknown: 'unknown',
 } as const;
 
+export type AssistantWorkloadItemChangeContext = {
+  previousObservationId: number;
+  previousEvidenceKey: string;
+  previousObservedAt: string;
+} | null;
+
 export interface AssistantWorkloadItem {
   id: string;
   title: string;
+  reviewItemId: number | null;
+  findingClassification: string | null;
+  currentObservationId: number | null;
+  provider: string | null;
+  refreshId: string | null;
+  evidenceKey: string | null;
+  observedAt: string | null;
+  changeContext: AssistantWorkloadItemChangeContext;
   summary: string;
   state: AssistantWorkloadItemState;
   needsUserAction: boolean;

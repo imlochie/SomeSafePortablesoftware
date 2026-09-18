@@ -149,6 +149,7 @@ export * from './assistantRecommendationType';
 export * from './assistantWorkload';
 export * from './assistantWorkloadCounts';
 export * from './assistantWorkloadItem';
+export * from './assistantWorkloadItemChangeContext';
 export * from './assistantWorkloadItemDestination';
 export * from './assistantWorkloadItemFreshness';
 export * from './assistantWorkloadItemSource';

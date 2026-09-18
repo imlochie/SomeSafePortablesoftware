@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AssistantWorkloadItemChangeContext } from './assistantWorkloadItemChangeContext';
 import type { AssistantWorkloadItemDestination } from './assistantWorkloadItemDestination';
 import type { AssistantWorkloadItemFreshness } from './assistantWorkloadItemFreshness';
 import type { AssistantWorkloadItemSource } from './assistantWorkloadItemSource';
@@ -13,6 +14,14 @@ import type { AssistantWorkloadItemState } from './assistantWorkloadItemState';
 export interface AssistantWorkloadItem {
   id: string;
   title: string;
+  reviewItemId: number | null;
+  findingClassification: string | null;
+  currentObservationId: number | null;
+  provider: string | null;
+  refreshId: string | null;
+  evidenceKey: string | null;
+  observedAt: Date | null;
+  changeContext: AssistantWorkloadItemChangeContext;
   summary: string;
   state: AssistantWorkloadItemState;
   needsUserAction: boolean;
