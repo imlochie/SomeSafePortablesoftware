@@ -389,6 +389,43 @@ describe("jellyfin integration", { concurrency: false }, () => {
     }
   });
 
+  test("a failure during Jellyfin inventory persistence preserves inventory and authority", async () => {
+    let replacement = false;
+    const mock = createMockJellyfin({
+      itemsOverride: () => (replacement
+        ? [{ Id: "jf-300", Name: "Replacement", Type: "Movie", ProductionYear: 2026, MediaSources: [] }]
+        : null),
+    });
+    const serverUrl = await mock.start();
+    const owner = "jellyfin-transaction-failure";
+    try {
+      saveJellyfinConfig(owner, { serverUrl, apiKey: "valid-key" });
+      await syncJellyfinInventory(owner);
+      const previous = getJellyfinConfig(owner);
+      const previousInventory = readJellyfinInventory(owner);
+      archiveDb.exec(`
+        CREATE TEMP TRIGGER injected_jellyfin_inventory_failure
+        AFTER INSERT ON main.jellyfin_item
+        BEGIN SELECT RAISE(ABORT, 'injected Jellyfin inventory failure'); END;
+      `);
+      replacement = true;
+      await syncJellyfinInventory(owner);
+      const failed = getJellyfinConfig(owner);
+      assert.equal(failed.syncStatus, 'sync_error');
+      assert.equal(failed.lastSuccessfulRefreshId, previous.lastSuccessfulRefreshId);
+      assert.deepEqual(readJellyfinInventory(owner), previousInventory);
+      const audit = archiveDb.prepare(
+        "SELECT status, authoritative, item_count FROM provider_refresh WHERE refresh_id = ? AND owner_id = ?",
+      ).get(failed.lastAttemptedRefreshId, owner) as { status: string; authoritative: number; item_count: number | null };
+      assert.equal(audit.status, 'sync_error');
+      assert.equal(audit.authoritative, 0);
+      assert.equal(audit.item_count, null);
+      archiveDb.exec('DROP TRIGGER injected_jellyfin_inventory_failure');
+    } finally {
+      await mock.stop();
+    }
+  });
+
   test("removed remote items are pruned once a complete snapshot is fetched", async () => {
     let shrink = false;
     const mock = createMockJellyfin({
