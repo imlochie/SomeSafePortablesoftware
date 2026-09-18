@@ -30,6 +30,7 @@ describe('supervised Power Renamer UI contract', () => {
     expect(appSource).toContain('provider-status');
     expect(appSource).toContain('Latest status:');
     expect(appSource).toContain('Reconciliation remains explicit');
+    expect(appSource).toContain('Polling timed out while synchronization was still active');
     expect(appSource).toContain("attempt < 6");
   });
 });

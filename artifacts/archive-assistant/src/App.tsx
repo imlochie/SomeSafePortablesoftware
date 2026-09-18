@@ -967,6 +967,7 @@ export function ArchivePage() {
           const result = await response.json();
           if (!response.ok) throw new Error(result.error ?? 'Provider refresh could not start.');
           let latestProviderStatus: string | null = null;
+          let providerPollTimedOut = false;
           for (let attempt = 0; attempt < 6; attempt += 1) {
             const statusResponse = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/provider-status`));
             const statusResult = await statusResponse.json();
@@ -976,9 +977,10 @@ export function ArchivePage() {
             latestProviderStatus = `Plex: ${plex} · Jellyfin: ${jellyfin}`;
             setPowerProviderStatus(latestProviderStatus);
             if (plex !== 'syncing' && jellyfin !== 'syncing') break;
-            await new Promise(resolve => setTimeout(resolve, 500));
+            providerPollTimedOut = attempt === 5;
+            if (!providerPollTimedOut) await new Promise(resolve => setTimeout(resolve, 500));
           }
-          setPowerRenamerNotice(`Provider refresh requested. Started: ${result.started.join(', ') || 'none configured'}.${latestProviderStatus ? ` Latest status: ${latestProviderStatus}.` : ''} Reconciliation remains explicit and can be checked again.`);
+          setPowerRenamerNotice(`Provider refresh requested. Started: ${result.started.join(', ') || 'none configured'}.${latestProviderStatus ? ` Latest status: ${latestProviderStatus}.` : ''}${providerPollTimedOut ? ' Polling timed out while synchronization was still active; reconciliation is not complete.' : ' Reconciliation remains explicit and can be checked again.'}`);
         } else {
           const path = action === 'preflight' ? 'preflight' : 'execute';
           const body = action === 'execute' ? { confirmed: true } : {};
