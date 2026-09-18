@@ -349,6 +349,11 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(firstConfig.mediaCount, 1);
       assert.ok(firstConfig.lastAttemptedAt);
       assert.ok(firstConfig.lastSuccessfulSyncAt);
+      assert.ok(firstConfig.lastSuccessfulRefreshId);
+      const firstSuccessfulRefreshId = firstConfig.lastSuccessfulRefreshId;
+      const firstProviderFindingCount = (archiveDb.prepare(
+        "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE 'provider-only:%'",
+      ).get(ownerA) as { count: number }).count;
 
       const firstInventory = readPlexInventory(ownerA);
       assert.equal(firstInventory.libraries.length, 1);
@@ -405,9 +410,19 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(failedConfig.syncStatus, "sync_error");
       assert.match(failedConfig.lastError ?? "", /HTTP 503/);
       assert.equal(failedConfig.lastSuccessfulSyncAt, beforeFailureConfig.lastSuccessfulSyncAt);
+      assert.equal(failedConfig.lastSuccessfulRefreshId, beforeFailureConfig.lastSuccessfulRefreshId);
+      assert.notEqual(failedConfig.lastAttemptedRefreshId, beforeFailureConfig.lastSuccessfulRefreshId);
       assert.deepEqual(readPlexInventory(ownerA), beforeFailure);
+      const failedProviderFindingCount = (archiveDb.prepare(
+        "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE 'provider-only:%'",
+      ).get(ownerA) as { count: number }).count;
+      assert.equal(failedProviderFindingCount, firstProviderFindingCount);
       failSecondLibrary = false;
       changeFirstLibrary = false;
+      await syncPlexInventory(ownerA);
+      const recoveredConfig = getPlexConfig(ownerA);
+      assert.equal(recoveredConfig.syncStatus, "synced");
+      assert.notEqual(recoveredConfig.lastSuccessfulRefreshId, firstSuccessfulRefreshId);
 
       savePlexConfig("user-c", { serverUrl: "http://169.254.169.254", token: "valid-token" });
       const blockedTarget = await testPlexConnection("user-c");
