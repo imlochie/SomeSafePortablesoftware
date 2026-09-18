@@ -40,6 +40,7 @@ import {
   updateArchiveRecordReviews,
 } from "../src/services/archive";
 import { getAuthenticatedUserId } from "../src/middlewares/requireAuth";
+import { readReconciliationReport } from "../src/services/reconciliation";
 import { resolveRuntimeConfig, runtimeConfig } from "../src/lib/runtime-config";
 
 const ownerA = runtimeConfig.localOwnerId;
@@ -354,6 +355,23 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(firstInventory.items.length, 2);
       assert.equal(firstInventory.items.find((item) => item.ratingKey === "100")?.partCount, 1);
       assert.deepEqual(readPlexInventory(ownerB), { libraries: [], items: [] });
+
+      const reconciliationOwner = `plex-reconciliation-owner-${Date.now()}`;
+      savePlexConfig(reconciliationOwner, { serverUrl, token: "valid-token" });
+      await syncPlexInventory(reconciliationOwner);
+      const localAlpha = archiveDb.prepare(`
+        INSERT INTO file_record
+          (path, size_bytes, checksum, owner_id, filename, relative_path, scan_status, archive_root)
+        VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+      `).run("/media/alpha.mkv", 1_000_000, "alpha-local", reconciliationOwner, "Alpha.2024.mkv", "Alpha.2024.mkv", "/media");
+      const reconciliation = await readReconciliationReport(reconciliationOwner, 1, 100);
+      assert.equal(reconciliation.summary.matchedCount, 0, JSON.stringify(reconciliation.summary));
+      assert.equal(reconciliation.summary.qualityConflictCount, 1, JSON.stringify(reconciliation.summary));
+      assert.equal(reconciliation.summary.plexOnlyCount, 1, JSON.stringify(reconciliation.summary));
+      assert.ok(reconciliation.results.some((result) => result.classification === "quality_conflict"));
+      archiveDb.prepare("DELETE FROM file_record WHERE id = ? AND owner_id = ?").run(Number(localAlpha.lastInsertRowid), reconciliationOwner);
+      archiveDb.prepare("DELETE FROM plex_item WHERE owner_id = ?").run(reconciliationOwner);
+      archiveDb.prepare("DELETE FROM plex_library WHERE owner_id = ?").run(reconciliationOwner);
 
       await syncPlexInventory(ownerA);
       assert.equal(readPlexInventory(ownerA).libraries.length, 1);
