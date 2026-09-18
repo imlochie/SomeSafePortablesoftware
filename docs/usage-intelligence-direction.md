@@ -204,10 +204,46 @@ surfaces late and unanswerably. Six months on, Arena reports:
 
 and nobody can answer **2,481 what?** — which accounts, which libraries,
 including Live TV or not, movies only or episodes too, over which window. An
-aggregate without its scope definition is a number without units. Persisting
-the scope alongside the aggregate makes the question answerable by
-construction, and makes a scope change visible as a recomputation rather than
-as an unexplained discontinuity in a chart.
+aggregate without its scope definition is a number without units.
+
+### Scope definition and measurement result are separate objects
+
+Changing a scope is not "updating a filter." It changes **what the measurement
+means**. Adding a library to the scope does not correct a previous number; it
+replaces the question that number answered.
+
+So an aggregate references an immutable scope definition rather than embedding
+a mutable one:
+
+```
+aggregate
+├── metric
+├── value
+├── period
+├── scope_id        → immutable scope definition
+├── coverage
+├── generated_at
+└── provenance
+```
+
+Immutability is the point: a scope definition is never edited in place. A
+change produces a new `scope_id`, which leaves both strategies available later
+without a migration:
+
+- **Recompute.** Regenerate the historical series under the new scope. Gives a
+  clean longitudinal line, but only acceptable if the UI makes the scope change
+  visible.
+- **Parallel series.** Keep series A under scope A and start series B under
+  scope B. Better when historical comparability matters more than continuity.
+
+Neither is chosen here. The invariant that makes the choice deferrable is:
+
+> **An aggregate must never silently change meaning while retaining the
+> appearance of an uninterrupted historical measurement.**
+
+Both strategies satisfy it. Editing a scope in place satisfies neither, which
+is why `scope_id` must be immutable from the first schema rather than
+retrofitted once a discontinuity has already been shipped.
 
 ## What still must be designed in
 
@@ -269,6 +305,33 @@ different things:
 
 Collapsing either into `previously_owned` would manufacture an archive history
 that never happened.
+
+### The vocabulary Arena inherits
+
+The four states divide cleanly by epistemic condition rather than by sentiment:
+
+```
+KNOWN                          UNKNOWN
+├── currently_owned            ├── departure_unconfirmed
+└── previously_owned           └── never_matched
+```
+
+`never_matched` is not a weaker `previously_owned`. It is a different
+condition: *we have no evidence establishing that this historical watch
+corresponds to anything that was ever in the ownership record.*
+
+**UNKNOWN does not mean FALSE.** This is the distinction that will matter most
+once Arena writes natural language, because the failure mode is a fluent
+sentence rather than a wrong number. "You no longer own this" is a claim.
+"There is no record that you owned this" is an observation about the record.
+An item in `never_matched` licenses only the second, and an item in
+`departure_unconfirmed` licenses neither — it supports only "this was yours;
+what happened to it is unestablished."
+
+Aggregates inherit the same rule. A count of "things you watched but no longer
+own" may include `previously_owned` only. Folding the UNKNOWN states into that
+count would convert missing evidence into asserted history, quietly and at
+scale.
 
 ### Departure evidence has two grades
 
@@ -432,6 +495,24 @@ sensitive rather than as ordinary metadata.
 
 ## Sequencing
 
+The next engineering slice is a pipeline, and it should stay deliberately
+boring:
+
+```
+ingest → normalise → scope → resolve → persist → derive → expose
+```
+
+No insight engine, no AI layer, no clever inference. Every stage is testable in
+isolation and every stage is where a specific class of dishonesty would
+otherwise enter: unattributed plays at ingest, provider schema leakage at
+normalise, unstated units at scope, false matches at resolve, mutable history
+at persist, unversioned inference at derive, and uncoverable claims at expose.
+
+Arena gets to walk in and ask why the numbers look strange only once that
+pipeline is trustworthy. An interpretation layer over untrustworthy
+measurement produces confident prose about artefacts, which is worse than no
+analysis at all — it is wrong in a form that reads as insight.
+
 The four analytics surfaces (LIBRARY, VIEWING, HABITS, EVOLUTION) are the right
 end state and the wrong build order. Proposed order:
 
@@ -563,9 +644,10 @@ becomes a departure claim.
   observation with provenance "imported", and how is a manual import's coverage
   window established? Tautulli in particular would be a strong secondary source
   for the session-duration data Plex history lacks.
-- Does a scope-definition change invalidate existing aggregates, or produce a
-  second scoped series alongside the first? Recomputation is cleaner; a visible
-  discontinuity may be more honest.
+- On a scope change, recompute the historical series under the new scope, or
+  run parallel series per scope? Parked. Both satisfy the no-silent-meaning-
+  change invariant, so the decision can wait — provided `scope_id` is immutable
+  from the first schema, which is what keeps both options open.
 
 ## Revision note
 
