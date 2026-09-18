@@ -104,6 +104,28 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
     archiveFindingItems += 1;
   }
 
+  for (const providerOnly of inventory.plexOnly) {
+    ensureReviewItem(ownerId, {
+      kind: "archive_finding",
+      subjectKey: `provider-only:${providerOnly.provider}:${providerOnly.ratingKey}`,
+      title: `${providerOnly.providerLabel} item is not in the archive: ${providerOnly.title}`,
+      payload: {
+        classification: "plex_only",
+        provider: providerOnly.provider,
+        providerLabel: providerOnly.providerLabel,
+        ratingKey: providerOnly.ratingKey,
+        title: providerOnly.title,
+        year: providerOnly.year,
+        itemType: providerOnly.itemType,
+        summary: providerOnly.qualitySummary,
+        severity: "medium",
+        confidence: "high",
+        blockers: ["A local archive file was not found for this provider item."],
+      },
+    });
+    archiveFindingItems += 1;
+  }
+
   return {
     namingItems,
     archiveFindingItems,

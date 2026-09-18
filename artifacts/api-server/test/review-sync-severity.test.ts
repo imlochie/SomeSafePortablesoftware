@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { after, before, describe, test } from "node:test";
+import { readWorkload } from "../src/services/workload";
 
 /**
  * The classifier is unit tested in finding-severity.test.ts. This file proves
@@ -140,6 +141,27 @@ describe("review sync severity gating", { concurrency: false }, () => {
     await reviewSync.syncControlPlaneReviewItems(ownerId);
     const after = reviewQueue.listReviewItems(ownerId, { kind: "archive_finding" }).length;
     assert.equal(after, before);
+  });
+
+  test("provider-only reconciliation becomes a workload review item", async () => {
+    const library = archiveDb.prepare(`
+      INSERT INTO plex_library (name, server_url, library_key, library_type, owner_id, sync_status)
+      VALUES ('Movies', 'http://plex.test', 'provider-only', 'movie', ?, 'synced')
+    `).run(ownerId);
+    archiveDb.prepare(`
+      INSERT INTO plex_item (library_id, rating_key, title, item_type, year, metadata_json, owner_id)
+      VALUES (?, 'provider-only-1', 'Unarchived Film', 'movie', 2025, '{}', ?)
+    `).run(Number(library.lastInsertRowid), ownerId);
+    invalidate(ownerId);
+    const result = await reviewSync.syncControlPlaneReviewItems(ownerId);
+    const item = reviewQueue.listReviewItems(ownerId, { kind: 'archive_finding' })
+      .find((candidate) => candidate.payload.classification === 'plex_only');
+    assert.ok(item, 'provider-only reconciliation must reach review');
+    assert.equal(item?.payload.providerLabel, 'Plex');
+    const workload = await readWorkload(ownerId);
+    assert.ok(workload.items.some((work) => work.id === `review:${item?.id}`));
+    assert.ok(workload.counts.needs_you > 0);
+    assert.ok(result.archiveFindingItems > 0);
   });
 
   test("a missing file escalates to a decision even with no other evidence", async () => {
