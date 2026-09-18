@@ -304,16 +304,17 @@ async function stageLibraryRatingKeys(ownerId: string, libraryId: number, rating
     "DELETE FROM plex_sync_keys WHERE owner_id = ? AND library_id = ?",
   ).run(ownerId, libraryId);
   for (let start = 0; start < ratingKeys.length; start += plexPersistenceBatchSize) {
-    archiveDb.exec("BEGIN IMMEDIATE");
+    archiveDb.exec("SAVEPOINT plex_sync_keys_batch");
     try {
       for (const ratingKey of ratingKeys.slice(start, start + plexPersistenceBatchSize)) {
         archiveDb.prepare(
           "INSERT OR IGNORE INTO plex_sync_keys (owner_id, library_id, rating_key) VALUES (?, ?, ?)",
         ).run(ownerId, libraryId, ratingKey);
       }
-      archiveDb.exec("COMMIT");
+      archiveDb.exec("RELEASE SAVEPOINT plex_sync_keys_batch");
     } catch (error) {
-      archiveDb.exec("ROLLBACK");
+      archiveDb.exec("ROLLBACK TO SAVEPOINT plex_sync_keys_batch");
+      archiveDb.exec("RELEASE SAVEPOINT plex_sync_keys_batch");
       throw error;
     }
     await yieldToEventLoop();
@@ -475,7 +476,7 @@ async function persistLibrary(
       if (item) ratingKeys.push(item.ratingKey);
     }
     for (let start = 0; start < items.length; start += plexPersistenceBatchSize) {
-      archiveDb.exec("BEGIN IMMEDIATE");
+      archiveDb.exec("SAVEPOINT plex_inventory_batch");
       try {
         const hierarchyCache: PlexHierarchyCache = {
           showIds: new Map(),
@@ -530,9 +531,10 @@ async function persistLibrary(
             }
           }
         }
-        archiveDb.exec("COMMIT");
+        archiveDb.exec("RELEASE SAVEPOINT plex_inventory_batch");
       } catch (error) {
-        archiveDb.exec("ROLLBACK");
+        archiveDb.exec("ROLLBACK TO SAVEPOINT plex_inventory_batch");
+        archiveDb.exec("RELEASE SAVEPOINT plex_inventory_batch");
         throw error;
       }
       await yieldToEventLoop();
@@ -560,13 +562,13 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
   complete: boolean;
   items: ReturnType<typeof mapItem>[];
 }>) {
-  for (const library of libraries) {
-    await persistLibrary(ownerId, serverUrl, library, library.items);
-    invalidateArchiveInventoryCache(ownerId);
-    await yieldToEventLoop();
-  }
   archiveDb.exec("BEGIN IMMEDIATE");
   try {
+    for (const library of libraries) {
+      await persistLibrary(ownerId, serverUrl, library, library.items);
+      invalidateArchiveInventoryCache(ownerId);
+      await yieldToEventLoop();
+    }
     const currentLibraryKeys = new Set(libraries.map((library) => library.key));
     const existingLibraries = archiveDb.prepare(
       "SELECT id, library_key FROM plex_library WHERE owner_id = ? AND server_url = ?",
