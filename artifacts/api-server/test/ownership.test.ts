@@ -460,10 +460,16 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(observations[1].status, "active");
       assert.notEqual(observations[0].evidence_key, observations[1].evidence_key);
       assert.equal(observations[0].evidence_key, firstObservation.evidence_key);
+      assert.equal((archiveDb.prepare(
+        "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key = ? AND state IN ('pending', 'reopened')",
+      ).get(reconciliationOwner, qualityItem?.subject_key) as { count: number }).count, 1);
+      const workloadAfterEvidenceChange = await readWorkload(reconciliationOwner);
+      assert.equal(workloadAfterEvidenceChange.items.filter((item) => item.reviewItemId === qualityItem?.id).length, 1);
       await syncControlPlaneReviewItems(reconciliationOwner);
       assert.equal((archiveDb.prepare(
         "SELECT COUNT(*) AS count FROM review_item_observation WHERE owner_id = ? AND subject_key = ?",
       ).get(reconciliationOwner, qualityItem?.subject_key) as { count: number }).count, 2);
+      assert.equal((await readWorkload(reconciliationOwner)).items.filter((item) => item.reviewItemId === qualityItem?.id).length, 1);
       archiveDb.prepare("DELETE FROM file_record WHERE id = ? AND owner_id = ?").run(Number(localAlpha.lastInsertRowid), reconciliationOwner);
       archiveDb.prepare("DELETE FROM plex_item WHERE owner_id = ?").run(reconciliationOwner);
       archiveDb.prepare("DELETE FROM plex_library WHERE owner_id = ?").run(reconciliationOwner);
