@@ -83,6 +83,9 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
       subjectKey: `archive-finding:${record.id}:${record.qualityStatus}:${record.reviewEvidenceKey}`,
       title: `Review ${record.filename}`,
       payload: {
+        classification: ["lower_quality_version", "higher_quality_available"].includes(record.qualityStatus)
+          ? "quality_conflict"
+          : record.qualityStatus,
         fileRecordId: record.id,
         archiveItemId: record.archiveItemId,
         sourcePath: record.path,
