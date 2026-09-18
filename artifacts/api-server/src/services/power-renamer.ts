@@ -10,6 +10,10 @@ function pathBasename(path: string) { return pathTools(path).basename(path); }
 function pathDirname(path: string) { return pathTools(path).dirname(path); }
 function pathExtname(path: string) { return pathTools(path).extname(path); }
 function pathJoin(directory: string, filename: string) { return pathTools(directory).join(directory, filename); }
+function pathDirectoryKey(path: string) {
+  const directory = pathDirname(path).replaceAll("\\", "/");
+  return path.includes("\\") ? directory.toLowerCase() : directory;
+}
 
 export type PowerRenameCandidate = {
   fileRecordId: number;
@@ -90,7 +94,7 @@ export function addPowerRenameCompanions(plan: PowerRenamePlan, records: Compani
     const sourceBase = pathBasename(mapping.sourcePath).slice(0, -sourceExtension.length);
     const destinationBase = pathBasename(mapping.destinationPath).slice(0, -destinationExtension.length);
     for (const record of records) {
-      const sameDirectory = pathDirname(record.path).replaceAll("\\", "/").toLowerCase() === pathDirname(mapping.sourcePath).replaceAll("\\", "/").toLowerCase();
+      const sameDirectory = pathDirectoryKey(record.path) === pathDirectoryKey(mapping.sourcePath);
       if (record.path === mapping.sourcePath || !sameDirectory) continue;
       const rawExtension = pathExtname(record.path);
       const extension = rawExtension.toLowerCase();

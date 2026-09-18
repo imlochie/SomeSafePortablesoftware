@@ -41,6 +41,12 @@ test("Power Renamer handles Windows sidecar paths without POSIX basename errors"
   assert.equal(expanded.steps.some((step) => step.to.includes("Season 01")), true);
 });
 
+test("Power Renamer preserves POSIX case-sensitive sidecar directories", () => {
+  const plan = buildPowerRenamePlan([{ fileRecordId: 14, sourcePath: "/archive/Shows/Episode.mkv", proposedPath: "/archive/Shows/Renamed/Episode.mkv", confidence: "high", operation: "rename", collision: false, mediaType: "tv", researchGrade: "corroborated" }]);
+  const expanded = addPowerRenameCompanions(plan, [{ id: 15, path: "/archive/shows/Episode.srt" }]);
+  assert.equal(expanded.mappings.length, 1);
+});
+
 test("Power Renamer excludes collisions and uncertain proposals", () => {
   const plan = buildPowerRenamePlan([
     { fileRecordId: 3, sourcePath: "/archive/a.mkv", proposedPath: "/archive/existing.mkv", confidence: "high", operation: "rename", collision: true, mediaType: "tv" },
