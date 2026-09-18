@@ -62,6 +62,21 @@ test("interrupted batch execution remains recoverable and does not infer complet
   assert.equal(inspected[2].classification, "CONFIRMED_NOT_STARTED");
 });
 
+test("recovery safely reverts only proven completed mappings", async () => {
+  const { root, mappings } = await fixture();
+  mappings[0].finalPath = join(root, "D");
+  await fsRename(mappings[0].originalPath, mappings[0].temporaryPath);
+  await fsRename(mappings[0].temporaryPath, mappings[0].finalPath);
+  mappings[0].state = "completed";
+  mappings[1].state = "planned";
+  const result = await revertBatchFiles(mappings);
+  assert.equal(result.state, "completed");
+  assert.equal(mappings[0].state, "planned");
+  assert.equal(await readFile(mappings[0].originalPath, "utf8"), "A");
+  assert.equal(await readFile(mappings[1].originalPath, "utf8"), "B");
+  assert.equal(await readFile(mappings[2].originalPath, "utf8"), "C");
+});
+
 test("batch preflight rejects an unrelated destination occupant", async () => {
   const { root, mappings } = await fixture();
   await writeFile(join(root, "D"), "unrelated");
