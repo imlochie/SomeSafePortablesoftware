@@ -2684,7 +2684,7 @@ components:
             $ref: "#/components/schemas/AssistantWorkloadItem"
         counts:
           type: object
-          required: [needs_you, being_handled, waiting, interesting, completed, dismissed, blocked, uncertain]
+          required: [needs_you, being_handled, waiting, interesting, completed, dismissed, superseded, blocked, uncertain]
           additionalProperties: false
           properties:
             needs_you: { type: number, minimum: 0 }
@@ -2693,6 +2693,7 @@ components:
             interesting: { type: number, minimum: 0 }
             completed: { type: number, minimum: 0 }
             dismissed: { type: number, minimum: 0 }
+            superseded: { type: number, minimum: 0 }
             blocked: { type: number, minimum: 0 }
             uncertain: { type: number, minimum: 0 }
         generatedAt: { type: string, format: date-time }

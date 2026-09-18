@@ -5,7 +5,7 @@ import { GetAssistantOverviewResponse } from "@workspace/api-zod";
 test("unified workload is read-only, owner-scoped, and classifies operational truth", async () => {
   const { readWorkload } = await import("../src/services/workload");
   const report = await readWorkload("__local__");
-  assert.deepEqual(Object.keys(report.counts).sort(), ["being_handled", "blocked", "completed", "dismissed", "interesting", "needs_you", "uncertain", "waiting"]);
+  assert.deepEqual(Object.keys(report.counts).sort(), ["being_handled", "blocked", "completed", "dismissed", "interesting", "needs_you", "superseded", "uncertain", "waiting"]);
   assert.ok(Array.isArray(report.items));
   assert.equal(typeof report.generatedAt, "string");
   for (const item of report.items) {

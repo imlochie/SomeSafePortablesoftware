@@ -821,6 +821,8 @@ export const getAssistantWorkloadResponseCountsCompletedMin = 0;
 
 export const getAssistantWorkloadResponseCountsDismissedMin = 0;
 
+export const getAssistantWorkloadResponseCountsSupersededMin = 0;
+
 export const getAssistantWorkloadResponseCountsBlockedMin = 0;
 
 export const getAssistantWorkloadResponseCountsUncertainMin = 0;
@@ -862,6 +864,7 @@ export const GetAssistantWorkloadResponse = zod.object({
   "interesting": zod.number().min(getAssistantWorkloadResponseCountsInterestingMin),
   "completed": zod.number().min(getAssistantWorkloadResponseCountsCompletedMin),
   "dismissed": zod.number().min(getAssistantWorkloadResponseCountsDismissedMin),
+  "superseded": zod.number().min(getAssistantWorkloadResponseCountsSupersededMin),
   "blocked": zod.number().min(getAssistantWorkloadResponseCountsBlockedMin),
   "uncertain": zod.number().min(getAssistantWorkloadResponseCountsUncertainMin)
 }),

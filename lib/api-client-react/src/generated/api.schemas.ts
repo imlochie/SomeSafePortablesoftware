@@ -593,6 +593,8 @@ export type AssistantWorkloadCounts = {
   /** @minimum 0 */
   dismissed: number;
   /** @minimum 0 */
+  superseded: number;
+  /** @minimum 0 */
   blocked: number;
   /** @minimum 0 */
   uncertain: number;

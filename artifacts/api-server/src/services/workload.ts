@@ -2,7 +2,7 @@ import { archiveDb } from "../lib/archive-db";
 import { readJobs } from "./download-engine";
 import type { ReviewItemState } from "./review-queue";
 
-export const workloadStates = ["needs_you", "being_handled", "waiting", "interesting", "completed", "dismissed", "blocked", "uncertain"] as const;
+export const workloadStates = ["needs_you", "being_handled", "waiting", "interesting", "completed", "dismissed", "superseded", "blocked", "uncertain"] as const;
 export type WorkloadState = (typeof workloadStates)[number];
 
 export type WorkloadItem = {
@@ -50,7 +50,7 @@ function freshnessOf(value: string | null | undefined): WorkloadItem['freshness'
 
 const emptyCounts = (): Record<WorkloadState, number> => ({
   needs_you: 0, being_handled: 0, waiting: 0, interesting: 0,
-  completed: 0, dismissed: 0, blocked: 0, uncertain: 0,
+  completed: 0, dismissed: 0, superseded: 0, blocked: 0, uncertain: 0,
 });
 
 export async function readWorkload(ownerId: string): Promise<Workload> {
@@ -131,6 +131,7 @@ export async function readWorkload(ownerId: string): Promise<Workload> {
   counts.waiting += reviewCounts.waiting - recentReviews.filter((item) => item.state === "deferred").length;
   counts.being_handled += reviewCounts.beingHandled - recentReviews.filter((item) => item.state === "approved").length;
   counts.dismissed += reviewCounts.dismissed - recentReviews.filter((item) => item.state === "rejected").length;
+  counts.superseded += reviewCounts.superseded;
   return { items, counts, generatedAt: new Date().toISOString() };
 }
 
@@ -166,9 +167,13 @@ function isSupersededPayload(value: unknown) {
   }
 }
 function readReviewCounts(ownerId: string) {
-  const rows = archiveDb.prepare("SELECT state, COUNT(*) AS count FROM review_item WHERE owner_id = ? GROUP BY state").all(ownerId) as Array<{ state: ReviewItemState; count: number }>;
-  const count = (state: ReviewItemState) => Number(rows.find((row) => row.state === state)?.count ?? 0);
-  return { needsYou: count("pending") + count("reopened"), waiting: count("deferred"), beingHandled: count("approved"), dismissed: count("rejected") };
+  const rows = archiveDb.prepare(`
+    SELECT state, COALESCE(json_extract(payload_json, '$.lifecycleStatus'), '') AS lifecycle_status, COUNT(*) AS count
+    FROM review_item WHERE owner_id = ? GROUP BY state, lifecycle_status
+  `).all(ownerId) as Array<{ state: ReviewItemState; lifecycle_status: string; count: number }>;
+  const count = (state: ReviewItemState) => Number(rows.filter((row) => row.state === state && row.lifecycle_status !== "superseded").reduce((total, row) => total + Number(row.count), 0));
+  const superseded = rows.filter((row) => row.lifecycle_status === "superseded").reduce((total, row) => total + Number(row.count), 0);
+  return { needsYou: count("pending") + count("reopened"), waiting: count("deferred"), beingHandled: count("approved"), dismissed: count("rejected"), superseded };
 }
 
 function readRecentReviews(ownerId: string): ReviewSummary[] {
@@ -183,6 +188,7 @@ function readRecentReviews(ownerId: string): ReviewSummary[] {
       ON p.review_item_id = r.id AND p.owner_id = r.owner_id AND p.status = 'superseded'
       AND p.id = (SELECT MAX(p2.id) FROM review_item_observation p2 WHERE p2.review_item_id = r.id AND p2.owner_id = r.owner_id AND p2.status = 'superseded')
     WHERE r.owner_id = ? AND r.state IN ('pending', 'reopened', 'deferred', 'approved', 'rejected')
+      AND COALESCE(json_extract(r.payload_json, '$.lifecycleStatus'), '') != 'superseded'
     ORDER BY r.updated_at DESC, r.id DESC LIMIT 20
   `).all(ownerId) as Array<{
     id: number;

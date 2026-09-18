@@ -245,6 +245,35 @@ describe("review sync severity gating", { concurrency: false }, () => {
     assert.ok(activeReviews <= 1, 'ambiguous identity must not multiply active review work');
   });
 
+  test("workload filters superseded reviews before applying its bounded limit", async () => {
+    const owner = `workload-pagination-owner-${Date.now()}`;
+    for (let index = 0; index < 15; index += 1) {
+      archiveDb.prepare(`
+        INSERT INTO review_item (owner_id, kind, subject_key, title, state, payload_json)
+        VALUES (?, 'archive_finding', ?, ?, 'pending', '{}')
+      `).run(owner, `active-${index}`, `Active finding ${index}`);
+    }
+    for (let index = 0; index < 15; index += 1) {
+      archiveDb.prepare(`
+        INSERT INTO review_item (owner_id, kind, subject_key, title, state, payload_json)
+        VALUES (?, 'archive_finding', ?, ?, 'rejected', ?)
+      `).run(owner, `superseded-${index}`, `Superseded finding ${index}`, JSON.stringify({ lifecycleStatus: 'superseded' }));
+    }
+    const first = await readWorkload(owner);
+    assert.equal(first.items.filter((item) => item.source === 'review').length, 15);
+    assert.equal(first.counts.needs_you, 15);
+    assert.equal(first.counts.superseded, 15);
+    for (let index = 15; index < 30; index += 1) {
+      archiveDb.prepare(`
+        INSERT INTO review_item (owner_id, kind, subject_key, title, state, payload_json)
+        VALUES (?, 'archive_finding', ?, ?, 'pending', '{}')
+      `).run(owner, `active-${index}`, `Active finding ${index}`);
+    }
+    const bounded = await readWorkload(owner);
+    assert.equal(bounded.items.filter((item) => item.source === 'review').length, 20);
+    assert.equal(bounded.counts.needs_you, 30);
+  });
+
   test("a missing file escalates to a decision even with no other evidence", async () => {
     addFile({
       id: 9010,
