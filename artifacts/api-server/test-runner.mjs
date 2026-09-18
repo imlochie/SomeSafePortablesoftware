@@ -47,6 +47,7 @@ const testFiles = [
   "acquisition-approval.test.ts",
   "finding-severity.test.ts",
   "review-sync-severity.test.ts",
+  "provider-refresh-http.test.ts",
   "storage-diagnostics.test.ts",
   "scan-lifecycle-reconcile.test.ts",
   "scan-resume.test.ts",
