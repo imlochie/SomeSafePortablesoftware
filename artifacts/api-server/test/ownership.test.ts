@@ -41,6 +41,8 @@ import {
 } from "../src/services/archive";
 import { getAuthenticatedUserId } from "../src/middlewares/requireAuth";
 import { readReconciliationReport } from "../src/services/reconciliation";
+import { syncControlPlaneReviewItems } from "../src/services/review-sync";
+import { readWorkload } from "../src/services/workload";
 import { resolveRuntimeConfig, runtimeConfig } from "../src/lib/runtime-config";
 
 const ownerA = runtimeConfig.localOwnerId;
@@ -412,6 +414,28 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(reconciliation.summary.qualityConflictCount, 1, JSON.stringify(reconciliation.summary));
       assert.equal(reconciliation.summary.plexOnlyCount, 1, JSON.stringify(reconciliation.summary));
       assert.ok(reconciliation.results.some((result) => result.classification === "quality_conflict"));
+      invalidateArchiveInventoryCache(reconciliationOwner);
+      await syncControlPlaneReviewItems(reconciliationOwner);
+      const qualityItems = (archiveDb.prepare(
+        "SELECT id, subject_key, payload_json FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND state IN ('pending', 'reopened')",
+      ).all(reconciliationOwner) as Array<{ id: number; subject_key: string; payload_json: string }>);
+      const qualityItem = qualityItems.find((item) => {
+        const payload = JSON.parse(item.payload_json) as { classification?: string; qualityStatus?: string };
+        return payload.classification === "quality_conflict";
+      });
+      assert.ok(qualityItem, "quality conflict must become an actionable finding");
+      assert.equal(qualityItem?.subject_key, `archive-finding:${Number(localAlpha.lastInsertRowid)}`);
+      const qualityPayload = JSON.parse(qualityItem?.payload_json ?? "{}") as { classification?: string; qualityStatus?: string; snapshot?: { refreshId?: string } };
+      assert.equal(qualityPayload.classification, "quality_conflict");
+      assert.ok(qualityPayload.qualityStatus);
+      assert.equal(qualityPayload.snapshot?.refreshId, getPlexConfig(reconciliationOwner).lastSuccessfulRefreshId);
+      const workloadBeforeRepeat = await readWorkload(reconciliationOwner);
+      assert.ok(workloadBeforeRepeat.items.some((item) => item.id === `review:${qualityItem?.id}`));
+      await syncControlPlaneReviewItems(reconciliationOwner);
+      const activeQualityCount = (archiveDb.prepare(
+        "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key = ? AND state IN ('pending', 'reopened')",
+      ).get(reconciliationOwner, qualityItem?.subject_key) as { count: number }).count;
+      assert.equal(activeQualityCount, 1);
       archiveDb.prepare("DELETE FROM file_record WHERE id = ? AND owner_id = ?").run(Number(localAlpha.lastInsertRowid), reconciliationOwner);
       archiveDb.prepare("DELETE FROM plex_item WHERE owner_id = ?").run(reconciliationOwner);
       archiveDb.prepare("DELETE FROM plex_library WHERE owner_id = ?").run(reconciliationOwner);
