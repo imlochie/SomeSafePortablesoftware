@@ -330,10 +330,15 @@ describe("jellyfin integration", { concurrency: false }, () => {
       saveJellyfinConfig(owner, { serverUrl, apiKey: "valid-key" });
       await syncJellyfinInventory(owner);
       assert.equal(readJellyfinInventory(owner).items.length, 2);
+      const previousSync = getJellyfinConfig(owner);
 
       // The library request now fails; the prior snapshot must survive.
       failItems = true;
       await syncJellyfinInventory(owner);
+      const failedSync = getJellyfinConfig(owner);
+      assert.equal(failedSync.syncStatus, "sync_error");
+      assert.equal(failedSync.lastSuccessfulSyncAt, previousSync.lastSuccessfulSyncAt);
+      assert.ok(failedSync.lastError);
       const preserved = readJellyfinInventory(owner);
       assert.equal(
         preserved.items.length,

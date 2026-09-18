@@ -655,19 +655,35 @@ export async function syncJellyfinInventory(ownerId: string) {
       }
     }
     await reconcileInventory(ownerId, serverUrl, remoteInventory);
-    const successfulAt = new Date().toISOString();
-    writeState(ownerId, {
-      jellyfinSyncStatus: "synced",
-      jellyfinLastSuccessfulSyncAt: successfulAt,
-      jellyfinLastError: null,
-    });
     for (const warning of warnings) addEvent("warning", warning, "jellyfin", ownerId);
-    addEvent(
-      "success",
-      `Jellyfin inventory synchronized: ${libraries.length} libraries`,
-      "jellyfin",
-      ownerId,
-    );
+    if (warnings.length) {
+      // The canonical inventory remains preserved, but an incomplete remote
+      // snapshot is not a successful synchronization and must not advance the
+      // successful-sync timestamp or masquerade as complete.
+      writeState(ownerId, {
+        jellyfinSyncStatus: "sync_error",
+        jellyfinLastError: warnings.join(" "),
+      });
+      addEvent(
+        "error",
+        `Jellyfin inventory remains incomplete: ${warnings.join(" ")}`,
+        "jellyfin",
+        ownerId,
+      );
+    } else {
+      const successfulAt = new Date().toISOString();
+      writeState(ownerId, {
+        jellyfinSyncStatus: "synced",
+        jellyfinLastSuccessfulSyncAt: successfulAt,
+        jellyfinLastError: null,
+      });
+      addEvent(
+        "success",
+        `Jellyfin inventory synchronized: ${libraries.length} libraries`,
+        "jellyfin",
+        ownerId,
+      );
+    }
   } catch (error) {
     const message = publicError(error);
     writeState(ownerId, { jellyfinSyncStatus: "sync_error", jellyfinLastError: message });
