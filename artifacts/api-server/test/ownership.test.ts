@@ -27,6 +27,7 @@ import {
   getPlexConfig,
   readPlexInventory,
   savePlexConfig,
+  startPlexSync,
   syncPlexInventory,
   testPlexConnection,
 } from "../src/services/plex";
@@ -322,7 +323,14 @@ describe("user ownership", { concurrency: false }, () => {
       savePlexConfig(ownerA, { serverUrl, token: "valid-token" });
       savePlexConfig(ownerB, { serverUrl, token: "invalid-token" });
 
-      assert.equal((await testPlexConnection(ownerA)).status, "connected");
+      startPlexSync(ownerA);
+      assert.throws(() => startPlexSync(ownerA), /already running/i);
+      for (let attempt = 0; attempt < 20 && getPlexConfig(ownerA).syncStatus === "syncing"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.equal(getPlexConfig(ownerA).syncStatus, "synced");
+
+      assert.ok(["connected", "synced"].includes((await testPlexConnection(ownerA)).status));
       assert.equal(getPlexConfig(ownerA).connectionStatus, "connected");
       const failedConnection = await testPlexConnection(ownerB);
       assert.equal(failedConnection.status, "connection_failed");
