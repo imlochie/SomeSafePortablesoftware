@@ -561,7 +561,7 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
   type: string;
   complete: boolean;
   items: ReturnType<typeof mapItem>[];
-}>) {
+}>, refreshId: string, completedAt: string, snapshotItemCount: number) {
   archiveDb.exec("BEGIN IMMEDIATE");
   try {
     for (const library of libraries) {
@@ -580,6 +580,13 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
         ).run(ownerId, serverUrl, library.id);
       }
     }
+    archiveDb.prepare("UPDATE provider_refresh SET authoritative = 0 WHERE owner_id = ? AND provider = 'plex' AND authoritative = 1").run(ownerId);
+    archiveDb.prepare(`
+      UPDATE provider_refresh
+      SET completed_at = ?, status = 'synced', snapshot_completeness = 'complete',
+          item_count = ?, authoritative = 1, reason = NULL
+        WHERE refresh_id = ? AND owner_id = ?
+      `).run(completedAt, snapshotItemCount, refreshId, ownerId);
     archiveDb.exec("COMMIT");
     invalidateArchiveInventoryCache(ownerId);
   } catch (error) {
@@ -659,22 +666,8 @@ export async function syncPlexInventory(ownerId: string) {
       for (const warning of warnings) addEvent("warning", warning, "plex", ownerId);
       return;
     }
-    await reconcileInventory(ownerId, serverUrl, remoteInventory);
     const successfulAt = new Date().toISOString();
-    archiveDb.exec("BEGIN IMMEDIATE");
-    try {
-      archiveDb.prepare("UPDATE provider_refresh SET authoritative = 0 WHERE owner_id = ? AND provider = 'plex' AND authoritative = 1").run(ownerId);
-      archiveDb.prepare(`
-        UPDATE provider_refresh
-        SET completed_at = ?, status = 'synced', snapshot_completeness = 'complete',
-            item_count = ?, authoritative = 1, reason = NULL
-        WHERE refresh_id = ? AND owner_id = ?
-      `).run(successfulAt, remoteInventory.reduce((count, library) => count + library.items.length, 0), refreshId, ownerId);
-      archiveDb.exec("COMMIT");
-    } catch (error) {
-      archiveDb.exec("ROLLBACK");
-      throw error;
-    }
+    await reconcileInventory(ownerId, serverUrl, remoteInventory, refreshId, successfulAt, remoteInventory.reduce((count, library) => count + library.items.length, 0));
     writeState(ownerId, {
       plexSyncStatus: "synced",
       plexSnapshotCompleteness: "complete",
