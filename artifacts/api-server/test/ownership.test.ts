@@ -378,11 +378,15 @@ describe("user ownership", { concurrency: false }, () => {
       );
 
       const beforeFailure = readPlexInventory(ownerA);
+      const beforeFailureConfig = getPlexConfig(ownerA);
       failSecondLibrary = true;
       changeFirstLibrary = true;
       await syncPlexInventory(ownerA);
-      assert.equal(getPlexConfig(ownerA).status, "sync_error");
-      assert.match(getPlexConfig(ownerA).lastError ?? "", /HTTP 503/);
+      const failedConfig = getPlexConfig(ownerA);
+      assert.equal(failedConfig.status, "sync_error");
+      assert.equal(failedConfig.syncStatus, "sync_error");
+      assert.match(failedConfig.lastError ?? "", /HTTP 503/);
+      assert.equal(failedConfig.lastSuccessfulSyncAt, beforeFailureConfig.lastSuccessfulSyncAt);
       assert.deepEqual(readPlexInventory(ownerA), beforeFailure);
       failSecondLibrary = false;
       changeFirstLibrary = false;
