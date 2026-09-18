@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, readdir } from "node:fs/promises";
+import { access as fsAccess, mkdtemp, mkdir, readFile, rename as fsRename, stat as fsStat, writeFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -41,6 +41,25 @@ test("batch execution performs a three-file cycle and exact revert", async () =>
   assert.equal(await readFile(join(root, "A"), "utf8"), "A");
   assert.equal(await readFile(join(root, "B"), "utf8"), "B");
   assert.equal(await readFile(join(root, "C"), "utf8"), "C");
+});
+
+test("interrupted batch execution remains recoverable and does not infer completion", async () => {
+  const { root, mappings } = await fixture();
+  let renameCount = 0;
+  const result = await executeBatchFiles(mappings, {
+    stat: fsStat,
+    access: fsAccess,
+    rename: async (source, destination) => {
+      renameCount += 1;
+      if (renameCount === 2) throw new Error("simulated process interruption");
+      await fsRename(source, destination);
+    },
+  });
+  assert.equal(result.state, "partial");
+  const inspected = await inspectBatchOperation({ batch: result.mappings } as never, { stat: fsStat });
+  assert.equal(inspected[0].classification, "UNKNOWN");
+  assert.equal(inspected[1].classification, "CONFLICT");
+  assert.equal(inspected[2].classification, "CONFIRMED_NOT_STARTED");
 });
 
 test("batch preflight rejects an unrelated destination occupant", async () => {
