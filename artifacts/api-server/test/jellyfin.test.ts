@@ -164,6 +164,30 @@ describe("jellyfin integration", { concurrency: false }, () => {
     }
   });
 
+  test("failed Jellyfin refresh leaves syncing and can be retried", async () => {
+    let fail = true;
+    const mock = createMockJellyfin({ failSystemInfo: () => fail });
+    const serverUrl = await mock.start();
+    const owner = "jellyfin-failure-owner";
+    try {
+      saveJellyfinConfig(owner, { serverUrl, apiKey: "valid-key" });
+      startJellyfinSync(owner);
+      for (let attempt = 0; attempt < 20 && !["sync_error", "synced"].includes(getJellyfinConfig(owner).syncStatus); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.equal(getJellyfinConfig(owner).syncStatus, "sync_error");
+      assert.ok(getJellyfinConfig(owner).lastError);
+      fail = false;
+      startJellyfinSync(owner);
+      for (let attempt = 0; attempt < 20 && !["sync_error", "synced"].includes(getJellyfinConfig(owner).syncStatus); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.equal(getJellyfinConfig(owner).syncStatus, "synced");
+    } finally {
+      await mock.stop();
+    }
+  });
+
   test("server URLs are validated and credentials are never echoed back", () => {
     assert.throws(
       () => saveJellyfinConfig("jellyfin-url-owner", { serverUrl: "ftp://example.com" }),
