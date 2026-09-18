@@ -215,6 +215,36 @@ describe("review sync severity gating", { concurrency: false }, () => {
     assert.equal(reviewCount, 0);
   });
 
+  test("ambiguous identity stays uncertain without creating workload", async () => {
+    const owner = `ambiguous-provider-owner-${Date.now()}`;
+    const library = archiveDb.prepare(`
+      INSERT INTO plex_library (name, server_url, library_key, library_type, owner_id, sync_status)
+      VALUES ('Movies', 'http://plex.test', 'ambiguous-provider', 'movie', ?, 'synced')
+    `).run(owner);
+    for (const ratingKey of ['ambiguous-1', 'ambiguous-2']) {
+      archiveDb.prepare(`
+        INSERT INTO plex_item (library_id, rating_key, title, item_type, year, metadata_json, owner_id)
+        VALUES (?, ?, 'Same Film', 'movie', 2024, '{}', ?)
+      `).run(Number(library.lastInsertRowid), ratingKey, owner);
+    }
+    archiveDb.prepare(`
+      INSERT INTO file_record
+        (path, size_bytes, checksum, owner_id, filename, relative_path, scan_status, archive_root)
+      VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+    `).run('/media/Same Film.2024.mkv', 1000, 'ambiguous-checksum', owner, 'Same Film.2024.mkv', 'Same Film.2024.mkv', '/media');
+    invalidate(owner);
+    const reconciliation = await readReconciliationReport(owner, 1, 100);
+    assert.ok(reconciliation.results.some((result) => result.classification === 'uncertain'));
+    await reviewSync.syncControlPlaneReviewItems(owner);
+    const workload = await readWorkload(owner);
+    assert.ok(workload.items.filter((item) => item.title.includes('Same Film')).length <= 1);
+    await reviewSync.syncControlPlaneReviewItems(owner);
+    const activeReviews = (archiveDb.prepare(
+      "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND state IN ('pending', 'reopened')",
+    ).get(owner) as { count: number }).count;
+    assert.ok(activeReviews <= 1, 'ambiguous identity must not multiply active review work');
+  });
+
   test("a missing file escalates to a decision even with no other evidence", async () => {
     addFile({
       id: 9010,
