@@ -239,7 +239,9 @@ describe("user ownership", { concurrency: false }, () => {
   test("real Plex connection and inventory synchronization are repeatable, isolated, and failure-safe", async () => {
     let failIdentity = false;
     let failSecondLibrary = false;
+    let partialSecondLibrary = false;
     let changeFirstLibrary = false;
+    let omitBeta = false;
     let requestCount = 0;
     const plexServer = createServer((req, res) => {
       requestCount += 1;
@@ -298,16 +300,21 @@ describe("user ownership", { concurrency: false }, () => {
               Media: [],
             },
           ];
+        const visibleItems = omitBeta ? allItems.filter((item) => item.ratingKey !== "101") : allItems;
         const offset = Number(url.searchParams.get("X-Plex-Container-Start") ?? 0);
         res.end(JSON.stringify({
           MediaContainer: {
-            totalSize: allItems.length,
-            Metadata: allItems.slice(offset, offset + 1),
+            totalSize: visibleItems.length,
+            Metadata: visibleItems.slice(offset, offset + 1),
           },
         }));
         return;
       }
       if (url.pathname === "/library/sections/2/all" && failSecondLibrary) {
+        if (partialSecondLibrary) {
+          res.end(JSON.stringify({ MediaContainer: { totalSize: 1, Metadata: [{ ratingKey: "show-1", title: "Incomplete Show", type: "show" }] } }));
+          return;
+        }
         res.statusCode = 503;
         res.end(JSON.stringify({ error: "second library unavailable" }));
         return;
@@ -354,6 +361,37 @@ describe("user ownership", { concurrency: false }, () => {
       const firstProviderFindingCount = (archiveDb.prepare(
         "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE 'provider-only:%'",
       ).get(ownerA) as { count: number }).count;
+
+      const completeInventory = readPlexInventory(ownerA);
+      const completeRefreshId = firstConfig.lastSuccessfulRefreshId;
+      omitBeta = true;
+      failSecondLibrary = true;
+      partialSecondLibrary = true;
+      await syncPlexInventory(ownerA);
+      const partialConfig = getPlexConfig(ownerA);
+      assert.equal(partialConfig.syncStatus, "sync_error");
+      assert.equal(partialConfig.snapshotCompleteness, "partial");
+      assert.equal(partialConfig.lastSuccessfulRefreshId, completeRefreshId);
+      assert.deepEqual(readPlexInventory(ownerA), completeInventory);
+      assert.equal((archiveDb.prepare(
+        "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE 'provider-only:%' AND state IN ('pending', 'reopened', 'deferred')",
+      ).get(ownerA) as { count: number }).count, firstProviderFindingCount);
+
+      failSecondLibrary = false;
+      partialSecondLibrary = false;
+      await syncPlexInventory(ownerA);
+      const completeAbsenceConfig = getPlexConfig(ownerA);
+      assert.equal(completeAbsenceConfig.syncStatus, "synced");
+      assert.equal(completeAbsenceConfig.snapshotCompleteness, "complete");
+      assert.notEqual(completeAbsenceConfig.lastSuccessfulRefreshId, completeRefreshId);
+      assert.equal(readPlexInventory(ownerA).items.length, 1);
+      const supersededBeta = archiveDb.prepare(
+        "SELECT state, payload_json FROM review_item WHERE owner_id = ? AND subject_key = 'provider-only:plex:101'",
+      ).get(ownerA) as { state: string; payload_json: string } | undefined;
+      assert.equal(supersededBeta?.state, "rejected");
+      assert.equal(JSON.parse(supersededBeta?.payload_json ?? "{}").lifecycleStatus, "superseded");
+      omitBeta = false;
+      await syncPlexInventory(ownerA);
 
       const firstInventory = readPlexInventory(ownerA);
       assert.equal(firstInventory.libraries.length, 1);
