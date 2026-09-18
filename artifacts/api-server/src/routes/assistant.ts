@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { GetAssistantOverviewResponse } from "@workspace/api-zod";
+import { GetAssistantOverviewResponse, GetAssistantWorkloadLineageParams, GetAssistantWorkloadLineageResponse, GetAssistantWorkloadResponse } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import { readAssistantOverview } from "../services/assistant-overview";
 import { researchCandidate } from "../services/media-research";
@@ -74,16 +74,17 @@ router.get("/assistant/research/history", async (req, res, next) => {
 
 router.get("/assistant/workload", async (req, res, next) => {
   try {
-    res.json(await readWorkload(getAuthenticatedUserId(req)));
+    res.json(GetAssistantWorkloadResponse.parse(await readWorkload(getAuthenticatedUserId(req))));
   } catch (error) {
     next(error);
   }
 });
 
 router.get("/assistant/workload/:workloadId/lineage", (req, res) => {
-  const lineage = readWorkloadLineage(req.params.workloadId, getAuthenticatedUserId(req));
+  const { workloadId } = GetAssistantWorkloadLineageParams.parse(req.params);
+  const lineage = readWorkloadLineage(workloadId, getAuthenticatedUserId(req));
   if (!lineage) return res.status(404).json({ message: "Workload lineage not found." });
-  return res.json(lineage);
+  return res.json(GetAssistantWorkloadLineageResponse.parse(lineage));
 });
 
 router.get("/assistant/health", async (req, res, next) => {
