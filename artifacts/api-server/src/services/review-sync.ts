@@ -1,11 +1,22 @@
 import { createHash } from "node:crypto";
 import { readArchiveInventory } from "./archive";
+import { readUserSetting } from "../lib/archive-db";
 import { readNamingProposals } from "./naming-intelligence";
 import { ensureReviewItem, supersedeReviewItems } from "./review-queue";
 import { classifyFinding, summariseSeverity, type FindingClassification } from "./finding-severity";
 
 function evidenceHash(value: unknown) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function snapshotProvenance(ownerId: string, provider: string) {
+  const prefix = provider.toLowerCase() === "jellyfin" ? "jellyfin" : "plex";
+  return {
+    provider,
+    refreshId: readUserSetting(ownerId, `${prefix}LastSuccessfulRefreshId`),
+    capturedAt: readUserSetting(ownerId, `${prefix}LastSuccessfulSyncAt`),
+    syncStatus: readUserSetting(ownerId, `${prefix}SyncStatus`),
+  };
 }
 
 export async function syncControlPlaneReviewItems(ownerId: string) {
@@ -51,6 +62,7 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
   }
 
   const inventory = readArchiveInventory(ownerId);
+  const provenance = snapshotProvenance(ownerId, inventory.provider);
   // A provider-only relationship has a stable identity even as its evidence
   // changes. Supersede active observations that are absent from this complete
   // persisted snapshot, but never infer absence from a failed refresh: this
@@ -99,6 +111,7 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
         classification: ["lower_quality_version", "higher_quality_available"].includes(record.qualityStatus)
           ? "quality_conflict"
           : record.qualityStatus,
+        snapshot: provenance,
         fileRecordId: record.id,
         archiveItemId: record.archiveItemId,
         sourcePath: record.path,
@@ -127,6 +140,7 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
       title: `${providerOnly.providerLabel} item is not in the archive: ${providerOnly.title}`,
       payload: {
         classification: "plex_only",
+        snapshot: provenance,
         provider: providerOnly.provider,
         providerLabel: providerOnly.providerLabel,
         ratingKey: providerOnly.ratingKey,

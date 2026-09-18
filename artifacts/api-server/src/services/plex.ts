@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { archiveDb, addEvent, readSettings, readUserSetting, writeUserSetting } from "../lib/archive-db";
 import {
   classifyAddress,
@@ -386,6 +387,7 @@ export function getPlexConfig(ownerId: string) {
     syncStatus: exposedSyncStatus,
     lastAttemptedAt: readState(ownerId, "plexLastAttemptedAt"),
     lastSuccessfulSyncAt: readState(ownerId, "plexLastSuccessfulSyncAt"),
+    lastSuccessfulRefreshId: readState(ownerId, "plexLastSuccessfulRefreshId"),
     lastError: readState(ownerId, "plexLastError"),
     serverName: readState(ownerId, "plexServerName"),
     libraryCount: Number(stats.library_count ?? 0),
@@ -582,10 +584,12 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
 }
 
 export async function syncPlexInventory(ownerId: string) {
+  const refreshId = randomUUID();
   const { serverUrl, token } = readPlexCredentials(ownerId);
   if (!serverUrl || !token) throw new PlexConfigurationError("Configure a Plex server URL and token before syncing.");
   writeState(ownerId, {
     plexSyncStatus: "syncing",
+    plexLastAttemptedRefreshId: refreshId,
     plexLastAttemptedAt: new Date().toISOString(),
     plexLastError: null,
   });
@@ -630,6 +634,7 @@ export async function syncPlexInventory(ownerId: string) {
     writeState(ownerId, {
       plexSyncStatus: "synced",
       plexLastSuccessfulSyncAt: successfulAt,
+      plexLastSuccessfulRefreshId: refreshId,
       plexLastError: null,
     });
     // The provider snapshot is now authoritative for this refresh. Reconcile

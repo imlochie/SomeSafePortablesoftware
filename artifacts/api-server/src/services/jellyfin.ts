@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   archiveDb,
   addEvent,
@@ -539,6 +540,7 @@ export function getJellyfinConfig(ownerId: string) {
     syncStatus: exposedSyncStatus,
     lastAttemptedAt: readState(ownerId, "jellyfinLastAttemptedAt"),
     lastSuccessfulSyncAt: readState(ownerId, "jellyfinLastSuccessfulSyncAt"),
+    lastSuccessfulRefreshId: readState(ownerId, "jellyfinLastSuccessfulRefreshId"),
     lastError: readState(ownerId, "jellyfinLastError"),
     serverName: readState(ownerId, "jellyfinServerName"),
     libraryCount: Number(stats.library_count ?? 0),
@@ -610,6 +612,7 @@ export async function testJellyfinConnection(ownerId: string) {
 }
 
 export async function syncJellyfinInventory(ownerId: string) {
+  const refreshId = randomUUID();
   const { serverUrl, apiKey, userId: configuredUserId } = readJellyfinCredentials(ownerId);
   if (!serverUrl || !apiKey) {
     throw new JellyfinConfigurationError(
@@ -618,6 +621,7 @@ export async function syncJellyfinInventory(ownerId: string) {
   }
   writeState(ownerId, {
     jellyfinSyncStatus: "syncing",
+    jellyfinLastAttemptedRefreshId: refreshId,
     jellyfinLastAttemptedAt: new Date().toISOString(),
     jellyfinLastError: null,
   });
@@ -675,6 +679,7 @@ export async function syncJellyfinInventory(ownerId: string) {
       writeState(ownerId, {
         jellyfinSyncStatus: "synced",
         jellyfinLastSuccessfulSyncAt: successfulAt,
+        jellyfinLastSuccessfulRefreshId: refreshId,
         jellyfinLastError: null,
       });
       // Derive findings from the persisted snapshot without issuing another
