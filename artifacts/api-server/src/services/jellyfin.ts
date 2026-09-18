@@ -286,16 +286,17 @@ async function stageLibraryItemKeys(ownerId: string, libraryId: number, itemKeys
     "DELETE FROM jellyfin_sync_keys WHERE owner_id = ? AND library_id = ?",
   ).run(ownerId, libraryId);
   for (let start = 0; start < itemKeys.length; start += jellyfinPersistenceBatchSize) {
-    archiveDb.exec("BEGIN IMMEDIATE");
+    archiveDb.exec("SAVEPOINT jelly_sync_keys_batch");
     try {
       for (const itemKey of itemKeys.slice(start, start + jellyfinPersistenceBatchSize)) {
         archiveDb.prepare(
           "INSERT OR IGNORE INTO jellyfin_sync_keys (owner_id, library_id, item_key) VALUES (?, ?, ?)",
         ).run(ownerId, libraryId, itemKey);
       }
-      archiveDb.exec("COMMIT");
+      archiveDb.exec("RELEASE SAVEPOINT jelly_sync_keys_batch");
     } catch (error) {
-      archiveDb.exec("ROLLBACK");
+      archiveDb.exec("ROLLBACK TO SAVEPOINT jelly_sync_keys_batch");
+      archiveDb.exec("RELEASE SAVEPOINT jelly_sync_keys_batch");
       throw error;
     }
     await yieldToEventLoop();
@@ -360,7 +361,7 @@ async function persistLibrary(
   }
 
   for (let start = 0; start < items.length; start += jellyfinPersistenceBatchSize) {
-    archiveDb.exec("BEGIN IMMEDIATE");
+    archiveDb.exec("SAVEPOINT jelly_inventory_batch");
     try {
       for (const item of items.slice(start, start + jellyfinPersistenceBatchSize)) {
         if (!item) continue;
@@ -420,9 +421,10 @@ async function persistLibrary(
           }
         }
       }
-      archiveDb.exec("COMMIT");
+      archiveDb.exec("RELEASE SAVEPOINT jelly_inventory_batch");
     } catch (error) {
-      archiveDb.exec("ROLLBACK");
+      archiveDb.exec("ROLLBACK TO SAVEPOINT jelly_inventory_batch");
+      archiveDb.exec("RELEASE SAVEPOINT jelly_inventory_batch");
       throw error;
     }
     await yieldToEventLoop();
@@ -452,13 +454,13 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
   complete: boolean;
   items: ReturnType<typeof mapItem>[];
 }>) {
-  for (const library of libraries) {
-    await persistLibrary(ownerId, serverUrl, library, library.items);
-    invalidateArchiveInventoryCache(ownerId);
-    await yieldToEventLoop();
-  }
   archiveDb.exec("BEGIN IMMEDIATE");
   try {
+    for (const library of libraries) {
+      await persistLibrary(ownerId, serverUrl, library, library.items);
+      invalidateArchiveInventoryCache(ownerId);
+      await yieldToEventLoop();
+    }
     const currentLibraryKeys = new Set(libraries.map((library) => library.key));
     const existingLibraries = archiveDb.prepare(
       "SELECT id, library_key FROM jellyfin_library WHERE owner_id = ? AND server_url = ?",
