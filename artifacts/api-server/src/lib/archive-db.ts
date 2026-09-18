@@ -341,6 +341,9 @@ archiveDb.exec(`
   );
   CREATE INDEX IF NOT EXISTS provider_refresh_owner_idx
     ON provider_refresh(owner_id, provider, started_at DESC);
+  UPDATE provider_refresh
+  SET snapshot_reference = 'provider-refresh:' || refresh_id
+  WHERE snapshot_reference IS NULL OR snapshot_reference = provider || ':' || owner_id;
   CREATE TABLE IF NOT EXISTS review_item (
     id INTEGER PRIMARY KEY,
     owner_id TEXT NOT NULL,
