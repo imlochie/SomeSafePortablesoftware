@@ -13,6 +13,11 @@ import { isIP } from "node:net";
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 export const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
+export function requestTimeoutMs() {
+  const configured = Number(process.env.ARCHIVE_ASSISTANT_REQUEST_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
 export type ValidatedTarget = { url: URL; address: string; family: 4 | 6 };
 
 export interface TargetErrorFactories {
@@ -154,7 +159,7 @@ export interface BinaryRequestOptions extends JsonRequestOptions {
 export function requestBinary(options: BinaryRequestOptions): Promise<{ body: Buffer; contentType: string }> {
   const {
     target, path, headers, label, requestError,
-    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    timeoutMs = requestTimeoutMs(),
     maxResponseBytes = 8 * 1024 * 1024,
     allowedContentTypes,
   } = options;
@@ -201,7 +206,7 @@ export function requestJson(options: JsonRequestOptions): Promise<unknown> {
     headers,
     label,
     requestError,
-    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    timeoutMs = requestTimeoutMs(),
     maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
   } = options;
   const relative = new URL(path, "http://provider.local");

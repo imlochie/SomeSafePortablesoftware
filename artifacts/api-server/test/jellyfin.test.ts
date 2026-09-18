@@ -20,6 +20,7 @@ const ownerB = "jellyfin-user-b";
 interface MockOptions {
   failSystemInfo?: () => boolean;
   failLibraryItems?: () => boolean;
+  delaySystemInfoMs?: () => number;
   itemsOverride?: () => unknown[] | null;
 }
 
@@ -45,7 +46,12 @@ function createMockJellyfin(options: MockOptions = {}) {
         res.end(JSON.stringify({ error: "system info unavailable" }));
         return;
       }
-      res.end(JSON.stringify({ ServerName: "Test Jellyfin", Id: "server-1" }));
+      const delay = options.delaySystemInfoMs?.() ?? 0;
+      if (delay > 0) {
+        setTimeout(() => res.end(JSON.stringify({ ServerName: "Test Jellyfin", Id: "server-1" })), delay);
+      } else {
+        res.end(JSON.stringify({ ServerName: "Test Jellyfin", Id: "server-1" }));
+      }
       return;
     }
     if (url.pathname === "/Users") {
@@ -193,6 +199,36 @@ describe("jellyfin integration", { concurrency: false }, () => {
       assert.ok(retried.lastSuccessfulSyncAt);
       assert.notEqual(retried.lastAttemptedAt, failed.lastAttemptedAt);
     } finally {
+      await mock.stop();
+    }
+  });
+
+  test("Jellyfin request timeout releases the guard and permits retry", async () => {
+    const mock = createMockJellyfin({ delaySystemInfoMs: () => 100 });
+    const serverUrl = await mock.start();
+    const owner = "jellyfin-timeout-owner";
+    const previousTimeout = process.env.ARCHIVE_ASSISTANT_REQUEST_TIMEOUT_MS;
+    process.env.ARCHIVE_ASSISTANT_REQUEST_TIMEOUT_MS = "25";
+    try {
+      saveJellyfinConfig(owner, { serverUrl, apiKey: "valid-key" });
+      startJellyfinSync(owner);
+      for (let attempt = 0; attempt < 20 && !["sync_error", "synced"].includes(getJellyfinConfig(owner).syncStatus); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      const timedOut = getJellyfinConfig(owner);
+      assert.equal(timedOut.syncStatus, "sync_error");
+      assert.match(timedOut.lastError ?? "", /timed out/i);
+      assert.equal(timedOut.lastSuccessfulSyncAt, null);
+      // The request guard must be released even when the transport times out.
+      process.env.ARCHIVE_ASSISTANT_REQUEST_TIMEOUT_MS = "1000";
+      startJellyfinSync(owner);
+      for (let attempt = 0; attempt < 20 && !["sync_error", "synced"].includes(getJellyfinConfig(owner).syncStatus); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.equal(getJellyfinConfig(owner).syncStatus, "synced");
+    } finally {
+      if (previousTimeout === undefined) delete process.env.ARCHIVE_ASSISTANT_REQUEST_TIMEOUT_MS;
+      else process.env.ARCHIVE_ASSISTANT_REQUEST_TIMEOUT_MS = previousTimeout;
       await mock.stop();
     }
   });
