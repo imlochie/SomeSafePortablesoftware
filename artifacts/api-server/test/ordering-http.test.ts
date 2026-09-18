@@ -112,6 +112,39 @@ test("Power Renamer refuses a size-only source identity", async () => {
   } finally { await fixture.cleanup(); }
 });
 
+test("Power Renamer refuses the batch when a companion identity changes", async () => {
+  const fixture = await api();
+  const companion = `${fixture.a}.srt`;
+  try {
+    const companionId = Number(archiveDb.prepare("INSERT INTO file_record (path, size_bytes, checksum, fingerprint, owner_id, filename, relative_path, scan_status, archive_root) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)").run(companion, 12, "sidecar-a", null, "__local__", "A.srt", "A.srt", fixture.root).lastInsertRowid);
+    const review = ensureReviewItem("__local__", {
+      kind: "naming_proposal",
+      subjectKey: "http-power-companion-stale",
+      title: "Stale Power Renamer companion plan",
+      payload: {
+        planId: "http-power-companion-stale",
+        mappings: [
+          { id: "record-a", sourcePath: fixture.a, destinationPath: join(fixture.root, "renamed-A.mp4") },
+          { id: "companion-a", sourcePath: companion, destinationPath: join(fixture.root, "renamed-A.srt") },
+        ],
+        expectedSourceIdentities: {
+          [fixture.a]: `file_record:${fixture.aId}:a`,
+          [companion]: `file_record:${companionId}:sidecar-a`,
+        },
+      },
+    });
+    const approved = await fixture.request(`/api/review-items/${review.id}/approve`, { method: "POST", body: "{}" });
+    assert.equal(approved.status, 200);
+    archiveDb.prepare("UPDATE file_record SET checksum = ? WHERE owner_id = ? AND id = ?").run("changed-sidecar", "__local__", companionId);
+    const response = await fixture.request("/api/archive/power-renamer/operations", { method: "POST", body: JSON.stringify({ reviewItemId: review.id }) });
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /STALE_POWER_RENAMER_PLAN/);
+  } finally {
+    archiveDb.prepare("DELETE FROM file_record WHERE owner_id = ? AND path = ?").run("__local__", companion);
+    await fixture.cleanup();
+  }
+});
+
 test("Power Renamer refuses an approved plan when source identity changes", async () => {
   const fixture = await api();
   try {
