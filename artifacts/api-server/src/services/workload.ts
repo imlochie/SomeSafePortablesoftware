@@ -8,6 +8,12 @@ export type WorkloadState = (typeof workloadStates)[number];
 export type WorkloadItem = {
   id: string;
   title: string;
+  reviewItemId: number | null;
+  findingClassification: string | null;
+  currentObservationId: number | null;
+  provider: string | null;
+  refreshId: string | null;
+  evidenceKey: string | null;
   summary: string;
   state: WorkloadState;
   needsUserAction: boolean;
@@ -61,6 +67,8 @@ export async function readWorkload(ownerId: string): Promise<Workload> {
       : "being_handled";
     items.push({
       id: `download:${job.id}`, title: job.title,
+      reviewItemId: null, findingClassification: null, currentObservationId: null,
+      provider: null, refreshId: null, evidenceKey: null,
       summary: job.status === "complete" ? "The file was downloaded and verified." : job.errorMessage ?? `The system is ${job.currentPhase ?? job.status}.`,
       state, needsUserAction: job.status === "recovery_required" || job.status === "failed",
       nextStep: job.status === "complete" ? "Find the outcome in History." : job.status === "failed" ? "Review the result before trying again." : job.status === "queued" ? "Start the job when you are ready." : job.status === "paused" ? "Resume the job when you are ready." : "The system will continue and verify the result.",
@@ -75,6 +83,18 @@ export async function readWorkload(ownerId: string): Promise<Workload> {
       : review.state === "deferred" ? "waiting" : review.state === "approved" ? "being_handled" : "needs_you";
     items.push({
       id: `review:${review.id}`, title: review.title,
+      reviewItemId: review.id,
+      findingClassification: typeof review.payload.classification === "string" ? review.payload.classification : null,
+      currentObservationId: review.currentObservationId,
+      provider: typeof review.payload.provider === "string"
+        ? review.payload.provider
+        : review.payload.snapshot && typeof review.payload.snapshot === "object" && typeof (review.payload.snapshot as { provider?: unknown }).provider === "string"
+          ? String((review.payload.snapshot as { provider: string }).provider)
+          : null,
+      refreshId: review.payload.snapshot && typeof review.payload.snapshot === "object" && typeof (review.payload.snapshot as { refreshId?: unknown }).refreshId === "string"
+        ? String((review.payload.snapshot as { refreshId: string }).refreshId)
+        : null,
+      evidenceKey: review.evidenceKey,
       summary: state === "dismissed" ? "This was dismissed and is no longer active." : "The system is waiting for your decision.",
       state, needsUserAction: state === "needs_you",
       nextStep: state === "needs_you" ? "Review the explanation before deciding." : state === "waiting" ? "Reopen it when you want to continue." : "See the related outcome.",
@@ -86,6 +106,8 @@ export async function readWorkload(ownerId: string): Promise<Workload> {
   if (scan.status === "scanning" || scan.status === "interrupted") {
     items.push({
       id: "health:archive-scan", title: scan.status === "scanning" ? "An archive scan is running" : "An archive scan needs attention",
+      reviewItemId: null, findingClassification: null, currentObservationId: null,
+      provider: null, refreshId: null, evidenceKey: null,
       summary: scan.status === "scanning" ? "The current scan state is being tracked." : "The previous scan was interrupted; review it before starting another.",
       state: scan.status === "scanning" ? "being_handled" : "needs_you", needsUserAction: scan.status === "interrupted",
       nextStep: scan.status === "scanning" ? "Wait for the scan to finish." : "Review the scan state before continuing.",
@@ -110,7 +132,16 @@ function readScanSummary(ownerId: string): ScanSummary {
   return { status: row?.status ?? "not_scanned", completedAt: row?.completed_at ?? null };
 }
 
-type ReviewSummary = { id: number; kind: string; title: string; state: ReviewItemState; updatedAt: string };
+type ReviewSummary = {
+  id: number;
+  kind: string;
+  title: string;
+  state: ReviewItemState;
+  updatedAt: string;
+  payload: Record<string, unknown>;
+  currentObservationId: number | null;
+  evidenceKey: string | null;
+};
 
 function isSupersededPayload(value: unknown) {
   try {
@@ -128,12 +159,33 @@ function readReviewCounts(ownerId: string) {
 
 function readRecentReviews(ownerId: string): ReviewSummary[] {
   const rows = archiveDb.prepare(`
-    SELECT id, kind, title, state, payload_json, updated_at
-    FROM review_item
-    WHERE owner_id = ? AND state IN ('pending', 'reopened', 'deferred', 'approved', 'rejected')
-    ORDER BY updated_at DESC, id DESC LIMIT 20
-  `).all(ownerId) as Array<{ id: number; kind: string; title: string; state: ReviewItemState; payload_json: string; updated_at: string }>;
+    SELECT r.id, r.kind, r.title, r.state, r.payload_json, r.updated_at,
+           o.id AS current_observation_id, o.evidence_key AS current_evidence_key
+    FROM review_item r
+    LEFT JOIN review_item_observation o
+      ON o.review_item_id = r.id AND o.owner_id = r.owner_id AND o.status = 'active'
+    WHERE r.owner_id = ? AND r.state IN ('pending', 'reopened', 'deferred', 'approved', 'rejected')
+    ORDER BY r.updated_at DESC, r.id DESC LIMIT 20
+  `).all(ownerId) as Array<{
+    id: number;
+    kind: string;
+    title: string;
+    state: ReviewItemState;
+    payload_json: string;
+    updated_at: string;
+    current_observation_id?: number | null;
+    current_evidence_key?: string | null;
+  }>;
   return rows
     .filter((row) => !isSupersededPayload(row.payload_json))
-    .map((row) => ({ id: Number(row.id), kind: row.kind, title: row.title, state: row.state, updatedAt: row.updated_at }));
+    .map((row) => {
+      let payload: Record<string, unknown> = {};
+      try { payload = JSON.parse(row.payload_json) as Record<string, unknown>; } catch { /* keep empty */ }
+      return {
+        id: Number(row.id), kind: row.kind, title: row.title, state: row.state, updatedAt: row.updated_at,
+        payload,
+        currentObservationId: row.current_observation_id == null ? null : Number(row.current_observation_id),
+        evidenceKey: row.current_evidence_key ?? (typeof payload.evidenceKey === "string" ? payload.evidenceKey : null),
+      };
+    });
 }

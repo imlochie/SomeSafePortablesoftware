@@ -429,8 +429,18 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(qualityPayload.classification, "quality_conflict");
       assert.ok(qualityPayload.qualityStatus);
       assert.equal(qualityPayload.snapshot?.refreshId, getPlexConfig(reconciliationOwner).lastSuccessfulRefreshId);
+      const currentObservation = archiveDb.prepare(
+        "SELECT id, evidence_key FROM review_item_observation WHERE owner_id = ? AND subject_key = ? AND status = 'active'",
+      ).get(reconciliationOwner, qualityItem?.subject_key) as { id: number; evidence_key: string };
       const workloadBeforeRepeat = await readWorkload(reconciliationOwner);
-      assert.ok(workloadBeforeRepeat.items.some((item) => item.id === `review:${qualityItem?.id}`));
+      const lineageItem = workloadBeforeRepeat.items.find((item) => item.id === `review:${qualityItem?.id}`);
+      assert.ok(lineageItem, "quality conflict must remain in workload");
+      assert.equal(lineageItem?.reviewItemId, qualityItem?.id);
+      assert.equal(lineageItem?.currentObservationId, currentObservation.id);
+      assert.equal(lineageItem?.findingClassification, "quality_conflict");
+      assert.equal(lineageItem?.provider, "plex");
+      assert.equal(lineageItem?.refreshId, getPlexConfig(reconciliationOwner).lastSuccessfulRefreshId);
+      assert.equal(lineageItem?.evidenceKey, currentObservation.evidence_key);
       await syncControlPlaneReviewItems(reconciliationOwner);
       const activeQualityCount = (archiveDb.prepare(
         "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key = ? AND state IN ('pending', 'reopened')",
