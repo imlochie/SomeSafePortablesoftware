@@ -525,6 +525,25 @@ describe("user ownership", { concurrency: false }, () => {
 
       const beforeFailure = readPlexInventory(ownerA);
       const beforeFailureConfig = getPlexConfig(ownerA);
+      archiveDb.exec(`
+        CREATE TEMP TRIGGER injected_plex_inventory_failure
+        AFTER INSERT ON main.plex_item
+        BEGIN SELECT RAISE(ABORT, 'injected inventory failure'); END;
+      `);
+      changeFirstLibrary = true;
+      await syncPlexInventory(ownerA);
+      const injectedFailureConfig = getPlexConfig(ownerA);
+      assert.equal(injectedFailureConfig.syncStatus, 'sync_error');
+      assert.equal(injectedFailureConfig.lastSuccessfulRefreshId, beforeFailureConfig.lastSuccessfulRefreshId);
+      assert.deepEqual(readPlexInventory(ownerA), beforeFailure);
+      const injectedFailureAudit = archiveDb.prepare(
+        "SELECT status, authoritative, item_count FROM provider_refresh WHERE refresh_id = ? AND owner_id = ?",
+      ).get(injectedFailureConfig.lastAttemptedRefreshId, ownerA) as { status: string; authoritative: number; item_count: number | null };
+      assert.equal(injectedFailureAudit.status, 'sync_error');
+      assert.equal(injectedFailureAudit.authoritative, 0);
+      assert.equal(injectedFailureAudit.item_count, null);
+      archiveDb.exec('DROP TRIGGER injected_plex_inventory_failure');
+      changeFirstLibrary = false;
       failSecondLibrary = true;
       changeFirstLibrary = true;
       await syncPlexInventory(ownerA);
