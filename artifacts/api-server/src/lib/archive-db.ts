@@ -343,6 +343,20 @@ archiveDb.exec(`
   );
   CREATE INDEX IF NOT EXISTS review_item_owner_state_idx
     ON review_item(owner_id, state, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS review_item_observation (
+    id INTEGER PRIMARY KEY,
+    review_item_id INTEGER NOT NULL REFERENCES review_item(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL,
+    subject_key TEXT NOT NULL,
+    evidence_key TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'active',
+    observed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    superseded_at TEXT,
+    UNIQUE (owner_id, subject_key, evidence_key)
+  );
+  CREATE INDEX IF NOT EXISTS review_item_observation_current_idx
+    ON review_item_observation(owner_id, subject_key, status);
   CREATE TABLE IF NOT EXISTS review_item_decision (
     id INTEGER PRIMARY KEY,
     review_item_id INTEGER NOT NULL REFERENCES review_item(id) ON DELETE CASCADE,

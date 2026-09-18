@@ -206,6 +206,39 @@ export function ensureReviewItem(
   return mapItem(row, ownerId);
 }
 
+export function recordReviewObservation(
+  ownerId: string,
+  item: ReviewItem,
+  evidenceKey: string,
+  payload: Record<string, unknown>,
+) {
+  const active = archiveDb.prepare(`
+    SELECT id, evidence_key FROM review_item_observation
+    WHERE owner_id = ? AND subject_key = ? AND status = 'active'
+    ORDER BY id DESC LIMIT 1
+  `).get(ownerId, item.subjectKey) as { id: number; evidence_key: string } | undefined;
+  if (active?.evidence_key === evidenceKey) return false;
+  const now = new Date().toISOString();
+  archiveDb.exec("BEGIN IMMEDIATE");
+  try {
+    if (active) {
+      archiveDb.prepare(
+        "UPDATE review_item_observation SET status = 'superseded', superseded_at = ? WHERE id = ? AND owner_id = ?",
+      ).run(now, active.id, ownerId);
+    }
+    archiveDb.prepare(`
+      INSERT INTO review_item_observation
+        (review_item_id, owner_id, subject_key, evidence_key, payload_json, status, observed_at)
+      VALUES (?, ?, ?, ?, ?, 'active', ?)
+    `).run(item.id, ownerId, item.subjectKey, evidenceKey, JSON.stringify(payload), now);
+    archiveDb.exec("COMMIT");
+  } catch (error) {
+    archiveDb.exec("ROLLBACK");
+    throw error;
+  }
+  return true;
+}
+
 export function decideReviewItem(
   id: number,
   ownerId: string,

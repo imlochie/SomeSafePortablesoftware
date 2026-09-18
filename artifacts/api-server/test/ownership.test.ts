@@ -436,6 +436,24 @@ describe("user ownership", { concurrency: false }, () => {
         "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key = ? AND state IN ('pending', 'reopened')",
       ).get(reconciliationOwner, qualityItem?.subject_key) as { count: number }).count;
       assert.equal(activeQualityCount, 1);
+      const firstObservation = archiveDb.prepare(
+        "SELECT id, evidence_key FROM review_item_observation WHERE owner_id = ? AND subject_key = ? AND status = 'active'",
+      ).get(reconciliationOwner, qualityItem?.subject_key) as { id: number; evidence_key: string };
+      archiveDb.prepare("UPDATE file_record SET height = 720 WHERE id = ? AND owner_id = ?").run(Number(localAlpha.lastInsertRowid), reconciliationOwner);
+      invalidateArchiveInventoryCache(reconciliationOwner);
+      await syncControlPlaneReviewItems(reconciliationOwner);
+      const observations = archiveDb.prepare(
+        "SELECT id, evidence_key, status FROM review_item_observation WHERE owner_id = ? AND subject_key = ? ORDER BY id",
+      ).all(reconciliationOwner, qualityItem?.subject_key) as Array<{ id: number; evidence_key: string; status: string }>;
+      assert.equal(observations.length, 2);
+      assert.equal(observations[0].status, "superseded");
+      assert.equal(observations[1].status, "active");
+      assert.notEqual(observations[0].evidence_key, observations[1].evidence_key);
+      assert.equal(observations[0].evidence_key, firstObservation.evidence_key);
+      await syncControlPlaneReviewItems(reconciliationOwner);
+      assert.equal((archiveDb.prepare(
+        "SELECT COUNT(*) AS count FROM review_item_observation WHERE owner_id = ? AND subject_key = ?",
+      ).get(reconciliationOwner, qualityItem?.subject_key) as { count: number }).count, 2);
       archiveDb.prepare("DELETE FROM file_record WHERE id = ? AND owner_id = ?").run(Number(localAlpha.lastInsertRowid), reconciliationOwner);
       archiveDb.prepare("DELETE FROM plex_item WHERE owner_id = ?").run(reconciliationOwner);
       archiveDb.prepare("DELETE FROM plex_library WHERE owner_id = ?").run(reconciliationOwner);

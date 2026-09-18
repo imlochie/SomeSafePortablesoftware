@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readArchiveInventory } from "./archive";
 import { readUserSetting } from "../lib/archive-db";
 import { readNamingProposals } from "./naming-intelligence";
-import { ensureReviewItem, supersedeReviewItems } from "./review-queue";
+import { ensureReviewItem, recordReviewObservation, supersedeReviewItems } from "./review-queue";
 import { classifyFinding, summariseSeverity, type FindingClassification } from "./finding-severity";
 
 function evidenceHash(value: unknown) {
@@ -109,7 +109,7 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
       informationalFindings += 1;
       continue;
     }
-    ensureReviewItem(ownerId, {
+    const finding = ensureReviewItem(ownerId, {
       kind: "archive_finding",
       subjectKey,
       title: `Review ${record.filename}`,
@@ -136,6 +136,7 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
         blockers: [],
       },
     });
+    recordReviewObservation(ownerId, finding, String(finding.payload.evidenceKey ?? record.reviewEvidenceKey), finding.payload);
     archiveFindingItems += 1;
   }
 
