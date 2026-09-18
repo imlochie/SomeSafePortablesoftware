@@ -41,6 +41,13 @@ test("Power Renamer handles Windows sidecar paths without POSIX basename errors"
   assert.equal(expanded.steps.some((step) => step.to.includes("Season 01")), true);
 });
 
+test("Power Renamer normalizes drive-letter paths with forward slashes", () => {
+  const plan = buildPowerRenamePlan([{ fileRecordId: 16, sourcePath: "D:/Shows/Episode.mkv", proposedPath: "D:/Shows/Season 01/Episode.mkv", confidence: "high", operation: "rename", collision: false, mediaType: "tv", researchGrade: "corroborated" }]);
+  const expanded = addPowerRenameCompanions(plan, [{ id: 17, path: "d:/shows/Episode.NFO" }]);
+  assert.equal(expanded.mappings.length, 2);
+  assert.equal(expanded.mappings[1].destinationPath, "D:\\Shows\\Season 01\\Episode.nfo");
+});
+
 test("Power Renamer preserves POSIX case-sensitive sidecar directories", () => {
   const plan = buildPowerRenamePlan([{ fileRecordId: 14, sourcePath: "/archive/Shows/Episode.mkv", proposedPath: "/archive/Shows/Renamed/Episode.mkv", confidence: "high", operation: "rename", collision: false, mediaType: "tv", researchGrade: "corroborated" }]);
   const expanded = addPowerRenameCompanions(plan, [{ id: 15, path: "/archive/shows/Episode.srt" }]);

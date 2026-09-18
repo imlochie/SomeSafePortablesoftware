@@ -2,8 +2,12 @@ import { createHash } from "node:crypto";
 import { posix, win32 } from "node:path";
 import { buildCollisionSafeRenamePlan, type RenameMapping } from "./rename-plan";
 
+function isWindowsPath(path: string) {
+  return path.includes("\\") || /^[A-Za-z]:[\\/]/.test(path);
+}
+
 function pathTools(path: string) {
-  return path.includes("\\") ? win32 : posix;
+  return isWindowsPath(path) ? win32 : posix;
 }
 
 function pathBasename(path: string) { return pathTools(path).basename(path); }
@@ -12,7 +16,7 @@ function pathExtname(path: string) { return pathTools(path).extname(path); }
 function pathJoin(directory: string, filename: string) { return pathTools(directory).join(directory, filename); }
 function pathDirectoryKey(path: string) {
   const directory = pathDirname(path).replaceAll("\\", "/");
-  return path.includes("\\") ? directory.toLowerCase() : directory;
+  return isWindowsPath(path) ? directory.toLowerCase() : directory;
 }
 
 export type PowerRenameCandidate = {
