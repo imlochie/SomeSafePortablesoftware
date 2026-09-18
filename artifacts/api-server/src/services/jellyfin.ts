@@ -677,6 +677,14 @@ export async function syncJellyfinInventory(ownerId: string) {
         jellyfinLastSuccessfulSyncAt: successfulAt,
         jellyfinLastError: null,
       });
+      // Derive findings from the persisted snapshot without issuing another
+      // provider request after refresh.
+      try {
+        const { syncControlPlaneReviewItems } = await import("./review-sync");
+        await syncControlPlaneReviewItems(ownerId);
+      } catch (findingError) {
+        addEvent("warning", `Jellyfin findings were not synchronized: ${publicError(findingError)}`, "jellyfin", ownerId);
+      }
       addEvent(
         "success",
         `Jellyfin inventory synchronized: ${libraries.length} libraries`,

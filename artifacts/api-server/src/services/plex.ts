@@ -632,6 +632,15 @@ export async function syncPlexInventory(ownerId: string) {
       plexLastSuccessfulSyncAt: successfulAt,
       plexLastError: null,
     });
+    // The provider snapshot is now authoritative for this refresh. Reconcile
+    // locally from that persisted snapshot; never perform a second provider
+    // request just to populate findings and workload.
+    try {
+      const { syncControlPlaneReviewItems } = await import("./review-sync");
+      await syncControlPlaneReviewItems(ownerId);
+    } catch (findingError) {
+      addEvent("warning", `Plex findings were not synchronized: ${publicError(findingError)}`, "plex", ownerId);
+    }
     for (const warning of warnings) addEvent("warning", warning, "plex", ownerId);
     addEvent("success", `Plex inventory synchronized: ${libraries.length} libraries`, "plex", ownerId);
   } catch (error) {
