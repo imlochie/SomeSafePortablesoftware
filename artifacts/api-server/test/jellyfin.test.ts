@@ -172,17 +172,26 @@ describe("jellyfin integration", { concurrency: false }, () => {
     try {
       saveJellyfinConfig(owner, { serverUrl, apiKey: "valid-key" });
       startJellyfinSync(owner);
+      assert.throws(() => startJellyfinSync(owner), /already running/i);
       for (let attempt = 0; attempt < 20 && !["sync_error", "synced"].includes(getJellyfinConfig(owner).syncStatus); attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
-      assert.equal(getJellyfinConfig(owner).syncStatus, "sync_error");
-      assert.ok(getJellyfinConfig(owner).lastError);
+      const failed = getJellyfinConfig(owner);
+      assert.equal(failed.syncStatus, "sync_error");
+      assert.equal(failed.status, "sync_error");
+      assert.ok(failed.lastError);
+      assert.ok(failed.lastAttemptedAt);
+      assert.equal(failed.lastSuccessfulSyncAt, null);
       fail = false;
       startJellyfinSync(owner);
       for (let attempt = 0; attempt < 20 && !["sync_error", "synced"].includes(getJellyfinConfig(owner).syncStatus); attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
-      assert.equal(getJellyfinConfig(owner).syncStatus, "synced");
+      const retried = getJellyfinConfig(owner);
+      assert.equal(retried.syncStatus, "synced");
+      assert.equal(retried.status, "synced");
+      assert.ok(retried.lastSuccessfulSyncAt);
+      assert.notEqual(retried.lastAttemptedAt, failed.lastAttemptedAt);
     } finally {
       await mock.stop();
     }
