@@ -161,23 +161,53 @@ from outside is out of scope permanently, not merely deferred.
 This mirrors the existing integration-adapter boundary: external systems are
 replaceable providers, and their internals never leak into the control plane.
 
-### Scope filters the adapter must apply
+### Scope validation is an ingestion contract, not a filter
 
-Plex history is server-wide, so an ingestion that takes it verbatim will
-silently import things that are not the owner's archive behaviour:
+Plex history is server-wide, so ingestion that takes it verbatim silently
+imports things that are not the owner's archive behaviour. Scope is therefore a
+mandatory validation stage, and the resulting dataset **carries its scope
+definition as part of its identity**:
 
-- **Other accounts.** History carries `accountID`; a shared server records
-  friends' and managed users' plays. Attribution is required before any
-  "your viewing" claim.
-- **Live TV and DVR.** Playback with no durable archive item behind it. This is
-  not archive history and would inflate every consumption metric.
-- **Music and photos.** `metadataType` spans all library types; the archive
-  concern is movies and episodes unless deliberately widened.
+```
+Plex history
+    ↓
+scope validation
+    ├── account
+    ├── media type
+    ├── library
+    ├── Live TV / DVR exclusion
+    └── supported event types
+    ↓
+normalised watch observations  (scope definition attached)
+```
 
-Each of these is filterable from fields the history endpoint already returns
-(`accountID`, `librarySectionID`, `type`), so the filtering is cheap — but it
-must be explicit and recorded, because a metric computed over an unstated scope
-is not reproducible.
+What each rule excludes, and why it matters:
+
+- **Account.** History carries `accountID`; a shared server records friends'
+  and managed users' plays. Attribution is required before any "your viewing"
+  claim is possible at all.
+- **Live TV / DVR.** Playback with no durable archive item behind it. Not
+  archive history, and left in it inflates every consumption metric.
+- **Media type and library.** `metadataType` and `librarySectionID` span music
+  and photos; the archive concern is movies and episodes unless deliberately
+  widened.
+- **Supported event types.** A manual "mark watched" writes no history row and
+  is a library-state claim, not an observed play.
+
+Every one of these is filterable from fields the history endpoint already
+returns, so the cost is trivial. The discipline is not.
+
+A metric computed over an unstated scope is irreproducible, and the failure
+surfaces late and unanswerably. Six months on, Arena reports:
+
+> "You've watched 2,481 things."
+
+and nobody can answer **2,481 what?** — which accounts, which libraries,
+including Live TV or not, movies only or episodes too, over which window. An
+aggregate without its scope definition is a number without units. Persisting
+the scope alongside the aggregate makes the question answerable by
+construction, and makes a scope change visible as a recomputation rather than
+as an unexplained discontinuity in a chart.
 
 ## What still must be designed in
 
@@ -195,8 +225,9 @@ is not reproducible.
    `local_media_identity` is complete. Unresolved observations are retained and
    surfaced, never dropped and never silently attributed to a nearest match.
    Note that history rows persist for deleted media, so a naive join produces
-   watch events with no archive counterpart — that is a real and expected class,
-   and arguably an interesting one ("what did I watch and then get rid of?").
+   watch events with no archive counterpart. That is expected, and it resolves
+   into the ownership relation below rather than into a single bucket — the
+   absence of a counterpart alone does not establish that anything departed.
 4. **Played state and play history are different evidence.** Marking an item
    watched writes no history row,[14] and item-level `viewCount`/`lastViewedAt`
    read through the owner token report the owner rather than the viewing
@@ -211,43 +242,119 @@ have no concept of an archive that persists across deletion. Archive Assistant
 does.
 
 Every resolved watch observation therefore carries an **ownership relation**,
-derived and recomputable rather than stored as a flag:
+derived and recomputable rather than stored as a flag. There are four states,
+not three:
 
 ```
 WATCH OBSERVATION
         │
-        ├── currently owned          → item present in file_record / identity
-        ├── previously owned         → we hold evidence it left the archive
-        └── never matched            → no archive evidence, either way
+        ├── currently_owned         → item present in file_record / identity
+        ├── previously_owned        → evidence it was owned AND evidence of departure
+        ├── departure_unconfirmed   → evidence it was owned, departure unestablished
+        └── never_matched           → no evidence it was ever owned
 ```
 
-The middle branch is the valuable one, and the third is the honest one. They
-must not be collapsed: "previously owned" is a claim requiring evidence, while
-"never matched" is an admission of ignorance. Conflating them would manufacture
-an archive history that never happened.
+The fourth state is load-bearing. Without it, an item whose file has been
+`missing` for a year has nowhere honest to go: calling it `currently_owned` is
+false, and calling it `previously_owned` asserts a departure nobody observed.
+`departure_unconfirmed` says exactly what is known — it was ours, it is not
+readable now, and we cannot establish when or how that happened.
 
-**This repository can already evidence the distinction**, which is why the
+The two ignorance states must stay distinct, because they are ignorant about
+different things:
+
+- `never_matched` — no evidence it was **ever** owned.
+- `departure_unconfirmed` — evidence it **was** owned, insufficient evidence of
+  **when or how** it left.
+
+Collapsing either into `previously_owned` would manufacture an archive history
+that never happened.
+
+### Departure evidence has two grades
+
+```
+departure evidence
+├── exact
+│   └── archive_operation → timestamp
+│
+└── bounded
+    └── snapshot A (present) → snapshot B (absent)
+        └── departure window
+```
+
+A bounded departure is not a weaker version of an exact one that should be
+rounded to a date. It is a different statement: *the item was present at A and
+absent at B; departure occurred somewhere in that interval.* That is strictly
+more useful to Arena than a fabricated timestamp, because Arena can reason
+about an interval it is told about and cannot detect one that has been
+flattened. Only an `archive_operation` collapses the interval to an event.
+
+**This repository can already evidence these grades**, which is why the
 taxonomy is derivable rather than speculative:
 
 - `archive_operation` records owner-scoped `delete`, `move`, and `rename`
-  actions with `source_path`, `destination_path`, status, and timestamps. A
-  confirmed delete is direct, high-confidence evidence that an item left the
-  archive, and *when*.
+  actions with `source_path`, `destination_path`, status, and timestamps —
+  exact departure evidence.
+- Library-state snapshots supply bounded evidence: present in an earlier
+  snapshot, absent in a later one, with the interval as the departure window.
 - `file_record.scan_status` distinguishes `active` / `missing` / `error`. A
-  `missing` record is weaker evidence — an unplugged drive is not a deletion —
-  and must be graded as such, not treated as removal.
-- Library-state snapshots (below) supply the fallback: presence in an earlier
-  snapshot and absence later implies departure, with the snapshot interval as
-  the uncertainty window.
+  `missing` record is **not** departure evidence at any grade. It is a read
+  failure, and it maps to `departure_unconfirmed`.
 
-So the relation should carry a confidence grade and its evidence source, in the
-same spirit as the existing reconciliation classifications
+So the relation carries a confidence grade and its evidence source, in the same
+spirit as the existing reconciliation classifications
 (`local_only` / `plex_only` / `duplicate` / `uncertain`). An item that vanished
-before Archive Assistant was ever installed is legitimately `never matched` —
-and saying so is better than inventing a departure date.
+before Archive Assistant was installed is legitimately `never_matched` — and
+saying so is better than inventing a departure date.
 
-The four-way relation in the proposal then falls out naturally, and each cell
-is answerable with evidence:
+### Why `missing` must never age into `previously_owned`
+
+Elapsed time does not distinguish the explanations behind a missing file:
+
+- a disconnected drive
+- an unavailable mount
+- a permissions failure
+- a transient filesystem error
+- genuine deletion
+
+All five produce an identical observation, and waiting produces five identical
+observations for longer. A rule of the form `missing for 30 days →
+previously_owned` would convert an operational heuristic into archive history,
+which is precisely the class of error this document exists to prevent. If an
+aged state is ever wanted, it belongs as `long_term_missing` *within*
+`departure_unconfirmed` — a statement about how long the read has been failing,
+never an upgrade to a departure claim.
+
+The governing principle, which applies to both open questions below:
+
+> **When evidence cannot distinguish two explanations, Archive Assistant
+> preserves the ambiguity rather than manufacturing a transition.**
+
+This is the same discipline already applied to `uncertain` reconciliation
+results, incomplete Plex snapshots, provider authority, and evidence-keyed
+review findings.
+
+### Archive biography, not archive inventory
+
+Joining watch history, archive operations, file state, and library snapshots
+lets the system reconstruct an item's *biography* rather than its current row.
+Two histories that a usage-only model would render identically:
+
+```
+item X   watched 2019 → present → watched again 2022
+         → delete operation 2025 → absent
+         ⇒ previously_owned, exact departure 2025
+
+item Y   watched 2019 → present → drive unavailable 2022
+         → still missing
+         ⇒ departure_unconfirmed, no departure claim
+```
+
+Arena should be able to tell those apart, and can only do so if the fourth
+state exists to hold the second case.
+
+The four-way relation in the proposal then falls out, with each cell answerable
+from evidence:
 
 | | Owned now | Not owned now |
 | --- | --- | --- |
@@ -256,8 +363,20 @@ is answerable with evidence:
 
 The questions worth asking sit in the off-diagonal: what did I repeatedly watch
 before removing it, what did I acquire and watch once and then delete, and what
-do I own today that I have never touched. The last of those is the one with
-teeth, and it is exactly the one that must carry its coverage denominator.
+do I own today that I have never touched.
+
+That last one is the one with teeth, and it needs a real denominator:
+
+```
+dead storage  =  continuously present
+               + known observation coverage
+               + no recorded viewing
+```
+
+not `owned − watched`. The naive subtraction silently counts items that were
+unreadable for half the window, or that sat outside the ingestion scope, or
+that were acquired last week. That is a category error, and an expensive one if
+it ever reaches a deletion recommendation.
 
 ## Derived metrics are recomputable, not remembered opinions
 
@@ -407,7 +526,27 @@ building:
 That join — usage against inventory, quality, integrity, and acquisition — is
 the defensible surface. Not the hours-watched bar chart.
 
-## Open questions
+## Deliberately parked questions
+
+These are parked, not undecided by neglect. Both are governed by the ambiguity
+principle above: neither may be closed by inventing a threshold.
+
+**1. Library-state snapshot interval.**
+Parked. The interval is an *epistemic resolution* setting, not a scheduling
+convenience: it fixes the width of every bounded departure window not backed by
+an `archive_operation`. Choose it from operational cost and the temporal
+precision actually wanted, then expose the resulting resolution alongside the
+coverage record — never from what produces a tidy-looking chart. Whatever is
+chosen, a bounded departure stays an interval; it is never rendered as a date.
+
+**2. Should `missing` age into `previously_owned`?**
+Answered no, and closed. Elapsed time cannot distinguish a disconnected drive
+from a deletion, so no duration threshold can license the transition. A
+long-lived read failure may be labelled `long_term_missing` *within*
+`departure_unconfirmed`, describing how long the read has failed. It never
+becomes a departure claim.
+
+## Other open questions
 
 - Is usage single-owner by definition, or does a household imply per-viewer
   attribution? Plex history is per-`accountID`, so the data supports it and the
@@ -417,13 +556,6 @@ the defensible surface. Not the hours-watched bar chart.
   another application's private database and require its bundled SQLite build.
   The existing integration-adapter boundary points firmly at the API; this
   should be decided explicitly rather than by drift.
-- How long should the library-state snapshot interval be? It sets the
-  resolution of every "previously owned" departure date that is not backed by
-  an `archive_operation` record.
-- Should `file_record.scan_status = 'missing'` ever age into "previously
-  owned"? An offline drive and a deletion are indistinguishable at a point in
-  time but diverge over months. Any such rule is an inference and needs an
-  explicit confidence grade.
 - What is the minimum play duration that constitutes a watch, and is that a
   stored rule or a recompute-time parameter? Making it recompute-time keeps old
   observations honest.
@@ -431,6 +563,9 @@ the defensible surface. Not the hours-watched bar chart.
   observation with provenance "imported", and how is a manual import's coverage
   window established? Tautulli in particular would be a strong secondary source
   for the session-duration data Plex history lacks.
+- Does a scope-definition change invalidate existing aggregates, or produce a
+  second scoped series alongside the first? Recomputation is cleaner; a visible
+  discontinuity may be more honest.
 
 ## Revision note
 
