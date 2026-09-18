@@ -342,6 +342,16 @@ archiveDb.exec(`
   CREATE INDEX IF NOT EXISTS provider_refresh_owner_idx
     ON provider_refresh(owner_id, provider, started_at DESC);
   UPDATE provider_refresh
+  SET authoritative = 0
+  WHERE authoritative = 1 AND refresh_id NOT IN (
+    SELECT refresh_id FROM provider_refresh current
+    WHERE current.owner_id = provider_refresh.owner_id
+      AND current.provider = provider_refresh.provider
+    ORDER BY current.completed_at DESC, current.refresh_id DESC LIMIT 1
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS provider_refresh_one_authoritative_idx
+    ON provider_refresh(owner_id, provider) WHERE authoritative = 1;
+  UPDATE provider_refresh
   SET snapshot_reference = 'provider-refresh:' || refresh_id
   WHERE snapshot_reference IS NULL OR snapshot_reference = provider || ':' || owner_id;
   CREATE TABLE IF NOT EXISTS review_item (

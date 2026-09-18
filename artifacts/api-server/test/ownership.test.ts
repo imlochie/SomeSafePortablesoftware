@@ -368,6 +368,11 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(firstRefreshAudit.snapshot_completeness, "complete");
       assert.equal(firstRefreshAudit.authoritative, 1);
       assert.equal(firstRefreshAudit.item_count, 2);
+      assert.equal((archiveDb.prepare("SELECT COUNT(*) AS count FROM provider_refresh WHERE owner_id = ? AND provider = 'plex' AND authoritative = 1").get(ownerA) as { count: number }).count, 1);
+      assert.throws(() => archiveDb.prepare(`
+        INSERT INTO provider_refresh (refresh_id, owner_id, provider, started_at, status, snapshot_completeness, authoritative)
+        VALUES ('duplicate-authority', ?, 'plex', '2026-01-01T00:00:00.000Z', 'synced', 'complete', 1)
+      `).run(ownerA), /UNIQUE|constraint/i);
       const refreshStateAfterFirst = readProviderRefreshState(ownerA, "plex");
       assert.equal(refreshStateAfterFirst.lastAttemptedRefresh?.refreshId, firstSuccessfulRefreshId);
       assert.equal(refreshStateAfterFirst.lastSuccessfulRefresh?.refreshId, firstSuccessfulRefreshId);
@@ -543,6 +548,7 @@ describe("user ownership", { concurrency: false }, () => {
       const recoveredConfig = getPlexConfig(ownerA);
       assert.equal(recoveredConfig.syncStatus, "synced");
       assert.notEqual(recoveredConfig.lastSuccessfulRefreshId, firstSuccessfulRefreshId);
+      assert.equal((archiveDb.prepare("SELECT COUNT(*) AS count FROM provider_refresh WHERE owner_id = ? AND provider = 'plex' AND authoritative = 1").get(ownerA) as { count: number }).count, 1);
 
       savePlexConfig("user-c", { serverUrl: "http://169.254.169.254", token: "valid-token" });
       const blockedTarget = await testPlexConnection("user-c");

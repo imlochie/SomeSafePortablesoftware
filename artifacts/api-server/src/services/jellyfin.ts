@@ -698,12 +698,20 @@ export async function syncJellyfinInventory(ownerId: string) {
     } else {
       await reconcileInventory(ownerId, serverUrl, remoteInventory);
       const successfulAt = new Date().toISOString();
-      archiveDb.prepare(`
-        UPDATE provider_refresh
-        SET completed_at = ?, status = 'synced', snapshot_completeness = 'complete',
-            item_count = ?, authoritative = 1, reason = NULL
-        WHERE refresh_id = ? AND owner_id = ?
-      `).run(successfulAt, remoteInventory.reduce((count, library) => count + library.items.length, 0), refreshId, ownerId);
+      archiveDb.exec("BEGIN IMMEDIATE");
+      try {
+        archiveDb.prepare("UPDATE provider_refresh SET authoritative = 0 WHERE owner_id = ? AND provider = 'jellyfin' AND authoritative = 1").run(ownerId);
+        archiveDb.prepare(`
+          UPDATE provider_refresh
+          SET completed_at = ?, status = 'synced', snapshot_completeness = 'complete',
+              item_count = ?, authoritative = 1, reason = NULL
+          WHERE refresh_id = ? AND owner_id = ?
+        `).run(successfulAt, remoteInventory.reduce((count, library) => count + library.items.length, 0), refreshId, ownerId);
+        archiveDb.exec("COMMIT");
+      } catch (error) {
+        archiveDb.exec("ROLLBACK");
+        throw error;
+      }
       writeState(ownerId, {
         jellyfinSyncStatus: "synced",
         jellyfinSnapshotCompleteness: "complete",
