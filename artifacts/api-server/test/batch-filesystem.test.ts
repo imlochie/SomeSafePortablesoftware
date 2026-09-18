@@ -77,6 +77,35 @@ test("recovery safely reverts only proven completed mappings", async () => {
   assert.equal(await readFile(mappings[2].originalPath, "utf8"), "C");
 });
 
+test("recovery resumes safely after recovery itself is interrupted", async () => {
+  const { root, mappings } = await fixture();
+  mappings[0].finalPath = join(root, "D");
+  mappings[1].finalPath = join(root, "E");
+  await fsRename(mappings[0].originalPath, mappings[0].temporaryPath);
+  await fsRename(mappings[0].temporaryPath, mappings[0].finalPath);
+  await fsRename(mappings[1].originalPath, mappings[1].temporaryPath);
+  await fsRename(mappings[1].temporaryPath, mappings[1].finalPath);
+  mappings[0].state = "completed";
+  mappings[1].state = "completed";
+  let renameCount = 0;
+  const interrupted = await revertBatchFiles(mappings, {
+    stat: fsStat,
+    access: fsAccess,
+    rename: async (source, destination) => {
+      renameCount += 1;
+      if (renameCount === 4) throw new Error("simulated recovery interruption");
+      await fsRename(source, destination);
+    },
+  });
+  assert.equal(interrupted.state, "partial");
+  assert.equal(mappings[0].state, "planned");
+  assert.equal(mappings[1].state, "completed");
+  const resumed = await revertBatchFiles(mappings, { stat: fsStat, access: fsAccess, rename: fsRename });
+  assert.equal(resumed.state, "completed");
+  assert.equal(await readFile(mappings[0].originalPath, "utf8"), "A");
+  assert.equal(await readFile(mappings[1].originalPath, "utf8"), "B");
+});
+
 test("batch preflight rejects an unrelated destination occupant", async () => {
   const { root, mappings } = await fixture();
   await writeFile(join(root, "D"), "unrelated");

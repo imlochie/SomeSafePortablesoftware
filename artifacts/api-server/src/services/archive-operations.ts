@@ -758,6 +758,8 @@ export async function rollbackArchiveOperation(
       stat: dependencies.stat,
       access: dependencies.access,
       rename: dependencies.rename,
+    }, (mappings) => {
+      updateOperation(id, ownerId, { batch_json: JSON.stringify(mappings) });
     });
     if (result.state !== "completed") throw new Error(result.error ?? "Batch rollback requires recovery.");
     updateOperation(id, ownerId, { status: "rolled_back", batch_json: JSON.stringify(result.mappings), postflight_json: JSON.stringify({ state: "reverted", count: result.mappings.length }) });
@@ -842,21 +844,30 @@ export async function executeBatchFiles(mappings: BatchFileState[], deps: FileDe
   }
 }
 
-export async function revertBatchFiles(mappings: BatchFileState[], deps: FileDeps = fs): Promise<BatchFileResult> {
+export async function revertBatchFiles(
+  mappings: BatchFileState[],
+  deps: FileDeps = fs,
+  onStepPersist?: (mappings: BatchFileState[]) => void,
+): Promise<BatchFileResult> {
   const changed = mappings.filter((item) => item.state === "completed");
   const affectedFinals = new Set(changed.map((item) => item.finalPath.toLowerCase()));
   for (const item of changed) {
-    if (!(await exists(item.finalPath, deps))) return { state: "blocked", mappings, error: `Cannot revert missing destination: ${item.finalPath}` };
+    const finalExists = await exists(item.finalPath, deps);
+    const existingTemporary = await exists(item.temporaryPath, deps);
+    if (!finalExists && !existingTemporary) return { state: "blocked", mappings, error: `Cannot revert missing destination: ${item.finalPath}` };
     if (await exists(item.originalPath, deps) && !affectedFinals.has(item.originalPath.toLowerCase())) return { state: "blocked", mappings, error: `Cannot revert because the original path is occupied: ${item.originalPath}` };
+    if (!finalExists && existingTemporary) continue;
     const temporary = join(dirname(item.finalPath), `.archive-assistant-revert-${item.id}`);
     if (await exists(temporary, deps)) return { state: "blocked", mappings, error: `Revert temporary path is occupied: ${temporary}` };
     await deps.rename(item.finalPath, temporary);
     item.temporaryPath = temporary;
+    onStepPersist?.(mappings);
   }
   try {
     for (const item of changed) {
       await deps.rename(item.temporaryPath, item.originalPath);
       item.state = "planned";
+      onStepPersist?.(mappings);
     }
     return { state: "completed", mappings };
   } catch (error) {
