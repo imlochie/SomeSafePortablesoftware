@@ -90,6 +90,28 @@ test("public proposal-backed operation lifecycle performs a swap and exact rollb
   } finally { await fixture.cleanup(); }
 });
 
+test("Power Renamer refuses a size-only source identity", async () => {
+  const fixture = await api();
+  try {
+    archiveDb.prepare("UPDATE file_record SET checksum = NULL, fingerprint = NULL, size_bytes = ? WHERE owner_id = ? AND id = ?").run(1234, "__local__", fixture.aId);
+    const review = ensureReviewItem("__local__", {
+      kind: "naming_proposal",
+      subjectKey: "http-power-size-only",
+      title: "Size-only Power Renamer plan",
+      payload: {
+        planId: "http-power-size-only",
+        mappings: [{ id: "record-a", sourcePath: fixture.a, destinationPath: join(fixture.root, "renamed-A.mp4") }],
+        expectedSourceIdentities: { [fixture.a]: `file_record:${fixture.aId}:unknown` },
+      },
+    });
+    const approved = await fixture.request(`/api/review-items/${review.id}/approve`, { method: "POST", body: "{}" });
+    assert.equal(approved.status, 200);
+    const response = await fixture.request("/api/archive/power-renamer/operations", { method: "POST", body: JSON.stringify({ reviewItemId: review.id }) });
+    assert.equal(response.status, 409);
+    assert.match((await response.json()).error, /INSUFFICIENT_POWER_RENAMER_IDENTITY/);
+  } finally { await fixture.cleanup(); }
+});
+
 test("Power Renamer refuses an approved plan when source identity changes", async () => {
   const fixture = await api();
   try {
