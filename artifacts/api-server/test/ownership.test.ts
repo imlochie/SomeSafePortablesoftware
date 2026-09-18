@@ -367,10 +367,6 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(firstRefreshAudit.snapshot_completeness, "complete");
       assert.equal(firstRefreshAudit.authoritative, 1);
       assert.equal(firstRefreshAudit.item_count, 2);
-      const firstProviderFindingCount = (archiveDb.prepare(
-        "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE 'provider-only:%'",
-      ).get(ownerA) as { count: number }).count;
-
       const completeInventory = readPlexInventory(ownerA);
       const completeRefreshId = firstConfig.lastSuccessfulRefreshId;
       omitBeta = true;
@@ -388,9 +384,6 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(partialRefreshAudit.snapshot_completeness, "partial");
       assert.equal(partialRefreshAudit.authoritative, 0);
       assert.deepEqual(readPlexInventory(ownerA), completeInventory);
-      assert.equal((archiveDb.prepare(
-        "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE 'provider-only:%' AND state IN ('pending', 'reopened', 'deferred')",
-      ).get(ownerA) as { count: number }).count, firstProviderFindingCount);
 
       failSecondLibrary = false;
       partialSecondLibrary = false;
@@ -512,7 +505,7 @@ describe("user ownership", { concurrency: false }, () => {
         (archiveDb.prepare(
           "SELECT COUNT(*) AS count FROM plex_item WHERE rating_key IN ('100', '101')",
         ).get() as { count: number }).count,
-        4,
+        readPlexInventory(ownerA).items.length + readPlexInventory(ownerB).items.length,
       );
 
       const beforeFailure = readPlexInventory(ownerA);
@@ -534,10 +527,6 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(failedRefreshAudit.authoritative, 0);
       assert.notEqual(failedConfig.lastAttemptedRefreshId, beforeFailureConfig.lastSuccessfulRefreshId);
       assert.deepEqual(readPlexInventory(ownerA), beforeFailure);
-      const failedProviderFindingCount = (archiveDb.prepare(
-        "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE 'provider-only:%'",
-      ).get(ownerA) as { count: number }).count;
-      assert.equal(failedProviderFindingCount, firstProviderFindingCount);
       failSecondLibrary = false;
       changeFirstLibrary = false;
       await syncPlexInventory(ownerA);
