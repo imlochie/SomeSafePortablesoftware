@@ -8,6 +8,8 @@ describe('supervised Power Renamer UI contract', () => {
   it('exposes only corroborated proposals for selection', () => {
     expect(appSource).toContain("proposal.researchGrade === 'corroborated'");
     expect(appSource).toContain('INCLUDE IN POWER RENAMER PLAN');
+    expect(appSource).toContain('RESEARCH SOURCES /');
+    expect(appSource).toContain('BLOCKERS /');
     expect(appSource).toContain('/api/archive/power-renamer/plan');
   });
 

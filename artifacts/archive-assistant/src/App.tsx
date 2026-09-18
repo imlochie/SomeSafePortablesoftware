@@ -1217,10 +1217,12 @@ export function ArchivePage() {
                         {(proposal.confidence === 'uncertain' || proposal.operation === 'uncertain/no_action') && <span className="archive-mono text-[9px] text-[#a77517]">UNCERTAIN</span>}
                         {proposal.collision && <span className="archive-mono text-[9px] text-[#994b43]">COLLISION / YES</span>}
                       </div>
-                      {(proposal.reason || proposal.evidence.length > 0) && (
+                      {(proposal.reason || proposal.evidence.length > 0 || proposal.researchSources.length > 0 || proposal.researchBlockers.length > 0) && (
                         <div className="mt-3 border-l-2 border-[#d9bd77] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]">
                           {proposal.reason && <div><span className="font-bold">WHY / </span>{proposal.reason}</div>}
                           {proposal.evidence.length > 0 && <div className="mt-1"><span className="font-bold">EVIDENCE / </span>{proposal.evidence.join('; ')}</div>}
+                          {proposal.researchSources.length > 0 && <div className="mt-1"><span className="font-bold">RESEARCH SOURCES / </span>{proposal.researchSources.join('; ')}</div>}
+                          {proposal.researchBlockers.length > 0 && <div className="mt-1 font-semibold text-[#994b43]"><span className="font-bold">BLOCKERS / </span>{proposal.researchBlockers.join('; ')}</div>}
                         </div>
                       )}
                       <div className="mt-3 archive-mono text-[9px] tracking-[.08em] text-[#a0afaf]">PROPOSAL ONLY / NO FILESYSTEM ACTION</div>
