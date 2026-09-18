@@ -7,6 +7,7 @@ import {
   getJellyfinConfig,
   readJellyfinInventory,
   saveJellyfinConfig,
+  startJellyfinSync,
   syncJellyfinInventory,
   testJellyfinConnection,
 } from "../src/services/jellyfin";
@@ -146,6 +147,21 @@ describe("jellyfin integration", { concurrency: false }, () => {
     assert.equal(saved.hasApiKey, true);
     assert.equal(saved.status, "configured");
     assert.equal(saved.connectionStatus, "configured");
+  });
+
+  test("rejects concurrent Jellyfin refreshes for the same owner", async () => {
+    const mock = createMockJellyfin();
+    const serverUrl = await mock.start();
+    const owner = "jellyfin-concurrent-owner";
+    try {
+      saveJellyfinConfig(owner, { serverUrl, apiKey: "valid-key" });
+      startJellyfinSync(owner);
+      assert.throws(() => startJellyfinSync(owner), /already running/i);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.notEqual(getJellyfinConfig(owner).syncStatus, "syncing");
+    } finally {
+      await mock.stop();
+    }
   });
 
   test("server URLs are validated and credentials are never echoed back", () => {
