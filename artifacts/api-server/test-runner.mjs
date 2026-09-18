@@ -24,6 +24,7 @@ const testFiles = [
   "integrations.test.ts",
   "network-target.test.ts",
   "jellyfin.test.ts",
+  "plex-lifecycle.test.ts",
   "archive-provider.test.ts",
   "integration-http.test.ts",
   "acquisition-jobs.test.ts",
