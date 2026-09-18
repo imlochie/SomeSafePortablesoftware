@@ -27,6 +27,9 @@ describe('supervised Power Renamer UI contract', () => {
     expect(appSource).toContain('confirmed: true');
     expect(appSource).toContain('REFRESH PROVIDERS');
     expect(appSource).toContain('/provider-status');
-    expect(appSource).toContain('Poll status before treating reconciliation as complete.');
+    expect(appSource).toContain('provider-status');
+    expect(appSource).toContain('Latest status:');
+    expect(appSource).toContain('Reconciliation remains explicit');
+    expect(appSource).toContain("attempt < 6");
   });
 });

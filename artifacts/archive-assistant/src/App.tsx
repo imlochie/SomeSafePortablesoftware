@@ -966,14 +966,19 @@ export function ArchivePage() {
           const response = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/refresh-providers`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmed: true, providers: ['plex', 'jellyfin'] }) });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error ?? 'Provider refresh could not start.');
-          const statusResponse = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/provider-status`));
-          const statusResult = await statusResponse.json();
-          if (statusResponse.ok) {
+          let latestProviderStatus: string | null = null;
+          for (let attempt = 0; attempt < 6; attempt += 1) {
+            const statusResponse = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/provider-status`));
+            const statusResult = await statusResponse.json();
+            if (!statusResponse.ok) break;
             const plex = statusResult.providers?.plex?.syncStatus ?? 'unknown';
             const jellyfin = statusResult.providers?.jellyfin?.syncStatus ?? 'unknown';
-            setPowerProviderStatus(`Plex: ${plex} · Jellyfin: ${jellyfin}`);
+            latestProviderStatus = `Plex: ${plex} · Jellyfin: ${jellyfin}`;
+            setPowerProviderStatus(latestProviderStatus);
+            if (plex !== 'syncing' && jellyfin !== 'syncing') break;
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
-          setPowerRenamerNotice(`Provider refresh requested. Started: ${result.started.join(', ') || 'none configured'}. Poll status before treating reconciliation as complete.`);
+          setPowerRenamerNotice(`Provider refresh requested. Started: ${result.started.join(', ') || 'none configured'}.${latestProviderStatus ? ` Latest status: ${latestProviderStatus}.` : ''} Reconciliation remains explicit and can be checked again.`);
         } else {
           const path = action === 'preflight' ? 'preflight' : 'execute';
           const body = action === 'execute' ? { confirmed: true } : {};
