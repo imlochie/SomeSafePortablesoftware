@@ -164,9 +164,31 @@ describe("review sync severity gating", { concurrency: false }, () => {
     assert.ok(result.archiveFindingItems > 0);
   });
 
+  test("a matched provider item does not create unnecessary workload attention", async () => {
+    const owner = `matched-provider-owner-${Date.now()}`;
+    const library = archiveDb.prepare(`
+      INSERT INTO plex_library (name, server_url, library_key, library_type, owner_id, sync_status)
+      VALUES ('Movies', 'http://plex.test', 'matched-provider', 'movie', ?, 'synced')
+    `).run(owner);
+    archiveDb.prepare(`
+      INSERT INTO plex_item (library_id, rating_key, title, item_type, year, metadata_json, owner_id)
+      VALUES (?, 'matched-1', 'Matched Film', 'movie', 2024, '{}', ?)
+    `).run(Number(library.lastInsertRowid), owner);
+    archiveDb.prepare(`
+      INSERT INTO file_record
+        (path, size_bytes, checksum, owner_id, filename, relative_path, scan_status, archive_root)
+      VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+    `).run('/media/Matched Film.2024.mkv', 1000, 'matched-checksum', owner, 'Matched Film.2024.mkv', 'Matched Film.2024.mkv', '/media');
+    invalidate(owner);
+    await reviewSync.syncControlPlaneReviewItems(owner);
+    const workload = await readWorkload(owner);
+    assert.equal(workload.items.some((item) => item.title.includes('Matched Film')), false);
+    assert.equal(workload.counts.needs_you, 0);
+  });
+
   test("a missing file escalates to a decision even with no other evidence", async () => {
     addFile({
-      id: 9005,
+      id: 9010,
       filename: "Vanished Recording.mkv",
       checksum: "vanished-checksum",
       scanStatus: "missing",
