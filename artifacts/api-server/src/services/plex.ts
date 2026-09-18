@@ -386,6 +386,7 @@ export function getPlexConfig(ownerId: string) {
     connectionStatus: exposedConnectionStatus,
     syncStatus: exposedSyncStatus,
     lastAttemptedAt: readState(ownerId, "plexLastAttemptedAt"),
+    lastAttemptedRefreshId: readState(ownerId, "plexLastAttemptedRefreshId"),
     lastSuccessfulSyncAt: readState(ownerId, "plexLastSuccessfulSyncAt"),
     lastSuccessfulRefreshId: readState(ownerId, "plexLastSuccessfulRefreshId"),
     snapshotCompleteness: readState(ownerId, "plexSnapshotCompleteness") ?? "unknown",
@@ -587,8 +588,14 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
 
 export async function syncPlexInventory(ownerId: string) {
   const refreshId = randomUUID();
+  const startedAt = new Date().toISOString();
   const { serverUrl, token } = readPlexCredentials(ownerId);
   if (!serverUrl || !token) throw new PlexConfigurationError("Configure a Plex server URL and token before syncing.");
+  archiveDb.prepare(`
+    INSERT INTO provider_refresh
+      (refresh_id, owner_id, provider, started_at, status, snapshot_completeness, authoritative, snapshot_reference)
+    VALUES (?, ?, 'plex', ?, 'syncing', 'unknown', 0, ?)
+  `).run(refreshId, ownerId, startedAt, `plex:${ownerId}`);
   writeState(ownerId, {
     plexSyncStatus: "syncing",
     plexLastAttemptedRefreshId: refreshId,
@@ -635,6 +642,12 @@ export async function syncPlexInventory(ownerId: string) {
       // A partial provider observation is not authoritative. Keep the last
       // complete persisted inventory untouched so missing remote items cannot
       // become fictional absences.
+      archiveDb.prepare(`
+        UPDATE provider_refresh
+        SET completed_at = ?, status = 'sync_error', snapshot_completeness = 'partial',
+            item_count = ?, authoritative = 0, reason = ?
+        WHERE refresh_id = ? AND owner_id = ?
+      `).run(new Date().toISOString(), remoteInventory.reduce((count, library) => count + library.items.length, 0), warnings.join(" "), refreshId, ownerId);
       writeState(ownerId, {
         plexSyncStatus: "sync_error",
         plexSnapshotCompleteness: "partial",
@@ -646,6 +659,12 @@ export async function syncPlexInventory(ownerId: string) {
     }
     await reconcileInventory(ownerId, serverUrl, remoteInventory);
     const successfulAt = new Date().toISOString();
+    archiveDb.prepare(`
+      UPDATE provider_refresh
+      SET completed_at = ?, status = 'synced', snapshot_completeness = 'complete',
+          item_count = ?, authoritative = 1, reason = NULL
+      WHERE refresh_id = ? AND owner_id = ?
+    `).run(successfulAt, remoteInventory.reduce((count, library) => count + library.items.length, 0), refreshId, ownerId);
     writeState(ownerId, {
       plexSyncStatus: "synced",
       plexSnapshotCompleteness: "complete",
@@ -667,6 +686,12 @@ export async function syncPlexInventory(ownerId: string) {
     addEvent("success", `Plex inventory synchronized: ${libraries.length} libraries`, "plex", ownerId);
   } catch (error) {
     const message = publicError(error);
+    archiveDb.prepare(`
+      UPDATE provider_refresh
+      SET completed_at = ?, status = 'sync_error', snapshot_completeness = 'unknown',
+          authoritative = 0, reason = ?
+      WHERE refresh_id = ? AND owner_id = ?
+    `).run(new Date().toISOString(), message, refreshId, ownerId);
     writeState(ownerId, { plexSyncStatus: "sync_error", plexLastError: message });
     addEvent("error", `Plex inventory sync failed: ${message}`, "plex", ownerId);
   }

@@ -539,6 +539,7 @@ export function getJellyfinConfig(ownerId: string) {
     connectionStatus: exposedConnectionStatus,
     syncStatus: exposedSyncStatus,
     lastAttemptedAt: readState(ownerId, "jellyfinLastAttemptedAt"),
+    lastAttemptedRefreshId: readState(ownerId, "jellyfinLastAttemptedRefreshId"),
     lastSuccessfulSyncAt: readState(ownerId, "jellyfinLastSuccessfulSyncAt"),
     lastSuccessfulRefreshId: readState(ownerId, "jellyfinLastSuccessfulRefreshId"),
     snapshotCompleteness: readState(ownerId, "jellyfinSnapshotCompleteness") ?? "unknown",
@@ -621,6 +622,12 @@ export async function syncJellyfinInventory(ownerId: string) {
       "Configure a Jellyfin server URL and API key before syncing.",
     );
   }
+  const startedAt = new Date().toISOString();
+  archiveDb.prepare(`
+    INSERT INTO provider_refresh
+      (refresh_id, owner_id, provider, started_at, status, snapshot_completeness, authoritative, snapshot_reference)
+    VALUES (?, ?, 'jellyfin', ?, 'syncing', 'unknown', 0, ?)
+  `).run(refreshId, ownerId, startedAt, `jellyfin:${ownerId}`);
   writeState(ownerId, {
     jellyfinSyncStatus: "syncing",
     jellyfinLastAttemptedRefreshId: refreshId,
@@ -662,6 +669,12 @@ export async function syncJellyfinInventory(ownerId: string) {
     }
     for (const warning of warnings) addEvent("warning", warning, "jellyfin", ownerId);
     if (warnings.length) {
+      archiveDb.prepare(`
+        UPDATE provider_refresh
+        SET completed_at = ?, status = 'sync_error', snapshot_completeness = 'partial',
+            item_count = ?, authoritative = 0, reason = ?
+        WHERE refresh_id = ? AND owner_id = ?
+      `).run(new Date().toISOString(), remoteInventory.reduce((count, library) => count + library.items.length, 0), warnings.join(" "), refreshId, ownerId);
       // Partial provider data must not replace the last complete inventory.
       writeState(ownerId, {
         jellyfinSyncStatus: "sync_error",
@@ -685,6 +698,12 @@ export async function syncJellyfinInventory(ownerId: string) {
     } else {
       await reconcileInventory(ownerId, serverUrl, remoteInventory);
       const successfulAt = new Date().toISOString();
+      archiveDb.prepare(`
+        UPDATE provider_refresh
+        SET completed_at = ?, status = 'synced', snapshot_completeness = 'complete',
+            item_count = ?, authoritative = 1, reason = NULL
+        WHERE refresh_id = ? AND owner_id = ?
+      `).run(successfulAt, remoteInventory.reduce((count, library) => count + library.items.length, 0), refreshId, ownerId);
       writeState(ownerId, {
         jellyfinSyncStatus: "synced",
         jellyfinSnapshotCompleteness: "complete",
@@ -710,6 +729,12 @@ export async function syncJellyfinInventory(ownerId: string) {
     }
   } catch (error) {
     const message = publicError(error);
+    archiveDb.prepare(`
+      UPDATE provider_refresh
+      SET completed_at = ?, status = 'sync_error', snapshot_completeness = 'unknown',
+          authoritative = 0, reason = ?
+      WHERE refresh_id = ? AND owner_id = ?
+    `).run(new Date().toISOString(), message, refreshId, ownerId);
     writeState(ownerId, { jellyfinSyncStatus: "sync_error", jellyfinLastError: message });
     addEvent("error", `Jellyfin inventory sync failed: ${message}`, "jellyfin", ownerId);
   }

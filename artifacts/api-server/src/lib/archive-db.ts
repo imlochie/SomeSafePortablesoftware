@@ -326,6 +326,21 @@ archiveDb.exec(`
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (owner_id, file_record_id, finding_type, evidence_key)
   );
+  CREATE TABLE IF NOT EXISTS provider_refresh (
+    refresh_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    status TEXT NOT NULL,
+    snapshot_completeness TEXT NOT NULL DEFAULT 'unknown',
+    item_count INTEGER,
+    authoritative INTEGER NOT NULL DEFAULT 0,
+    reason TEXT,
+    snapshot_reference TEXT
+  );
+  CREATE INDEX IF NOT EXISTS provider_refresh_owner_idx
+    ON provider_refresh(owner_id, provider, started_at DESC);
   CREATE TABLE IF NOT EXISTS review_item (
     id INTEGER PRIMARY KEY,
     owner_id TEXT NOT NULL,

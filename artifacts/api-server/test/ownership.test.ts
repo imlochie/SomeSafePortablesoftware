@@ -360,6 +360,13 @@ describe("user ownership", { concurrency: false }, () => {
       assert.ok(firstConfig.lastSuccessfulSyncAt);
       assert.ok(firstConfig.lastSuccessfulRefreshId);
       const firstSuccessfulRefreshId = firstConfig.lastSuccessfulRefreshId;
+      const firstRefreshAudit = archiveDb.prepare(
+        "SELECT status, snapshot_completeness, authoritative, item_count FROM provider_refresh WHERE refresh_id = ? AND owner_id = ?",
+      ).get(firstSuccessfulRefreshId, ownerA) as { status: string; snapshot_completeness: string; authoritative: number; item_count: number };
+      assert.equal(firstRefreshAudit.status, "synced");
+      assert.equal(firstRefreshAudit.snapshot_completeness, "complete");
+      assert.equal(firstRefreshAudit.authoritative, 1);
+      assert.equal(firstRefreshAudit.item_count, 2);
       const firstProviderFindingCount = (archiveDb.prepare(
         "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE 'provider-only:%'",
       ).get(ownerA) as { count: number }).count;
@@ -374,6 +381,12 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(partialConfig.syncStatus, "sync_error");
       assert.equal(partialConfig.snapshotCompleteness, "partial");
       assert.equal(partialConfig.lastSuccessfulRefreshId, completeRefreshId);
+      const partialRefreshAudit = archiveDb.prepare(
+        "SELECT status, snapshot_completeness, authoritative FROM provider_refresh WHERE refresh_id = ? AND owner_id = ?",
+      ).get(partialConfig.lastAttemptedRefreshId, ownerA) as { status: string; snapshot_completeness: string; authoritative: number };
+      assert.equal(partialRefreshAudit.status, "sync_error");
+      assert.equal(partialRefreshAudit.snapshot_completeness, "partial");
+      assert.equal(partialRefreshAudit.authoritative, 0);
       assert.deepEqual(readPlexInventory(ownerA), completeInventory);
       assert.equal((archiveDb.prepare(
         "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE 'provider-only:%' AND state IN ('pending', 'reopened', 'deferred')",
@@ -513,6 +526,12 @@ describe("user ownership", { concurrency: false }, () => {
       assert.match(failedConfig.lastError ?? "", /HTTP 503/);
       assert.equal(failedConfig.lastSuccessfulSyncAt, beforeFailureConfig.lastSuccessfulSyncAt);
       assert.equal(failedConfig.lastSuccessfulRefreshId, beforeFailureConfig.lastSuccessfulRefreshId);
+      const failedRefreshAudit = archiveDb.prepare(
+        "SELECT status, snapshot_completeness, authoritative FROM provider_refresh WHERE refresh_id = ? AND owner_id = ?",
+      ).get(failedConfig.lastAttemptedRefreshId, ownerA) as { status: string; snapshot_completeness: string; authoritative: number };
+      assert.equal(failedRefreshAudit.status, "sync_error");
+      assert.equal(failedRefreshAudit.snapshot_completeness, "unknown");
+      assert.equal(failedRefreshAudit.authoritative, 0);
       assert.notEqual(failedConfig.lastAttemptedRefreshId, beforeFailureConfig.lastSuccessfulRefreshId);
       assert.deepEqual(readPlexInventory(ownerA), beforeFailure);
       const failedProviderFindingCount = (archiveDb.prepare(
