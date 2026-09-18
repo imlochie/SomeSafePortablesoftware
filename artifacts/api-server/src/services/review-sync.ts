@@ -11,11 +11,15 @@ function evidenceHash(value: unknown) {
 
 function snapshotProvenance(ownerId: string, provider: string) {
   const prefix = provider.toLowerCase() === "jellyfin" ? "jellyfin" : "plex";
+  const syncStatus = readUserSetting(ownerId, `${prefix}SyncStatus`);
+  const completeness = readUserSetting(ownerId, `${prefix}SnapshotCompleteness`);
   return {
     provider,
     refreshId: readUserSetting(ownerId, `${prefix}LastSuccessfulRefreshId`),
     capturedAt: readUserSetting(ownerId, `${prefix}LastSuccessfulSyncAt`),
-    syncStatus: readUserSetting(ownerId, `${prefix}SyncStatus`),
+    syncStatus,
+    completeness: completeness ?? "unknown",
+    authoritative: completeness === "partial" || syncStatus === "sync_error" ? false : true,
   };
 }
 
@@ -67,10 +71,12 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
   // changes. Supersede active observations that are absent from this complete
   // persisted snapshot, but never infer absence from a failed refresh: this
   // function only consumes the provider inventory already persisted by refresh.
-  const currentProviderOnlySubjects = new Set(
-    inventory.plexOnly.map((item) => `provider-only:${item.provider}:${item.ratingKey}`),
-  );
-  supersedeReviewItems(ownerId, "provider-only:", currentProviderOnlySubjects, "A later provider snapshot no longer reports this item as provider-only.");
+  const currentProviderOnlySubjects = provenance.authoritative
+    ? new Set(inventory.plexOnly.map((item) => `provider-only:${item.provider}:${item.ratingKey}`))
+    : new Set<string>();
+  if (provenance.authoritative) {
+    supersedeReviewItems(ownerId, "provider-only:", currentProviderOnlySubjects, "A later provider snapshot no longer reports this item as provider-only.");
+  }
   let archiveFindingItems = 0;
   let informationalFindings = 0;
   const classifications: FindingClassification[] = [];
@@ -133,7 +139,7 @@ export async function syncControlPlaneReviewItems(ownerId: string) {
     archiveFindingItems += 1;
   }
 
-  for (const providerOnly of inventory.plexOnly) {
+  if (provenance.authoritative) for (const providerOnly of inventory.plexOnly) {
     ensureReviewItem(ownerId, {
       kind: "archive_finding",
       subjectKey: `provider-only:${providerOnly.provider}:${providerOnly.ratingKey}`,

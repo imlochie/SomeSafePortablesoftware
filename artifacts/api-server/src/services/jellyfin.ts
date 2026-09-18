@@ -541,6 +541,8 @@ export function getJellyfinConfig(ownerId: string) {
     lastAttemptedAt: readState(ownerId, "jellyfinLastAttemptedAt"),
     lastSuccessfulSyncAt: readState(ownerId, "jellyfinLastSuccessfulSyncAt"),
     lastSuccessfulRefreshId: readState(ownerId, "jellyfinLastSuccessfulRefreshId"),
+    snapshotCompleteness: readState(ownerId, "jellyfinSnapshotCompleteness") ?? "unknown",
+    completenessReason: readState(ownerId, "jellyfinCompletenessReason"),
     lastError: readState(ownerId, "jellyfinLastError"),
     serverName: readState(ownerId, "jellyfinServerName"),
     libraryCount: Number(stats.library_count ?? 0),
@@ -658,9 +660,15 @@ export async function syncJellyfinInventory(ownerId: string) {
         remoteInventory.push({ ...library, complete: false, items: [] });
       }
     }
-    await reconcileInventory(ownerId, serverUrl, remoteInventory);
     for (const warning of warnings) addEvent("warning", warning, "jellyfin", ownerId);
     if (warnings.length) {
+      // Partial provider data must not replace the last complete inventory.
+      writeState(ownerId, {
+        jellyfinSyncStatus: "sync_error",
+        jellyfinSnapshotCompleteness: "partial",
+        jellyfinCompletenessReason: warnings.join(" "),
+        jellyfinLastError: warnings.join(" "),
+      });
       // The canonical inventory remains preserved, but an incomplete remote
       // snapshot is not a successful synchronization and must not advance the
       // successful-sync timestamp or masquerade as complete.
@@ -675,9 +683,12 @@ export async function syncJellyfinInventory(ownerId: string) {
         ownerId,
       );
     } else {
+      await reconcileInventory(ownerId, serverUrl, remoteInventory);
       const successfulAt = new Date().toISOString();
       writeState(ownerId, {
         jellyfinSyncStatus: "synced",
+        jellyfinSnapshotCompleteness: "complete",
+        jellyfinCompletenessReason: null,
         jellyfinLastSuccessfulSyncAt: successfulAt,
         jellyfinLastSuccessfulRefreshId: refreshId,
         jellyfinLastError: null,

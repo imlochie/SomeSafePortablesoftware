@@ -388,6 +388,8 @@ export function getPlexConfig(ownerId: string) {
     lastAttemptedAt: readState(ownerId, "plexLastAttemptedAt"),
     lastSuccessfulSyncAt: readState(ownerId, "plexLastSuccessfulSyncAt"),
     lastSuccessfulRefreshId: readState(ownerId, "plexLastSuccessfulRefreshId"),
+    snapshotCompleteness: readState(ownerId, "plexSnapshotCompleteness") ?? "unknown",
+    completenessReason: readState(ownerId, "plexCompletenessReason"),
     lastError: readState(ownerId, "plexLastError"),
     serverName: readState(ownerId, "plexServerName"),
     libraryCount: Number(stats.library_count ?? 0),
@@ -629,10 +631,25 @@ export async function syncPlexInventory(ownerId: string) {
       }
       remoteInventory.push({ ...library, complete, items: await mapItemsInBatches(rawItems) });
     }
+    if (warnings.length) {
+      // A partial provider observation is not authoritative. Keep the last
+      // complete persisted inventory untouched so missing remote items cannot
+      // become fictional absences.
+      writeState(ownerId, {
+        plexSyncStatus: "sync_error",
+        plexSnapshotCompleteness: "partial",
+        plexCompletenessReason: warnings.join(" "),
+        plexLastError: warnings.join(" "),
+      });
+      for (const warning of warnings) addEvent("warning", warning, "plex", ownerId);
+      return;
+    }
     await reconcileInventory(ownerId, serverUrl, remoteInventory);
     const successfulAt = new Date().toISOString();
     writeState(ownerId, {
       plexSyncStatus: "synced",
+      plexSnapshotCompleteness: "complete",
+      plexCompletenessReason: null,
       plexLastSuccessfulSyncAt: successfulAt,
       plexLastSuccessfulRefreshId: refreshId,
       plexLastError: null,
