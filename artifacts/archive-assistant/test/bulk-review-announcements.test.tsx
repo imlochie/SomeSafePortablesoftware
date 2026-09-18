@@ -114,6 +114,7 @@ describe('bulk review announcements', () => {
     const user = userEvent.setup();
     renderArchivePage();
 
+    await user.click(screen.getByTestId('tab-local-inventory'));
     await user.click(screen.getByTestId('checkbox-archive-record-101'));
     await user.click(screen.getByTestId('button-bulk-reviewed'));
 
@@ -136,6 +137,7 @@ describe('bulk review announcements', () => {
     const user = userEvent.setup();
     renderArchivePage();
 
+    await user.click(screen.getByTestId('tab-local-inventory'));
     await user.click(screen.getByTestId('checkbox-archive-record-101'));
     await user.click(screen.getByTestId('checkbox-archive-record-102'));
     await user.click(screen.getByTestId('button-bulk-reviewed'));

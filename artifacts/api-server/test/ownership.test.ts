@@ -10,6 +10,7 @@ import {
   addEvent,
   archiveDb,
   claimLegacyData,
+  legacyOwnedTables,
   readEvents,
   readSettings,
   readUserSetting,
@@ -26,6 +27,7 @@ import {
   getPlexConfig,
   readPlexInventory,
   savePlexConfig,
+  startPlexSync,
   syncPlexInventory,
   testPlexConnection,
 } from "../src/services/plex";
@@ -38,6 +40,10 @@ import {
   updateArchiveRecordReviews,
 } from "../src/services/archive";
 import { getAuthenticatedUserId } from "../src/middlewares/requireAuth";
+import { readReconciliationReport } from "../src/services/reconciliation";
+import { syncControlPlaneReviewItems } from "../src/services/review-sync";
+import { readWorkload } from "../src/services/workload";
+import { readProviderRefreshHistory, readProviderRefreshState } from "../src/services/provider-refresh";
 import { resolveRuntimeConfig, runtimeConfig } from "../src/lib/runtime-config";
 
 const ownerA = runtimeConfig.localOwnerId;
@@ -236,7 +242,9 @@ describe("user ownership", { concurrency: false }, () => {
   test("real Plex connection and inventory synchronization are repeatable, isolated, and failure-safe", async () => {
     let failIdentity = false;
     let failSecondLibrary = false;
+    let partialSecondLibrary = false;
     let changeFirstLibrary = false;
+    let omitBeta = false;
     let requestCount = 0;
     const plexServer = createServer((req, res) => {
       requestCount += 1;
@@ -295,16 +303,21 @@ describe("user ownership", { concurrency: false }, () => {
               Media: [],
             },
           ];
+        const visibleItems = omitBeta ? allItems.filter((item) => item.ratingKey !== "101") : allItems;
         const offset = Number(url.searchParams.get("X-Plex-Container-Start") ?? 0);
         res.end(JSON.stringify({
           MediaContainer: {
-            totalSize: allItems.length,
-            Metadata: allItems.slice(offset, offset + 1),
+            totalSize: visibleItems.length,
+            Metadata: visibleItems.slice(offset, offset + 1),
           },
         }));
         return;
       }
       if (url.pathname === "/library/sections/2/all" && failSecondLibrary) {
+        if (partialSecondLibrary) {
+          res.end(JSON.stringify({ MediaContainer: { totalSize: 1, Metadata: [{ ratingKey: "show-1", title: "Incomplete Show", type: "show" }] } }));
+          return;
+        }
         res.statusCode = 503;
         res.end(JSON.stringify({ error: "second library unavailable" }));
         return;
@@ -321,7 +334,14 @@ describe("user ownership", { concurrency: false }, () => {
       savePlexConfig(ownerA, { serverUrl, token: "valid-token" });
       savePlexConfig(ownerB, { serverUrl, token: "invalid-token" });
 
-      assert.equal((await testPlexConnection(ownerA)).status, "connected");
+      startPlexSync(ownerA);
+      assert.throws(() => startPlexSync(ownerA), /already running/i);
+      for (let attempt = 0; attempt < 20 && getPlexConfig(ownerA).syncStatus === "syncing"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.equal(getPlexConfig(ownerA).syncStatus, "synced");
+
+      assert.ok(["connected", "synced"].includes((await testPlexConnection(ownerA)).status));
       assert.equal(getPlexConfig(ownerA).connectionStatus, "connected");
       const failedConnection = await testPlexConnection(ownerB);
       assert.equal(failedConnection.status, "connection_failed");
@@ -339,12 +359,147 @@ describe("user ownership", { concurrency: false }, () => {
       assert.equal(firstConfig.mediaCount, 1);
       assert.ok(firstConfig.lastAttemptedAt);
       assert.ok(firstConfig.lastSuccessfulSyncAt);
+      assert.ok(firstConfig.lastSuccessfulRefreshId);
+      const firstSuccessfulRefreshId = firstConfig.lastSuccessfulRefreshId;
+      const firstRefreshAudit = archiveDb.prepare(
+        "SELECT status, snapshot_completeness, authoritative, item_count FROM provider_refresh WHERE refresh_id = ? AND owner_id = ?",
+      ).get(firstSuccessfulRefreshId, ownerA) as { status: string; snapshot_completeness: string; authoritative: number; item_count: number };
+      assert.equal(firstRefreshAudit.status, "synced");
+      assert.equal(firstRefreshAudit.snapshot_completeness, "complete");
+      assert.equal(firstRefreshAudit.authoritative, 1);
+      assert.equal(firstRefreshAudit.item_count, 2);
+      assert.equal((archiveDb.prepare("SELECT COUNT(*) AS count FROM provider_refresh WHERE owner_id = ? AND provider = 'plex' AND authoritative = 1").get(ownerA) as { count: number }).count, 1);
+      assert.throws(() => archiveDb.prepare(`
+        INSERT INTO provider_refresh (refresh_id, owner_id, provider, started_at, status, snapshot_completeness, authoritative)
+        VALUES ('duplicate-authority', ?, 'plex', '2026-01-01T00:00:00.000Z', 'synced', 'complete', 1)
+      `).run(ownerA), /UNIQUE|constraint/i);
+      const refreshStateAfterFirst = readProviderRefreshState(ownerA, "plex");
+      assert.equal(refreshStateAfterFirst.lastAttemptedRefresh?.refreshId, firstSuccessfulRefreshId);
+      assert.equal(refreshStateAfterFirst.lastSuccessfulRefresh?.refreshId, firstSuccessfulRefreshId);
+      assert.equal(refreshStateAfterFirst.currentAuthoritativeRefresh?.refreshId, firstSuccessfulRefreshId);
+      assert.ok(readProviderRefreshHistory(ownerA, "plex").results.some((refresh) => refresh.refreshId === firstSuccessfulRefreshId));
+      const completeInventory = readPlexInventory(ownerA);
+      const completeRefreshId = firstConfig.lastSuccessfulRefreshId;
+      omitBeta = true;
+      failSecondLibrary = true;
+      partialSecondLibrary = true;
+      await syncPlexInventory(ownerA);
+      const partialConfig = getPlexConfig(ownerA);
+      assert.equal(partialConfig.syncStatus, "sync_error");
+      assert.equal(partialConfig.snapshotCompleteness, "partial");
+      assert.equal(partialConfig.lastSuccessfulRefreshId, completeRefreshId);
+      const partialRefreshAudit = archiveDb.prepare(
+        "SELECT status, snapshot_completeness, authoritative FROM provider_refresh WHERE refresh_id = ? AND owner_id = ?",
+      ).get(partialConfig.lastAttemptedRefreshId, ownerA) as { status: string; snapshot_completeness: string; authoritative: number };
+      assert.equal(partialRefreshAudit.status, "sync_error");
+      assert.equal(partialRefreshAudit.snapshot_completeness, "partial");
+      assert.equal(partialRefreshAudit.authoritative, 0);
+      const refreshStateAfterPartial = readProviderRefreshState(ownerA, "plex");
+      assert.equal(refreshStateAfterPartial.lastAttemptedRefresh?.refreshId, partialConfig.lastAttemptedRefreshId);
+      assert.equal(refreshStateAfterPartial.lastSuccessfulRefresh?.refreshId, completeRefreshId);
+      assert.equal(refreshStateAfterPartial.currentAuthoritativeRefresh?.refreshId, completeRefreshId);
+      assert.deepEqual(readPlexInventory(ownerA), completeInventory);
+
+      failSecondLibrary = false;
+      partialSecondLibrary = false;
+      await syncPlexInventory(ownerA);
+      const completeAbsenceConfig = getPlexConfig(ownerA);
+      assert.equal(completeAbsenceConfig.syncStatus, "synced");
+      assert.equal(completeAbsenceConfig.snapshotCompleteness, "complete");
+      assert.notEqual(completeAbsenceConfig.lastSuccessfulRefreshId, completeRefreshId);
+      assert.equal(readPlexInventory(ownerA).items.length, 1);
+      const supersededBeta = archiveDb.prepare(
+        "SELECT state, payload_json FROM review_item WHERE owner_id = ? AND subject_key = 'provider-only:plex:101'",
+      ).get(ownerA) as { state: string; payload_json: string } | undefined;
+      assert.equal(supersededBeta?.state, "rejected");
+      assert.equal(JSON.parse(supersededBeta?.payload_json ?? "{}").lifecycleStatus, "superseded");
+      omitBeta = false;
+      await syncPlexInventory(ownerA);
 
       const firstInventory = readPlexInventory(ownerA);
       assert.equal(firstInventory.libraries.length, 1);
       assert.equal(firstInventory.items.length, 2);
       assert.equal(firstInventory.items.find((item) => item.ratingKey === "100")?.partCount, 1);
       assert.deepEqual(readPlexInventory(ownerB), { libraries: [], items: [] });
+
+      const reconciliationOwner = `plex-reconciliation-owner-${Date.now()}`;
+      savePlexConfig(reconciliationOwner, { serverUrl, token: "valid-token" });
+      await syncPlexInventory(reconciliationOwner);
+      const localAlpha = archiveDb.prepare(`
+        INSERT INTO file_record
+          (path, size_bytes, checksum, owner_id, filename, relative_path, scan_status, archive_root)
+        VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+      `).run("/media/alpha.mkv", 1_000_000, "alpha-local", reconciliationOwner, "Alpha.2024.mkv", "Alpha.2024.mkv", "/media");
+      const reconciliation = await readReconciliationReport(reconciliationOwner, 1, 100);
+      assert.equal(reconciliation.summary.matchedCount, 0, JSON.stringify(reconciliation.summary));
+      assert.equal(reconciliation.summary.qualityConflictCount, 1, JSON.stringify(reconciliation.summary));
+      assert.equal(reconciliation.summary.plexOnlyCount, 1, JSON.stringify(reconciliation.summary));
+      assert.ok(reconciliation.results.some((result) => result.classification === "quality_conflict"));
+      invalidateArchiveInventoryCache(reconciliationOwner);
+      await syncControlPlaneReviewItems(reconciliationOwner);
+      const qualityItems = (archiveDb.prepare(
+        "SELECT id, subject_key, payload_json FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND state IN ('pending', 'reopened')",
+      ).all(reconciliationOwner) as Array<{ id: number; subject_key: string; payload_json: string }>);
+      const qualityItem = qualityItems.find((item) => {
+        const payload = JSON.parse(item.payload_json) as { classification?: string; qualityStatus?: string };
+        return payload.classification === "quality_conflict";
+      });
+      assert.ok(qualityItem, "quality conflict must become an actionable finding");
+      assert.equal(qualityItem?.subject_key, `archive-finding:${Number(localAlpha.lastInsertRowid)}`);
+      const qualityPayload = JSON.parse(qualityItem?.payload_json ?? "{}") as { classification?: string; qualityStatus?: string; snapshot?: { refreshId?: string } };
+      assert.equal(qualityPayload.classification, "quality_conflict");
+      assert.ok(qualityPayload.qualityStatus);
+      assert.equal(qualityPayload.snapshot?.refreshId, getPlexConfig(reconciliationOwner).lastSuccessfulRefreshId);
+      const currentObservation = archiveDb.prepare(
+        "SELECT id, evidence_key FROM review_item_observation WHERE owner_id = ? AND subject_key = ? AND status = 'active'",
+      ).get(reconciliationOwner, qualityItem?.subject_key) as { id: number; evidence_key: string };
+      const workloadBeforeRepeat = await readWorkload(reconciliationOwner);
+      const lineageItem = workloadBeforeRepeat.items.find((item) => item.id === `review:${qualityItem?.id}`);
+      assert.ok(lineageItem, "quality conflict must remain in workload");
+      assert.equal(lineageItem?.reviewItemId, qualityItem?.id);
+      assert.equal(lineageItem?.currentObservationId, currentObservation.id);
+      assert.equal(lineageItem?.findingClassification, "quality_conflict");
+      assert.equal(lineageItem?.provider, "plex");
+      assert.equal(lineageItem?.refreshId, getPlexConfig(reconciliationOwner).lastSuccessfulRefreshId);
+      assert.equal(lineageItem?.evidenceKey, currentObservation.evidence_key);
+      await syncControlPlaneReviewItems(reconciliationOwner);
+      const activeQualityCount = (archiveDb.prepare(
+        "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key = ? AND state IN ('pending', 'reopened')",
+      ).get(reconciliationOwner, qualityItem?.subject_key) as { count: number }).count;
+      assert.equal(activeQualityCount, 1);
+      const firstObservation = archiveDb.prepare(
+        "SELECT id, evidence_key FROM review_item_observation WHERE owner_id = ? AND subject_key = ? AND status = 'active'",
+      ).get(reconciliationOwner, qualityItem?.subject_key) as { id: number; evidence_key: string };
+      archiveDb.prepare("UPDATE file_record SET height = 720 WHERE id = ? AND owner_id = ?").run(Number(localAlpha.lastInsertRowid), reconciliationOwner);
+      invalidateArchiveInventoryCache(reconciliationOwner);
+      await syncControlPlaneReviewItems(reconciliationOwner);
+      const observations = archiveDb.prepare(
+        "SELECT id, evidence_key, status FROM review_item_observation WHERE owner_id = ? AND subject_key = ? ORDER BY id",
+      ).all(reconciliationOwner, qualityItem?.subject_key) as Array<{ id: number; evidence_key: string; status: string }>;
+      assert.equal(observations.length, 2);
+      assert.equal(observations[0].status, "superseded");
+      assert.equal(observations[1].status, "active");
+      assert.notEqual(observations[0].evidence_key, observations[1].evidence_key);
+      assert.equal(observations[0].evidence_key, firstObservation.evidence_key);
+      assert.equal((archiveDb.prepare(
+        "SELECT COUNT(*) AS count FROM review_item WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key = ? AND state IN ('pending', 'reopened')",
+      ).get(reconciliationOwner, qualityItem?.subject_key) as { count: number }).count, 1);
+      const workloadAfterEvidenceChange = await readWorkload(reconciliationOwner);
+      const explainedItem = workloadAfterEvidenceChange.items.find((item) => item.reviewItemId === qualityItem?.id);
+      assert.ok(explainedItem);
+      assert.equal(explainedItem?.currentObservationId, observations[1].id);
+      assert.equal(explainedItem?.evidenceKey, observations[1].evidence_key);
+      assert.ok(explainedItem?.observedAt);
+      assert.equal(explainedItem?.changeContext?.previousObservationId, observations[0].id);
+      assert.equal(explainedItem?.changeContext?.previousEvidenceKey, observations[0].evidence_key);
+      await syncControlPlaneReviewItems(reconciliationOwner);
+      assert.equal((archiveDb.prepare(
+        "SELECT COUNT(*) AS count FROM review_item_observation WHERE owner_id = ? AND subject_key = ?",
+      ).get(reconciliationOwner, qualityItem?.subject_key) as { count: number }).count, 2);
+      assert.equal((await readWorkload(reconciliationOwner)).items.filter((item) => item.reviewItemId === qualityItem?.id).length, 1);
+      archiveDb.prepare("DELETE FROM file_record WHERE id = ? AND owner_id = ?").run(Number(localAlpha.lastInsertRowid), reconciliationOwner);
+      archiveDb.prepare("DELETE FROM plex_item WHERE owner_id = ?").run(reconciliationOwner);
+      archiveDb.prepare("DELETE FROM plex_library WHERE owner_id = ?").run(reconciliationOwner);
 
       await syncPlexInventory(ownerA);
       assert.equal(readPlexInventory(ownerA).libraries.length, 1);
@@ -365,18 +520,54 @@ describe("user ownership", { concurrency: false }, () => {
         (archiveDb.prepare(
           "SELECT COUNT(*) AS count FROM plex_item WHERE rating_key IN ('100', '101')",
         ).get() as { count: number }).count,
-        4,
+        readPlexInventory(ownerA).items.length + readPlexInventory(ownerB).items.length,
       );
 
       const beforeFailure = readPlexInventory(ownerA);
+      const beforeFailureConfig = getPlexConfig(ownerA);
+      archiveDb.exec(`
+        CREATE TEMP TRIGGER injected_plex_inventory_failure
+        AFTER INSERT ON main.plex_item
+        BEGIN SELECT RAISE(ABORT, 'injected inventory failure'); END;
+      `);
+      changeFirstLibrary = true;
+      await syncPlexInventory(ownerA);
+      const injectedFailureConfig = getPlexConfig(ownerA);
+      assert.equal(injectedFailureConfig.syncStatus, 'sync_error');
+      assert.equal(injectedFailureConfig.lastSuccessfulRefreshId, beforeFailureConfig.lastSuccessfulRefreshId);
+      assert.deepEqual(readPlexInventory(ownerA), beforeFailure);
+      const injectedFailureAudit = archiveDb.prepare(
+        "SELECT status, authoritative, item_count FROM provider_refresh WHERE refresh_id = ? AND owner_id = ?",
+      ).get(injectedFailureConfig.lastAttemptedRefreshId, ownerA) as { status: string; authoritative: number; item_count: number | null };
+      assert.equal(injectedFailureAudit.status, 'sync_error');
+      assert.equal(injectedFailureAudit.authoritative, 0);
+      assert.equal(injectedFailureAudit.item_count, null);
+      archiveDb.exec('DROP TRIGGER injected_plex_inventory_failure');
+      changeFirstLibrary = false;
       failSecondLibrary = true;
       changeFirstLibrary = true;
       await syncPlexInventory(ownerA);
-      assert.equal(getPlexConfig(ownerA).status, "sync_error");
-      assert.match(getPlexConfig(ownerA).lastError ?? "", /HTTP 503/);
+      const failedConfig = getPlexConfig(ownerA);
+      assert.equal(failedConfig.status, "sync_error");
+      assert.equal(failedConfig.syncStatus, "sync_error");
+      assert.match(failedConfig.lastError ?? "", /HTTP 503/);
+      assert.equal(failedConfig.lastSuccessfulSyncAt, beforeFailureConfig.lastSuccessfulSyncAt);
+      assert.equal(failedConfig.lastSuccessfulRefreshId, beforeFailureConfig.lastSuccessfulRefreshId);
+      const failedRefreshAudit = archiveDb.prepare(
+        "SELECT status, snapshot_completeness, authoritative FROM provider_refresh WHERE refresh_id = ? AND owner_id = ?",
+      ).get(failedConfig.lastAttemptedRefreshId, ownerA) as { status: string; snapshot_completeness: string; authoritative: number };
+      assert.equal(failedRefreshAudit.status, "sync_error");
+      assert.equal(failedRefreshAudit.snapshot_completeness, "unknown");
+      assert.equal(failedRefreshAudit.authoritative, 0);
+      assert.notEqual(failedConfig.lastAttemptedRefreshId, beforeFailureConfig.lastSuccessfulRefreshId);
       assert.deepEqual(readPlexInventory(ownerA), beforeFailure);
       failSecondLibrary = false;
       changeFirstLibrary = false;
+      await syncPlexInventory(ownerA);
+      const recoveredConfig = getPlexConfig(ownerA);
+      assert.equal(recoveredConfig.syncStatus, "synced");
+      assert.notEqual(recoveredConfig.lastSuccessfulRefreshId, firstSuccessfulRefreshId);
+      assert.equal((archiveDb.prepare("SELECT COUNT(*) AS count FROM provider_refresh WHERE owner_id = ? AND provider = 'plex' AND authoritative = 1").get(ownerA) as { count: number }).count, 1);
 
       savePlexConfig("user-c", { serverUrl: "http://169.254.169.254", token: "valid-token" });
       const blockedTarget = await testPlexConnection("user-c");
@@ -616,5 +807,37 @@ process.stdout.write(JSON.stringify({
     } finally {
       reopened.close();
     }
+  });
+});
+describe("legacy claim covers every owned table", () => {
+  test("legacyOwnedTables matches the tables the schema actually owns", () => {
+    // Derived from the live schema rather than restated by hand: a new table
+    // with an owner_id defaulting to the legacy sentinel would otherwise keep
+    // its pre-authentication rows permanently unreachable after a claim, and
+    // a hand-maintained expectation would be updated in the same commit that
+    // introduced the bug. This is how jellyfin_library/jellyfin_item were
+    // found to be missing.
+    const tables = archiveDb
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+      .all() as Array<{ name: string }>;
+
+    const ownedBySchema = tables
+      .filter(({ name }) => {
+        const columns = archiveDb.prepare(`PRAGMA table_info(${name})`).all() as Array<{
+          name: string;
+          dflt_value: string | null;
+        }>;
+        const ownerColumn = columns.find((column) => column.name === "owner_id");
+        // user_setting is keyed by owner and never holds legacy-sentinel rows.
+        return Boolean(ownerColumn?.dflt_value?.includes(LEGACY_OWNER_ID));
+      })
+      .map(({ name }) => name)
+      .sort();
+
+    assert.deepEqual(
+      [...legacyOwnedTables].sort(),
+      ownedBySchema,
+      "every table defaulting owner_id to the legacy sentinel must be claimed by claimLegacyData()",
+    );
   });
 });

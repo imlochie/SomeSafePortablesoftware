@@ -5,9 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { SeverityBreakdown } from './severityBreakdown';
 
 export interface ReviewSyncResult {
   namingItems: number;
   archiveFindingItems: number;
+  informationalFindings: number;
+  severity: SeverityBreakdown;
   total: number;
 }

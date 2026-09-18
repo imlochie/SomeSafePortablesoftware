@@ -12,10 +12,14 @@ tags:
     description: Health operations
   - name: system
     description: Local system status and diagnostics
+  - name: assistant
+    description: Deterministic archive intelligence and recommendations
   - name: settings
     description: Local application settings
   - name: plex
     description: Plex connection configuration
+  - name: jellyfin
+    description: Jellyfin connection configuration
   - name: integrations
     description: External media integration adapter status
   - name: acquisition
@@ -44,6 +48,476 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /agent/canonical/status:
+    get:
+      operationId: getArenaCanonicalStatus
+      tags: [agent]
+      summary: Get Arena Canonical bridge status
+      responses:
+        "200": { description: Bridge status, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /agent/canonical/tools:
+    get:
+      operationId: getArenaCanonicalTools
+      tags: [agent]
+      summary: Get the Archive Assistant tool manifest for Arena Canonical
+      responses:
+        "200": { description: Agent tool manifest, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /agent/canonical/ask:
+    post:
+      operationId: askArenaCanonical
+      tags: [agent]
+      summary: Ask Arena Canonical to reason over owner-scoped archive evidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [question], additionalProperties: true }
+      responses:
+        "200": { description: Evidence-grounded answer, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "400": { description: Invalid question }
+        "503": { description: Arena Canonical is not configured }
+  /agent/capabilities:
+    get:
+      operationId: getAgentCapabilities
+      tags: [agent]
+      summary: Get the server-enforced agent boundary
+      responses:
+        "200":
+          description: Agent capabilities and operation policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCapabilities"
+  /integrations/{id}/test:
+    post:
+      operationId: testIntegrationConnection
+      tags: [integrations]
+      summary: Test one integration plugin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Integration diagnostic, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /integrations/config:
+    get:
+      operationId: getIntegrationConfigurationStatus
+      tags: [integrations]
+      summary: Get configured integration fields without exposing secrets
+      responses:
+        "200":
+          description: Integration configuration status
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /integrations/config/{id}:
+    put:
+      operationId: updateIntegrationConfiguration
+      tags: [integrations]
+      summary: Save local configuration for an integration plugin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Configuration saved
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "400": { description: Invalid configuration }
+  /agent/monitoring/sources:
+    get:
+      operationId: listAgentSourceMonitors
+      tags: [agent, monitoring]
+      summary: List owner-scoped source monitors and notifications
+      responses:
+        "200":
+          description: Source monitors and notifications
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+    post:
+      operationId: createAgentSourceMonitor
+      tags: [agent, monitoring]
+      summary: Add a public or authorized source monitor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSourceMonitor" }
+      responses:
+        "201":
+          description: Created source monitor
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /agent/monitoring/notifications/{id}/read:
+    post:
+      operationId: markAgentMonitorNotificationRead
+      tags: [agent, monitoring]
+      summary: Mark a monitoring notification as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Updated notification, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  /agent/monitoring/sources/{id}/check:
+    post:
+      operationId: checkAgentSourceMonitor
+      tags: [agent, monitoring]
+      summary: Check a source monitor now
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Monitor check result and new notifications
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /agent/monitoring/sources/{id}:
+    patch:
+      operationId: updateAgentSourceMonitor
+      tags: [agent, monitoring]
+      summary: Update a source monitor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200": { description: Updated monitor, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    delete:
+      operationId: deleteAgentSourceMonitor
+      tags: [agent, monitoring]
+      summary: Delete a source monitor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+  /agent/downloads/resolve:
+    post:
+      operationId: resolveAgentDownloadRedirects
+      tags: [agent, downloads]
+      summary: Follow ordinary public HTTP redirects without bypassing access controls
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [sourceUrl], additionalProperties: true }
+      responses:
+        "200": { description: Public redirect chain, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "400": { description: Redirect resolution stopped or failed }
+  /agent/downloads/inspect:
+    post:
+      operationId: inspectAgentDownloadSource
+      tags: [agent, downloads]
+      summary: Inspect a link and propose the highest-quality usable source
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentDownloadInspectInput"
+      responses:
+        "200":
+          description: Source formats and approval-gated selection proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDownloadSelection"
+        "400":
+          description: Source inspection failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /agent/downloads/queue:
+    post:
+      operationId: queueAgentDownload
+      tags: [agent, downloads]
+      summary: Queue an approved highest-quality download
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentDownloadQueueInput"
+      responses:
+        "201":
+          description: Approved download queued or started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDownloadQueued"
+        "400":
+          description: Approval or download request invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /agent/research:
+    post:
+      operationId: createAgentResearchBrief
+      tags: [agent, research]
+      summary: Compare archive, provider, viewing, and external research evidence
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentResearch"
+      responses:
+        "200":
+          description: Research brief with source comparison, upcoming media, and limitations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResearchBrief"
+        "400":
+          description: Invalid research request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /agent/insights:
+    post:
+      operationId: createAgentInsightBrief
+      tags: [agent]
+      summary: Build a prioritized evidence brief for a reasoning agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentInsight"
+      responses:
+        "200":
+          description: Prioritized, redacted evidence brief; it does not execute changes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentInsightBrief"
+        "400":
+          description: Invalid insight request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /agent/context:
+    get:
+      operationId: getAgentContext
+      tags: [agent]
+      summary: Get bounded evidence for an external reasoning agent
+      responses:
+        "200":
+          description: Owner-scoped, redacted archive evidence and safety policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentContext"
+        "401":
+          description: Authentication required
+  /events:
+    get:
+      operationId: streamAgentEvents
+      tags: [agent]
+      summary: Stream owner-scoped persisted system events
+      responses:
+        "200":
+          description: Server-sent event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Authentication required
+  /operations/plan:
+    post:
+      operationId: planAgentOperation
+      tags: [agent, operations]
+      summary: Persist an approval-gated operation plan without executing it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateArchiveOperation"
+      responses:
+        "201":
+          description: Persisted operation plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveOperation"
+        "400":
+          description: Invalid request or missing approval linkage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /assistant/research:
+    get:
+      operationId: researchAssistantCandidate
+      tags: [assistant]
+      summary: Research an external media candidate
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Read-only external research results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchResponse"
+  /assistant/media-profile:
+    get:
+      operationId: readMediaProfile
+      tags: [assistant]
+      summary: Read owner-scoped personal media profile and archive graph
+      responses:
+        "200":
+          description: Personal media profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaProfileResponse" }
+  /assistant/archive-context:
+    get:
+      operationId: readArchiveContext
+      tags: [assistant]
+      summary: Read owner-scoped archive graph context
+      responses:
+        "200":
+          description: Archive graph context
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArchiveGraph" }
+  /assistant/research/reasoning:
+    get:
+      operationId: readPersonalReasoning
+      tags: [assistant]
+      summary: Read structured personal media reasoning
+      responses:
+        "200":
+          description: Read-only multi-evidence reasoning
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalReasoningResponse"
+  /assistant/research/curation:
+    get:
+      operationId: readPersonalCuration
+      tags: [assistant]
+      summary: Read ranked watch and archive curation
+      responses:
+        "200":
+          description: Read-only personal curation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalCurationResponse"
+  /assistant/research/synthesis:
+    get:
+      operationId: synthesizeViewingResearch
+      tags: [assistant]
+      summary: Reconcile multi-source research evidence
+      responses:
+        "200":
+          description: Read-only multi-source research synthesis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchSynthesisResponse"
+  /assistant/research/evaluations:
+    get:
+      operationId: evaluateViewingResearch
+      tags: [assistant]
+      summary: Evaluate relationship candidates with evidence
+      responses:
+        "200":
+          description: Read-only contextual research evaluations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchEvaluationResponse"
+  /assistant/research/history:
+    get:
+      operationId: researchFromViewingHistory
+      tags: [assistant]
+      summary: Generate bounded relationship candidates from viewing history
+      responses:
+        "200":
+          description: Read-only relationship-based research candidates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchHistoryResponse"
+  /assistant/workload:
+    get:
+      operationId: getAssistantWorkload
+      tags: [assistant]
+      summary: Get the unified read-only workload
+      responses:
+        "200":
+          description: Workload derived from assistant, review, and download truth
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantWorkload"
+  /assistant/workload/{workloadId}/lineage:
+    get:
+      operationId: getAssistantWorkloadLineage
+      tags: [assistant]
+      summary: Explain the read-only lineage of a workload item
+      parameters:
+        - name: workloadId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Known and unknown lineage stages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantWorkloadLineage"
+        "404":
+          description: Workload item not found for this owner
+  /assistant/overview:
+    get:
+      operationId: getAssistantOverview
+      tags: [assistant]
+      summary: Get deterministic assistant overview
+      responses:
+        "200":
+          description: Archive intelligence briefing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantOverview"
   /system/overview:
     get:
       operationId: getSystemOverview
@@ -68,6 +542,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemDependencies"
+  /system/storage-diagnostics:
+    get:
+      operationId: getStorageDiagnostics
+      tags: [system]
+      summary: Report which database this process has open and what it contains
+      responses:
+        "200":
+          description: Storage diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageDiagnostics"
   /system/events:
     get:
       operationId: getSystemEvents
@@ -111,6 +597,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppSettings"
+  /provider/refresh:
+    get:
+      operationId: getProviderRefreshState
+      summary: Read provider refresh state and current authority
+      parameters:
+        - { name: provider, in: query, required: true, schema: { type: string, enum: [plex, jellyfin] } }
+      responses:
+        '200':
+          description: Provider refresh state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderRefreshState' }
+  /provider/refresh/history:
+    get:
+      operationId: listProviderRefreshHistory
+      summary: List bounded provider refresh history
+      parameters:
+        - { name: provider, in: query, required: true, schema: { type: string, enum: [plex, jellyfin] } }
+        - { name: page, in: query, required: false, schema: { type: number, minimum: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: number, minimum: 1, maximum: 100 } }
+      responses:
+        '200':
+          description: Provider refresh history
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProviderRefreshHistory' }
+  /archive/reconciliation/findings/{reviewItemId}/lineage:
+    get:
+      operationId: getReconciliationFindingLineage
+      summary: Read bounded reconciliation finding lineage
+      parameters:
+        - { name: reviewItemId, in: path, required: true, schema: { type: number, minimum: 1 } }
+      responses:
+        '200':
+          description: Current and previous reconciliation observation context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReconciliationFindingLineage' }
+        '404':
+          description: Finding not found
   /plex/config:
     get:
       operationId: getPlexConfig
@@ -176,6 +702,136 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PlexInventory"
+  /plex/hierarchy:
+    get:
+      operationId: getPlexHierarchy
+      tags: [plex]
+      summary: Get the owner-scoped Plex media hierarchy
+      parameters:
+        - { name: libraryId, in: query, required: false, schema: { type: integer, minimum: 1 } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 24 } }
+      responses:
+        "200":
+          description: Plex series with persisted season and episode relationships
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlexHierarchy"
+  /plex/artwork/{ratingKey}:
+    get:
+      operationId: getPlexArtwork
+      tags: [plex]
+      summary: Get owner-scoped Plex artwork
+      parameters:
+        - name: ratingKey
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9]+$' }
+      responses:
+        "200":
+          description: Validated Plex artwork bytes
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+        "400":
+          description: Invalid or unavailable Plex configuration
+  /jellyfin/config:
+    get:
+      operationId: getJellyfinConfig
+      tags: [jellyfin]
+      summary: Get Jellyfin configuration status
+      responses:
+        "200":
+          description: Jellyfin configuration without secrets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JellyfinConfig"
+    patch:
+      operationId: updateJellyfinConfig
+      tags: [jellyfin]
+      summary: Update Jellyfin configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JellyfinConfigUpdate"
+      responses:
+        "200":
+          description: Updated Jellyfin configuration status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JellyfinConfig"
+  /jellyfin/test-connection:
+    post:
+      operationId: testJellyfinConnection
+      tags: [jellyfin]
+      summary: Verify the configured Jellyfin server
+      responses:
+        "200":
+          description: Actual Jellyfin connection result without credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JellyfinConfig"
+  /jellyfin/sync:
+    post:
+      operationId: startJellyfinSync
+      tags: [jellyfin]
+      summary: Start synchronizing the configured Jellyfin inventory
+      responses:
+        "202":
+          description: Jellyfin synchronization started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JellyfinConfig"
+  /jellyfin/inventory:
+    get:
+      operationId: getJellyfinInventory
+      tags: [jellyfin]
+      summary: Get the synchronized Jellyfin inventory
+      responses:
+        "200":
+          description: Owner-scoped Jellyfin libraries and items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JellyfinInventory"
+  /archive/provider:
+    get:
+      operationId: getArchiveProvider
+      tags: [archive]
+      summary: Get the active archive reference provider
+      responses:
+        "200":
+          description: The media server currently supplying reference inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveProviderSelection"
+    put:
+      operationId: setArchiveProvider
+      tags: [archive]
+      summary: Select the archive reference provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveProviderSelectionUpdate"
+      responses:
+        "200":
+          description: The updated reference provider selection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveProviderSelection"
   /integrations/status:
     get:
       operationId: getIntegrationStatuses
@@ -200,6 +856,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WebhookSecretStatusesResponse"
+  /integrations/webhooks/history:
+    get:
+      operationId: getWebhookDeliveryHistory
+      tags: [integrations]
+      summary: Get owner-scoped webhook delivery history
+      parameters:
+        - name: provider
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/WebhookProvider"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Paginated webhook delivery classifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryHistoryResponse"
   /integrations/webhooks/{provider}:
     put:
       operationId: replaceWebhookSecret
@@ -997,6 +1673,92 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReconciliationReport"
+  /archive-operations/{id}/provider-status:
+    get:
+      operationId: getArchiveOperationProviderStatus
+      tags: [archive]
+      summary: Read provider reconciliation status for an archive operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Current owner-scoped provider status
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /archive-operations/{id}/refresh-providers:
+    post:
+      operationId: refreshProvidersAfterArchiveOperation
+      tags: [archive]
+      summary: Explicitly refresh configured media providers after a verified operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: number }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmed]
+              properties:
+                confirmed: { type: boolean }
+                providers:
+                  type: array
+                  items: { type: string, enum: [plex, jellyfin] }
+      responses:
+        "202":
+          description: Provider refresh started or skipped because it is unconfigured
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /archive/power-renamer/plan:
+    post:
+      operationId: createPowerRenamerPlan
+      tags: [archive]
+      summary: Create a researched, supervised Power Renamer plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileRecordIds]
+              properties:
+                fileRecordIds:
+                  type: array
+                  items: { type: number }
+      responses:
+        "201":
+          description: Supervised rename plan awaiting approval
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /archive/power-renamer/operations:
+    post:
+      operationId: createPowerRenamerOperation
+      tags: [archive]
+      summary: Create an approved Power Renamer archive operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reviewItemId]
+              properties:
+                reviewItemId: { type: number }
+      responses:
+        "201":
+          description: Approved operation awaiting preflight
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
   /archive/naming-proposals:
     get:
       operationId: getArchiveNamingProposals
@@ -1081,6 +1843,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /archive/scan/events:
+    get:
+      operationId: streamArchiveScanEvents
+      tags: [archive]
+      summary: Stream live archive scan progress as Server-Sent Events
+      description: >-
+        Server-Sent Events stream of live scan observability. On connect the
+        server sends a `snapshot` event carrying the persisted scan aggregate
+        and the ephemeral live state, followed by `scan.*` events as the scan
+        progresses. The persisted aggregate from `GET /archive/scan` remains
+        the source of truth; this stream is ephemeral and safe to lose.
+        Events are owner-scoped. Not modelled as a JSON response because the
+        body is an unbounded `text/event-stream`.
+      responses:
+        "200":
+          description: Owner-scoped Server-Sent Events stream of archive scan progress
+          content:
+            text/event-stream:
+              schema:
+                type: string
   /archive/scan:
     get:
       operationId: getArchiveScan
@@ -1403,6 +2185,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DownloadJob"
+  /assistant/health:
+    get:
+      operationId: getAssistantArchiveHealth
+      tags: [Assistant]
+      responses:
+        '200':
+          description: Read-only archive health projection
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /archive/ordering-proposals:
+    post:
+      operationId: createArchiveOrderingProposal
+      tags: [Archive]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '201':
+          description: Immutable ordering proposal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderingProposalResponse"
+  /archive/ordering-proposals/{id}:
+    get:
+      operationId: getArchiveOrderingProposal
+      tags: [Archive]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Immutable ordering proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderingProposalResponse"
+        '404':
+          description: Proposal not found
+
 components:
   parameters:
     Page:
@@ -1606,6 +2437,761 @@ components:
     StatusValue:
       type: string
       enum: [ready, connected, idle, placeholder, warning, unavailable, processing]
+    AssistantGroup:
+      type: object
+      required: [id, type, state, priority, confidence, title, explanation, evidence, recommendedAction, underlyingItemIds, itemCount]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [download, integrity, rename, duplicate, identity, quality]
+        state:
+          type: string
+          enum: [actionable, blocked, uncertain, informational, resolved]
+        priority:
+          type: string
+          enum: [critical, high, medium, low, info]
+        confidence: { type: string }
+        title: { type: string }
+        explanation: { type: string }
+        evidence:
+          type: array
+          items: { type: string }
+        recommendedAction: { type: string }
+        underlyingItemIds:
+          type: array
+          items: { type: number }
+        itemCount: { type: number, minimum: 1 }
+    AssistantRecommendation:
+      type: object
+      required: [id, type, priority, confidence, title, explanation, evidence, recommendedAction, state, reviewItemId]
+      properties:
+        id: { type: string }
+        type:
+          type: string
+          enum: [download, integrity, rename, duplicate, identity, quality]
+        priority:
+          type: string
+          enum: [critical, high, medium, low, info]
+        confidence: { type: string }
+        title: { type: string }
+        explanation: { type: string }
+        evidence:
+          type: array
+          items: { type: string }
+        recommendedAction: { type: string }
+        state: { type: string }
+        reviewItemId: { type: [number, "null"] }
+        personalContext:
+          type: [object, "null"]
+          required: [watchState, lastWatchedAt, playCount, watchedMinutes, seriesProgress, isNextEpisode]
+          properties:
+            watchState: { type: string }
+            lastWatchedAt: { type: [string, "null"], format: date-time }
+            playCount: { type: number, minimum: 0 }
+            watchedMinutes: { type: number, minimum: 0 }
+            seriesProgress: { type: [number, "null"], minimum: 0, maximum: 100 }
+            isNextEpisode: { type: boolean }
+        personalAffinity:
+          type: [object, "null"]
+          required: [priority, basedOn]
+          properties:
+            priority: { type: string, enum: [high, medium, low, unknown] }
+            basedOn:
+              type: array
+              items: { type: string }
+    CreateSourceMonitor:
+      type: object
+      required: [url]
+      properties:
+        name: { type: string }
+        url: { type: string, minLength: 1 }
+        kind: { type: string, enum: [rss, atom, json, html, telegram] }
+        intervalMinutes: { type: number, minimum: 5, maximum: 1440 }
+        discovery: { type: boolean, default: false }
+        targets:
+          type: array
+          items:
+            type: object
+            required: [title]
+            properties:
+              title: { type: string }
+              mediaType: { type: string, enum: [movie, series, episode] }
+              season: { type: number, minimum: 0 }
+    AgentDownloadInspectInput:
+      type: object
+      required: [sourceUrl]
+      properties:
+        sourceUrl: { type: string, minLength: 1 }
+        title: { type: string }
+        forceRefresh: { type: boolean, default: false }
+    AgentDownloadQueueInput:
+      type: object
+      required: [reviewItemId]
+      properties:
+        reviewItemId: { type: number, minimum: 1 }
+        sourceUrl: { type: string }
+        title: { type: string }
+        selectedFormatId: { type: string }
+        selectedVideoFormatId: { type: [string, "null"] }
+        selectedAudioFormatId: { type: [string, "null"] }
+        outputContainer: { type: string, enum: [mp4, mkv, webm] }
+        temporaryDirectory: { type: string }
+        destinationDirectory: { type: string }
+        finalFilename: { type: string }
+        start: { type: boolean, default: false }
+    AgentDownloadSelection:
+      type: object
+      required: [kind, contract, source, selected, alternatives, review, safety]
+      properties:
+        kind: { type: string, enum: [download_source_selection] }
+        contract: { type: string, enum: [agent-download-v1] }
+        source: { type: object, additionalProperties: true }
+        selected: { type: object, additionalProperties: true }
+        alternatives: { type: array, items: { type: object, additionalProperties: true } }
+        review: { type: object, additionalProperties: true }
+        safety: { type: object, additionalProperties: true }
+    AgentDownloadQueued:
+      type: object
+      required: [kind, contract, job, started, verification]
+      properties:
+        kind: { type: string, enum: [download_queued] }
+        contract: { type: string, enum: [agent-download-v1] }
+        job: { type: object, additionalProperties: true }
+        started: { type: boolean }
+        verification: { type: string }
+    CreateAgentResearch:
+      type: object
+      properties:
+        query: { type: string, maxLength: 1000 }
+        includeComparisons: { type: boolean, default: true }
+        includeUpcoming: { type: boolean, default: true }
+    AgentResearchBrief:
+      type: object
+      required: [kind, contract, generatedAt, ownerScoped, sourcePolicy, upcoming, recent, queryResearch, comparisons, comparisonLimitations, personalContext]
+      properties:
+        kind: { type: string, enum: [archive_research_brief] }
+        contract: { type: string, enum: [agent-research-v1] }
+        generatedAt: { type: string, format: date-time }
+        question: { type: [string, "null"] }
+        ownerScoped: { type: boolean }
+        sourcePolicy: { type: object, additionalProperties: true }
+        upcoming: { type: object, additionalProperties: true }
+        recent: { type: array, items: { type: object, additionalProperties: true } }
+        queryResearch: { type: object, additionalProperties: true }
+        comparisons: { type: object, additionalProperties: true }
+        comparisonLimitations: { type: array, items: { type: string } }
+        personalContext: { type: object, additionalProperties: true }
+    CreateAgentInsight:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string, minLength: 1, maxLength: 2000 }
+        maxActions: { type: number, minimum: 1, maximum: 5, default: 3 }
+        includeOperationPlans: { type: boolean, default: true }
+    AgentInsightBrief:
+      type: object
+      required: [kind, contract, generatedAt, question, source, safety, answerRequirements, snapshot, prioritizedEvidence, personalSignals, unknowns]
+      properties:
+        kind: { type: string, enum: [archive_insight_brief] }
+        contract: { type: string, enum: [agent-insight-v1] }
+        generatedAt: { type: string, format: date-time }
+        question: { type: string }
+        source: { type: object, additionalProperties: true }
+        safety: { type: object, additionalProperties: true }
+        answerRequirements: { type: array, items: { type: string } }
+        snapshot: { type: object, additionalProperties: true }
+        prioritizedEvidence: { type: array, items: { type: object, additionalProperties: true } }
+        personalSignals: { type: object, additionalProperties: true }
+        unknowns: { type: array, items: { type: object, additionalProperties: true } }
+    AgentContext:
+      type: object
+      required: [generatedAt, source, safety, archive, personal]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        source:
+          type: object
+          required: [system, contract, ownerScoped]
+          properties:
+            system: { type: string }
+            contract: { type: string }
+            ownerScoped: { type: boolean }
+        safety:
+          type: object
+          required: [mode, approvalRequired, preflightRequired, directMutation, providerExecution, unknownsMustRemainExplicit]
+          properties:
+            mode: { type: string, enum: [evidence_only] }
+            approvalRequired: { type: boolean }
+            preflightRequired: { type: boolean }
+            directMutation: { type: boolean }
+            providerExecution: { type: boolean }
+            unknownsMustRemainExplicit: { type: boolean }
+        archive: { type: object, additionalProperties: true }
+        personal: { type: object, additionalProperties: true }
+    AgentCapabilities:
+      type: object
+      required: [agent, capabilities, operationPolicy]
+      properties:
+        agent:
+          type: object
+          required: [id, mode]
+          properties:
+            id: { type: string }
+            mode: { type: string, enum: [local, hosted] }
+        capabilities:
+          type: object
+          required: [read, plan, operate]
+          properties:
+            read: { type: boolean }
+            plan: { type: boolean }
+            operate: { type: boolean }
+        operationPolicy:
+          type: object
+          required: [approvalRequired, preflightRequired, directMutation, providerExecution]
+          properties:
+            approvalRequired: { type: boolean }
+            preflightRequired: { type: boolean }
+            directMutation: { type: boolean }
+            providerExecution: { type: boolean }
+    AssistantOverviewSummary:
+      type: object
+      required: [health, attentionCount, counts, blockedCount, uncertainCount, lastScan, freshness]
+      properties:
+        health:
+          type: string
+          enum: [healthy, mostly_healthy, attention_required]
+        attentionCount: { type: number, minimum: 0 }
+        counts:
+          type: object
+          required: [critical, high, medium, low, info]
+          properties:
+            critical: { type: number, minimum: 0 }
+            high: { type: number, minimum: 0 }
+            medium: { type: number, minimum: 0 }
+            low: { type: number, minimum: 0 }
+            info: { type: number, minimum: 0 }
+        blockedCount: { type: number, minimum: 0 }
+        uncertainCount: { type: number, minimum: 0 }
+        lastScan: { type: [string, "null"] }
+        freshness: { type: string }
+    AssistantWorkload:
+      type: object
+      required: [items, counts, generatedAt]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantWorkloadItem"
+        counts:
+          type: object
+          required: [needs_you, being_handled, waiting, interesting, completed, dismissed, superseded, blocked, uncertain]
+          additionalProperties: false
+          properties:
+            needs_you: { type: number, minimum: 0 }
+            being_handled: { type: number, minimum: 0 }
+            waiting: { type: number, minimum: 0 }
+            interesting: { type: number, minimum: 0 }
+            completed: { type: number, minimum: 0 }
+            dismissed: { type: number, minimum: 0 }
+            superseded: { type: number, minimum: 0 }
+            blocked: { type: number, minimum: 0 }
+            uncertain: { type: number, minimum: 0 }
+        generatedAt: { type: string, format: date-time }
+    AssistantWorkloadItem:
+      type: object
+      required: [id, title, reviewItemId, findingClassification, currentObservationId, provider, refreshId, evidenceKey, observedAt, changeContext, summary, state, needsUserAction, nextStep, destination, source, sourceId, evidence, confidence, lastConfirmedAt, freshness]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        reviewItemId: { type: number, nullable: true }
+        findingClassification: { type: string, nullable: true }
+        currentObservationId: { type: number, nullable: true }
+        provider: { type: string, nullable: true }
+        refreshId: { type: string, nullable: true }
+        evidenceKey: { type: string, nullable: true }
+        observedAt: { type: string, format: date-time, nullable: true }
+        changeContext:
+          type: object
+          nullable: true
+          required: [previousObservationId, previousEvidenceKey, previousObservedAt]
+          properties:
+            previousObservationId: { type: number }
+            previousEvidenceKey: { type: string }
+            previousObservedAt: { type: string, format: date-time }
+        summary: { type: string }
+        state: { type: string, enum: [needs_you, being_handled, waiting, interesting, completed, dismissed, blocked, uncertain] }
+        needsUserAction: { type: boolean }
+        nextStep: { type: string }
+        destination: { type: string, enum: [assistant, queue, history] }
+        source: { type: string, enum: [assistant, download, review, health] }
+        sourceId: { type: string }
+        evidence: { type: array, items: { type: string } }
+        confidence: { type: [string, "null"] }
+        lastConfirmedAt: { type: [string, "null"], format: date-time }
+        freshness: { type: string, enum: [fresh, recent, stale, unknown] }
+    AssistantWorkloadLineage:
+      type: object
+      required: [workloadId, title, origin, review, approval, acquisition, download, verification, operation, outcome]
+      properties:
+        workloadId: { type: string }
+        title: { type: string }
+        origin: { $ref: "#/components/schemas/AssistantLineageStage" }
+        review: { $ref: "#/components/schemas/AssistantLineageStage" }
+        approval: { $ref: "#/components/schemas/AssistantLineageStage" }
+        acquisition: { $ref: "#/components/schemas/AssistantLineageStage" }
+        download: { $ref: "#/components/schemas/AssistantLineageStage" }
+        verification: { $ref: "#/components/schemas/AssistantLineageStage" }
+        operation: { $ref: "#/components/schemas/AssistantLineageStage" }
+        outcome: { $ref: "#/components/schemas/AssistantLineageStage" }
+    AssistantLineageStage:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [known, unknown, not_applicable] }
+        id: { type: [string, "null"] }
+        label: { type: string }
+        detail: { type: string }
+        occurredAt: { type: [string, "null"], format: date-time }
+    AssistantOverview:
+      type: object
+      required: [summary, attention, recommendations, groups, blocked, uncertain, informational, activeWork, mediaExperience, discovery, personalizedBriefing]
+      properties:
+        summary:
+          $ref: "#/components/schemas/AssistantOverviewSummary"
+        attention:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantRecommendation"
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantRecommendation"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantGroup"
+        blocked:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantRecommendation"
+        uncertain:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantRecommendation"
+        informational:
+          type: array
+          items: { type: string }
+        activeWork:
+          type: object
+          required: [scanStatus, acquisitionJobs]
+          properties:
+            scanStatus: { type: string }
+            acquisitionJobs: { type: number, minimum: 0 }
+        mediaExperience:
+          $ref: "#/components/schemas/MediaExperience"
+        discovery:
+          $ref: "#/components/schemas/DiscoverySections"
+        personalizedBriefing:
+          type: array
+          items: { $ref: "#/components/schemas/AssistantBriefingItem" }
+    MediaProfileResponse:
+      type: object
+      required: [profile, archiveGraph]
+      properties:
+        profile: { $ref: "#/components/schemas/PersonalMediaProfile" }
+        archiveGraph: { $ref: "#/components/schemas/ArchiveGraph" }
+    PersonalMediaProfile:
+      type: object
+      required: [viewing, temporal, patterns, archive, unknowns]
+      properties:
+        viewing: { type: object, additionalProperties: true }
+        temporal: { type: object, additionalProperties: true }
+        patterns: { type: object, additionalProperties: true }
+        archive: { type: object, additionalProperties: true }
+        unknowns: { type: array, items: { type: string } }
+    ArchiveGraph:
+      type: object
+      required: [clusters, gaps, redundancies, relationships, unknowns]
+      properties:
+        clusters: { type: array, items: { type: object, additionalProperties: true } }
+        gaps: { type: array, items: { type: object, additionalProperties: true } }
+        redundancies: { type: array, items: { type: object, additionalProperties: true } }
+        relationships: { type: array, items: { type: object, additionalProperties: true } }
+        unknowns: { type: array, items: { type: string } }
+    PersonalReasoningResponse:
+      type: object
+      required: [status, source, items, bounds, identityUncertain]
+      properties:
+        status: { type: string, enum: [available, limited] }
+        source: { type: string, enum: [tvmaze+imdb] }
+        identityUncertain: { type: number, minimum: 0 }
+        bounds: { $ref: "#/components/schemas/ResearchHistoryBounds" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PersonalMediaReasoning" }
+    PersonalMediaReasoning:
+      type: object
+      required: [candidate, claim, supportingEvidence, counterEvidence, patternEvidence, context, gaps, unknowns, watch, archive, evidenceReferences, perspectives]
+      properties:
+        candidate: { $ref: "#/components/schemas/ResearchCandidateIdentity" }
+        claim: { type: string }
+        supportingEvidence: { type: array, items: { type: string } }
+        counterEvidence: { type: array, items: { type: string } }
+        patternEvidence: { type: array, items: { type: string } }
+        context: { type: array, items: { type: string } }
+        gaps: { type: array, items: { type: string } }
+        unknowns: { type: array, items: { type: string } }
+        watch: { $ref: "#/components/schemas/ReasoningConclusion" }
+        archive: { $ref: "#/components/schemas/ReasoningConclusion" }
+        evidenceReferences:
+          type: array
+          items:
+            type: object
+            required: [source, sourceItemId, field, category]
+            properties:
+              source: { type: string }
+              sourceItemId: { type: string }
+              field: { type: string }
+              category: { type: string }
+        perspectives:
+          type: object
+          required: [personal, current, longTerm, archiveValue, archiveGap, relationship, external, novelty, temporal, availability, identity, counterEvidence, unknowns]
+          properties:
+            personal: { type: array, items: { type: string } }
+            current: { type: array, items: { type: string } }
+            longTerm: { type: array, items: { type: string } }
+            archiveValue: { type: array, items: { type: string } }
+            archiveGap: { type: array, items: { type: string } }
+            relationship: { type: array, items: { type: string } }
+            external: { type: array, items: { type: string } }
+            novelty: { type: array, items: { type: string } }
+            temporal: { type: array, items: { type: string } }
+            availability: { type: array, items: { type: string } }
+            identity: { type: array, items: { type: string } }
+            counterEvidence: { type: array, items: { type: string } }
+            unknowns: { type: array, items: { type: string } }
+    ReasoningConclusion:
+      type: object
+      required: [conclusion, confidence]
+      properties:
+        conclusion: { type: string, enum: [strong_watch_candidate, watch_candidate, strong_archive_candidate, archive_candidate, interesting_but_uncertain, research_further, not_recommended, already_satisfied, archive_redundant] }
+        confidence: { type: string, enum: [high, medium, low] }
+    PersonalCurationResponse:
+      type: object
+      required: [status, source, watch, archive, bounds, identityUncertain]
+      properties:
+        status: { type: string, enum: [available, limited] }
+        source: { type: string, enum: [tvmaze+imdb] }
+        identityUncertain: { type: number, minimum: 0 }
+        bounds: { $ref: "#/components/schemas/ResearchHistoryBounds" }
+        watch: { type: array, items: { $ref: "#/components/schemas/PersonalCurationItem" } }
+        archive: { type: array, items: { $ref: "#/components/schemas/PersonalCurationItem" } }
+    PersonalCurationItem:
+      type: object
+      required: [candidate, priorityType, priority, rank, reasons, supportingEvidence, conflicts, unknowns, confidence, archiveState, approvalState]
+      properties:
+        candidate: { $ref: "#/components/schemas/ResearchCandidateIdentity" }
+        priorityType: { type: string, enum: [watch, archive] }
+        priority: { type: string, enum: [high, medium, low, unknown] }
+        rank: { type: number, minimum: 1 }
+        reasons: { type: array, items: { type: string } }
+        supportingEvidence: { type: array, items: { $ref: "#/components/schemas/ResearchEvidenceDetailed" } }
+        conflicts: { type: array, items: { type: string } }
+        unknowns: { type: array, items: { type: string } }
+        confidence: { type: string, enum: [high, medium, low] }
+        archiveState: { type: string, enum: [present, missing, uncertain] }
+        approvalState: { type: string, enum: [not_created] }
+    ResearchSynthesisResponse:
+      type: object
+      required: [status, source, items, bounds, identityUncertain]
+      properties:
+        status: { type: string, enum: [available, limited] }
+        source: { type: string, enum: [tvmaze+imdb] }
+        identityUncertain: { type: number, minimum: 0 }
+        bounds: { $ref: "#/components/schemas/ResearchHistoryBounds" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ResearchSynthesis" }
+    ResearchSynthesis:
+      allOf:
+        - $ref: "#/components/schemas/ResearchEvaluation"
+        - type: object
+          required: [whatSupportsIt, whatConflicts, whatIsUnknown, sourceEvidence]
+          properties:
+            whatSupportsIt: { type: array, items: { type: string } }
+            whatConflicts: { type: array, items: { type: string } }
+            whatIsUnknown: { type: array, items: { type: string } }
+            sourceEvidence: { type: array, items: { $ref: "#/components/schemas/ResearchSynthesisEvidence" } }
+    ResearchSynthesisEvidence:
+      type: object
+      required: [source, sourceItemId, category, field, value, observedAt, provenance]
+      properties:
+        source: { type: string }
+        sourceItemId: { type: string }
+        category: { type: string }
+        field: { type: string }
+        value: { type: string }
+        scale: { type: [string, "null"] }
+        observedAt: { type: string, format: date-time }
+        provenance: { type: string }
+    ResearchEvaluationResponse:
+      type: object
+      required: [status, source, items, bounds, identityUncertain]
+      properties:
+        status: { type: string, enum: [available, limited] }
+        source: { type: string, enum: [tvmaze] }
+        identityUncertain: { type: number, minimum: 0 }
+        bounds: { $ref: "#/components/schemas/ResearchHistoryBounds" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ResearchEvaluation" }
+    ResearchEvaluation:
+      allOf:
+        - $ref: "#/components/schemas/ResearchHistoryCandidate"
+        - type: object
+          required: [personalRelevance, confidence, whyYou, whyThis, whyNow, recommendationEvidence, unknowns]
+          properties:
+            personalRelevance: { type: string, enum: [high, medium, low, unknown] }
+            confidence: { type: string, enum: [high, medium, low] }
+            whyYou: { type: array, items: { type: string } }
+            whyThis: { type: array, items: { type: string } }
+            whyNow: { type: array, items: { type: string } }
+            recommendationEvidence: { type: array, items: { $ref: "#/components/schemas/ResearchEvidenceDetailed" } }
+            unknowns: { type: array, items: { type: string } }
+    ResearchEvidenceDetailed:
+      type: object
+      required: [source, sourceItemId, category, field, value, explanation]
+      properties:
+        source: { type: string }
+        sourceItemId: { type: string }
+        category: { type: string, enum: [personal, relationship, archive, external_metric, release] }
+        field: { type: string }
+        value: { type: string }
+        explanation: { type: string }
+    ResearchHistoryBounds:
+      type: object
+      required: [maxWatchedSeeds, maxCandidates]
+      properties:
+        maxWatchedSeeds: { type: number, const: 20 }
+        maxCandidates: { type: number, const: 100 }
+    ResearchHistoryResponse:
+      type: object
+      required: [status, source, items, bounds, identityUncertain]
+      properties:
+        status: { type: string, enum: [available, limited] }
+        source: { type: string, enum: [tvmaze] }
+        identityUncertain: { type: number, minimum: 0 }
+        bounds:
+          type: object
+          required: [maxWatchedSeeds, maxCandidates]
+          properties:
+            maxWatchedSeeds: { type: number, const: 20 }
+            maxCandidates: { type: number, const: 100 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ResearchHistoryCandidate" }
+    ResearchHistoryCandidate:
+      type: object
+      required: [candidate, sourceWatchedItem, relationships, archiveState, evidence, unknowns]
+      properties:
+        candidate: { $ref: "#/components/schemas/ResearchCandidateIdentity" }
+        sourceWatchedItem:
+          type: object
+          required: [key, title, provider]
+          properties:
+            key: { type: string }
+            title: { type: string }
+            provider: { type: string }
+        relationships:
+          type: array
+          items: { $ref: "#/components/schemas/ResearchRelationship" }
+        archiveState: { type: string, enum: [present, missing, uncertain] }
+        evidence: { type: array, items: { $ref: "#/components/schemas/ResearchEvidence" } }
+        unknowns: { type: array, items: { type: string } }
+    ResearchCandidateIdentity:
+      type: object
+      required: [id, title, mediaType, source, sourceItemId, releaseDate, year, genres]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        mediaType: { type: string, enum: [show] }
+        source: { type: string, enum: [tvmaze] }
+        sourceItemId: { type: string }
+        releaseDate: { type: [string, "null"], format: date }
+        year: { type: [number, "null"] }
+        genres: { type: array, items: { type: string } }
+    ResearchRelationship:
+      type: object
+      required: [type, strength, source, sourceItemId, personId, personName, sourceWatchedItemKey, sourceWatchedItemTitle]
+      properties:
+        type: { type: string, enum: [same_cast, same_creator] }
+        strength: { type: string, enum: [direct] }
+        source: { type: string, enum: [tvmaze] }
+        sourceItemId: { type: string }
+        personId: { type: string }
+        personName: { type: string }
+        sourceWatchedItemKey: { type: string }
+        sourceWatchedItemTitle: { type: string }
+    ResearchEvidence:
+      type: object
+      required: [source, field, value]
+      properties:
+        source: { type: string }
+        field: { type: string }
+        value: { type: string }
+    ResearchResponse:
+      type: object
+      required: [status, reason, items]
+      properties:
+        status: { type: string, enum: [available, unavailable] }
+        reason: { type: [string, "null"] }
+        source: { type: [string, "null"], enum: [tvmaze, null] }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ResearchRecommendation" }
+    ResearchRecommendation:
+      type: object
+      required: [id, title, mediaType, releaseDate, year, genres, rating, source, sourceItemId, archiveState, personalRelevance, reasons, evidence, confidence]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        mediaType: { type: string, enum: [show] }
+        releaseDate: { type: [string, "null"], format: date }
+        year: { type: [number, "null"] }
+        genres: { type: array, items: { type: string } }
+        rating:
+          type: [object, "null"]
+          required: [value, scale, voteCount]
+          properties:
+            value: { type: number }
+            scale: { type: number, const: 10 }
+            voteCount: { type: [number, "null"] }
+        source: { type: string, enum: [tvmaze] }
+        sourceItemId: { type: string }
+        archiveState: { type: string, enum: [present, missing, uncertain] }
+        personalRelevance: { type: string, enum: [high, medium, low, unknown] }
+        reasons: { type: array, items: { type: string } }
+        evidence:
+          type: array
+          items:
+            type: object
+            required: [source, field, value]
+            properties:
+              source: { type: string }
+              field: { type: string }
+              value: { type: string }
+        confidence: { type: string, enum: [high, medium, low] }
+    DiscoverySections:
+      type: object
+      required: [upcoming, recentlyReleased, trending, suggestedForYou]
+      properties:
+        upcoming: { $ref: "#/components/schemas/DiscoverySection" }
+        recentlyReleased: { $ref: "#/components/schemas/DiscoverySection" }
+        trending: { $ref: "#/components/schemas/DiscoverySection" }
+        suggestedForYou: { $ref: "#/components/schemas/DiscoverySection" }
+    DiscoverySection:
+      type: object
+      required: [status, reason, items]
+      properties:
+        status: { type: string, enum: [available, limited, not_available] }
+        reason: { type: [string, "null"] }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/DiscoveryItem" }
+    DiscoveryItem:
+      type: object
+      required: [id, title, provider, itemType, releaseDate, personalRelevance, reasons, evidence]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        provider: { type: string, enum: [plex, jellyfin] }
+        itemType: { type: string, enum: [movie, show, episode, unknown] }
+        releaseDate: { type: [string, "null"], format: date-time }
+        personalRelevance: { type: string, enum: [high, medium, low, unknown] }
+        reasons: { type: array, items: { type: string } }
+        evidence: { type: array, items: { type: string } }
+    AssistantBriefingItem:
+      type: object
+      required: [rank, recommendationId, title, archivePriority, personalAffinity, availability, confidence, reasons, blockedReason]
+      properties:
+        rank: { type: number, minimum: 1 }
+        recommendationId: { type: string }
+        title: { type: string }
+        archivePriority: { type: string, enum: [critical, high, medium, low, info] }
+        personalAffinity: { type: string, enum: [high, medium, low, unknown] }
+        availability: { type: string, enum: [available, blocked, uncertain] }
+        confidence: { type: string }
+        reasons:
+          type: array
+          items: { type: string }
+        blockedReason: { type: [string, "null"] }
+    MediaExperience:
+      type: object
+      required: [sourceStatus, items, completed, inProgress, summary, currentViewingMomentum, watchlist]
+      properties:
+        sourceStatus:
+          type: string
+          enum: [provider_metadata, no_synced_provider_data]
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/MediaExperienceItem" }
+        completed:
+          type: array
+          items: { $ref: "#/components/schemas/MediaExperienceItem" }
+        inProgress:
+          type: array
+          items: { $ref: "#/components/schemas/MediaExperienceItem" }
+        summary:
+          $ref: "#/components/schemas/MediaExperienceSummary"
+        currentViewingMomentum:
+          $ref: "#/components/schemas/CurrentViewingMomentum"
+        watchlist:
+          type: object
+          required: [status, items]
+          properties:
+            status: { type: string, enum: [not_available] }
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/MediaExperienceItem" }
+    MediaExperienceSummary:
+      type: object
+      required: [completedCount, inProgressCount, watchedMinutes, watchedHours]
+      properties:
+        completedCount: { type: number, minimum: 0 }
+        inProgressCount: { type: number, minimum: 0 }
+        watchedMinutes: { type: number, minimum: 0 }
+        watchedHours: { type: number, minimum: 0 }
+    CurrentViewingMomentum:
+      type: object
+      required: [activeSeriesCount, recentlyWatchedCount, windowDays]
+      properties:
+        activeSeriesCount: { type: number, minimum: 0 }
+        recentlyWatchedCount: { type: number, minimum: 0 }
+        windowDays: { type: number, const: 30 }
+    MediaExperienceItem:
+      type: object
+      required: [key, provider, title, itemType, year, releaseDate, durationMinutes, status, progressPercent, playCount, lastWatchedAt, watchedMinutes, seriesTitle, seasonNumber, episodeNumber, seriesProgress, isNextEpisode, evidence]
+      properties:
+        key: { type: string }
+        provider: { type: string, enum: [plex, jellyfin] }
+        title: { type: string }
+        itemType: { type: string, enum: [movie, show, episode, unknown] }
+        year: { type: [number, "null"] }
+        releaseDate: { type: [string, "null"], format: date-time }
+        durationMinutes: { type: [number, "null"] }
+        status: { type: string, enum: [completed, in_progress, unwatched, unknown] }
+        progressPercent: { type: [number, "null"] }
+        playCount: { type: number, minimum: 0 }
+        lastWatchedAt: { type: [string, "null"], format: date-time }
+        watchedMinutes: { type: number, minimum: 0 }
+        seriesTitle: { type: [string, "null"] }
+        seasonNumber: { type: [number, "null"] }
+        episodeNumber: { type: [number, "null"] }
+        seriesProgress: { type: [number, "null"], minimum: 0, maximum: 100 }
+        isNextEpisode: { type: boolean }
+        evidence:
+          type: array
+          items: { type: string }
     SystemOverview:
       type: object
       required: [archiveStatus, plexStatus, queueStatus, processingStatus, storageStatus, aiStatus, lastSync, activity, activeDownloads, queuedJobs, processingJobs, completedToday, failedToday, storage]
@@ -1705,6 +3291,43 @@ components:
           oneOf:
             - $ref: "#/components/schemas/MediaBundleStatus"
             - type: "null"
+    StorageDiagnostics:
+      type: object
+      required:
+        [databasePath, databasePathSource, databasePathIsAbsolute, workingDirectory,
+         databaseSizeBytes, counts, plexConfigured, journalMode, walSidecars]
+      properties:
+        databasePath: { type: string }
+        databasePathSource:
+          type: string
+          enum: [ARCHIVE_DB_PATH, working_directory_fallback]
+        databasePathIsAbsolute: { type: boolean }
+        workingDirectory: { type: string }
+        databaseSizeBytes:
+          oneOf:
+            - type: number
+            - type: "null"
+        counts:
+          type: object
+          required:
+            [fileRecords, activeFileRecords, plexItems, jellyfinItems, reviewItems,
+             archiveOperations, settings]
+          properties:
+            fileRecords: { type: number }
+            activeFileRecords: { type: number }
+            plexItems: { type: number }
+            jellyfinItems: { type: number }
+            reviewItems: { type: number }
+            archiveOperations: { type: number }
+            settings: { type: number }
+        plexConfigured: { type: boolean }
+        journalMode:
+          oneOf:
+            - type: string
+            - type: "null"
+        walSidecars:
+          type: array
+          items: { type: string }
     SystemEvent:
       type: object
       required: [id, level, message, timestamp, source, operatorId, retentionClass]
@@ -1728,7 +3351,7 @@ components:
           enum: [operational, security]
     AppSettings:
       type: object
-      required: [mockMode, dataDirectory, downloadDirectory, archiveDirectory, temporaryDirectory, ytDlpPath, ffmpegPath, ffprobePath, logLevel, hardwareAcceleration, hardwareAccelerationMode, networkMode, concurrentDownloads, maxRetries, bandwidthLimit, outputContainer, inspectionCacheMinutes, warningFreePercent, criticalFreePercent]
+      required: [mockMode, dataDirectory, downloadDirectory, archiveDirectory, temporaryDirectory, ytDlpPath, ffmpegPath, ffprobePath, logLevel, hardwareAcceleration, hardwareAccelerationMode, networkMode, concurrentDownloads, maxRetries, bandwidthLimit, outputContainer, inspectionCacheMinutes, warningFreePercent, criticalFreePercent, startWithWindows]
       properties:
         mockMode:
           type: boolean
@@ -1783,6 +3406,8 @@ components:
           type: number
           minimum: 1
           maximum: 25
+        startWithWindows:
+          type: boolean
     AppSettingsUpdate:
       type: object
       properties:
@@ -1839,6 +3464,43 @@ components:
           type: number
           minimum: 1
           maximum: 25
+        startWithWindows:
+          type: boolean
+    ProviderRefresh:
+      type: object
+      required: [refreshId, provider, startedAt, completedAt, status, snapshotCompleteness, itemCount, authoritative, reason, snapshotReference]
+      properties:
+        refreshId: { type: string }
+        provider: { type: string, enum: [plex, jellyfin] }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [syncing, synced, sync_error] }
+        snapshotCompleteness: { type: string, enum: [complete, partial, unknown] }
+        itemCount: { type: number, nullable: true }
+        authoritative: { type: boolean }
+        reason: { type: string, nullable: true }
+        snapshotReference: { type: string, nullable: true }
+    ProviderRefreshState:
+      type: object
+      required: [provider, lastAttemptedRefresh, lastSuccessfulRefresh, currentAuthoritativeRefresh]
+      properties:
+        provider: { type: string, enum: [plex, jellyfin] }
+        lastAttemptedRefresh: { allOf: [{ $ref: '#/components/schemas/ProviderRefresh' }], nullable: true }
+        lastSuccessfulRefresh: { allOf: [{ $ref: '#/components/schemas/ProviderRefresh' }], nullable: true }
+        currentAuthoritativeRefresh: { allOf: [{ $ref: '#/components/schemas/ProviderRefresh' }], nullable: true }
+    ProviderRefreshHistory:
+      type: object
+      required: [results, pagination]
+      properties:
+        results: { type: array, items: { $ref: '#/components/schemas/ProviderRefresh' } }
+        pagination:
+          type: object
+          required: [page, pageSize, total, totalPages]
+          properties:
+            page: { type: number }
+            pageSize: { type: number }
+            total: { type: number }
+            totalPages: { type: number }
     PlexConfig:
       type: object
       required: [serverUrl, configured, hasToken, status, connectionStatus, syncStatus, lastAttemptedAt, lastSuccessfulSyncAt, lastError, serverName, libraryCount, itemCount, mediaCount]
@@ -1883,6 +3545,58 @@ components:
         token:
           type: string
           writeOnly: true
+    PlexHierarchy:
+      type: object
+      required: [page, pageSize, total, series]
+      properties:
+        page: { type: number }
+        pageSize: { type: number }
+        total: { type: number }
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlexHierarchySeries"
+    PlexHierarchySeries:
+      type: object
+      required: [identity, title, year, artworkRatingKey, seasonCount, episodeCount, localMatchedCount, verifiedCount, seasons]
+      properties:
+        identity: { type: string }
+        title: { type: string }
+        year: { type: [number, "null"] }
+        artworkRatingKey: { type: [string, "null"] }
+        seasonCount: { type: number }
+        episodeCount: { type: number }
+        localMatchedCount: { type: number }
+        verifiedCount: { type: number }
+        seasons:
+          type: array
+          items: { $ref: "#/components/schemas/PlexHierarchySeason" }
+    PlexHierarchySeason:
+      type: object
+      required: [identity, seasonNumber, title, episodeCount, localMatchedCount, verifiedCount, episodes]
+      properties:
+        identity: { type: string }
+        seasonNumber: { type: number }
+        title: { type: [string, "null"] }
+        episodeCount: { type: number }
+        localMatchedCount: { type: number }
+        verifiedCount: { type: number }
+        episodes:
+          type: array
+          items: { $ref: "#/components/schemas/PlexHierarchyEpisode" }
+    PlexHierarchyEpisode:
+      type: object
+      required: [identity, episodeNumber, title, artworkRatingKey, localMatch, verifiedCount, localRecordIds]
+      properties:
+        identity: { type: string }
+        episodeNumber: { type: [number, "null"] }
+        title: { type: string }
+        artworkRatingKey: { type: [string, "null"] }
+        localMatch: { type: string, enum: [matched, unmatched, uncertain, conflicting] }
+        verifiedCount: { type: number }
+        localRecordIds:
+          type: array
+          items: { type: number }
     PlexInventory:
       type: object
       required: [libraries, items]
@@ -1929,6 +3643,138 @@ components:
         libraryName:
           type: string
         ratingKey:
+          type: string
+        title:
+          type: string
+        itemType:
+          type: string
+        year:
+          type: [number, "null"]
+        thumbPathAvailable:
+          type: boolean
+        addedAt:
+          type: [string, "null"]
+        updatedAt:
+          type: [string, "null"]
+        mediaCount:
+          type: number
+          minimum: 0
+        partCount:
+          type: number
+          minimum: 0
+    ArchiveProviderSelection:
+      type: object
+      required: [provider, providerLabel, available]
+      properties:
+        provider:
+          $ref: "#/components/schemas/ArchiveProvider"
+        providerLabel:
+          type: string
+        available:
+          type: array
+          description: Providers that currently hold synchronized inventory.
+          items:
+            $ref: "#/components/schemas/ArchiveProvider"
+    ArchiveProviderSelectionUpdate:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          $ref: "#/components/schemas/ArchiveProvider"
+    JellyfinConfig:
+      type: object
+      required: [serverUrl, configured, hasApiKey, userId, status, connectionStatus, syncStatus, lastAttemptedAt, lastSuccessfulSyncAt, lastError, serverName, libraryCount, itemCount, mediaCount]
+      properties:
+        serverUrl:
+          type: string
+        configured:
+          type: boolean
+        hasApiKey:
+          type: boolean
+        userId:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [not_configured, configured, connection_failed, connected, syncing, synced, sync_error]
+        connectionStatus:
+          type: string
+          enum: [not_configured, configured, connection_failed, connected]
+        syncStatus:
+          type: string
+          enum: [idle, syncing, synced, sync_error]
+        lastAttemptedAt:
+          type: [string, "null"]
+        lastSuccessfulSyncAt:
+          type: [string, "null"]
+        lastError:
+          type: [string, "null"]
+        serverName:
+          type: [string, "null"]
+        libraryCount:
+          type: number
+          minimum: 0
+        itemCount:
+          type: number
+          minimum: 0
+        mediaCount:
+          type: number
+          minimum: 0
+    JellyfinConfigUpdate:
+      type: object
+      properties:
+        serverUrl:
+          type: string
+        apiKey:
+          type: string
+          writeOnly: true
+        userId:
+          type: string
+    JellyfinInventory:
+      type: object
+      required: [libraries, items]
+      properties:
+        libraries:
+          type: array
+          items:
+            $ref: "#/components/schemas/JellyfinLibrary"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/JellyfinInventoryItem"
+    JellyfinLibrary:
+      type: object
+      required: [id, key, name, type, serverUrl, itemCount, lastSyncedAt, syncStatus, syncError]
+      properties:
+        id:
+          type: number
+        key:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        serverUrl:
+          type: string
+        itemCount:
+          type: number
+          minimum: 0
+        lastSyncedAt:
+          type: [string, "null"]
+        syncStatus:
+          type: string
+        syncError:
+          type: [string, "null"]
+    JellyfinInventoryItem:
+      type: object
+      required: [id, libraryId, libraryName, itemKey, title, itemType, year, thumbPathAvailable, addedAt, updatedAt, mediaCount, partCount]
+      properties:
+        id:
+          type: number
+        libraryId:
+          type: number
+        libraryName:
+          type: string
+        itemKey:
           type: string
         title:
           type: string
@@ -2011,6 +3857,38 @@ components:
             - type: "null"
         counts:
           $ref: "#/components/schemas/WebhookDeliveryCounts"
+    WebhookDeliveryClassification:
+      type: string
+      enum: [processed, ignored, duplicate, rejected, unavailable, malformed]
+    WebhookDeliveryHistoryItem:
+      type: object
+      required: [id, provider, receivedAt, classification, reasonCode, providerEventId, providerJobId, resolvedOwnerId, acquisitionJobId, detail, deduplication]
+      properties:
+        id: { type: number }
+        provider:
+          $ref: "#/components/schemas/WebhookProvider"
+        receivedAt: { type: string, format: date-time }
+        classification:
+          $ref: "#/components/schemas/WebhookDeliveryClassification"
+        reasonCode: { type: string }
+        providerEventId: { type: [string, "null"] }
+        providerJobId: { type: [string, "null"] }
+        resolvedOwnerId: { type: [string, "null"] }
+        acquisitionJobId: { type: [number, "null"] }
+        detail: { type: string }
+        deduplication:
+          type: [string, "null"]
+          enum: [event_id, unavailable, null]
+    WebhookDeliveryHistoryResponse:
+      type: object
+      required: [pagination, results]
+      properties:
+        pagination:
+          $ref: "#/components/schemas/ReportPagination"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookDeliveryHistoryItem"
     WebhookSecretStatusesResponse:
       type: object
       required: [providers]
@@ -2040,7 +3918,7 @@ components:
       properties:
         id:
           type: string
-          enum: [plex, sonarr, radarr, prowlarr, qbittorrent, mpilot, telegram]
+          enum: [plex, jellyfin, sonarr, radarr, prowlarr, qbittorrent, mpilot, telegram]
         name:
           type: string
         state:
@@ -2114,11 +3992,11 @@ components:
             $ref: "#/components/schemas/MissingMediaItem"
     ArchiveScan:
       type: object
-      required: [status, startedAt, completedAt, lastError, scannedFiles, activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount]
+      required: [status, startedAt, completedAt, lastError, scannedFiles, activeFiles, failedFiles, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount, resumedCount, resumable]
       properties:
         status:
           type: string
-          enum: [not_scanned, scanning, completed, failed]
+          enum: [not_scanned, scanning, interrupted, completed, failed]
         startedAt:
           type: [string, "null"]
         completedAt:
@@ -2149,6 +4027,13 @@ components:
         localOnlyCount:
           type: number
           minimum: 0
+        resumedCount:
+          type: number
+          minimum: 0
+          description: How many times the current or most recent scan pass was resumed.
+        resumable:
+          type: boolean
+          description: Whether starting a scan will continue an interrupted pass.
     ArchiveInventorySummary:
       type: object
       required: [activeFiles, failedFiles, integrityFailureCount, inspectionFailureCount, healthStatus, duplicateCount, missingCount, qualityConflictCount, plexOnlyCount, localOnlyCount, reviewedCount, unresolvedCount]
@@ -2271,9 +4156,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ArchiveBulkReviewResult"
+    ArchiveProvider:
+      type: string
+      description: Media server supplying the reference inventory.
+      enum: [plex, jellyfin]
     ArchivePlexMatch:
       type: object
-      required: [ratingKey, title, year, qualityDifferences]
+      required: [ratingKey, title, year, qualityDifferences, provider, providerLabel]
       properties:
         ratingKey:
           type: string
@@ -2285,9 +4174,14 @@ components:
           type: array
           items:
             type: string
+        provider:
+          $ref: "#/components/schemas/ArchiveProvider"
+        providerLabel:
+          type: string
+          description: Operator-facing provider name, for example Plex or Jellyfin.
     ArchivePlexOnlyRecord:
       type: object
-      required: [ratingKey, title, itemType, year, qualitySummary]
+      required: [ratingKey, title, itemType, year, qualitySummary, provider, providerLabel]
       properties:
         ratingKey:
           type: string
@@ -2298,6 +4192,10 @@ components:
         year:
           type: [number, "null"]
         qualitySummary:
+          type: string
+        provider:
+          $ref: "#/components/schemas/ArchiveProvider"
+        providerLabel:
           type: string
     ArchiveInventoryRecord:
       type: object
@@ -2383,10 +4281,15 @@ components:
           type: [string, "null"]
     ArchiveInventory:
       type: object
-      required: [scan, summary, records, plexOnly]
+      required: [scan, provider, providerLabel, summary, records, plexOnly]
       properties:
         scan:
           $ref: "#/components/schemas/ArchiveScan"
+        provider:
+          $ref: "#/components/schemas/ArchiveProvider"
+        providerLabel:
+          type: string
+          description: Operator-facing name of the active reference provider.
         summary:
           $ref: "#/components/schemas/ArchiveInventorySummary"
         records:
@@ -2931,9 +4834,21 @@ components:
     RecommendationPriority:
       type: string
       enum: [critical, high, medium, low]
+    AcquisitionIdentity:
+      type: object
+      required: [mediaType]
+      additionalProperties: false
+      properties:
+        mediaType: { type: string }
+        seriesId: { type: string }
+        seriesTitle: { type: string }
+        seasonNumber: { type: number }
+        episodeNumber: { type: number }
+        episodeId: { type: string }
+        episodeTitle: { type: string }
     AcquisitionRecommendation:
       type: object
-      required: [id, recommendationKey, mediaType, title, year, externalId, target, evidence, preferredQuality, destination, route, blockers, recommendedAction, confidence, priority, status, reviewItemId, acquisitionJobId, evidenceHash, generatedAt, updatedAt]
+      required: [id, recommendationKey, mediaType, title, year, externalId, identity, target, evidence, preferredQuality, destination, route, blockers, recommendedAction, confidence, priority, status, reviewItemId, acquisitionJobId, evidenceHash, generatedAt, updatedAt]
       properties:
         id: { type: number }
         recommendationKey: { type: string }
@@ -2941,6 +4856,10 @@ components:
         title: { type: string }
         year: { type: ["number", "null"] }
         externalId: { type: ["string", "null"] }
+        identity:
+          oneOf:
+            - $ref: "#/components/schemas/AcquisitionIdentity"
+            - type: "null"
         target:
           type: object
           additionalProperties: true
@@ -3001,9 +4920,35 @@ components:
           type: object
           additionalProperties: true
         createdAt: { type: string, format: date-time }
+    OrderingProposalResponse:
+      type: object
+      additionalProperties: true
+      required: [proposalId, proposalVersion, reviewItemId, collectionId, confidence, evidence, sourceMappings]
+      properties:
+        proposalId: { type: string }
+        proposalVersion: { type: string }
+        reviewItemId: { type: number }
+        collectionId: { type: string }
+        confidence: { type: string }
+        evidence: { type: array, items: { type: string } }
+        unknowns: { type: array, items: { type: string } }
+        sourceMappings: { type: array, items: { type: object, additionalProperties: true } }
+        reviewState: { type: string }
+        staleStatus: { type: string }
+        linkedOperationId: { type: [number, "null"] }
+    ArchiveBatchMapping:
+      type: object
+      required: [id, originalPath, temporaryPath, finalPath, state]
+      properties:
+        id: { type: string }
+        originalPath: { type: string }
+        temporaryPath: { type: string }
+        finalPath: { type: string }
+        state: { type: string, enum: [planned, temporary, completed, failed] }
+        error: { type: [string, "null"] }
     ArchiveOperation:
       type: object
-      required: [id, operationKey, action, sourceKind, sourceId, sourcePath, destinationPath, reviewItemId, acquisitionJobId, downloadJobId, status, dryRun, retryCount, maxRetries, preflight, rollback, postflight, errorCode, errorMessage, createdAt, startedAt, completedAt, cancelledAt, updatedAt, events]
+      required: [id, operationKey, action, sourceKind, sourceId, sourcePath, destinationPath, batch, proposalId, reviewItemId, acquisitionJobId, downloadJobId, status, dryRun, retryCount, maxRetries, preflight, rollback, postflight, errorCode, errorMessage, createdAt, startedAt, completedAt, cancelledAt, updatedAt, events]
       properties:
         id: { type: number }
         operationKey: { type: string }
@@ -3013,6 +4958,11 @@ components:
         sourceId: { type: ["string", "null"] }
         sourcePath: { type: string }
         destinationPath: { type: string }
+        batch:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveBatchMapping"
+        proposalId: { type: [string, "null"] }
         reviewItemId: { type: number }
         acquisitionJobId: { type: ["number", "null"] }
         downloadJobId: { type: ["number", "null"] }
@@ -3043,7 +4993,7 @@ components:
             $ref: "#/components/schemas/ArchiveOperationEvent"
     CreateArchiveOperation:
       type: object
-      required: [action, sourceKind, sourcePath, destinationPath, reviewItemId]
+      required: [action, sourceKind]
       properties:
         action:
           $ref: "#/components/schemas/ArchiveOperationAction"
@@ -3051,11 +5001,16 @@ components:
         sourceId: { type: ["string", "null"] }
         sourcePath: { type: string, minLength: 1 }
         destinationPath: { type: string, minLength: 1 }
+        batch:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArchiveBatchMapping"
         reviewItemId: { type: number, minimum: 1 }
         acquisitionJobId: { type: ["number", "null"], minimum: 1 }
         downloadJobId: { type: ["number", "null"], minimum: 1 }
         dryRun: { type: boolean, default: false }
         idempotencyKey: { type: string }
+        proposalId: { type: string }
     OperationConfirmation:
       type: object
       required: [confirmed]
@@ -3072,12 +5027,33 @@ components:
       properties:
         destinationPath: { type: string, minLength: 1 }
         dryRun: { type: boolean, default: false }
+    FindingSeverity:
+      type: string
+      enum: [info, low, medium, high, critical]
+    SeverityBreakdown:
+      type: object
+      required: [total, reviewRequired, informational, bySeverity]
+      properties:
+        total: { type: number }
+        reviewRequired: { type: number }
+        informational: { type: number }
+        bySeverity:
+          type: object
+          required: [info, low, medium, high, critical]
+          properties:
+            info: { type: number }
+            low: { type: number }
+            medium: { type: number }
+            high: { type: number }
+            critical: { type: number }
     ReviewSyncResult:
       type: object
-      required: [namingItems, archiveFindingItems, total]
+      required: [namingItems, archiveFindingItems, informationalFindings, severity, total]
       properties:
         namingItems: { type: number }
         archiveFindingItems: { type: number }
+        informationalFindings: { type: number }
+        severity: { $ref: "#/components/schemas/SeverityBreakdown" }
         total: { type: number }
     ReportPagination:
       type: object
@@ -3087,6 +5063,45 @@ components:
         pageSize: { type: number, minimum: 1 }
         total: { type: number, minimum: 0 }
         totalPages: { type: number, minimum: 0 }
+    ReconciliationFindingLineage:
+      type: object
+      required: [finding, currentObservation, provider, previousObservation]
+      properties:
+        finding:
+          type: object
+          required: [reviewItemId, subjectKey, state, classification, title, evidenceKey]
+          properties:
+            reviewItemId: { type: number }
+            subjectKey: { type: string }
+            state: { type: string }
+            classification: { type: string, nullable: true }
+            title: { type: string }
+            evidenceKey: { type: string, nullable: true }
+        currentObservation:
+          type: object
+          nullable: true
+          required: [observationId, evidenceKey, observedAt]
+          properties:
+            observationId: { type: number }
+            evidenceKey: { type: string }
+            observedAt: { type: string, format: date-time }
+        provider:
+          type: object
+          nullable: true
+          required: [provider, refreshId, capturedAt, snapshotReference]
+          properties:
+            provider: { type: string, nullable: true }
+            refreshId: { type: string, nullable: true }
+            capturedAt: { type: string, format: date-time, nullable: true }
+            snapshotReference: { type: string, nullable: true }
+        previousObservation:
+          type: object
+          nullable: true
+          required: [observationId, evidenceKey, observedAt]
+          properties:
+            observationId: { type: number }
+            evidenceKey: { type: string }
+            observedAt: { type: string, format: date-time }
     ReconciliationSummary:
       type: object
       required: [localCount, plexCount, matchedCount, localOnlyCount, plexOnlyCount, uncertainCount, duplicateCount, qualityConflictCount]
@@ -3254,7 +5269,7 @@ components:
         - $ref: "#/components/schemas/NamingMovieIdentity"
     NamingProposalResult:
       type: object
-      required: [fileRecordId, localIdentityId, sourcePath, proposedPath, sourceFilename, proposedFilename, currentIdentity, proposedIdentity, patternId, confidence, operation, reason, evidence, mediaType, volumeId, archiveRoot, collision]
+      required: [fileRecordId, localIdentityId, sourcePath, proposedPath, sourceFilename, proposedFilename, currentIdentity, proposedIdentity, patternId, confidence, operation, reason, evidence, researchGrade, researchSources, researchBlockers, mediaType, volumeId, archiveRoot, collision]
       properties:
         fileRecordId: { type: number }
         localIdentityId: { type: ["number", "null"] }
@@ -3279,6 +5294,15 @@ components:
           enum: [rename, restructure, move, uncertain/no_action]
         reason: { type: string }
         evidence:
+          type: array
+          items: { type: string }
+        researchGrade:
+          type: string
+          enum: [corroborated, observed, blocked]
+        researchSources:
+          type: array
+          items: { type: string }
+        researchBlockers:
           type: array
           items: { type: string }
         mediaType:

@@ -18,6 +18,1322 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Get Arena Canonical bridge status
+ */
+export const GetArenaCanonicalStatusResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Get the Archive Assistant tool manifest for Arena Canonical
+ */
+export const GetArenaCanonicalToolsResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Ask Arena Canonical to reason over owner-scoped archive evidence
+ */
+export const AskArenaCanonicalBody = zod.record(zod.string(), zod.unknown())
+
+export const AskArenaCanonicalResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Get the server-enforced agent boundary
+ */
+export const GetAgentCapabilitiesResponse = zod.object({
+  "agent": zod.object({
+  "id": zod.string(),
+  "mode": zod.enum(['local', 'hosted'])
+}),
+  "capabilities": zod.object({
+  "read": zod.boolean(),
+  "plan": zod.boolean(),
+  "operate": zod.boolean()
+}),
+  "operationPolicy": zod.object({
+  "approvalRequired": zod.boolean(),
+  "preflightRequired": zod.boolean(),
+  "directMutation": zod.boolean(),
+  "providerExecution": zod.boolean()
+})
+})
+
+
+/**
+ * @summary Test one integration plugin
+ */
+export const TestIntegrationConnectionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const TestIntegrationConnectionResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Get configured integration fields without exposing secrets
+ */
+export const GetIntegrationConfigurationStatusResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Save local configuration for an integration plugin
+ */
+export const UpdateIntegrationConfigurationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateIntegrationConfigurationBody = zod.record(zod.string(), zod.unknown())
+
+export const UpdateIntegrationConfigurationResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary List owner-scoped source monitors and notifications
+ */
+export const ListAgentSourceMonitorsResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Add a public or authorized source monitor
+ */
+
+export const createAgentSourceMonitorBodyIntervalMinutesMin = 5;
+export const createAgentSourceMonitorBodyIntervalMinutesMax = 1440;
+
+export const createAgentSourceMonitorBodyDiscoveryDefault = false;
+export const createAgentSourceMonitorBodyTargetsItemSeasonMin = 0;
+
+
+
+export const CreateAgentSourceMonitorBody = zod.object({
+  "name": zod.string().optional(),
+  "url": zod.string().min(1),
+  "kind": zod.enum(['rss', 'atom', 'json', 'html', 'telegram']).optional(),
+  "intervalMinutes": zod.number().min(createAgentSourceMonitorBodyIntervalMinutesMin).max(createAgentSourceMonitorBodyIntervalMinutesMax).optional(),
+  "discovery": zod.boolean().default(createAgentSourceMonitorBodyDiscoveryDefault),
+  "targets": zod.array(zod.object({
+  "title": zod.string(),
+  "mediaType": zod.enum(['movie', 'series', 'episode']).optional(),
+  "season": zod.number().min(createAgentSourceMonitorBodyTargetsItemSeasonMin).optional()
+})).optional()
+})
+
+export const CreateAgentSourceMonitorResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Mark a monitoring notification as read
+ */
+export const MarkAgentMonitorNotificationReadParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const MarkAgentMonitorNotificationReadResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Check a source monitor now
+ */
+export const CheckAgentSourceMonitorParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const CheckAgentSourceMonitorResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Update a source monitor
+ */
+export const UpdateAgentSourceMonitorParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateAgentSourceMonitorBody = zod.record(zod.string(), zod.unknown())
+
+export const UpdateAgentSourceMonitorResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Delete a source monitor
+ */
+export const DeleteAgentSourceMonitorParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteAgentSourceMonitorResponse = zod.void()
+
+
+/**
+ * @summary Follow ordinary public HTTP redirects without bypassing access controls
+ */
+export const ResolveAgentDownloadRedirectsBody = zod.record(zod.string(), zod.unknown())
+
+export const ResolveAgentDownloadRedirectsResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Inspect a link and propose the highest-quality usable source
+ */
+
+export const inspectAgentDownloadSourceBodyForceRefreshDefault = false;
+
+export const InspectAgentDownloadSourceBody = zod.object({
+  "sourceUrl": zod.string().min(1),
+  "title": zod.string().optional(),
+  "forceRefresh": zod.boolean().default(inspectAgentDownloadSourceBodyForceRefreshDefault)
+})
+
+export const InspectAgentDownloadSourceResponse = zod.object({
+  "kind": zod.enum(['download_source_selection']),
+  "contract": zod.enum(['agent-download-v1']),
+  "source": zod.record(zod.string(), zod.unknown()),
+  "selected": zod.record(zod.string(), zod.unknown()),
+  "alternatives": zod.array(zod.record(zod.string(), zod.unknown())),
+  "review": zod.record(zod.string(), zod.unknown()),
+  "safety": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
+ * @summary Queue an approved highest-quality download
+ */
+
+export const queueAgentDownloadBodyStartDefault = false;
+
+export const QueueAgentDownloadBody = zod.object({
+  "reviewItemId": zod.number().min(1),
+  "sourceUrl": zod.string().optional(),
+  "title": zod.string().optional(),
+  "selectedFormatId": zod.string().optional(),
+  "selectedVideoFormatId": zod.string().nullish(),
+  "selectedAudioFormatId": zod.string().nullish(),
+  "outputContainer": zod.enum(['mp4', 'mkv', 'webm']).optional(),
+  "temporaryDirectory": zod.string().optional(),
+  "destinationDirectory": zod.string().optional(),
+  "finalFilename": zod.string().optional(),
+  "start": zod.boolean().default(queueAgentDownloadBodyStartDefault)
+})
+
+export const QueueAgentDownloadResponse = zod.object({
+  "kind": zod.enum(['download_queued']),
+  "contract": zod.enum(['agent-download-v1']),
+  "job": zod.record(zod.string(), zod.unknown()),
+  "started": zod.boolean(),
+  "verification": zod.string()
+})
+
+
+/**
+ * @summary Compare archive, provider, viewing, and external research evidence
+ */
+export const createAgentResearchBriefBodyQueryMax = 1000;
+
+export const createAgentResearchBriefBodyIncludeComparisonsDefault = true;
+export const createAgentResearchBriefBodyIncludeUpcomingDefault = true;
+
+export const CreateAgentResearchBriefBody = zod.object({
+  "query": zod.string().max(createAgentResearchBriefBodyQueryMax).optional(),
+  "includeComparisons": zod.boolean().default(createAgentResearchBriefBodyIncludeComparisonsDefault),
+  "includeUpcoming": zod.boolean().default(createAgentResearchBriefBodyIncludeUpcomingDefault)
+})
+
+export const CreateAgentResearchBriefResponse = zod.object({
+  "kind": zod.enum(['archive_research_brief']),
+  "contract": zod.enum(['agent-research-v1']),
+  "generatedAt": zod.coerce.date(),
+  "question": zod.string().nullish(),
+  "ownerScoped": zod.boolean(),
+  "sourcePolicy": zod.record(zod.string(), zod.unknown()),
+  "upcoming": zod.record(zod.string(), zod.unknown()),
+  "recent": zod.array(zod.record(zod.string(), zod.unknown())),
+  "queryResearch": zod.record(zod.string(), zod.unknown()),
+  "comparisons": zod.record(zod.string(), zod.unknown()),
+  "comparisonLimitations": zod.array(zod.string()),
+  "personalContext": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
+ * @summary Build a prioritized evidence brief for a reasoning agent
+ */
+export const createAgentInsightBriefBodyQuestionMax = 2000;
+
+export const createAgentInsightBriefBodyMaxActionsDefault = 3;
+export const createAgentInsightBriefBodyMaxActionsMax = 5;
+
+export const createAgentInsightBriefBodyIncludeOperationPlansDefault = true;
+
+export const CreateAgentInsightBriefBody = zod.object({
+  "question": zod.string().min(1).max(createAgentInsightBriefBodyQuestionMax),
+  "maxActions": zod.number().min(1).max(createAgentInsightBriefBodyMaxActionsMax).default(createAgentInsightBriefBodyMaxActionsDefault),
+  "includeOperationPlans": zod.boolean().default(createAgentInsightBriefBodyIncludeOperationPlansDefault)
+})
+
+export const CreateAgentInsightBriefResponse = zod.object({
+  "kind": zod.enum(['archive_insight_brief']),
+  "contract": zod.enum(['agent-insight-v1']),
+  "generatedAt": zod.coerce.date(),
+  "question": zod.string(),
+  "source": zod.record(zod.string(), zod.unknown()),
+  "safety": zod.record(zod.string(), zod.unknown()),
+  "answerRequirements": zod.array(zod.string()),
+  "snapshot": zod.record(zod.string(), zod.unknown()),
+  "prioritizedEvidence": zod.array(zod.record(zod.string(), zod.unknown())),
+  "personalSignals": zod.record(zod.string(), zod.unknown()),
+  "unknowns": zod.array(zod.record(zod.string(), zod.unknown()))
+})
+
+
+/**
+ * @summary Get bounded evidence for an external reasoning agent
+ */
+export const GetAgentContextResponse = zod.object({
+  "generatedAt": zod.coerce.date(),
+  "source": zod.object({
+  "system": zod.string(),
+  "contract": zod.string(),
+  "ownerScoped": zod.boolean()
+}),
+  "safety": zod.object({
+  "mode": zod.enum(['evidence_only']),
+  "approvalRequired": zod.boolean(),
+  "preflightRequired": zod.boolean(),
+  "directMutation": zod.boolean(),
+  "providerExecution": zod.boolean(),
+  "unknownsMustRemainExplicit": zod.boolean()
+}),
+  "archive": zod.record(zod.string(), zod.unknown()),
+  "personal": zod.record(zod.string(), zod.unknown())
+})
+
+
+/**
+ * @summary Stream owner-scoped persisted system events
+ */
+export const StreamAgentEventsResponse = zod.unknown()
+
+
+/**
+ * @summary Persist an approval-gated operation plan without executing it
+ */
+
+
+
+
+
+
+export const planAgentOperationBodyDryRunDefault = false;
+
+export const PlanAgentOperationBody = zod.object({
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string().min(1),
+  "sourceId": zod.string().nullish(),
+  "sourcePath": zod.string().min(1).optional(),
+  "destinationPath": zod.string().min(1).optional(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})).optional(),
+  "reviewItemId": zod.number().min(1).optional(),
+  "acquisitionJobId": zod.number().min(1).nullish(),
+  "downloadJobId": zod.number().min(1).nullish(),
+  "dryRun": zod.boolean().default(planAgentOperationBodyDryRunDefault),
+  "idempotencyKey": zod.string().optional(),
+  "proposalId": zod.string().optional()
+})
+
+export const PlanAgentOperationResponse = zod.object({
+  "id": zod.number(),
+  "operationKey": zod.string(),
+  "action": zod.enum(['rename', 'move', 'import']),
+  "sourceKind": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "sourcePath": zod.string(),
+  "destinationPath": zod.string(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})),
+  "proposalId": zod.string().nullable(),
+  "reviewItemId": zod.number(),
+  "acquisitionJobId": zod.number().nullable(),
+  "downloadJobId": zod.number().nullable(),
+  "status": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "dryRun": zod.boolean(),
+  "retryCount": zod.number(),
+  "maxRetries": zod.number(),
+  "preflight": zod.record(zod.string(), zod.unknown()),
+  "rollback": zod.record(zod.string(), zod.unknown()),
+  "postflight": zod.record(zod.string(), zod.unknown()),
+  "errorCode": zod.string().nullable(),
+  "errorMessage": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "cancelledAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "events": zod.array(zod.object({
+  "id": zod.number(),
+  "fromStatus": zod.union([zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),zod.null()]),
+  "toStatus": zod.enum(['planned', 'preflight', 'ready', 'executing', 'completed', 'failed', 'cancelled', 'rolled_back']),
+  "detail": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Research an external media candidate
+ */
+export const ResearchAssistantCandidateQueryParams = zod.object({
+  "query": zod.coerce.string()
+})
+
+export const ResearchAssistantCandidateResponse = zod.object({
+  "status": zod.enum(['available', 'unavailable']),
+  "reason": zod.string().nullable(),
+  "source": zod.union([zod.literal('tvmaze'),zod.literal(null)]).nullish(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['show']),
+  "releaseDate": zod.coerce.date().nullable(),
+  "year": zod.number().nullable(),
+  "genres": zod.array(zod.string()),
+  "rating": zod.object({
+  "value": zod.number(),
+  "scale": zod.literal(10),
+  "voteCount": zod.number().nullable()
+}).nullable(),
+  "source": zod.enum(['tvmaze']),
+  "sourceItemId": zod.string(),
+  "archiveState": zod.enum(['present', 'missing', 'uncertain']),
+  "personalRelevance": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "reasons": zod.array(zod.string()),
+  "evidence": zod.array(zod.object({
+  "source": zod.string(),
+  "field": zod.string(),
+  "value": zod.string()
+})),
+  "confidence": zod.enum(['high', 'medium', 'low'])
+}))
+})
+
+
+/**
+ * @summary Read owner-scoped personal media profile and archive graph
+ */
+export const ReadMediaProfileResponse = zod.object({
+  "profile": zod.object({
+  "viewing": zod.record(zod.string(), zod.unknown()),
+  "temporal": zod.record(zod.string(), zod.unknown()),
+  "patterns": zod.record(zod.string(), zod.unknown()),
+  "archive": zod.record(zod.string(), zod.unknown()),
+  "unknowns": zod.array(zod.string())
+}),
+  "archiveGraph": zod.object({
+  "clusters": zod.array(zod.record(zod.string(), zod.unknown())),
+  "gaps": zod.array(zod.record(zod.string(), zod.unknown())),
+  "redundancies": zod.array(zod.record(zod.string(), zod.unknown())),
+  "relationships": zod.array(zod.record(zod.string(), zod.unknown())),
+  "unknowns": zod.array(zod.string())
+})
+})
+
+
+/**
+ * @summary Read owner-scoped archive graph context
+ */
+export const ReadArchiveContextResponse = zod.object({
+  "clusters": zod.array(zod.record(zod.string(), zod.unknown())),
+  "gaps": zod.array(zod.record(zod.string(), zod.unknown())),
+  "redundancies": zod.array(zod.record(zod.string(), zod.unknown())),
+  "relationships": zod.array(zod.record(zod.string(), zod.unknown())),
+  "unknowns": zod.array(zod.string())
+})
+
+
+/**
+ * @summary Read structured personal media reasoning
+ */
+export const readPersonalReasoningResponseIdentityUncertainMin = 0;
+
+
+
+export const ReadPersonalReasoningResponse = zod.object({
+  "status": zod.enum(['available', 'limited']),
+  "source": zod.enum(['tvmaze+imdb']),
+  "identityUncertain": zod.number().min(readPersonalReasoningResponseIdentityUncertainMin),
+  "bounds": zod.object({
+  "maxWatchedSeeds": zod.literal(20),
+  "maxCandidates": zod.literal(100)
+}),
+  "items": zod.array(zod.object({
+  "candidate": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['show']),
+  "source": zod.enum(['tvmaze']),
+  "sourceItemId": zod.string(),
+  "releaseDate": zod.coerce.date().nullable(),
+  "year": zod.number().nullable(),
+  "genres": zod.array(zod.string())
+}),
+  "claim": zod.string(),
+  "supportingEvidence": zod.array(zod.string()),
+  "counterEvidence": zod.array(zod.string()),
+  "patternEvidence": zod.array(zod.string()),
+  "context": zod.array(zod.string()),
+  "gaps": zod.array(zod.string()),
+  "unknowns": zod.array(zod.string()),
+  "watch": zod.object({
+  "conclusion": zod.enum(['strong_watch_candidate', 'watch_candidate', 'strong_archive_candidate', 'archive_candidate', 'interesting_but_uncertain', 'research_further', 'not_recommended', 'already_satisfied', 'archive_redundant']),
+  "confidence": zod.enum(['high', 'medium', 'low'])
+}),
+  "archive": zod.object({
+  "conclusion": zod.enum(['strong_watch_candidate', 'watch_candidate', 'strong_archive_candidate', 'archive_candidate', 'interesting_but_uncertain', 'research_further', 'not_recommended', 'already_satisfied', 'archive_redundant']),
+  "confidence": zod.enum(['high', 'medium', 'low'])
+}),
+  "evidenceReferences": zod.array(zod.object({
+  "source": zod.string(),
+  "sourceItemId": zod.string(),
+  "field": zod.string(),
+  "category": zod.string()
+})),
+  "perspectives": zod.object({
+  "personal": zod.array(zod.string()),
+  "current": zod.array(zod.string()),
+  "longTerm": zod.array(zod.string()),
+  "archiveValue": zod.array(zod.string()),
+  "archiveGap": zod.array(zod.string()),
+  "relationship": zod.array(zod.string()),
+  "external": zod.array(zod.string()),
+  "novelty": zod.array(zod.string()),
+  "temporal": zod.array(zod.string()),
+  "availability": zod.array(zod.string()),
+  "identity": zod.array(zod.string()),
+  "counterEvidence": zod.array(zod.string()),
+  "unknowns": zod.array(zod.string())
+})
+}))
+})
+
+
+/**
+ * @summary Read ranked watch and archive curation
+ */
+export const readPersonalCurationResponseIdentityUncertainMin = 0;
+
+
+
+
+
+export const ReadPersonalCurationResponse = zod.object({
+  "status": zod.enum(['available', 'limited']),
+  "source": zod.enum(['tvmaze+imdb']),
+  "identityUncertain": zod.number().min(readPersonalCurationResponseIdentityUncertainMin),
+  "bounds": zod.object({
+  "maxWatchedSeeds": zod.literal(20),
+  "maxCandidates": zod.literal(100)
+}),
+  "watch": zod.array(zod.object({
+  "candidate": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['show']),
+  "source": zod.enum(['tvmaze']),
+  "sourceItemId": zod.string(),
+  "releaseDate": zod.coerce.date().nullable(),
+  "year": zod.number().nullable(),
+  "genres": zod.array(zod.string())
+}),
+  "priorityType": zod.enum(['watch', 'archive']),
+  "priority": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "rank": zod.number().min(1),
+  "reasons": zod.array(zod.string()),
+  "supportingEvidence": zod.array(zod.object({
+  "source": zod.string(),
+  "sourceItemId": zod.string(),
+  "category": zod.enum(['personal', 'relationship', 'archive', 'external_metric', 'release']),
+  "field": zod.string(),
+  "value": zod.string(),
+  "explanation": zod.string()
+})),
+  "conflicts": zod.array(zod.string()),
+  "unknowns": zod.array(zod.string()),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "archiveState": zod.enum(['present', 'missing', 'uncertain']),
+  "approvalState": zod.enum(['not_created'])
+})),
+  "archive": zod.array(zod.object({
+  "candidate": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['show']),
+  "source": zod.enum(['tvmaze']),
+  "sourceItemId": zod.string(),
+  "releaseDate": zod.coerce.date().nullable(),
+  "year": zod.number().nullable(),
+  "genres": zod.array(zod.string())
+}),
+  "priorityType": zod.enum(['watch', 'archive']),
+  "priority": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "rank": zod.number().min(1),
+  "reasons": zod.array(zod.string()),
+  "supportingEvidence": zod.array(zod.object({
+  "source": zod.string(),
+  "sourceItemId": zod.string(),
+  "category": zod.enum(['personal', 'relationship', 'archive', 'external_metric', 'release']),
+  "field": zod.string(),
+  "value": zod.string(),
+  "explanation": zod.string()
+})),
+  "conflicts": zod.array(zod.string()),
+  "unknowns": zod.array(zod.string()),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "archiveState": zod.enum(['present', 'missing', 'uncertain']),
+  "approvalState": zod.enum(['not_created'])
+}))
+})
+
+
+/**
+ * @summary Reconcile multi-source research evidence
+ */
+export const synthesizeViewingResearchResponseIdentityUncertainMin = 0;
+
+
+
+export const SynthesizeViewingResearchResponse = zod.object({
+  "status": zod.enum(['available', 'limited']),
+  "source": zod.enum(['tvmaze+imdb']),
+  "identityUncertain": zod.number().min(synthesizeViewingResearchResponseIdentityUncertainMin),
+  "bounds": zod.object({
+  "maxWatchedSeeds": zod.literal(20),
+  "maxCandidates": zod.literal(100)
+}),
+  "items": zod.array(zod.object({
+  "candidate": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['show']),
+  "source": zod.enum(['tvmaze']),
+  "sourceItemId": zod.string(),
+  "releaseDate": zod.coerce.date().nullable(),
+  "year": zod.number().nullable(),
+  "genres": zod.array(zod.string())
+}),
+  "sourceWatchedItem": zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "provider": zod.string()
+}),
+  "relationships": zod.array(zod.object({
+  "type": zod.enum(['same_cast', 'same_creator']),
+  "strength": zod.enum(['direct']),
+  "source": zod.enum(['tvmaze']),
+  "sourceItemId": zod.string(),
+  "personId": zod.string(),
+  "personName": zod.string(),
+  "sourceWatchedItemKey": zod.string(),
+  "sourceWatchedItemTitle": zod.string()
+})),
+  "archiveState": zod.enum(['present', 'missing', 'uncertain']),
+  "evidence": zod.array(zod.object({
+  "source": zod.string(),
+  "field": zod.string(),
+  "value": zod.string()
+})),
+  "unknowns": zod.array(zod.string())
+}).and(zod.object({
+  "personalRelevance": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "whyYou": zod.array(zod.string()),
+  "whyThis": zod.array(zod.string()),
+  "whyNow": zod.array(zod.string()),
+  "recommendationEvidence": zod.array(zod.object({
+  "source": zod.string(),
+  "sourceItemId": zod.string(),
+  "category": zod.enum(['personal', 'relationship', 'archive', 'external_metric', 'release']),
+  "field": zod.string(),
+  "value": zod.string(),
+  "explanation": zod.string()
+})),
+  "unknowns": zod.array(zod.string())
+})).and(zod.object({
+  "whatSupportsIt": zod.array(zod.string()),
+  "whatConflicts": zod.array(zod.string()),
+  "whatIsUnknown": zod.array(zod.string()),
+  "sourceEvidence": zod.array(zod.object({
+  "source": zod.string(),
+  "sourceItemId": zod.string(),
+  "category": zod.string(),
+  "field": zod.string(),
+  "value": zod.string(),
+  "scale": zod.string().nullish(),
+  "observedAt": zod.coerce.date(),
+  "provenance": zod.string()
+}))
+})))
+})
+
+
+/**
+ * @summary Evaluate relationship candidates with evidence
+ */
+export const evaluateViewingResearchResponseIdentityUncertainMin = 0;
+
+
+
+export const EvaluateViewingResearchResponse = zod.object({
+  "status": zod.enum(['available', 'limited']),
+  "source": zod.enum(['tvmaze']),
+  "identityUncertain": zod.number().min(evaluateViewingResearchResponseIdentityUncertainMin),
+  "bounds": zod.object({
+  "maxWatchedSeeds": zod.literal(20),
+  "maxCandidates": zod.literal(100)
+}),
+  "items": zod.array(zod.object({
+  "candidate": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['show']),
+  "source": zod.enum(['tvmaze']),
+  "sourceItemId": zod.string(),
+  "releaseDate": zod.coerce.date().nullable(),
+  "year": zod.number().nullable(),
+  "genres": zod.array(zod.string())
+}),
+  "sourceWatchedItem": zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "provider": zod.string()
+}),
+  "relationships": zod.array(zod.object({
+  "type": zod.enum(['same_cast', 'same_creator']),
+  "strength": zod.enum(['direct']),
+  "source": zod.enum(['tvmaze']),
+  "sourceItemId": zod.string(),
+  "personId": zod.string(),
+  "personName": zod.string(),
+  "sourceWatchedItemKey": zod.string(),
+  "sourceWatchedItemTitle": zod.string()
+})),
+  "archiveState": zod.enum(['present', 'missing', 'uncertain']),
+  "evidence": zod.array(zod.object({
+  "source": zod.string(),
+  "field": zod.string(),
+  "value": zod.string()
+})),
+  "unknowns": zod.array(zod.string())
+}).and(zod.object({
+  "personalRelevance": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "confidence": zod.enum(['high', 'medium', 'low']),
+  "whyYou": zod.array(zod.string()),
+  "whyThis": zod.array(zod.string()),
+  "whyNow": zod.array(zod.string()),
+  "recommendationEvidence": zod.array(zod.object({
+  "source": zod.string(),
+  "sourceItemId": zod.string(),
+  "category": zod.enum(['personal', 'relationship', 'archive', 'external_metric', 'release']),
+  "field": zod.string(),
+  "value": zod.string(),
+  "explanation": zod.string()
+})),
+  "unknowns": zod.array(zod.string())
+})))
+})
+
+
+/**
+ * @summary Generate bounded relationship candidates from viewing history
+ */
+export const researchFromViewingHistoryResponseIdentityUncertainMin = 0;
+
+
+
+export const ResearchFromViewingHistoryResponse = zod.object({
+  "status": zod.enum(['available', 'limited']),
+  "source": zod.enum(['tvmaze']),
+  "identityUncertain": zod.number().min(researchFromViewingHistoryResponseIdentityUncertainMin),
+  "bounds": zod.object({
+  "maxWatchedSeeds": zod.literal(20),
+  "maxCandidates": zod.literal(100)
+}),
+  "items": zod.array(zod.object({
+  "candidate": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "mediaType": zod.enum(['show']),
+  "source": zod.enum(['tvmaze']),
+  "sourceItemId": zod.string(),
+  "releaseDate": zod.coerce.date().nullable(),
+  "year": zod.number().nullable(),
+  "genres": zod.array(zod.string())
+}),
+  "sourceWatchedItem": zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "provider": zod.string()
+}),
+  "relationships": zod.array(zod.object({
+  "type": zod.enum(['same_cast', 'same_creator']),
+  "strength": zod.enum(['direct']),
+  "source": zod.enum(['tvmaze']),
+  "sourceItemId": zod.string(),
+  "personId": zod.string(),
+  "personName": zod.string(),
+  "sourceWatchedItemKey": zod.string(),
+  "sourceWatchedItemTitle": zod.string()
+})),
+  "archiveState": zod.enum(['present', 'missing', 'uncertain']),
+  "evidence": zod.array(zod.object({
+  "source": zod.string(),
+  "field": zod.string(),
+  "value": zod.string()
+})),
+  "unknowns": zod.array(zod.string())
+}))
+})
+
+
+/**
+ * @summary Get the unified read-only workload
+ */
+export const getAssistantWorkloadResponseCountsNeedsYouMin = 0;
+
+export const getAssistantWorkloadResponseCountsBeingHandledMin = 0;
+
+export const getAssistantWorkloadResponseCountsWaitingMin = 0;
+
+export const getAssistantWorkloadResponseCountsInterestingMin = 0;
+
+export const getAssistantWorkloadResponseCountsCompletedMin = 0;
+
+export const getAssistantWorkloadResponseCountsDismissedMin = 0;
+
+export const getAssistantWorkloadResponseCountsSupersededMin = 0;
+
+export const getAssistantWorkloadResponseCountsBlockedMin = 0;
+
+export const getAssistantWorkloadResponseCountsUncertainMin = 0;
+
+
+
+export const GetAssistantWorkloadResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "reviewItemId": zod.number().nullable(),
+  "findingClassification": zod.string().nullable(),
+  "currentObservationId": zod.number().nullable(),
+  "provider": zod.string().nullable(),
+  "refreshId": zod.string().nullable(),
+  "evidenceKey": zod.string().nullable(),
+  "observedAt": zod.coerce.date().nullable(),
+  "changeContext": zod.object({
+  "previousObservationId": zod.number(),
+  "previousEvidenceKey": zod.string(),
+  "previousObservedAt": zod.coerce.date()
+}).nullable(),
+  "summary": zod.string(),
+  "state": zod.enum(['needs_you', 'being_handled', 'waiting', 'interesting', 'completed', 'dismissed', 'blocked', 'uncertain']),
+  "needsUserAction": zod.boolean(),
+  "nextStep": zod.string(),
+  "destination": zod.enum(['assistant', 'queue', 'history']),
+  "source": zod.enum(['assistant', 'download', 'review', 'health']),
+  "sourceId": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "confidence": zod.string().nullable(),
+  "lastConfirmedAt": zod.coerce.date().nullable(),
+  "freshness": zod.enum(['fresh', 'recent', 'stale', 'unknown'])
+})),
+  "counts": zod.object({
+  "needs_you": zod.number().min(getAssistantWorkloadResponseCountsNeedsYouMin),
+  "being_handled": zod.number().min(getAssistantWorkloadResponseCountsBeingHandledMin),
+  "waiting": zod.number().min(getAssistantWorkloadResponseCountsWaitingMin),
+  "interesting": zod.number().min(getAssistantWorkloadResponseCountsInterestingMin),
+  "completed": zod.number().min(getAssistantWorkloadResponseCountsCompletedMin),
+  "dismissed": zod.number().min(getAssistantWorkloadResponseCountsDismissedMin),
+  "superseded": zod.number().min(getAssistantWorkloadResponseCountsSupersededMin),
+  "blocked": zod.number().min(getAssistantWorkloadResponseCountsBlockedMin),
+  "uncertain": zod.number().min(getAssistantWorkloadResponseCountsUncertainMin)
+}),
+  "generatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Explain the read-only lineage of a workload item
+ */
+export const GetAssistantWorkloadLineageParams = zod.object({
+  "workloadId": zod.coerce.string()
+})
+
+export const GetAssistantWorkloadLineageResponse = zod.object({
+  "workloadId": zod.string(),
+  "title": zod.string(),
+  "origin": zod.object({
+  "status": zod.enum(['known', 'unknown', 'not_applicable']),
+  "id": zod.string().nullish(),
+  "label": zod.string().optional(),
+  "detail": zod.string().optional(),
+  "occurredAt": zod.coerce.date().nullish()
+}),
+  "review": zod.object({
+  "status": zod.enum(['known', 'unknown', 'not_applicable']),
+  "id": zod.string().nullish(),
+  "label": zod.string().optional(),
+  "detail": zod.string().optional(),
+  "occurredAt": zod.coerce.date().nullish()
+}),
+  "approval": zod.object({
+  "status": zod.enum(['known', 'unknown', 'not_applicable']),
+  "id": zod.string().nullish(),
+  "label": zod.string().optional(),
+  "detail": zod.string().optional(),
+  "occurredAt": zod.coerce.date().nullish()
+}),
+  "acquisition": zod.object({
+  "status": zod.enum(['known', 'unknown', 'not_applicable']),
+  "id": zod.string().nullish(),
+  "label": zod.string().optional(),
+  "detail": zod.string().optional(),
+  "occurredAt": zod.coerce.date().nullish()
+}),
+  "download": zod.object({
+  "status": zod.enum(['known', 'unknown', 'not_applicable']),
+  "id": zod.string().nullish(),
+  "label": zod.string().optional(),
+  "detail": zod.string().optional(),
+  "occurredAt": zod.coerce.date().nullish()
+}),
+  "verification": zod.object({
+  "status": zod.enum(['known', 'unknown', 'not_applicable']),
+  "id": zod.string().nullish(),
+  "label": zod.string().optional(),
+  "detail": zod.string().optional(),
+  "occurredAt": zod.coerce.date().nullish()
+}),
+  "operation": zod.object({
+  "status": zod.enum(['known', 'unknown', 'not_applicable']),
+  "id": zod.string().nullish(),
+  "label": zod.string().optional(),
+  "detail": zod.string().optional(),
+  "occurredAt": zod.coerce.date().nullish()
+}),
+  "outcome": zod.object({
+  "status": zod.enum(['known', 'unknown', 'not_applicable']),
+  "id": zod.string().nullish(),
+  "label": zod.string().optional(),
+  "detail": zod.string().optional(),
+  "occurredAt": zod.coerce.date().nullish()
+})
+})
+
+
+/**
+ * @summary Get deterministic assistant overview
+ */
+export const getAssistantOverviewResponseSummaryAttentionCountMin = 0;
+
+export const getAssistantOverviewResponseSummaryCountsCriticalMin = 0;
+
+export const getAssistantOverviewResponseSummaryCountsHighMin = 0;
+
+export const getAssistantOverviewResponseSummaryCountsMediumMin = 0;
+
+export const getAssistantOverviewResponseSummaryCountsLowMin = 0;
+
+export const getAssistantOverviewResponseSummaryCountsInfoMin = 0;
+
+export const getAssistantOverviewResponseSummaryBlockedCountMin = 0;
+
+export const getAssistantOverviewResponseSummaryUncertainCountMin = 0;
+
+export const getAssistantOverviewResponseAttentionItemPersonalContextPlayCountMin = 0;
+
+export const getAssistantOverviewResponseAttentionItemPersonalContextWatchedMinutesMin = 0;
+
+export const getAssistantOverviewResponseAttentionItemPersonalContextSeriesProgressMin = 0;
+export const getAssistantOverviewResponseAttentionItemPersonalContextSeriesProgressMax = 100;
+
+export const getAssistantOverviewResponseRecommendationsItemPersonalContextPlayCountMin = 0;
+
+export const getAssistantOverviewResponseRecommendationsItemPersonalContextWatchedMinutesMin = 0;
+
+export const getAssistantOverviewResponseRecommendationsItemPersonalContextSeriesProgressMin = 0;
+export const getAssistantOverviewResponseRecommendationsItemPersonalContextSeriesProgressMax = 100;
+
+
+export const getAssistantOverviewResponseBlockedItemPersonalContextPlayCountMin = 0;
+
+export const getAssistantOverviewResponseBlockedItemPersonalContextWatchedMinutesMin = 0;
+
+export const getAssistantOverviewResponseBlockedItemPersonalContextSeriesProgressMin = 0;
+export const getAssistantOverviewResponseBlockedItemPersonalContextSeriesProgressMax = 100;
+
+export const getAssistantOverviewResponseUncertainItemPersonalContextPlayCountMin = 0;
+
+export const getAssistantOverviewResponseUncertainItemPersonalContextWatchedMinutesMin = 0;
+
+export const getAssistantOverviewResponseUncertainItemPersonalContextSeriesProgressMin = 0;
+export const getAssistantOverviewResponseUncertainItemPersonalContextSeriesProgressMax = 100;
+
+export const getAssistantOverviewResponseActiveWorkAcquisitionJobsMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceItemsItemPlayCountMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceItemsItemWatchedMinutesMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceItemsItemSeriesProgressMin = 0;
+export const getAssistantOverviewResponseMediaExperienceItemsItemSeriesProgressMax = 100;
+
+export const getAssistantOverviewResponseMediaExperienceCompletedItemPlayCountMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceCompletedItemWatchedMinutesMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceCompletedItemSeriesProgressMin = 0;
+export const getAssistantOverviewResponseMediaExperienceCompletedItemSeriesProgressMax = 100;
+
+export const getAssistantOverviewResponseMediaExperienceInProgressItemPlayCountMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceInProgressItemWatchedMinutesMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceInProgressItemSeriesProgressMin = 0;
+export const getAssistantOverviewResponseMediaExperienceInProgressItemSeriesProgressMax = 100;
+
+export const getAssistantOverviewResponseMediaExperienceSummaryCompletedCountMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceSummaryInProgressCountMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceSummaryWatchedMinutesMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceSummaryWatchedHoursMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceCurrentViewingMomentumActiveSeriesCountMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceCurrentViewingMomentumRecentlyWatchedCountMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceWatchlistItemsItemPlayCountMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceWatchlistItemsItemWatchedMinutesMin = 0;
+
+export const getAssistantOverviewResponseMediaExperienceWatchlistItemsItemSeriesProgressMin = 0;
+export const getAssistantOverviewResponseMediaExperienceWatchlistItemsItemSeriesProgressMax = 100;
+
+
+
+
+export const GetAssistantOverviewResponse = zod.object({
+  "summary": zod.object({
+  "health": zod.enum(['healthy', 'mostly_healthy', 'attention_required']),
+  "attentionCount": zod.number().min(getAssistantOverviewResponseSummaryAttentionCountMin),
+  "counts": zod.object({
+  "critical": zod.number().min(getAssistantOverviewResponseSummaryCountsCriticalMin),
+  "high": zod.number().min(getAssistantOverviewResponseSummaryCountsHighMin),
+  "medium": zod.number().min(getAssistantOverviewResponseSummaryCountsMediumMin),
+  "low": zod.number().min(getAssistantOverviewResponseSummaryCountsLowMin),
+  "info": zod.number().min(getAssistantOverviewResponseSummaryCountsInfoMin)
+}),
+  "blockedCount": zod.number().min(getAssistantOverviewResponseSummaryBlockedCountMin),
+  "uncertainCount": zod.number().min(getAssistantOverviewResponseSummaryUncertainCountMin),
+  "lastScan": zod.string().nullable(),
+  "freshness": zod.string()
+}),
+  "attention": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['download', 'integrity', 'rename', 'duplicate', 'identity', 'quality']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
+  "confidence": zod.string(),
+  "title": zod.string(),
+  "explanation": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
+  "state": zod.string(),
+  "reviewItemId": zod.number().nullable(),
+  "personalContext": zod.object({
+  "watchState": zod.string(),
+  "lastWatchedAt": zod.coerce.date().nullable(),
+  "playCount": zod.number().min(getAssistantOverviewResponseAttentionItemPersonalContextPlayCountMin),
+  "watchedMinutes": zod.number().min(getAssistantOverviewResponseAttentionItemPersonalContextWatchedMinutesMin),
+  "seriesProgress": zod.number().min(getAssistantOverviewResponseAttentionItemPersonalContextSeriesProgressMin).max(getAssistantOverviewResponseAttentionItemPersonalContextSeriesProgressMax).nullable(),
+  "isNextEpisode": zod.boolean()
+}).nullish(),
+  "personalAffinity": zod.object({
+  "priority": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "basedOn": zod.array(zod.string())
+}).nullish()
+})),
+  "recommendations": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['download', 'integrity', 'rename', 'duplicate', 'identity', 'quality']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
+  "confidence": zod.string(),
+  "title": zod.string(),
+  "explanation": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
+  "state": zod.string(),
+  "reviewItemId": zod.number().nullable(),
+  "personalContext": zod.object({
+  "watchState": zod.string(),
+  "lastWatchedAt": zod.coerce.date().nullable(),
+  "playCount": zod.number().min(getAssistantOverviewResponseRecommendationsItemPersonalContextPlayCountMin),
+  "watchedMinutes": zod.number().min(getAssistantOverviewResponseRecommendationsItemPersonalContextWatchedMinutesMin),
+  "seriesProgress": zod.number().min(getAssistantOverviewResponseRecommendationsItemPersonalContextSeriesProgressMin).max(getAssistantOverviewResponseRecommendationsItemPersonalContextSeriesProgressMax).nullable(),
+  "isNextEpisode": zod.boolean()
+}).nullish(),
+  "personalAffinity": zod.object({
+  "priority": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "basedOn": zod.array(zod.string())
+}).nullish()
+})),
+  "groups": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['download', 'integrity', 'rename', 'duplicate', 'identity', 'quality']),
+  "state": zod.enum(['actionable', 'blocked', 'uncertain', 'informational', 'resolved']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
+  "confidence": zod.string(),
+  "title": zod.string(),
+  "explanation": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
+  "underlyingItemIds": zod.array(zod.number()),
+  "itemCount": zod.number().min(1)
+})),
+  "blocked": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['download', 'integrity', 'rename', 'duplicate', 'identity', 'quality']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
+  "confidence": zod.string(),
+  "title": zod.string(),
+  "explanation": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
+  "state": zod.string(),
+  "reviewItemId": zod.number().nullable(),
+  "personalContext": zod.object({
+  "watchState": zod.string(),
+  "lastWatchedAt": zod.coerce.date().nullable(),
+  "playCount": zod.number().min(getAssistantOverviewResponseBlockedItemPersonalContextPlayCountMin),
+  "watchedMinutes": zod.number().min(getAssistantOverviewResponseBlockedItemPersonalContextWatchedMinutesMin),
+  "seriesProgress": zod.number().min(getAssistantOverviewResponseBlockedItemPersonalContextSeriesProgressMin).max(getAssistantOverviewResponseBlockedItemPersonalContextSeriesProgressMax).nullable(),
+  "isNextEpisode": zod.boolean()
+}).nullish(),
+  "personalAffinity": zod.object({
+  "priority": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "basedOn": zod.array(zod.string())
+}).nullish()
+})),
+  "uncertain": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['download', 'integrity', 'rename', 'duplicate', 'identity', 'quality']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
+  "confidence": zod.string(),
+  "title": zod.string(),
+  "explanation": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
+  "state": zod.string(),
+  "reviewItemId": zod.number().nullable(),
+  "personalContext": zod.object({
+  "watchState": zod.string(),
+  "lastWatchedAt": zod.coerce.date().nullable(),
+  "playCount": zod.number().min(getAssistantOverviewResponseUncertainItemPersonalContextPlayCountMin),
+  "watchedMinutes": zod.number().min(getAssistantOverviewResponseUncertainItemPersonalContextWatchedMinutesMin),
+  "seriesProgress": zod.number().min(getAssistantOverviewResponseUncertainItemPersonalContextSeriesProgressMin).max(getAssistantOverviewResponseUncertainItemPersonalContextSeriesProgressMax).nullable(),
+  "isNextEpisode": zod.boolean()
+}).nullish(),
+  "personalAffinity": zod.object({
+  "priority": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "basedOn": zod.array(zod.string())
+}).nullish()
+})),
+  "informational": zod.array(zod.string()),
+  "activeWork": zod.object({
+  "scanStatus": zod.string(),
+  "acquisitionJobs": zod.number().min(getAssistantOverviewResponseActiveWorkAcquisitionJobsMin)
+}),
+  "mediaExperience": zod.object({
+  "sourceStatus": zod.enum(['provider_metadata', 'no_synced_provider_data']),
+  "items": zod.array(zod.object({
+  "key": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "title": zod.string(),
+  "itemType": zod.enum(['movie', 'show', 'episode', 'unknown']),
+  "year": zod.number().nullable(),
+  "releaseDate": zod.coerce.date().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "status": zod.enum(['completed', 'in_progress', 'unwatched', 'unknown']),
+  "progressPercent": zod.number().nullable(),
+  "playCount": zod.number().min(getAssistantOverviewResponseMediaExperienceItemsItemPlayCountMin),
+  "lastWatchedAt": zod.coerce.date().nullable(),
+  "watchedMinutes": zod.number().min(getAssistantOverviewResponseMediaExperienceItemsItemWatchedMinutesMin),
+  "seriesTitle": zod.string().nullable(),
+  "seasonNumber": zod.number().nullable(),
+  "episodeNumber": zod.number().nullable(),
+  "seriesProgress": zod.number().min(getAssistantOverviewResponseMediaExperienceItemsItemSeriesProgressMin).max(getAssistantOverviewResponseMediaExperienceItemsItemSeriesProgressMax).nullable(),
+  "isNextEpisode": zod.boolean(),
+  "evidence": zod.array(zod.string())
+})),
+  "completed": zod.array(zod.object({
+  "key": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "title": zod.string(),
+  "itemType": zod.enum(['movie', 'show', 'episode', 'unknown']),
+  "year": zod.number().nullable(),
+  "releaseDate": zod.coerce.date().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "status": zod.enum(['completed', 'in_progress', 'unwatched', 'unknown']),
+  "progressPercent": zod.number().nullable(),
+  "playCount": zod.number().min(getAssistantOverviewResponseMediaExperienceCompletedItemPlayCountMin),
+  "lastWatchedAt": zod.coerce.date().nullable(),
+  "watchedMinutes": zod.number().min(getAssistantOverviewResponseMediaExperienceCompletedItemWatchedMinutesMin),
+  "seriesTitle": zod.string().nullable(),
+  "seasonNumber": zod.number().nullable(),
+  "episodeNumber": zod.number().nullable(),
+  "seriesProgress": zod.number().min(getAssistantOverviewResponseMediaExperienceCompletedItemSeriesProgressMin).max(getAssistantOverviewResponseMediaExperienceCompletedItemSeriesProgressMax).nullable(),
+  "isNextEpisode": zod.boolean(),
+  "evidence": zod.array(zod.string())
+})),
+  "inProgress": zod.array(zod.object({
+  "key": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "title": zod.string(),
+  "itemType": zod.enum(['movie', 'show', 'episode', 'unknown']),
+  "year": zod.number().nullable(),
+  "releaseDate": zod.coerce.date().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "status": zod.enum(['completed', 'in_progress', 'unwatched', 'unknown']),
+  "progressPercent": zod.number().nullable(),
+  "playCount": zod.number().min(getAssistantOverviewResponseMediaExperienceInProgressItemPlayCountMin),
+  "lastWatchedAt": zod.coerce.date().nullable(),
+  "watchedMinutes": zod.number().min(getAssistantOverviewResponseMediaExperienceInProgressItemWatchedMinutesMin),
+  "seriesTitle": zod.string().nullable(),
+  "seasonNumber": zod.number().nullable(),
+  "episodeNumber": zod.number().nullable(),
+  "seriesProgress": zod.number().min(getAssistantOverviewResponseMediaExperienceInProgressItemSeriesProgressMin).max(getAssistantOverviewResponseMediaExperienceInProgressItemSeriesProgressMax).nullable(),
+  "isNextEpisode": zod.boolean(),
+  "evidence": zod.array(zod.string())
+})),
+  "summary": zod.object({
+  "completedCount": zod.number().min(getAssistantOverviewResponseMediaExperienceSummaryCompletedCountMin),
+  "inProgressCount": zod.number().min(getAssistantOverviewResponseMediaExperienceSummaryInProgressCountMin),
+  "watchedMinutes": zod.number().min(getAssistantOverviewResponseMediaExperienceSummaryWatchedMinutesMin),
+  "watchedHours": zod.number().min(getAssistantOverviewResponseMediaExperienceSummaryWatchedHoursMin)
+}),
+  "currentViewingMomentum": zod.object({
+  "activeSeriesCount": zod.number().min(getAssistantOverviewResponseMediaExperienceCurrentViewingMomentumActiveSeriesCountMin),
+  "recentlyWatchedCount": zod.number().min(getAssistantOverviewResponseMediaExperienceCurrentViewingMomentumRecentlyWatchedCountMin),
+  "windowDays": zod.literal(30)
+}),
+  "watchlist": zod.object({
+  "status": zod.enum(['not_available']),
+  "items": zod.array(zod.object({
+  "key": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "title": zod.string(),
+  "itemType": zod.enum(['movie', 'show', 'episode', 'unknown']),
+  "year": zod.number().nullable(),
+  "releaseDate": zod.coerce.date().nullable(),
+  "durationMinutes": zod.number().nullable(),
+  "status": zod.enum(['completed', 'in_progress', 'unwatched', 'unknown']),
+  "progressPercent": zod.number().nullable(),
+  "playCount": zod.number().min(getAssistantOverviewResponseMediaExperienceWatchlistItemsItemPlayCountMin),
+  "lastWatchedAt": zod.coerce.date().nullable(),
+  "watchedMinutes": zod.number().min(getAssistantOverviewResponseMediaExperienceWatchlistItemsItemWatchedMinutesMin),
+  "seriesTitle": zod.string().nullable(),
+  "seasonNumber": zod.number().nullable(),
+  "episodeNumber": zod.number().nullable(),
+  "seriesProgress": zod.number().min(getAssistantOverviewResponseMediaExperienceWatchlistItemsItemSeriesProgressMin).max(getAssistantOverviewResponseMediaExperienceWatchlistItemsItemSeriesProgressMax).nullable(),
+  "isNextEpisode": zod.boolean(),
+  "evidence": zod.array(zod.string())
+}))
+})
+}),
+  "discovery": zod.object({
+  "upcoming": zod.object({
+  "status": zod.enum(['available', 'limited', 'not_available']),
+  "reason": zod.string().nullable(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "itemType": zod.enum(['movie', 'show', 'episode', 'unknown']),
+  "releaseDate": zod.coerce.date().nullable(),
+  "personalRelevance": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "reasons": zod.array(zod.string()),
+  "evidence": zod.array(zod.string())
+}))
+}),
+  "recentlyReleased": zod.object({
+  "status": zod.enum(['available', 'limited', 'not_available']),
+  "reason": zod.string().nullable(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "itemType": zod.enum(['movie', 'show', 'episode', 'unknown']),
+  "releaseDate": zod.coerce.date().nullable(),
+  "personalRelevance": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "reasons": zod.array(zod.string()),
+  "evidence": zod.array(zod.string())
+}))
+}),
+  "trending": zod.object({
+  "status": zod.enum(['available', 'limited', 'not_available']),
+  "reason": zod.string().nullable(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "itemType": zod.enum(['movie', 'show', 'episode', 'unknown']),
+  "releaseDate": zod.coerce.date().nullable(),
+  "personalRelevance": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "reasons": zod.array(zod.string()),
+  "evidence": zod.array(zod.string())
+}))
+}),
+  "suggestedForYou": zod.object({
+  "status": zod.enum(['available', 'limited', 'not_available']),
+  "reason": zod.string().nullable(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "itemType": zod.enum(['movie', 'show', 'episode', 'unknown']),
+  "releaseDate": zod.coerce.date().nullable(),
+  "personalRelevance": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "reasons": zod.array(zod.string()),
+  "evidence": zod.array(zod.string())
+}))
+})
+}),
+  "personalizedBriefing": zod.array(zod.object({
+  "rank": zod.number().min(1),
+  "recommendationId": zod.string(),
+  "title": zod.string(),
+  "archivePriority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
+  "personalAffinity": zod.enum(['high', 'medium', 'low', 'unknown']),
+  "availability": zod.enum(['available', 'blocked', 'uncertain']),
+  "confidence": zod.string(),
+  "reasons": zod.array(zod.string()),
+  "blockedReason": zod.string().nullable()
+}))
+})
+
+
+/**
  * @summary Get archive system overview
  */
 export const GetSystemOverviewResponse = zod.object({
@@ -76,6 +1392,30 @@ export const GetSystemDependenciesResponse = zod.object({
 
 
 /**
+ * @summary Report which database this process has open and what it contains
+ */
+export const GetStorageDiagnosticsResponse = zod.object({
+  "databasePath": zod.string(),
+  "databasePathSource": zod.enum(['ARCHIVE_DB_PATH', 'working_directory_fallback']),
+  "databasePathIsAbsolute": zod.boolean(),
+  "workingDirectory": zod.string(),
+  "databaseSizeBytes": zod.union([zod.number(),zod.null()]),
+  "counts": zod.object({
+  "fileRecords": zod.number(),
+  "activeFileRecords": zod.number(),
+  "plexItems": zod.number(),
+  "jellyfinItems": zod.number(),
+  "reviewItems": zod.number(),
+  "archiveOperations": zod.number(),
+  "settings": zod.number()
+}),
+  "plexConfigured": zod.boolean(),
+  "journalMode": zod.union([zod.string(),zod.null()]),
+  "walSidecars": zod.array(zod.string())
+})
+
+
+/**
  * @summary Get recent system events
  */
 export const GetSystemEventsResponseItem = zod.object({
@@ -127,7 +1467,8 @@ export const GetSettingsResponse = zod.object({
   "outputContainer": zod.enum(['mp4', 'mkv', 'webm']),
   "inspectionCacheMinutes": zod.number().min(1).max(getSettingsResponseInspectionCacheMinutesMax),
   "warningFreePercent": zod.number().min(1).max(getSettingsResponseWarningFreePercentMax),
-  "criticalFreePercent": zod.number().min(1).max(getSettingsResponseCriticalFreePercentMax)
+  "criticalFreePercent": zod.number().min(1).max(getSettingsResponseCriticalFreePercentMax),
+  "startWithWindows": zod.boolean()
 })
 
 
@@ -168,7 +1509,8 @@ export const UpdateSettingsBody = zod.object({
   "outputContainer": zod.enum(['mp4', 'mkv', 'webm']).optional(),
   "inspectionCacheMinutes": zod.number().min(1).max(updateSettingsBodyInspectionCacheMinutesMax).optional(),
   "warningFreePercent": zod.number().min(1).max(updateSettingsBodyWarningFreePercentMax).optional(),
-  "criticalFreePercent": zod.number().min(1).max(updateSettingsBodyCriticalFreePercentMax).optional()
+  "criticalFreePercent": zod.number().min(1).max(updateSettingsBodyCriticalFreePercentMax).optional(),
+  "startWithWindows": zod.boolean().optional()
 })
 
 export const updateSettingsResponseConcurrentDownloadsMax = 5;
@@ -205,7 +1547,130 @@ export const UpdateSettingsResponse = zod.object({
   "outputContainer": zod.enum(['mp4', 'mkv', 'webm']),
   "inspectionCacheMinutes": zod.number().min(1).max(updateSettingsResponseInspectionCacheMinutesMax),
   "warningFreePercent": zod.number().min(1).max(updateSettingsResponseWarningFreePercentMax),
-  "criticalFreePercent": zod.number().min(1).max(updateSettingsResponseCriticalFreePercentMax)
+  "criticalFreePercent": zod.number().min(1).max(updateSettingsResponseCriticalFreePercentMax),
+  "startWithWindows": zod.boolean()
+})
+
+
+/**
+ * @summary Read provider refresh state and current authority
+ */
+export const GetProviderRefreshStateQueryParams = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin'])
+})
+
+export const GetProviderRefreshStateResponse = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "lastAttemptedRefresh": zod.object({
+  "refreshId": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['syncing', 'synced', 'sync_error']),
+  "snapshotCompleteness": zod.enum(['complete', 'partial', 'unknown']),
+  "itemCount": zod.number().nullable(),
+  "authoritative": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "snapshotReference": zod.string().nullable()
+}).nullable(),
+  "lastSuccessfulRefresh": zod.object({
+  "refreshId": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['syncing', 'synced', 'sync_error']),
+  "snapshotCompleteness": zod.enum(['complete', 'partial', 'unknown']),
+  "itemCount": zod.number().nullable(),
+  "authoritative": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "snapshotReference": zod.string().nullable()
+}).nullable(),
+  "currentAuthoritativeRefresh": zod.object({
+  "refreshId": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['syncing', 'synced', 'sync_error']),
+  "snapshotCompleteness": zod.enum(['complete', 'partial', 'unknown']),
+  "itemCount": zod.number().nullable(),
+  "authoritative": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "snapshotReference": zod.string().nullable()
+}).nullable()
+})
+
+
+/**
+ * @summary List bounded provider refresh history
+ */
+
+export const listProviderRefreshHistoryQueryPageSizeMax = 100;
+
+
+
+export const ListProviderRefreshHistoryQueryParams = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(listProviderRefreshHistoryQueryPageSizeMax).optional()
+})
+
+export const ListProviderRefreshHistoryResponse = zod.object({
+  "results": zod.array(zod.object({
+  "refreshId": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']),
+  "startedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['syncing', 'synced', 'sync_error']),
+  "snapshotCompleteness": zod.enum(['complete', 'partial', 'unknown']),
+  "itemCount": zod.number().nullable(),
+  "authoritative": zod.boolean(),
+  "reason": zod.string().nullable(),
+  "snapshotReference": zod.string().nullable()
+})),
+  "pagination": zod.object({
+  "page": zod.number(),
+  "pageSize": zod.number(),
+  "total": zod.number(),
+  "totalPages": zod.number()
+})
+})
+
+
+/**
+ * @summary Read bounded reconciliation finding lineage
+ */
+
+
+
+export const GetReconciliationFindingLineageParams = zod.object({
+  "reviewItemId": zod.coerce.number().min(1)
+})
+
+export const GetReconciliationFindingLineageResponse = zod.object({
+  "finding": zod.object({
+  "reviewItemId": zod.number(),
+  "subjectKey": zod.string(),
+  "state": zod.string(),
+  "classification": zod.string().nullable(),
+  "title": zod.string(),
+  "evidenceKey": zod.string().nullable()
+}),
+  "currentObservation": zod.object({
+  "observationId": zod.number(),
+  "evidenceKey": zod.string(),
+  "observedAt": zod.coerce.date()
+}).nullable(),
+  "provider": zod.object({
+  "provider": zod.string().nullable(),
+  "refreshId": zod.string().nullable(),
+  "capturedAt": zod.coerce.date().nullable(),
+  "snapshotReference": zod.string().nullable()
+}).nullable(),
+  "previousObservation": zod.object({
+  "observationId": zod.number(),
+  "evidenceKey": zod.string(),
+  "observedAt": zod.coerce.date()
+}).nullable()
 })
 
 
@@ -367,11 +1832,261 @@ export const GetPlexInventoryResponse = zod.object({
 
 
 /**
+ * @summary Get the owner-scoped Plex media hierarchy
+ */
+
+export const getPlexHierarchyQueryPageDefault = 1;
+
+export const getPlexHierarchyQueryPageSizeDefault = 24;
+export const getPlexHierarchyQueryPageSizeMax = 100;
+
+
+
+export const GetPlexHierarchyQueryParams = zod.object({
+  "libraryId": zod.coerce.number().int().min(1).optional(),
+  "page": zod.coerce.number().int().min(1).default(getPlexHierarchyQueryPageDefault),
+  "pageSize": zod.coerce.number().int().min(1).max(getPlexHierarchyQueryPageSizeMax).default(getPlexHierarchyQueryPageSizeDefault)
+})
+
+export const GetPlexHierarchyResponse = zod.object({
+  "page": zod.number(),
+  "pageSize": zod.number(),
+  "total": zod.number(),
+  "series": zod.array(zod.object({
+  "identity": zod.string(),
+  "title": zod.string(),
+  "year": zod.number().nullable(),
+  "artworkRatingKey": zod.string().nullable(),
+  "seasonCount": zod.number(),
+  "episodeCount": zod.number(),
+  "localMatchedCount": zod.number(),
+  "verifiedCount": zod.number(),
+  "seasons": zod.array(zod.object({
+  "identity": zod.string(),
+  "seasonNumber": zod.number(),
+  "title": zod.string().nullable(),
+  "episodeCount": zod.number(),
+  "localMatchedCount": zod.number(),
+  "verifiedCount": zod.number(),
+  "episodes": zod.array(zod.object({
+  "identity": zod.string(),
+  "episodeNumber": zod.number().nullable(),
+  "title": zod.string(),
+  "artworkRatingKey": zod.string().nullable(),
+  "localMatch": zod.enum(['matched', 'unmatched', 'uncertain', 'conflicting']),
+  "verifiedCount": zod.number(),
+  "localRecordIds": zod.array(zod.number())
+}))
+}))
+}))
+})
+
+
+/**
+ * @summary Get owner-scoped Plex artwork
+ */
+export const getPlexArtworkPathRatingKeyRegExp = new RegExp('^[0-9]+$');
+
+
+export const GetPlexArtworkParams = zod.object({
+  "ratingKey": zod.coerce.string().regex(getPlexArtworkPathRatingKeyRegExp)
+})
+
+export const GetPlexArtworkResponse = zod.unknown()
+
+
+/**
+ * @summary Get Jellyfin configuration status
+ */
+export const getJellyfinConfigResponseLibraryCountMin = 0;
+
+export const getJellyfinConfigResponseItemCountMin = 0;
+
+export const getJellyfinConfigResponseMediaCountMin = 0;
+
+
+
+export const GetJellyfinConfigResponse = zod.object({
+  "serverUrl": zod.string(),
+  "configured": zod.boolean(),
+  "hasApiKey": zod.boolean(),
+  "userId": zod.string().nullable(),
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(getJellyfinConfigResponseLibraryCountMin),
+  "itemCount": zod.number().min(getJellyfinConfigResponseItemCountMin),
+  "mediaCount": zod.number().min(getJellyfinConfigResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Update Jellyfin configuration
+ */
+export const UpdateJellyfinConfigBody = zod.object({
+  "serverUrl": zod.string().optional(),
+  "apiKey": zod.string().optional(),
+  "userId": zod.string().optional()
+})
+
+export const updateJellyfinConfigResponseLibraryCountMin = 0;
+
+export const updateJellyfinConfigResponseItemCountMin = 0;
+
+export const updateJellyfinConfigResponseMediaCountMin = 0;
+
+
+
+export const UpdateJellyfinConfigResponse = zod.object({
+  "serverUrl": zod.string(),
+  "configured": zod.boolean(),
+  "hasApiKey": zod.boolean(),
+  "userId": zod.string().nullable(),
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(updateJellyfinConfigResponseLibraryCountMin),
+  "itemCount": zod.number().min(updateJellyfinConfigResponseItemCountMin),
+  "mediaCount": zod.number().min(updateJellyfinConfigResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Verify the configured Jellyfin server
+ */
+export const testJellyfinConnectionResponseLibraryCountMin = 0;
+
+export const testJellyfinConnectionResponseItemCountMin = 0;
+
+export const testJellyfinConnectionResponseMediaCountMin = 0;
+
+
+
+export const TestJellyfinConnectionResponse = zod.object({
+  "serverUrl": zod.string(),
+  "configured": zod.boolean(),
+  "hasApiKey": zod.boolean(),
+  "userId": zod.string().nullable(),
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(testJellyfinConnectionResponseLibraryCountMin),
+  "itemCount": zod.number().min(testJellyfinConnectionResponseItemCountMin),
+  "mediaCount": zod.number().min(testJellyfinConnectionResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Start synchronizing the configured Jellyfin inventory
+ */
+export const startJellyfinSyncResponseLibraryCountMin = 0;
+
+export const startJellyfinSyncResponseItemCountMin = 0;
+
+export const startJellyfinSyncResponseMediaCountMin = 0;
+
+
+
+export const StartJellyfinSyncResponse = zod.object({
+  "serverUrl": zod.string(),
+  "configured": zod.boolean(),
+  "hasApiKey": zod.boolean(),
+  "userId": zod.string().nullable(),
+  "status": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected', 'syncing', 'synced', 'sync_error']),
+  "connectionStatus": zod.enum(['not_configured', 'configured', 'connection_failed', 'connected']),
+  "syncStatus": zod.enum(['idle', 'syncing', 'synced', 'sync_error']),
+  "lastAttemptedAt": zod.string().nullable(),
+  "lastSuccessfulSyncAt": zod.string().nullable(),
+  "lastError": zod.string().nullable(),
+  "serverName": zod.string().nullable(),
+  "libraryCount": zod.number().min(startJellyfinSyncResponseLibraryCountMin),
+  "itemCount": zod.number().min(startJellyfinSyncResponseItemCountMin),
+  "mediaCount": zod.number().min(startJellyfinSyncResponseMediaCountMin)
+})
+
+
+/**
+ * @summary Get the synchronized Jellyfin inventory
+ */
+export const getJellyfinInventoryResponseLibrariesItemItemCountMin = 0;
+
+export const getJellyfinInventoryResponseItemsItemMediaCountMin = 0;
+
+export const getJellyfinInventoryResponseItemsItemPartCountMin = 0;
+
+
+
+export const GetJellyfinInventoryResponse = zod.object({
+  "libraries": zod.array(zod.object({
+  "id": zod.number(),
+  "key": zod.string(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "serverUrl": zod.string(),
+  "itemCount": zod.number().min(getJellyfinInventoryResponseLibrariesItemItemCountMin),
+  "lastSyncedAt": zod.string().nullable(),
+  "syncStatus": zod.string(),
+  "syncError": zod.string().nullable()
+})),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "libraryId": zod.number(),
+  "libraryName": zod.string(),
+  "itemKey": zod.string(),
+  "title": zod.string(),
+  "itemType": zod.string(),
+  "year": zod.number().nullable(),
+  "thumbPathAvailable": zod.boolean(),
+  "addedAt": zod.string().nullable(),
+  "updatedAt": zod.string().nullable(),
+  "mediaCount": zod.number().min(getJellyfinInventoryResponseItemsItemMediaCountMin),
+  "partCount": zod.number().min(getJellyfinInventoryResponseItemsItemPartCountMin)
+}))
+})
+
+
+/**
+ * @summary Get the active archive reference provider
+ */
+export const GetArchiveProviderResponse = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string(),
+  "available": zod.array(zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.')).describe('Providers that currently hold synchronized inventory.')
+})
+
+
+/**
+ * @summary Select the archive reference provider
+ */
+export const SetArchiveProviderBody = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.')
+})
+
+export const SetArchiveProviderResponse = zod.object({
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string(),
+  "available": zod.array(zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.')).describe('Providers that currently hold synchronized inventory.')
+})
+
+
+/**
  * @summary Get external integration adapter status
  */
 export const GetIntegrationStatusesResponse = zod.object({
   "integrations": zod.array(zod.object({
-  "id": zod.enum(['plex', 'sonarr', 'radarr', 'prowlarr', 'qbittorrent', 'mpilot', 'telegram']),
+  "id": zod.enum(['plex', 'jellyfin', 'sonarr', 'radarr', 'prowlarr', 'qbittorrent', 'mpilot', 'telegram']),
   "name": zod.string(),
   "state": zod.enum(['disconnected', 'configured', 'reachable', 'operational', 'error']),
   "configured": zod.boolean(),
@@ -417,6 +2132,51 @@ export const GetWebhookSecretStatusesResponse = zod.object({
   "malformed": zod.number().min(getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsMalformedMin).multipleOf(getWebhookSecretStatusesResponseProvidersItemDiagnosticsCountsMalformedMultipleOf)
 })
 })
+}))
+})
+
+
+/**
+ * @summary Get owner-scoped webhook delivery history
+ */
+
+export const getWebhookDeliveryHistoryQueryPageSizeMax = 500;
+
+
+
+export const GetWebhookDeliveryHistoryQueryParams = zod.object({
+  "provider": zod.enum(['sonarr', 'radarr']).optional(),
+  "page": zod.coerce.number().min(1).optional(),
+  "pageSize": zod.coerce.number().min(1).max(getWebhookDeliveryHistoryQueryPageSizeMax).optional()
+})
+
+
+
+export const getWebhookDeliveryHistoryResponsePaginationTotalMin = 0;
+
+export const getWebhookDeliveryHistoryResponsePaginationTotalPagesMin = 0;
+
+
+
+export const GetWebhookDeliveryHistoryResponse = zod.object({
+  "pagination": zod.object({
+  "page": zod.number().min(1),
+  "pageSize": zod.number().min(1),
+  "total": zod.number().min(getWebhookDeliveryHistoryResponsePaginationTotalMin),
+  "totalPages": zod.number().min(getWebhookDeliveryHistoryResponsePaginationTotalPagesMin)
+}),
+  "results": zod.array(zod.object({
+  "id": zod.number(),
+  "provider": zod.enum(['sonarr', 'radarr']),
+  "receivedAt": zod.coerce.date(),
+  "classification": zod.enum(['processed', 'ignored', 'duplicate', 'rejected', 'unavailable', 'malformed']),
+  "reasonCode": zod.string(),
+  "providerEventId": zod.string().nullable(),
+  "providerJobId": zod.string().nullable(),
+  "resolvedOwnerId": zod.string().nullable(),
+  "acquisitionJobId": zod.number().nullable(),
+  "detail": zod.string(),
+  "deduplication": zod.union([zod.literal('event_id'),zod.literal('unavailable'),zod.literal(null)]).nullable()
 }))
 })
 
@@ -890,6 +2650,15 @@ export const ListAcquisitionRecommendationsResponseItem = zod.object({
   "title": zod.string(),
   "year": zod.number().nullable(),
   "externalId": zod.string().nullable(),
+  "identity": zod.union([zod.object({
+  "mediaType": zod.string(),
+  "seriesId": zod.string().optional(),
+  "seriesTitle": zod.string().optional(),
+  "seasonNumber": zod.number().optional(),
+  "episodeNumber": zod.number().optional(),
+  "episodeId": zod.string().optional(),
+  "episodeTitle": zod.string().optional()
+}),zod.null()]),
   "target": zod.record(zod.string(), zod.unknown()),
   "evidence": zod.record(zod.string(), zod.unknown()),
   "preferredQuality": zod.record(zod.string(), zod.unknown()),
@@ -919,6 +2688,15 @@ export const GenerateAcquisitionRecommendationsResponseItem = zod.object({
   "title": zod.string(),
   "year": zod.number().nullable(),
   "externalId": zod.string().nullable(),
+  "identity": zod.union([zod.object({
+  "mediaType": zod.string(),
+  "seriesId": zod.string().optional(),
+  "seriesTitle": zod.string().optional(),
+  "seasonNumber": zod.number().optional(),
+  "episodeNumber": zod.number().optional(),
+  "episodeId": zod.string().optional(),
+  "episodeTitle": zod.string().optional()
+}),zod.null()]),
   "target": zod.record(zod.string(), zod.unknown()),
   "evidence": zod.record(zod.string(), zod.unknown()),
   "preferredQuality": zod.record(zod.string(), zod.unknown()),
@@ -955,6 +2733,15 @@ export const GetAcquisitionRecommendationResponse = zod.object({
   "title": zod.string(),
   "year": zod.number().nullable(),
   "externalId": zod.string().nullable(),
+  "identity": zod.union([zod.object({
+  "mediaType": zod.string(),
+  "seriesId": zod.string().optional(),
+  "seriesTitle": zod.string().optional(),
+  "seasonNumber": zod.number().optional(),
+  "episodeNumber": zod.number().optional(),
+  "episodeId": zod.string().optional(),
+  "episodeTitle": zod.string().optional()
+}),zod.null()]),
   "target": zod.record(zod.string(), zod.unknown()),
   "evidence": zod.record(zod.string(), zod.unknown()),
   "preferredQuality": zod.record(zod.string(), zod.unknown()),
@@ -1048,6 +2835,19 @@ export const CreateReviewItemResponse = zod.object({
 export const SyncControlPlaneReviewItemsResponse = zod.object({
   "namingItems": zod.number(),
   "archiveFindingItems": zod.number(),
+  "informationalFindings": zod.number(),
+  "severity": zod.object({
+  "total": zod.number(),
+  "reviewRequired": zod.number(),
+  "informational": zod.number(),
+  "bySeverity": zod.object({
+  "info": zod.number(),
+  "low": zod.number(),
+  "medium": zod.number(),
+  "high": zod.number(),
+  "critical": zod.number()
+})
+}),
   "total": zod.number()
 })
 
@@ -1257,6 +3057,15 @@ export const CreateApprovedAcquisitionJobResponse = zod.object({
   "title": zod.string(),
   "year": zod.number().nullable(),
   "externalId": zod.string().nullable(),
+  "identity": zod.union([zod.object({
+  "mediaType": zod.string(),
+  "seriesId": zod.string().optional(),
+  "seriesTitle": zod.string().optional(),
+  "seasonNumber": zod.number().optional(),
+  "episodeNumber": zod.number().optional(),
+  "episodeId": zod.string().optional(),
+  "episodeTitle": zod.string().optional()
+}),zod.null()]),
   "target": zod.record(zod.string(), zod.unknown()),
   "evidence": zod.record(zod.string(), zod.unknown()),
   "preferredQuality": zod.record(zod.string(), zod.unknown()),
@@ -1334,6 +3143,15 @@ export const ListArchiveOperationsResponseItem = zod.object({
   "sourceId": zod.string().nullable(),
   "sourcePath": zod.string(),
   "destinationPath": zod.string(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})),
+  "proposalId": zod.string().nullable(),
   "reviewItemId": zod.number(),
   "acquisitionJobId": zod.number().nullable(),
   "downloadJobId": zod.number().nullable(),
@@ -1378,13 +3196,22 @@ export const CreateArchiveOperationBody = zod.object({
   "action": zod.enum(['rename', 'move', 'import']),
   "sourceKind": zod.string().min(1),
   "sourceId": zod.string().nullish(),
-  "sourcePath": zod.string().min(1),
-  "destinationPath": zod.string().min(1),
-  "reviewItemId": zod.number().min(1),
+  "sourcePath": zod.string().min(1).optional(),
+  "destinationPath": zod.string().min(1).optional(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})).optional(),
+  "reviewItemId": zod.number().min(1).optional(),
   "acquisitionJobId": zod.number().min(1).nullish(),
   "downloadJobId": zod.number().min(1).nullish(),
   "dryRun": zod.boolean().default(createArchiveOperationBodyDryRunDefault),
-  "idempotencyKey": zod.string().optional()
+  "idempotencyKey": zod.string().optional(),
+  "proposalId": zod.string().optional()
 })
 
 export const CreateArchiveOperationResponse = zod.object({
@@ -1395,6 +3222,15 @@ export const CreateArchiveOperationResponse = zod.object({
   "sourceId": zod.string().nullable(),
   "sourcePath": zod.string(),
   "destinationPath": zod.string(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})),
+  "proposalId": zod.string().nullable(),
   "reviewItemId": zod.number(),
   "acquisitionJobId": zod.number().nullable(),
   "downloadJobId": zod.number().nullable(),
@@ -1441,6 +3277,15 @@ export const GetArchiveOperationResponse = zod.object({
   "sourceId": zod.string().nullable(),
   "sourcePath": zod.string(),
   "destinationPath": zod.string(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})),
+  "proposalId": zod.string().nullable(),
   "reviewItemId": zod.number(),
   "acquisitionJobId": zod.number().nullable(),
   "downloadJobId": zod.number().nullable(),
@@ -1487,6 +3332,15 @@ export const PreflightArchiveOperationResponse = zod.object({
   "sourceId": zod.string().nullable(),
   "sourcePath": zod.string(),
   "destinationPath": zod.string(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})),
+  "proposalId": zod.string().nullable(),
   "reviewItemId": zod.number(),
   "acquisitionJobId": zod.number().nullable(),
   "downloadJobId": zod.number().nullable(),
@@ -1537,6 +3391,15 @@ export const ExecuteArchiveOperationResponse = zod.object({
   "sourceId": zod.string().nullable(),
   "sourcePath": zod.string(),
   "destinationPath": zod.string(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})),
+  "proposalId": zod.string().nullable(),
   "reviewItemId": zod.number(),
   "acquisitionJobId": zod.number().nullable(),
   "downloadJobId": zod.number().nullable(),
@@ -1583,6 +3446,15 @@ export const CancelArchiveOperationResponse = zod.object({
   "sourceId": zod.string().nullable(),
   "sourcePath": zod.string(),
   "destinationPath": zod.string(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})),
+  "proposalId": zod.string().nullable(),
   "reviewItemId": zod.number(),
   "acquisitionJobId": zod.number().nullable(),
   "downloadJobId": zod.number().nullable(),
@@ -1629,6 +3501,15 @@ export const RetryArchiveOperationResponse = zod.object({
   "sourceId": zod.string().nullable(),
   "sourcePath": zod.string(),
   "destinationPath": zod.string(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})),
+  "proposalId": zod.string().nullable(),
   "reviewItemId": zod.number(),
   "acquisitionJobId": zod.number().nullable(),
   "downloadJobId": zod.number().nullable(),
@@ -1679,6 +3560,15 @@ export const RollbackArchiveOperationResponse = zod.object({
   "sourceId": zod.string().nullable(),
   "sourcePath": zod.string(),
   "destinationPath": zod.string(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})),
+  "proposalId": zod.string().nullable(),
   "reviewItemId": zod.number(),
   "acquisitionJobId": zod.number().nullable(),
   "downloadJobId": zod.number().nullable(),
@@ -1794,6 +3684,15 @@ export const PlanApprovedAcquisitionImportResponse = zod.object({
   "sourceId": zod.string().nullable(),
   "sourcePath": zod.string(),
   "destinationPath": zod.string(),
+  "batch": zod.array(zod.object({
+  "id": zod.string(),
+  "originalPath": zod.string(),
+  "temporaryPath": zod.string(),
+  "finalPath": zod.string(),
+  "state": zod.enum(['planned', 'temporary', 'completed', 'failed']),
+  "error": zod.string().nullish()
+})),
+  "proposalId": zod.string().nullable(),
   "reviewItemId": zod.number(),
   "acquisitionJobId": zod.number().nullable(),
   "downloadJobId": zod.number().nullable(),
@@ -2061,6 +3960,51 @@ export const GetArchiveReconciliationResponse = zod.object({
 
 
 /**
+ * @summary Read provider reconciliation status for an archive operation
+ */
+export const GetArchiveOperationProviderStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetArchiveOperationProviderStatusResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Explicitly refresh configured media providers after a verified operation
+ */
+export const RefreshProvidersAfterArchiveOperationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RefreshProvidersAfterArchiveOperationBody = zod.object({
+  "confirmed": zod.boolean(),
+  "providers": zod.array(zod.enum(['plex', 'jellyfin'])).optional()
+})
+
+export const RefreshProvidersAfterArchiveOperationResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Create a researched, supervised Power Renamer plan
+ */
+export const CreatePowerRenamerPlanBody = zod.object({
+  "fileRecordIds": zod.array(zod.number())
+})
+
+export const CreatePowerRenamerPlanResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Create an approved Power Renamer archive operation
+ */
+export const CreatePowerRenamerOperationBody = zod.object({
+  "reviewItemId": zod.number()
+})
+
+export const CreatePowerRenamerOperationResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
  * @summary Get read-only naming proposals for owner-scoped archive records
  */
 
@@ -2149,6 +4093,9 @@ export const GetArchiveNamingProposalsResponse = zod.object({
   "operation": zod.enum(['rename', 'restructure', 'move', 'uncertain/no_action']),
   "reason": zod.string(),
   "evidence": zod.array(zod.string()),
+  "researchGrade": zod.enum(['corroborated', 'observed', 'blocked']),
+  "researchSources": zod.array(zod.string()),
+  "researchBlockers": zod.array(zod.string()),
   "mediaType": zod.enum(['movie', 'tv']),
   "volumeId": zod.string(),
   "archiveRoot": zod.string(),
@@ -2284,6 +4231,13 @@ export const ReceiveAcquisitionWebhookResponse = zod.object({
 
 
 /**
+ * Server-Sent Events stream of live scan observability. On connect the server sends a `snapshot` event carrying the persisted scan aggregate and the ephemeral live state, followed by `scan.*` events as the scan progresses. The persisted aggregate from `GET /archive/scan` remains the source of truth; this stream is ephemeral and safe to lose. Events are owner-scoped. Not modelled as a JSON response because the body is an unbounded `text/event-stream`.
+ * @summary Stream live archive scan progress as Server-Sent Events
+ */
+export const StreamArchiveScanEventsResponse = zod.unknown()
+
+
+/**
  * @summary Get the current local archive scan state
  */
 export const getArchiveScanResponseScannedFilesMin = 0;
@@ -2302,10 +4256,12 @@ export const getArchiveScanResponsePlexOnlyCountMin = 0;
 
 export const getArchiveScanResponseLocalOnlyCountMin = 0;
 
+export const getArchiveScanResponseResumedCountMin = 0;
+
 
 
 export const GetArchiveScanResponse = zod.object({
-  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "status": zod.enum(['not_scanned', 'scanning', 'interrupted', 'completed', 'failed']),
   "startedAt": zod.string().nullable(),
   "completedAt": zod.string().nullable(),
   "lastError": zod.string().nullable(),
@@ -2316,7 +4272,9 @@ export const GetArchiveScanResponse = zod.object({
   "missingCount": zod.number().min(getArchiveScanResponseMissingCountMin),
   "qualityConflictCount": zod.number().min(getArchiveScanResponseQualityConflictCountMin),
   "plexOnlyCount": zod.number().min(getArchiveScanResponsePlexOnlyCountMin),
-  "localOnlyCount": zod.number().min(getArchiveScanResponseLocalOnlyCountMin)
+  "localOnlyCount": zod.number().min(getArchiveScanResponseLocalOnlyCountMin),
+  "resumedCount": zod.number().min(getArchiveScanResponseResumedCountMin).describe('How many times the current or most recent scan pass was resumed.'),
+  "resumable": zod.boolean().describe('Whether starting a scan will continue an interrupted pass.')
 })
 
 
@@ -2339,10 +4297,12 @@ export const startArchiveScanResponsePlexOnlyCountMin = 0;
 
 export const startArchiveScanResponseLocalOnlyCountMin = 0;
 
+export const startArchiveScanResponseResumedCountMin = 0;
+
 
 
 export const StartArchiveScanResponse = zod.object({
-  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "status": zod.enum(['not_scanned', 'scanning', 'interrupted', 'completed', 'failed']),
   "startedAt": zod.string().nullable(),
   "completedAt": zod.string().nullable(),
   "lastError": zod.string().nullable(),
@@ -2353,7 +4313,9 @@ export const StartArchiveScanResponse = zod.object({
   "missingCount": zod.number().min(startArchiveScanResponseMissingCountMin),
   "qualityConflictCount": zod.number().min(startArchiveScanResponseQualityConflictCountMin),
   "plexOnlyCount": zod.number().min(startArchiveScanResponsePlexOnlyCountMin),
-  "localOnlyCount": zod.number().min(startArchiveScanResponseLocalOnlyCountMin)
+  "localOnlyCount": zod.number().min(startArchiveScanResponseLocalOnlyCountMin),
+  "resumedCount": zod.number().min(startArchiveScanResponseResumedCountMin).describe('How many times the current or most recent scan pass was resumed.'),
+  "resumable": zod.boolean().describe('Whether starting a scan will continue an interrupted pass.')
 })
 
 
@@ -2375,6 +4337,8 @@ export const getArchiveInventoryResponseScanQualityConflictCountMin = 0;
 export const getArchiveInventoryResponseScanPlexOnlyCountMin = 0;
 
 export const getArchiveInventoryResponseScanLocalOnlyCountMin = 0;
+
+export const getArchiveInventoryResponseScanResumedCountMin = 0;
 
 export const getArchiveInventoryResponseSummaryActiveFilesMin = 0;
 
@@ -2402,7 +4366,7 @@ export const getArchiveInventoryResponseSummaryUnresolvedCountMin = 0;
 
 export const GetArchiveInventoryResponse = zod.object({
   "scan": zod.object({
-  "status": zod.enum(['not_scanned', 'scanning', 'completed', 'failed']),
+  "status": zod.enum(['not_scanned', 'scanning', 'interrupted', 'completed', 'failed']),
   "startedAt": zod.string().nullable(),
   "completedAt": zod.string().nullable(),
   "lastError": zod.string().nullable(),
@@ -2413,8 +4377,12 @@ export const GetArchiveInventoryResponse = zod.object({
   "missingCount": zod.number().min(getArchiveInventoryResponseScanMissingCountMin),
   "qualityConflictCount": zod.number().min(getArchiveInventoryResponseScanQualityConflictCountMin),
   "plexOnlyCount": zod.number().min(getArchiveInventoryResponseScanPlexOnlyCountMin),
-  "localOnlyCount": zod.number().min(getArchiveInventoryResponseScanLocalOnlyCountMin)
+  "localOnlyCount": zod.number().min(getArchiveInventoryResponseScanLocalOnlyCountMin),
+  "resumedCount": zod.number().min(getArchiveInventoryResponseScanResumedCountMin).describe('How many times the current or most recent scan pass was resumed.'),
+  "resumable": zod.boolean().describe('Whether starting a scan will continue an interrupted pass.')
 }),
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string().describe('Operator-facing name of the active reference provider.'),
   "summary": zod.object({
   "activeFiles": zod.number().min(getArchiveInventoryResponseSummaryActiveFilesMin),
   "failedFiles": zod.number().min(getArchiveInventoryResponseSummaryFailedFilesMin),
@@ -2463,7 +4431,9 @@ export const GetArchiveInventoryResponse = zod.object({
   "ratingKey": zod.string(),
   "title": zod.string(),
   "year": zod.number().nullable(),
-  "qualityDifferences": zod.array(zod.string())
+  "qualityDifferences": zod.array(zod.string()),
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string().describe('Operator-facing provider name, for example Plex or Jellyfin.')
 }),zod.null()]),
   "reviewStatus": zod.enum(['not_applicable', 'unreviewed', 'reviewed', 'deferred', 'unresolved']),
   "reviewNote": zod.string().nullable(),
@@ -2474,7 +4444,9 @@ export const GetArchiveInventoryResponse = zod.object({
   "title": zod.string(),
   "itemType": zod.string(),
   "year": zod.number().nullable(),
-  "qualitySummary": zod.string()
+  "qualitySummary": zod.string(),
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string()
 }))
 })
 
@@ -2523,7 +4495,9 @@ export const GetArchiveRecordResponse = zod.object({
   "ratingKey": zod.string(),
   "title": zod.string(),
   "year": zod.number().nullable(),
-  "qualityDifferences": zod.array(zod.string())
+  "qualityDifferences": zod.array(zod.string()),
+  "provider": zod.enum(['plex', 'jellyfin']).describe('Media server supplying the reference inventory.'),
+  "providerLabel": zod.string().describe('Operator-facing provider name, for example Plex or Jellyfin.')
 }),zod.null()]),
   "reviewStatus": zod.enum(['not_applicable', 'unreviewed', 'reviewed', 'deferred', 'unresolved']),
   "reviewNote": zod.string().nullable(),
@@ -3057,6 +5031,45 @@ export const RetryDownloadResponse = zod.object({
   "processId": zod.number().nullable(),
   "currentPhase": zod.string(),
   "verification": zod.enum(['waiting', 'passed', 'failed', 'not_required'])
+})
+
+
+export const GetAssistantArchiveHealthResponse = zod.record(zod.string(), zod.unknown())
+
+
+export const CreateArchiveOrderingProposalBody = zod.record(zod.string(), zod.unknown())
+
+export const CreateArchiveOrderingProposalResponse = zod.object({
+  "proposalId": zod.string(),
+  "proposalVersion": zod.string(),
+  "reviewItemId": zod.number(),
+  "collectionId": zod.string(),
+  "confidence": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "unknowns": zod.array(zod.string()).optional(),
+  "sourceMappings": zod.array(zod.record(zod.string(), zod.unknown())),
+  "reviewState": zod.string().optional(),
+  "staleStatus": zod.string().optional(),
+  "linkedOperationId": zod.number().nullish()
+})
+
+
+export const GetArchiveOrderingProposalParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetArchiveOrderingProposalResponse = zod.object({
+  "proposalId": zod.string(),
+  "proposalVersion": zod.string(),
+  "reviewItemId": zod.number(),
+  "collectionId": zod.string(),
+  "confidence": zod.string(),
+  "evidence": zod.array(zod.string()),
+  "unknowns": zod.array(zod.string()).optional(),
+  "sourceMappings": zod.array(zod.record(zod.string(), zod.unknown())),
+  "reviewState": zod.string().optional(),
+  "staleStatus": zod.string().optional(),
+  "linkedOperationId": zod.number().nullish()
 })
 
 

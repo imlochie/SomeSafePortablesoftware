@@ -1,21 +1,23 @@
 import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import {
   Activity, Archive, ArrowDownToLine, ArrowUpRight, Bot, Check, ChevronRight, CircleHelp,
-  CloudOff, Cpu, Download, FileCheck2, FolderOpen, HardDrive, History,
-  Library, Link2, Menu, Network, Pause, Play, PlaySquare, Plus, RefreshCw, RotateCcw,
+  CloudOff, Compass, Cpu, Download, FileCheck2, FolderOpen, HardDrive, History,
+  Library, Link2, Menu, Network, Pause, Play, PlaySquare, RefreshCw, RotateCcw,
   Save, Search, Settings as SettingsIcon, ShieldCheck, SlidersHorizontal,
   Sparkles, Square, Terminal, Trash2, X, Zap,
 } from 'lucide-react';
 import {
   getGetDownloadsQueryKey, getGetPlexConfigQueryKey, getGetPlexInventoryQueryKey, getGetSettingsQueryKey, getGetSystemEventsQueryKey,
-  getGetSystemOverviewQueryKey, getGetWebhookSecretStatusesQueryKey, useCancelDownload, useCreateDownload, useDeleteDownload,
+  getGetSystemOverviewQueryKey, getGetWebhookSecretStatusesQueryKey, useCancelDownload, useDeleteDownload,
   useGetDownloads, useGetPlexConfig, useGetPlexInventory, useGetSettings, useGetSystemDependencies,
   useGetWebhookSecretStatuses, useReplaceWebhookSecret,
-  useGetSystemEvents, useGetSystemOverview, useHealthCheck, useInspectMediaSource,
+  useGetSystemEvents, useGetSystemOverview, useGetAssistantOverview, useResearchAssistantCandidate, useResearchFromViewingHistory, useEvaluateViewingResearch, useSynthesizeViewingResearch, useReadPersonalCuration, useReadPersonalReasoning, useReadMediaProfile, useHealthCheck,
   usePauseDownload, usePrepareDownload, useRetryDownload, useResumeDownload,
   useStartDownload, useStartPlexSync, useTestPlexConnection, useUpdatePlexConfig, useUpdateSettings,
   useGetArchiveScan, useStartArchiveScan, useGetArchiveInventory, useGetArchiveRecord, useGetArchiveNamingProposals,
@@ -27,22 +29,37 @@ import {
   useCreateApprovedAcquisitionJob, useListArchiveOperations, useGetIntegrationStatuses,
   useSyncControlPlaneReviewItems, useCreateArchiveOperation, usePreflightArchiveOperation,
   useExecuteArchiveOperation, useCancelArchiveOperation, useRetryArchiveOperation,
-  useRollbackArchiveOperation,
-  setBaseUrl,
+  useRollbackArchiveOperation, useGetAcquisitionJobs, useLinkAcquisitionDownload,
+  usePlanApprovedAcquisitionImport, useRefreshAcquisitionJob,
 } from '@workspace/api-client-react';
-import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
+import type { AcquisitionProvider, AppSettings, AppSettingsUpdate, DownloadJob, MediaFormat, MediaInspection, MissingMediaItem, ReviewSyncResult, RotateWebhookSecretBody, SystemEvent, WebhookSecretStatus } from '@workspace/api-client-react';
+import { apiUrl } from '@/lib/desktop-api-base-url';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ArchiveAcquisitionPanel, type ArchiveAcquisitionTarget } from '@/components/archive-acquisition-panel';
+import { ArchiveScanPanel } from '@/components/archive-scan-panel';
+import { VisualMediaLibrary } from '@/components/visual-media-library';
+import { StorageDiagnosticsPanel } from './components/storage-diagnostics-panel';
+import { WorkloadSummary } from './components/workload-summary';
+import { AcquisitionJobsPanel } from '@/components/acquisition-jobs-panel';
+import { useArchiveScanEvents } from '@/hooks/use-archive-scan-events';
+import { resolveScanLifecycle } from '@/lib/scan-lifecycle';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import DiscoverPage from '@/pages/discover';
+import WorkloadDetailPage from '@/pages/workload-detail';
+import IntelligentOrderingPage from '@/pages/intelligent-ordering';
+import ArchiveHealthPage from '@/pages/archive-health';
+import SourcesPage from '@/pages/sources';
+import JellyfinPage from '@/pages/jellyfin';
+import MonitoringPage from '@/pages/monitoring';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 
 const queryClient = new QueryClient();
 const navItems = [
-  { label: 'HOME', href: '/user-portal', icon: Activity }, { label: 'ASSISTANT', href: '/assistant', icon: Bot },
+  { label: 'HOME', href: '/user-portal', icon: Activity }, { label: 'ASSISTANT', href: '/assistant', icon: Bot }, { label: 'DISCOVER', href: '/discover', icon: Compass },
   { label: 'QUEUE', href: '/queue', icon: Download }, { label: 'ARCHIVE', href: '/archive', icon: Archive },
-  { label: 'PLEX', href: '/plex', icon: PlaySquare }, { label: 'SOURCES', href: '/sources', icon: FolderOpen },
+  { label: 'PLEX', href: '/plex', icon: PlaySquare }, { label: 'JELLYFIN', href: '/jellyfin', icon: PlaySquare }, { label: 'SOURCES', href: '/sources', icon: FolderOpen }, { label: 'MONITORING', href: '/monitoring', icon: RefreshCw },
   { label: 'HISTORY', href: '/history', icon: History }, { label: 'SETTINGS', href: '/settings', icon: SettingsIcon },
 ];
 const authMode = import.meta.env.VITE_AUTH_MODE === 'clerk' ? 'clerk' : 'local';
@@ -51,10 +68,9 @@ const clerkPubKey = authMode === 'clerk'
   : null;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const desktopApiBaseUrl = (window as Window & {
-  __ARCHIVE_API_BASE_URL__?: string;
-}).__ARCHIVE_API_BASE_URL__;
-setBaseUrl(import.meta.env.VITE_API_BASE_URL?.trim() || desktopApiBaseUrl || null);
+// The API base URL is configured in main.tsx before this module is imported.
+// It cannot be read at module scope here: the desktop shell injects it only
+// after its sidecar is ready, which is long after these modules evaluate.
 
 if (authMode === 'clerk' && !clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
@@ -144,10 +160,10 @@ const statusLabels: Record<string, string> = {
   warning: 'WARNING', unavailable: 'UNAVAILABLE', processing: 'PROCESSING',
   not_configured: 'NOT CONFIGURED', configured: 'CONFIGURED / UNVERIFIED', connection_failed: 'CONNECTION FAILED',
   syncing: 'SYNCING', synced: 'SYNCED', sync_error: 'SYNC ERROR',
-  error: 'ERROR', queued: 'QUEUED', inspecting: 'INSPECTING',
-  downloading: 'DOWNLOADING', downloaded: 'DOWNLOADED', verifying: 'VERIFYING', moving: 'MOVING',
-  complete: 'COMPLETE', failed: 'FAILED', cancelled: 'CANCELLED', paused: 'PAUSED',
-  recovery_required: 'RECOVERY REQUIRED',
+  error: 'ERROR', queued: 'WAITING TO START', inspecting: 'CHECKING THE SOURCE',
+  downloading: 'DOWNLOADING', downloaded: 'DOWNLOADED', verifying: 'CHECKING THE FILE', moving: 'PUTTING IT IN YOUR ARCHIVE',
+  complete: 'DONE AND VERIFIED', failed: 'FAILED — NOTHING CONFIRMED', cancelled: 'CANCELLED', paused: 'PAUSED',
+  recovery_required: 'NEEDS A LOOK',
 };
 
 function formatTime(value: string | null | undefined) {
@@ -170,6 +186,21 @@ function formatDuration(seconds: number | null | undefined) {
   return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m ${String(secs).padStart(2, '0')}s`;
 }
 function statusText(value: string | undefined) { return value ? statusLabels[value] ?? value.toUpperCase() : 'CHECKING'; }
+function humanJobPhase(status: string | undefined) {
+  if (status === 'queued') return 'Waiting to start';
+  if (status === 'inspecting') return 'Checking the source';
+  if (status === 'downloading') return 'Downloading the file';
+  if (status === 'downloaded') return 'Download finished; archive change is not confirmed';
+  if (status === 'processing') return 'Preparing the downloaded file';
+  if (status === 'verifying') return 'Checking the downloaded file';
+  if (status === 'moving') return 'Putting the file in your archive';
+  if (status === 'complete') return 'Downloaded and verified';
+  if (status === 'failed') return 'The download failed; review what changed before retrying';
+  if (status === 'recovery_required') return 'Something needs review before continuing';
+  if (status === 'paused') return 'Paused; waiting for you to resume';
+  if (status === 'cancelled') return 'Cancelled; no completion was recorded';
+  return 'The system is handling this';
+}
 function errorText(error: unknown) {
   if (!error) return 'The local node did not accept the request.';
   if (typeof error === 'object' && error && 'message' in error) return String((error as { message?: string }).message);
@@ -179,6 +210,19 @@ function StatusPill({ status, label }: { status?: string; label?: string }) {
   return <span className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-white/70 px-2.5 py-1 text-[10px] font-bold tracking-[.1em] text-[#53636a]" data-testid={`status-${label?.toLowerCase().replace(/\s/g, '-') ?? status}`}><span className={`status-dot ${status ?? 'idle'}`} />{label ?? statusText(status)}</span>;
 }
 function Skeleton({ className = '' }: { className?: string }) { return <div className={`animate-pulse rounded bg-[#dfe6e5] ${className}`} />; }
+function ErrorState({ title, message, onRetry, testId }: { title: string; message: string; onRetry?: () => void; testId?: string }) {
+  return <section className="archive-panel p-6" data-testid={testId ?? 'panel-error-state'}><h2 className="archive-display text-xl font-extrabold text-[#263844]">{title}</h2><p className="mt-2 text-[12px] text-[#718187]">{message}</p>{onRetry && <button type="button" onClick={onRetry} className="mt-4 border border-[#d7e1de] px-3 py-2 text-[10px] font-bold tracking-[.1em] text-[#39736e]">TRY AGAIN</button>}</section>;
+}
+const placeholderCopy = {
+  assistant: { eyebrow: 'ASSISTANT', title: 'Assistant', description: 'A read-only space for understanding what the archive knows.', icon: Bot },
+  discover: { eyebrow: 'DISCOVER', title: 'Discover', description: 'Provider-backed discovery is reserved for a later surface.', icon: Compass },
+  queue: { eyebrow: 'QUEUE', title: 'Queue', description: 'Queued work is shown only when durable state exists.', icon: Download },
+  archive: { eyebrow: 'ARCHIVE', title: 'Archive', description: 'Archive inventory remains grounded in local records.', icon: Archive },
+  plex: { eyebrow: 'PLEX', title: 'Plex', description: 'Provider state is shown only when it is available.', icon: PlaySquare },
+  sources: { eyebrow: 'SOURCES', title: 'Sources', description: 'Source configuration is shown only when it is available.', icon: FolderOpen },
+  history: { eyebrow: 'HISTORY', title: 'History', description: 'History is grounded in recorded events.', icon: History },
+  settings: { eyebrow: 'SETTINGS', title: 'Settings', description: 'Runtime settings are stored locally.', icon: SettingsIcon },
+} as const;
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const [location] = useLocation();
@@ -201,7 +245,7 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
 }
 function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  return <div className="archive-shell flex flex-col md:flex-row"><div className={`fixed inset-0 z-30 bg-[#17232d]/45 transition-opacity md:static md:z-auto md:block md:bg-transparent ${menuOpen ? 'block opacity-100' : 'pointer-events-none hidden opacity-0'}`} onClick={() => setMenuOpen(false)} /><div className={`fixed inset-y-0 left-0 z-40 w-[230px] transition-transform md:static md:z-auto md:block md:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}><Sidebar onNavigate={() => setMenuOpen(false)} /></div><main className="min-w-0 flex-1"><Topbar onMenu={() => setMenuOpen(true)} /><div className="archive-grid min-h-[calc(100dvh-73px)] p-5 md:p-8">{children}</div></main></div>;
+  return <div className="archive-shell flex flex-col md:flex-row"><div className={`fixed inset-0 z-30 bg-[#17232d]/45 transition-opacity md:static md:z-auto md:block md:bg-transparent ${menuOpen ? 'block opacity-100' : 'pointer-events-none hidden opacity-0'}`} onClick={() => setMenuOpen(false)} /><div className={`fixed inset-y-0 left-0 z-40 w-[230px] transition-transform md:static md:z-auto md:block md:translate-x-0 ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}><Sidebar onNavigate={() => setMenuOpen(false)} /></div><main className="min-w-0 flex-1"><Topbar onMenu={() => setMenuOpen(true)} /><div className="archive-grid min-h-[calc(100dvh-73px)] p-5 md:p-8">{children}<footer className="mx-auto mt-8 max-w-6xl border-t border-[#e3e8e7] pt-4 text-[10px] text-[#829095]"><span className="font-semibold text-[#53656b]">Archive Assistant</span> · Your personal media archive, understood. <span className="ml-1">Runs locally. Nothing changes without your approval.</span></footer></div></main></div>;
 }
 function PageIntro({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
   return <div className="mb-7 flex flex-col justify-between gap-5 md:flex-row md:items-end"><div className="archive-fade"><div className="archive-mono mb-2 text-[10px] font-medium tracking-[.2em] text-[#7a9093]">{eyebrow}</div><h1 className="archive-display text-3xl font-extrabold text-[#21303d] md:text-[38px]">{title}</h1><p className="mt-2 max-w-xl text-[13px] leading-6 text-[#718087]">{description}</p></div>{action}</div>;
@@ -218,45 +262,49 @@ function MetricCard({ icon: Icon, label, value, status, note, accent = 'teal' }:
 }
 
 function Home() {
-  const { data: overview, isLoading, isError, refetch } = useGetSystemOverview(); const { data: events, isLoading: eventsLoading } = useGetSystemEvents(); const { data: deps } = useGetSystemDependencies(); const plex = useGetPlexConfig();
-  if (isLoading) return <><PageIntro eyebrow="CONTROL ROOM / STARTUP" title="Archive at a glance" description="Reading the local node and preparing a trustworthy snapshot." /><div className="grid gap-4 md:grid-cols-3">{[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-[146px]" />)}</div></>;
-  if (isError || !overview) return <ErrorState title="The local node did not answer" message="Overview data is unavailable. Nothing has been assumed or filled in." onRetry={() => refetch()} testId="button-retry-overview" />;
-  const storage = overview.storage ?? { path: 'Storage readout not returned', freeBytes: 0, totalBytes: 0, usedBytes: 0, freePercent: 0, status: 'unavailable' as const }; const activity = overview.activity?.length ? overview.activity : events; const availableDeps = deps?.dependencies.filter((dep) => dep.status === 'available').length ?? 0;
-  const activeDownloads = overview.activeDownloads ?? 0; const queuedJobs = overview.queuedJobs ?? 0; const processingJobs = overview.processingJobs ?? 0; const completedToday = overview.completedToday ?? 0; const failedToday = overview.failedToday ?? 0;
-  return <><PageIntro eyebrow="CONTROL ROOM / HOME" title="Archive at a glance" description="A restrained readout of what exists now, what is moving, and what still needs an operator." action={<button onClick={() => refetch()} className="inline-flex items-center gap-2 border border-[var(--line)] bg-white/60 px-3.5 py-2.5 text-[10px] font-bold tracking-[.11em] text-[#5a6d73] hover:border-[#81999a] hover:bg-white" data-testid="button-refresh-overview"><RefreshCw size={14} /> REFRESH READOUT</button>} /><div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"><MetricCard icon={Download} label="ACTIVE DOWNLOADS" value={String(activeDownloads)} note={`${queuedJobs} queued / ${processingJobs} processing`} status={activeDownloads ? 'processing' : 'idle'} accent="amber" /><MetricCard icon={Check} label="COMPLETED TODAY" value={String(completedToday)} note="Jobs with verified destinations" status="ready" /><MetricCard icon={Archive} label="FAILED TODAY" value={String(failedToday)} note="Requires operator review" status={failedToday ? 'error' : 'idle'} accent={failedToday ? 'red' : 'teal'} /><MetricCard icon={HardDrive} label="STORAGE" value={`${storage.freePercent.toFixed(1)}% free`} note={`${formatBytes(storage.freeBytes)} available`} status={storage.status} accent="amber" /><MetricCard icon={Library} label="ARCHIVE" value={statusText(overview.archiveStatus)} status={overview.archiveStatus} note="Collection index" /><MetricCard icon={PlaySquare} label="PLEX" value={plex.data?.configured ? statusText(plex.data.status) : 'NOT SET'} status={plex.data?.configured ? plex.data.status : 'not_configured'} note={plex.data?.configured ? 'Configuration present' : 'Connection never assumed'} accent="amber" /></div><div className="mb-5 grid gap-5 xl:grid-cols-[1.2fr_.8fr]"><section className="archive-panel p-5 md:p-6" data-testid="panel-storage-readout"><div className="flex items-start justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">CAPACITY / {storage.status.toUpperCase()}</div><h2 className="archive-display mt-1 text-lg font-extrabold">Storage readout</h2></div><HardDrive size={18} className="text-[#4e9690]" /></div><div className="mt-5 flex items-end justify-between"><div><div className="archive-display text-3xl font-extrabold text-[#263844]">{formatBytes(storage.freeBytes)}</div><div className="mt-1 text-[11px] text-[#879599]">free on the archive volume</div></div><div className="archive-mono text-right text-[10px] text-[#829197]">{formatBytes(storage.usedBytes)} used<br />{formatBytes(storage.totalBytes)} total</div></div><div className="mt-5 h-2 overflow-hidden bg-[#e6ecea]"><div className="h-full origin-left bg-[#4e9690] transition-transform duration-500" style={{ transform: `scaleX(${Math.min(1, Math.max(0, (100 - storage.freePercent) / 100))})` }} /></div><div className="mt-3 truncate text-[10px] text-[#8b999d]" title={storage.path}>{storage.path}</div></section><section className="archive-panel p-5 md:p-6" data-testid="panel-system-pulse"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">SYSTEM PULSE</div><h2 className="archive-display mt-1 text-lg font-extrabold">Last sync</h2><div className="mt-7 border-l-2 border-[#f4b942] pl-4"><div className="archive-mono text-[24px] font-medium tracking-[-.05em] text-[#263844]" data-testid="text-last-sync">{formatTime(overview.lastSync)}</div><div className="mt-2 text-[11px] leading-5 text-[#7d8b8e]">{overview.lastSync ? 'The local snapshot has a recorded sync point.' : 'No sync has been recorded. This is not an error.'}</div></div><Link href="/settings" className="mt-8 flex items-center justify-between border-t border-[#e3e8e7] pt-4 text-[10px] font-bold tracking-[.1em] text-[#65787c] hover:text-[#21303d]" data-testid="link-open-settings">SYSTEM SETTINGS <ChevronRight size={14} /></Link></section></div><section className="archive-panel p-5 md:p-6" data-testid="panel-recent-activity"><div className="mb-5 flex items-center justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LATEST SIGNALS / {availableDeps} DEPENDENCIES READY</div><h2 className="archive-display mt-1 text-lg font-extrabold">Recent activity</h2></div><Link href="/history" className="inline-flex items-center gap-1 text-[10px] font-bold tracking-[.1em] text-[#4e9690]" data-testid="link-view-history">VIEW HISTORY <ArrowUpRight size={13} /></Link></div>{eventsLoading ? <div className="space-y-3"><Skeleton className="h-10" /><Skeleton className="h-10" /></div> : <ActivityRows events={activity} />}</section></>;
-}
-function ErrorState({ title, message, onRetry, testId }: { title: string; message: string; onRetry: () => void; testId: string }) {
-  return <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center p-8 text-center"><CloudOff size={28} className="mb-4 text-[#c85b51]" /><h1 className="archive-display text-2xl font-extrabold">{title}</h1><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#77878b]">{message}</p><button onClick={onRetry} className="mt-5 inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3]" data-testid={testId}><RefreshCw size={14} /> RETRY READ</button></div>;
-}
+  const { data: overview, isLoading, isError, refetch } = useGetSystemOverview();
+  // Deep assistant analysis is intentionally deferred on Home. The bounded
+  // workload summary above is the bootstrap readout; Assistant owns the
+  // expensive naming/identity analysis when the operator opens it.
+  const assistantOverview = useGetAssistantOverview({ query: { enabled: false, queryKey: ['assistant-overview-deferred'] } });
 
-const formatLabel = (format: MediaFormat) => `${format.resolution || 'adaptive'} / ${format.extension ?? format.container ?? 'stream'}${format.fps ? ` / ${format.fps} fps` : ''}`;
-function SourcePage() {
-  const [url, setUrl] = useState(''); const [inspection, setInspection] = useState<MediaInspection | null>(null); const [selected, setSelected] = useState(''); const [notice, setNotice] = useState(''); const [created, setCreated] = useState<DownloadJob | null>(null);
-  const inspect = useInspectMediaSource(); const prepare = usePrepareDownload(); const create = useCreateDownload(); const start = useStartDownload(); const queryClient = useQueryClient();
-  const recommended = inspection?.formats.find((format) => format.formatId === inspection.recommendedFormatId) ?? inspection?.formats.find((format) => format.usable);
-  const runInspect = (event: FormEvent) => { event.preventDefault(); setNotice(''); setInspection(null); setCreated(null); if (!url.trim()) { setNotice('Paste a media URL before inspecting.'); return; } inspect.mutate({ data: { url: url.trim(), forceRefresh: false } }, { onSuccess: (result) => { setInspection(result); setSelected(result.recommendedFormatId ?? result.formats.find((format) => format.usable)?.formatId ?? ''); setNotice(result.demoMode ? 'Backend returned demo inspection data.' : 'Inspection verified by the local node.'); }, onError: (error) => setNotice(errorText(error)) }); };
-  const prepareDownload = () => { if (!inspection || !selected) return; setNotice('Validating destination and format…'); const format = inspection.formats.find((item) => item.formatId === selected); prepare.mutate({ data: { sourceUrl: inspection.metadata.webpageUrl || url, title: inspection.metadata.title, sourceSite: inspection.metadata.extractor, selectedFormatId: selected, selectedVideoFormatId: inspection.recommendedVideoFormatId, selectedAudioFormatId: inspection.recommendedAudioFormatId, outputContainer: (format?.extension === 'webm' ? 'webm' : 'mkv'), finalFilename: inspection.metadata.title } }, { onSuccess: (spec) => { create.mutate({ data: { ...spec, outputContainer: spec.outputContainer as 'mp4' | 'mkv' | 'webm' } }, { onSuccess: (job) => { setCreated(job); setNotice('Download prepared and persisted. It has not started.'); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); }, onError: (error) => setNotice(`Preparation passed, but job creation failed: ${errorText(error)}`) }); }, onError: (error) => setNotice(`The backend rejected this download: ${errorText(error)}`) }); };
-  return <><PageIntro eyebrow="INGEST / SOURCE INSPECTION" title="Inspect a source" description="Turn one URL into a verified, observable local job. No download is implied until the node confirms each step." /><div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_330px]"><section className="archive-panel p-5 md:p-7"><form onSubmit={runInspect} data-testid="form-source-inspection"><label className="archive-mono mb-2 block text-[10px] tracking-[.14em] text-[#6e8185]" htmlFor="source-url">MEDIA URL</label><div className="flex items-center border border-[#cbd8d5] bg-[#fbfcfa] focus-within:border-[#4e9690]"><Link2 size={16} className="ml-3 shrink-0 text-[#8a9b9e]" /><input id="source-url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://…" className="w-full bg-transparent px-3 py-3.5 text-[13px] outline-none placeholder:text-[#aab5b5]" data-testid="input-source-url" /><button type="submit" disabled={inspect.isPending} className="mr-1 inline-flex shrink-0 items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-inspect-source">{inspect.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}{inspect.isPending ? 'READING' : 'INSPECT'}</button></div></form>{notice && <div className={`mt-4 flex gap-2 border-l-2 p-3 text-[11px] leading-5 ${notice.includes('failed') || notice.includes('rejected') || notice.includes('Paste') || notice.includes('accept') || notice.includes('could not') ? 'border-[#c85b51] bg-[#fcedea] text-[#994b43]' : 'border-[#4e9690] bg-[#eaf3ef] text-[#39736e]'}`} data-testid="status-source-operation"><Activity size={14} className="mt-0.5 shrink-0" />{notice}</div>}{inspect.isPending && <div className="mt-7 space-y-3"><Skeleton className="h-6 w-2/3" /><Skeleton className="h-4 w-1/3" /><Skeleton className="h-24" /></div>}{inspection && <InspectionResult inspection={inspection} selected={selected} setSelected={setSelected} onPrepare={prepareDownload} pending={prepare.isPending || create.isPending} created={created} onStart={() => created && start.mutate({ id: created.id }, { onSuccess: (job) => { setCreated(job); setNotice('Job started. Progress will be proven by the queue.'); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(errorText(error)) })} />}</section><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">OPERATOR CONTRACT</div><h2 className="archive-display mt-1 text-lg font-extrabold">What will happen</h2><div className="mt-5 space-y-4 text-[12px]"><Readout label="1 / inspect" value="BACKEND VERIFIED" tone="good" /><Readout label="2 / prepare" value="DESTINATION CHECK" tone="neutral" /><Readout label="3 / create" value="PERSISTED JOB" tone="neutral" /><Readout label="4 / start" value="OPERATOR ACTION" tone="warn" /></div><div className="mt-6 border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]">A successful inspection is metadata only. The archive path is not touched until a job is started.</div></aside></div></>;
-}
-function InspectionResult({ inspection, selected, setSelected, onPrepare, pending, created, onStart }: { inspection: MediaInspection; selected: string; setSelected: (value: string) => void; onPrepare: () => void; pending: boolean; created: DownloadJob | null; onStart: () => void }) {
-  const meta = inspection.metadata; const formats = inspection.formats.filter((format) => format.usable); const recommended = formats.find((format) => format.formatId === inspection.recommendedFormatId);
-  return <div className="mt-7 border-t border-[#e3e8e7] pt-6" data-testid="panel-inspection-result"><div className="flex flex-col gap-5 sm:flex-row">{meta.thumbnailUrl ? <img src={meta.thumbnailUrl} alt="" className="h-28 w-48 shrink-0 object-cover" data-testid="img-source-thumbnail" /> : <div className="grid h-28 w-48 shrink-0 place-items-center bg-[#e8efed] text-[#4e9690]"><FileCheck2 size={28} /></div>}<div className="min-w-0"><div className="archive-mono text-[9px] tracking-[.13em] text-[#7f9194]">{meta.extractor ?? 'SOURCE'} {inspection.demoMode ? '/ DEMO' : '/ VERIFIED'}</div><h2 className="archive-display mt-1 text-2xl font-extrabold leading-tight text-[#263844]" data-testid="text-inspection-title">{meta.title}</h2><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#77888c]"><span>{meta.uploader ?? meta.channel ?? 'Uploader not returned'}</span><span>{formatDuration(meta.durationSeconds)}</span><span>{meta.uploadDate ?? 'Date unknown'}</span></div></div></div><div className="mt-6 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-4"><div className="archive-mono text-[9px] tracking-[.12em] text-[#39736e]">RECOMMENDATION / {recommended?.formatId ?? 'NONE'}</div><p className="mt-1 text-[12px] leading-5 text-[#45665f]" data-testid="text-recommendation">{inspection.recommendationExplanation}</p></div><div className="mt-6"><div className="mb-3 flex items-center justify-between"><div><div className="archive-mono text-[10px] tracking-[.12em] text-[#7f9194]">NORMALIZED FORMATS</div><div className="mt-1 text-[11px] text-[#879599]">{formats.length} usable of {inspection.rawFormatCount} returned</div></div><span className="archive-mono text-[9px] text-[#a0aaaa]">SELECT ONE</span></div><div className="space-y-2">{formats.length ? formats.slice(0, 8).map((format) => <label key={format.formatId} className={`flex cursor-pointer items-center justify-between gap-3 border p-3 transition-colors ${selected === format.formatId ? 'border-[#4e9690] bg-[#eef6f2]' : 'border-[#e1e8e5] bg-white/50 hover:border-[#aabfba]'}`} data-testid={`row-format-${format.formatId}`}><span className="flex min-w-0 items-center gap-3"><input type="radio" name="format" value={format.formatId} checked={selected === format.formatId} onChange={() => setSelected(format.formatId)} className="accent-[#4e9690]" data-testid={`input-format-${format.formatId}`} /><span className="min-w-0"><span className="block text-[12px] font-semibold text-[#43545b]">{formatLabel(format)}</span><span className="archive-mono mt-1 block truncate text-[9px] text-[#97a3a4]">{format.videoCodec ?? 'audio'} + {format.audioCodec ?? 'no audio'} / {format.protocol ?? 'direct'} / score {format.score}</span></span></span><span className="archive-mono shrink-0 text-[10px] text-[#829197]">{formatBytes(format.filesize ?? format.estimatedFilesize)}</span></label>) : <div className="border border-dashed border-[#d7e1de] p-5 text-center text-[11px] text-[#89989a]">The backend returned no usable formats.</div>}</div></div><div className="mt-6 flex flex-wrap items-center gap-3"><button onClick={onPrepare} disabled={!selected || pending || Boolean(created)} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:cursor-not-allowed disabled:opacity-45" data-testid="button-prepare-download">{pending ? <RefreshCw size={14} className="animate-spin" /> : <ArrowDownToLine size={14} />}{created ? 'JOB PERSISTED' : pending ? 'PREPARING' : 'PREPARE DOWNLOAD'}</button>{created && <button onClick={onStart} disabled={pending || created.status !== 'queued'} className="inline-flex items-center gap-2 border border-[#4e9690] bg-[#eaf3ef] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#39736e] disabled:opacity-50" data-testid="button-start-created-job"><Play size={14} /> START JOB</button>}{created && <span className="text-[11px] text-[#718287]">Job #{created.id} is waiting in the persistent queue.</span>}</div></div>;
+  if (isLoading) return <><PageIntro eyebrow="ARCHIVE ASSISTANT" title="Your archive, understood" description="Reading what matters right now." /><div className="archive-panel space-y-4 p-6"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-20" /><Skeleton className="h-20" /></div></>;
+  if (isError || !overview) return <ErrorState title="The local archive could not be read" message="Nothing has been assumed or filled in. Try the readout again." onRetry={() => refetch()} testId="button-retry-overview" />;
+
+  const actionable = assistantOverview.data?.groups.filter((group) => group.state === 'actionable') ?? [];
+  const healthy = assistantOverview.data
+    ? assistantOverview.data.summary.health === 'healthy' && actionable.length === 0
+    : true;
+  const waiting = assistantOverview.data?.summary.blockedCount ?? 0;
+
+  return <>
+    <PageIntro eyebrow="ARCHIVE ASSISTANT" title="Your archive, understood" description="Runs locally. Nothing changes without your approval." action={<button onClick={() => { refetch(); assistantOverview.refetch(); }} className="inline-flex items-center gap-2 border border-[var(--line)] bg-white/60 px-3.5 py-2.5 text-[10px] font-bold tracking-[.11em] text-[#5a6d73] hover:border-[#81999a] hover:bg-white" data-testid="button-refresh-overview"><RefreshCw size={14} /> REFRESH</button>} />
+    {overview.aiStatus === 'placeholder' && <div className="mb-5 border-l-2 border-[#d9bd77] bg-[#fff8e7] px-4 py-3 text-[11px] text-[#80652e]" data-testid="banner-mock-mode"><div className="archive-mono text-[9px] font-bold tracking-[.12em]">DEMO MODE ACTIVE</div><div className="mt-1">Some results are simulated. Turn off Mock mode in Settings before evaluating your real archive.</div></div>}
+    <WorkloadSummary />
+    <section className="archive-panel mb-7 p-5 md:p-7" data-testid="panel-home-briefing">
+      <div className="archive-mono text-[9px] tracking-[.16em] text-[#7f9194]">RIGHT NOW</div>
+      <h2 className="archive-display mt-2 text-2xl font-extrabold text-[#263844]" data-testid="text-home-attention">{healthy ? 'Everything looks good.' : `${actionable.length} thing${actionable.length === 1 ? '' : 's'} need your attention.`}</h2>
+      <p className="mt-2 max-w-xl text-[12px] leading-5 text-[#718187]">{healthy ? 'Nothing important needs your attention right now.' : 'Here is what matters most. Review the explanation before deciding.'}</p>
+      {actionable.length > 0 ? <div className="mt-6 divide-y divide-[#e3e8e7]">{actionable.slice(0, 3).map((item) => <article key={item.id} className="py-5 first:pt-0 last:pb-0" data-testid={`home-finding-${item.id}`}><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="archive-display text-lg font-extrabold text-[#344851]">{item.title}</h3><p className="mt-1 text-[12px] leading-5 text-[#53656b]">{item.explanation}</p></div><span className="archive-mono text-[9px] font-bold tracking-[.1em] text-[#39736e]">{item.priority.toUpperCase()} PRIORITY</span></div><div className="mt-3 text-[11px] text-[#718187]"><span className="font-semibold text-[#53656b]">Next step:</span> {item.recommendedAction}</div><div className="mt-4 flex flex-wrap gap-3"><Link href="/archive/health" className="inline-flex items-center gap-1.5 bg-[#1d2b38] px-3.5 py-2.5 text-[10px] font-bold tracking-[.1em] text-white">UNDERSTAND FINDING <ArrowUpRight size={13} /></Link><Link href="/assistant" className="inline-flex items-center gap-1.5 border border-[#d7e1de] px-3.5 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#39736e]">OPEN DECISION FLOW <ArrowUpRight size={13} /></Link></div><details className="mt-4"><summary className="cursor-pointer text-[10px] font-bold tracking-[.1em] text-[#39736e]">SHOW WHY AND EVIDENCE</summary><div className="mt-3 border-l-2 border-[#d9bd77] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]">{item.explanation}<div className="mt-1 text-[#9a7c35]">{item.itemCount} related item{item.itemCount === 1 ? '' : 's'} · evidence preserved</div></div></details></article>)}</div> : <div className="mt-6 border-l-2 border-[#4e9690] bg-[#f1f7f5] p-4" data-testid="panel-home-healthy"><div className="text-[13px] font-semibold text-[#39736e]">Nothing needs your attention.</div><div className="mt-1 text-[11px] text-[#56736f]">The archive is being observed. New findings will appear here when there is something meaningful to decide.</div></div>}
+      {waiting > 0 && <div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[11px] text-[#82765d]"><span className="font-semibold">{waiting} thing{waiting === 1 ? '' : 's'} waiting.</span> Nothing will change until the missing condition is understood.</div>}
+    </section>
+    <div className="flex flex-wrap gap-3 text-[10px] text-[#718187]"><Link href="/archive/health" className="font-semibold text-[#39736e]">View Archive Health <ArrowUpRight size={12} className="inline" /></Link><Link href="/assistant" className="font-semibold text-[#39736e]">Understand and decide <ArrowUpRight size={12} className="inline" /></Link><Link href="/history" className="font-semibold text-[#39736e]">See what happened <ArrowUpRight size={12} className="inline" /></Link></div>
+  </>;
 }
 
 function QueuePage() {
   const queryClient = useQueryClient(); const { data: jobs, isLoading, isError, refetch } = useGetDownloads(); const [notice, setNotice] = useState('');
-  const start = useStartDownload(); const pause = usePauseDownload(); const resume = useResumeDownload(); const cancel = useCancelDownload(); const retry = useRetryDownload(); const remove = useDeleteDownload(); const inspect = useInspectMediaSource(); const create = useCreateDownload();
-  useEffect(() => { const source = new EventSource('/api/downloads/events'); const invalidate = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }; ['message', 'download', 'job.created', 'job.updated', 'job.completed', 'job.finished'].forEach((eventName) => source.addEventListener(eventName, invalidate)); source.onerror = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); }; return () => source.close(); }, [queryClient]);
+  const start = useStartDownload(); const pause = usePauseDownload(); const resume = useResumeDownload(); const cancel = useCancelDownload(); const retry = useRetryDownload(); const remove = useDeleteDownload();
+  useEffect(() => { const source = new EventSource(apiUrl('/api/downloads/events')); const invalidate = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }; ['message', 'download', 'job.created', 'job.updated', 'job.completed', 'job.finished'].forEach((eventName) => source.addEventListener(eventName, invalidate)); source.onerror = () => { queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); }; return () => source.close(); }, [queryClient]);
   const persist = (mutation: { mutate: (data: { id: number }, options: { onSuccess: () => void; onError: (error: unknown) => void }) => void }, id: number, message: string) => mutation.mutate({ id }, { onSuccess: () => { setNotice(message); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(errorText(error)) });
-  const createDemo = () => { setNotice('Inspecting the demo source…'); inspect.mutate({ data: { url: 'https://demo.local/archive-assistant/sample', forceRefresh: true } }, { onSuccess: (source) => { const format = source.formats.find((item) => item.usable); if (!format) { setNotice('Demo source returned no usable format.'); return; } create.mutate({ data: { sourceUrl: source.metadata.webpageUrl, title: source.metadata.title, sourceSite: source.metadata.extractor, selectedFormatId: format.formatId, selectedVideoFormatId: source.recommendedVideoFormatId, selectedAudioFormatId: source.recommendedAudioFormatId, outputContainer: 'mkv', finalFilename: source.metadata.title } }, { onSuccess: (job) => { start.mutate({ id: job.id }, { onSuccess: () => { setNotice('Demo job created and started.'); queryClient.invalidateQueries({ queryKey: getGetDownloadsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetSystemOverviewQueryKey() }); }, onError: (error) => setNotice(`Demo job created, but start failed: ${errorText(error)}`) }); }, onError: (error) => setNotice(errorText(error)) }); }, onError: (error) => setNotice(`Demo inspection failed: ${errorText(error)}`) }); };
   const action = (job: DownloadJob, kind: 'start' | 'pause' | 'resume' | 'cancel' | 'retry' | 'delete') => { if (kind === 'delete') { if (window.confirm(`Delete job #${job.id}? This only removes the job record.`)) persist(remove, job.id, `Job #${job.id} deleted.`); return; } if (kind === 'start') persist(start, job.id, `Job #${job.id} started.`); if (kind === 'pause') persist(pause, job.id, `Job #${job.id} paused.`); if (kind === 'resume') persist(resume, job.id, `Job #${job.id} resumed.`); if (kind === 'cancel') persist(cancel, job.id, `Job #${job.id} cancelled.`); if (kind === 'retry') persist(retry, job.id, `Job #${job.id} queued for retry.`); };
   if (isLoading) return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="Reading durable jobs from the local node." /><div className="space-y-3"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div></>;
   if (isError) return <ErrorState title="Queue read failed" message="The persistent job list could not be read. No local queue state is being invented." onRetry={() => refetch()} testId="button-retry-queue" />;
-  return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="Jobs are durable records. Every status below is returned by the backend, not simulated in the browser." action={<button onClick={createDemo} disabled={inspect.isPending || create.isPending} className="inline-flex items-center gap-2 bg-[#f4b942] px-3.5 py-2.5 text-[10px] font-bold tracking-[.1em] text-[#1d2b38] disabled:opacity-50" data-testid="button-create-mock-job"><Plus size={14} /> CREATE DEMO JOB</button>} />{notice && <div className="mb-4 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-3 text-[11px] text-[#39736e]" data-testid="status-queue-operation">{notice}</div>}<div className="mb-4 flex flex-wrap gap-2 archive-mono text-[9px] tracking-[.08em] text-[#7d8d90]"><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => ['downloading', 'processing', 'verifying', 'moving'].includes(job.status)).length ?? 0} ACTIVE</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => job.status === 'queued').length ?? 0} QUEUED</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.length ?? 0} TOTAL</span></div>{jobs?.length ? <div className="space-y-3">{jobs.map((job) => <QueueRow key={job.id} job={job} onAction={action} />)}</div> : <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center p-8 text-center"><Download size={28} className="mb-4 text-[#4e9690]" /><h2 className="archive-display text-2xl font-extrabold">Queue is clear</h2><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#7d8c8f]">No persistent jobs are waiting. Inspect a source or create a demo job to exercise the pipeline.</p></div>}</>;
+  return <><PageIntro eyebrow="INGEST / PERSISTENT QUEUE" title="Download queue" description="What is already happening. Every status below is returned by the backend, not simulated in the browser." /><WorkloadSummary compact />{notice && <div className="mb-4 border-l-2 border-[#4e9690] bg-[#eaf3ef] p-3 text-[11px] text-[#39736e]" data-testid="status-queue-operation">{notice}</div>}<div className="mb-4 flex flex-wrap gap-2 archive-mono text-[9px] tracking-[.08em] text-[#7d8d90]"><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => ['downloading', 'processing', 'verifying', 'moving'].includes(job.status)).length ?? 0} ACTIVE</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.filter((job) => job.status === 'queued').length ?? 0} QUEUED</span><span className="border border-[#d8e1de] bg-white/60 px-2 py-1">{jobs?.length ?? 0} TOTAL</span></div>{jobs?.length ? <div className="space-y-3">{jobs.map((job) => <QueueRow key={job.id} job={job} onAction={action} />)}</div> : <div className="archive-panel flex min-h-[330px] flex-col items-center justify-center p-8 text-center"><Download size={28} className="mb-4 text-[#4e9690]" /><h2 className="archive-display text-2xl font-extrabold">Queue is clear</h2><p className="mt-2 max-w-sm text-[13px] leading-6 text-[#7d8c8f]">No persistent jobs are waiting. Start from a configured source when you are ready to queue real media.</p></div>}</>;
 }
 function QueueRow({ job, onAction }: { job: DownloadJob; onAction: (job: DownloadJob, kind: 'start' | 'pause' | 'resume' | 'cancel' | 'retry' | 'delete') => void }) {
   const active = ['downloading', 'processing', 'verifying', 'moving', 'inspecting'].includes(job.status); const canStart = job.status === 'queued'; const canPause = ['downloading', 'processing'].includes(job.status); const canResume = job.status === 'paused'; const canCancel = ['queued', 'inspecting', 'downloading', 'processing', 'verifying', 'moving', 'paused'].includes(job.status); const canRetry = ['failed', 'recovery_required'].includes(job.status);
-  return <article className="archive-panel p-4 md:p-5" data-testid={`row-download-${job.id}`}><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><StatusPill status={job.status} /><span className="archive-mono text-[9px] text-[#9aa6a7]">JOB {job.id}</span>{job.verification === 'passed' && <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-[.08em] text-[#39736e]"><ShieldCheck size={12} /> VERIFIED</span>}</div><h2 className="mt-2 truncate text-[15px] font-bold text-[#344851]" title={job.title} data-testid={`text-download-title-${job.id}`}>{job.title}</h2><div className="mt-1 truncate text-[10px] text-[#8a989a]" title={job.sourceUrl}>{job.sourceSite ?? 'source'} / {job.finalFilename}</div></div><div className="flex flex-wrap gap-2">{canStart && <JobButton icon={Play} label="START" onClick={() => onAction(job, 'start')} testId={`button-start-download-${job.id}`} />}{canPause && <JobButton icon={Pause} label="PAUSE" onClick={() => onAction(job, 'pause')} testId={`button-pause-download-${job.id}`} />}{canResume && <JobButton icon={Play} label="RESUME" onClick={() => onAction(job, 'resume')} testId={`button-resume-download-${job.id}`} />}{canCancel && <JobButton icon={Square} label="CANCEL" onClick={() => onAction(job, 'cancel')} testId={`button-cancel-download-${job.id}`} />}{canRetry && <JobButton icon={RotateCcw} label="RETRY" onClick={() => onAction(job, 'retry')} testId={`button-retry-download-${job.id}`} />}{!active && <JobButton icon={Trash2} label="DELETE" onClick={() => onAction(job, 'delete')} testId={`button-delete-download-${job.id}`} danger />}</div></div><div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end"><div><div className="mb-2 flex justify-between text-[10px] text-[#7f8e91]"><span>{job.currentPhase || statusText(job.status)}</span><span className="archive-mono text-[#4e9690]">{Math.round(job.progress)}%</span></div><div className="h-2 bg-[#e5ece9]"><div className={`h-full origin-left transition-transform duration-500 ${active ? 'bg-[#f4b942]' : job.status === 'complete' ? 'bg-[#4e9690]' : job.status === 'failed' ? 'bg-[#c85b51]' : 'bg-[#9eadae]'}`} style={{ transform: `scaleX(${Math.min(1, Math.max(0, job.progress / 100))})` }} /></div></div><div className="grid grid-cols-2 gap-x-6 gap-y-1 text-right text-[10px] text-[#879598]"><span>{formatBytes(job.downloadedBytes)} / {formatBytes(job.totalBytes)}</span><span>{job.downloadSpeed ? `${formatBytes(job.downloadSpeed)}/s` : 'speed —'}</span><span>{job.etaSeconds ? `${job.etaSeconds}s remaining` : 'ETA —'}</span><span>{formatTime(job.createdAt)}</span></div></div>{job.errorMessage && <div className="mt-4 border-l-2 border-[#c85b51] bg-[#fcedea] p-3 text-[11px] leading-5 text-[#994b43]" data-testid={`text-download-error-${job.id}`}>{job.errorMessage}</div>}</article>;
+  return <article className="archive-panel p-4 md:p-5" data-testid={`row-download-${job.id}`}><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><StatusPill status={job.status} /><span className="archive-mono text-[9px] text-[#9aa6a7]">JOB {job.id}</span>{job.verification === 'passed' && <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-[.08em] text-[#39736e]"><ShieldCheck size={12} /> VERIFIED</span>}</div><div className="flex items-center gap-2"><h2 className="mt-2 truncate text-[15px] font-bold text-[#344851]" title={job.title} data-testid={`text-download-title-${job.id}`}>{job.title}</h2><Link href={`/workload/${encodeURIComponent(`download:${job.id}`)}?from=queue`} className="shrink-0 text-[9px] font-bold tracking-[.08em] text-[#39736e]">FULL STORY</Link></div><div className="mt-1 truncate text-[10px] text-[#8a989a]" title={job.sourceUrl}>{job.finalFilename}</div><div className="mt-1 text-[10px] text-[#829095]">The system will verify the file before calling this complete.</div></div><div className="flex flex-wrap gap-2">{canStart && <JobButton icon={Play} label="START" onClick={() => onAction(job, 'start')} testId={`button-start-download-${job.id}`} />}{canPause && <JobButton icon={Pause} label="PAUSE" onClick={() => onAction(job, 'pause')} testId={`button-pause-download-${job.id}`} />}{canResume && <JobButton icon={Play} label="RESUME" onClick={() => onAction(job, 'resume')} testId={`button-resume-download-${job.id}`} />}{canCancel && <JobButton icon={Square} label="CANCEL" onClick={() => onAction(job, 'cancel')} testId={`button-cancel-download-${job.id}`} />}{canRetry && <JobButton icon={RotateCcw} label="RETRY" onClick={() => onAction(job, 'retry')} testId={`button-retry-download-${job.id}`} />}{!active && <JobButton icon={Trash2} label="DELETE" onClick={() => onAction(job, 'delete')} testId={`button-delete-download-${job.id}`} danger />}</div></div><div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end"><div><div className="mb-2 flex justify-between text-[10px] text-[#7f8e91]"><span>{humanJobPhase(job.status)}</span><span className="archive-mono text-[#4e9690]">{Math.round(job.progress)}%</span></div><div className="h-2 bg-[#e5ece9]"><div className={`h-full origin-left transition-transform duration-500 ${active ? 'bg-[#f4b942]' : job.status === 'complete' ? 'bg-[#4e9690]' : job.status === 'failed' ? 'bg-[#c85b51]' : 'bg-[#9eadae]'}`} style={{ transform: `scaleX(${Math.min(1, Math.max(0, job.progress / 100))})` }} /></div></div><div className="grid grid-cols-2 gap-x-6 gap-y-1 text-right text-[10px] text-[#879598]"><span>{formatBytes(job.downloadedBytes)} / {formatBytes(job.totalBytes)}</span><span>{job.downloadSpeed ? `${formatBytes(job.downloadSpeed)}/s` : 'speed —'}</span><span>{job.etaSeconds ? `${job.etaSeconds}s remaining` : 'ETA —'}</span><span>{formatTime(job.createdAt)}</span></div></div>{job.errorMessage && <div className="mt-4 border-l-2 border-[#c85b51] bg-[#fcedea] p-3 text-[11px] leading-5 text-[#994b43]" data-testid={`text-download-error-${job.id}`}><strong>Something went wrong.</strong><div>{job.errorMessage}</div><div className="mt-1 text-[10px]">This does not confirm that the archive changed. Check the result before trying again.</div></div>}</article>;
 }
 function JobButton({ icon: Icon, label, onClick, testId, danger = false }: { icon: typeof Play; label: string; onClick: () => void; testId: string; danger?: boolean }) {
   return <button onClick={onClick} className={`inline-flex items-center gap-1.5 border px-2.5 py-2 text-[9px] font-bold tracking-[.08em] ${danger ? 'border-[#efd3cf] text-[#a34d45] hover:bg-[#fcedea]' : 'border-[#d7e1de] bg-white/70 text-[#607379] hover:border-[#8fb3ac] hover:text-[#39736e]'}`} data-testid={testId}><Icon size={12} />{label}</button>;
@@ -267,11 +315,31 @@ function HistoryPage() {
   const history = jobs?.filter((job) => ['complete', 'failed', 'cancelled', 'recovery_required'].includes(job.status)) ?? [];
   if (jobsLoading) return <><PageIntro eyebrow="AUDIT / HISTORY" title="History" description="Loading completed work and operator signals." /><Skeleton className="h-[420px]" /></>;
   if (jobsError) return <ErrorState title="History read failed" message="Completed work could not be read from the local node." onRetry={() => refetch()} testId="button-retry-history" />;
-  return <><PageIntro eyebrow="AUDIT / HISTORY" title="History" description="A factual record of completed, failed, cancelled jobs and system events." action={<div className="flex border border-[#d7e1de] bg-white/50 p-1"><button onClick={() => setTab('jobs')} className={`px-3 py-2 text-[10px] font-bold tracking-[.1em] ${tab === 'jobs' ? 'bg-[#1d2b38] text-[#f5f6f3]' : 'text-[#6c7d81]'}`} data-testid="button-history-jobs">JOBS</button><button onClick={() => setTab('events')} className={`px-3 py-2 text-[10px] font-bold tracking-[.1em] ${tab === 'events' ? 'bg-[#1d2b38] text-[#f5f6f3]' : 'text-[#6c7d81]'}`} data-testid="button-history-events">EVENTS</button></div>} />{tab === 'jobs' ? <section className="archive-panel overflow-hidden" data-testid="panel-download-history">{history.length ? <div className="divide-y divide-[#e3e8e7]">{history.map((job) => <div key={job.id} className="grid gap-3 p-4 md:grid-cols-[1fr_140px_150px] md:items-center md:px-5"><div className="min-w-0"><div className="truncate text-[12px] font-semibold text-[#43545b]">{job.title}</div><div className="mt-1 truncate text-[10px] text-[#8b999c]">{job.finalPath ?? job.finalFilename}</div></div><StatusPill status={job.status} /><div className="archive-mono text-[10px] text-[#8b999c]">{formatTime(job.completedAt ?? job.createdAt)}</div></div>)}</div> : <div className="flex min-h-[280px] flex-col items-center justify-center p-8 text-center"><FileCheck2 size={25} className="mb-3 text-[#9aa9aa]" /><h2 className="archive-display text-xl font-extrabold">No terminal jobs yet</h2><p className="mt-2 text-[12px] text-[#829095]">Verified and failed outcomes will remain visible here.</p></div>}</section> : <section className="archive-panel p-5 md:p-6" data-testid="panel-event-history">{<div className="mb-5 border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[10px] leading-5 text-[#80652e]" data-testid="panel-history-retention-policy"><div className="archive-mono text-[9px] font-bold tracking-[.12em]">AUDIT RETENTION POLICY</div><div className="mt-1">Operational events older than 30 days are pruned only for the current operator. Security audit events, including webhook rotations, are retained indefinitely. Webhook secrets are never stored in or exposed by event history.</div></div>}{eventsLoading ? <div className="space-y-3"><Skeleton className="h-10" /><Skeleton className="h-10" /></div> : <ActivityRows events={events} emptyLabel="The event stream is currently empty." />}</section>}</>;
+  return <><PageIntro eyebrow="AUDIT / HISTORY" title="History" description="A factual record of completed, failed, cancelled jobs and system events." action={<div className="flex border border-[#d7e1de] bg-white/50 p-1"><button onClick={() => setTab('jobs')} className={`px-3 py-2 text-[10px] font-bold tracking-[.1em] ${tab === 'jobs' ? 'bg-[#1d2b38] text-[#f5f6f3]' : 'text-[#6c7d81]'}`} data-testid="button-history-jobs">JOBS</button><button onClick={() => setTab('events')} className={`px-3 py-2 text-[10px] font-bold tracking-[.1em] ${tab === 'events' ? 'bg-[#1d2b38] text-[#f5f6f3]' : 'text-[#6c7d81]'}`} data-testid="button-history-events">EVENTS</button></div>} /><WorkloadSummary compact />{tab === 'jobs' ? <section className="archive-panel overflow-hidden" data-testid="panel-download-history">{history.length ? <div className="divide-y divide-[#e3e8e7]">{history.map((job) => <div key={job.id} className="grid gap-3 p-4 md:grid-cols-[1fr_140px_150px] md:items-center md:px-5"><div className="min-w-0"><div className="flex items-center gap-2"><div className="truncate text-[12px] font-semibold text-[#43545b]">{job.title}</div><Link href={`/workload/${encodeURIComponent(`download:${job.id}`)}?from=history`} className="shrink-0 text-[9px] font-bold tracking-[.08em] text-[#39736e]">VIEW FULL STORY</Link></div><div className="mt-1 truncate text-[10px] text-[#8b999c]">{job.finalPath ?? job.finalFilename}</div><div className="mt-1 text-[10px] text-[#718187]">{job.status === 'complete' ? 'Downloaded and verified.' : job.status === 'failed' ? 'The download failed; archive change is not confirmed.' : job.status === 'cancelled' ? 'Cancelled; no completion was recorded.' : 'Review the recorded result before deciding what to do next.'}</div></div><StatusPill status={job.status} /><div className="archive-mono text-[10px] text-[#8b999c]">{formatTime(job.completedAt ?? job.createdAt)}</div></div>)}</div> : <div className="flex min-h-[280px] flex-col items-center justify-center p-8 text-center"><FileCheck2 size={25} className="mb-3 text-[#9aa9aa]" /><h2 className="archive-display text-xl font-extrabold">No terminal jobs yet</h2><p className="mt-2 text-[12px] text-[#829095]">Verified and failed outcomes will remain visible here.</p></div>}</section> : <section className="archive-panel p-5 md:p-6" data-testid="panel-event-history">{<div className="mb-5 border-l-2 border-[#f4b942] bg-[#fff8e7] p-3 text-[10px] leading-5 text-[#80652e]" data-testid="panel-history-retention-policy"><div className="archive-mono text-[9px] font-bold tracking-[.12em]">AUDIT RETENTION POLICY</div><div className="mt-1">Operational events older than 30 days are pruned only for the current operator. Security audit events, including webhook rotations, are retained indefinitely. Webhook secrets are never stored in or exposed by event history.</div></div>}{eventsLoading ? <div className="space-y-3"><Skeleton className="h-10" /><Skeleton className="h-10" /></div> : <ActivityRows events={events} emptyLabel="The event stream is currently empty." />}</section>}</>;
 }
 
-const placeholderCopy: Record<string, { title: string; description: string; icon: typeof Activity; eyebrow: string }> = { ASSISTANT: { eyebrow: 'WORKSPACE / RESERVED', title: 'Assistant console', description: 'Reserved for collection-aware questions and guided actions.', icon: Bot }, ARCHIVE: { eyebrow: 'WORKSPACE / RESERVED', title: 'Archive browser', description: 'Reserved for a searchable browser of verified media.', icon: Archive } };
 function PlaceholderPage({ section }: { section: keyof typeof placeholderCopy }) { const copy = placeholderCopy[section]; const Icon = copy.icon; return <><PageIntro eyebrow={copy.eyebrow} title={copy.title} description={copy.description} /><div className="archive-panel relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden p-8 text-center"><div className="absolute left-0 top-0 h-1 w-24 bg-[#f4b942]" /><div className="absolute right-8 top-8 archive-mono text-[9px] tracking-[.16em] text-[#a2adae]">RESERVED / NO CLAIMS</div><div className="grid h-16 w-16 place-items-center border border-[#d6dfdc] bg-[#eaf0ed] text-[#4e9690]"><Icon size={27} strokeWidth={1.4} /></div><h2 className="archive-display mt-6 text-[25px] font-extrabold text-[#2b3d46]">Surface is reserved</h2><p className="mt-2 max-w-md text-[13px] leading-6 text-[#7c8a8d]">This workspace is intentionally honest about its current state. No records or capabilities are fabricated in this preview.</p><div className="mt-7 flex items-center gap-2 border border-[#e1e7e5] bg-[#f8faf8] px-3 py-2 archive-mono text-[9px] tracking-[.1em] text-[#799094]"><CircleHelp size={13} /> SAFE TO EXPLORE</div></div></>; }
+
+/**
+ * The review sync used to report a single total, which conflated observations
+ * with decisions and produced numbers in the tens of thousands on a real
+ * archive. Report what the operator actually has to act on, and keep the
+ * observations visible as context rather than as a backlog.
+ */
+export function summariseReviewSync(result: ReviewSyncResult): string {
+  const { severity } = result;
+  const counts = severity.bySeverity;
+  const escalated = (['critical', 'high', 'medium', 'low'] as const)
+    .filter((level) => counts[level] > 0)
+    .map((level) => `${counts[level]} ${level}`)
+    .join(', ');
+  const decisions = `${result.archiveFindingItems.toLocaleString()} finding${result.archiveFindingItems === 1 ? '' : 's'} need review`;
+  const observations = `${result.informationalFindings.toLocaleString()} informational`;
+  const naming = `${result.namingItems.toLocaleString()} naming proposal${result.namingItems === 1 ? '' : 's'}`;
+  return escalated
+    ? `${decisions} (${escalated}) · ${observations} · ${naming}.`
+    : `${decisions} · ${observations} · ${naming}.`;
+}
 
 function AssistantPage() {
   const recommendations = useListAcquisitionRecommendations({ status: 'active' });
@@ -291,12 +359,19 @@ function AssistantPage() {
   const cancelOperation = useCancelArchiveOperation();
   const retryOperation = useRetryArchiveOperation();
   const rollbackOperation = useRollbackArchiveOperation();
+  const acquisitionJobs = useGetAcquisitionJobs();
+  const downloads = useGetDownloads();
+  const linkDownload = useLinkAcquisitionDownload();
+  const planImport = usePlanApprovedAcquisitionImport();
+  const refreshAcquisition = useRefreshAcquisitionJob();
   const [notice, setNotice] = useState('');
   const refresh = async () => Promise.all([
     recommendations.refetch(),
     reviews.refetch(),
     operations.refetch(),
     providers.refetch(),
+    acquisitionJobs.refetch(),
+    downloads.refetch(),
   ]);
   const decide = async (itemId: number, next: 'approve' | 'reject' | 'defer' | 'reopen') => {
     const mutation = { approve, reject, defer, reopen }[next];
@@ -321,7 +396,22 @@ function AssistantPage() {
       setNotice(errorText(error));
     }
   };
-  const pendingCount = (reviews.data ?? []).filter((item) => ['pending', 'reopened'].includes(item.state)).length;
+  // The acquisition back half. Linking and planning are separate deliberate
+  // steps, and planning stops at a planned operation: the import is executed
+  // through the same preflight and confirmation path as every other mutation.
+  const acquire = async (action: () => Promise<unknown>, describe: (result: unknown) => string) => {
+    try {
+      const result = await action();
+      setNotice(describe(result));
+      await refresh();
+    } catch (error) {
+      setNotice(errorText(error));
+    }
+  };
+  const blockedRecommendationIds = new Set((recommendations.data ?? []).filter((item) => item.blockers.length > 0 && item.reviewItemId !== null).map((item) => item.reviewItemId));
+  const actionableReviews = (reviews.data ?? []).filter((item) => ['pending', 'reopened'].includes(item.state) && !blockedRecommendationIds.has(item.id));
+  const blockedReviews = (reviews.data ?? []).filter((item) => blockedRecommendationIds.has(item.id));
+  const pendingCount = actionableReviews.length;
   const blockedCount = (recommendations.data ?? []).filter((item) => item.blockers.length).length;
   const providerItems = providers.data?.integrations ?? [];
   const busy = generate.isPending || syncReviews.isPending || approve.isPending || reject.isPending || defer.isPending || reopen.isPending || createJob.isPending;
@@ -329,22 +419,23 @@ function AssistantPage() {
     <PageIntro
       eyebrow="CONTROL PLANE / ASSISTANT"
       title="Review before action"
-      description="Current archive evidence, provider health, approvals, acquisition jobs, and filesystem operations. Nothing is auto-approved or moved."
-      action={<button disabled={busy} onClick={async () => { await generate.mutateAsync(); const result = await syncReviews.mutateAsync(); setNotice(`Evaluated recommendations and synchronized ${result.total} review items.`); await refresh(); }} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.11em] text-white disabled:opacity-50" data-testid="button-generate-recommendations"><Sparkles size={14} /> EVALUATE CURRENT STATE</button>}
+      description="Understand what needs a decision, why it matters, and what will happen next. Nothing is auto-approved or moved."
+      action={<button disabled={busy} onClick={async () => { await generate.mutateAsync(); const result = await syncReviews.mutateAsync(); setNotice(summariseReviewSync(result)); await refresh(); }} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[10px] font-bold tracking-[.11em] text-white disabled:opacity-50" data-testid="button-generate-recommendations"><Sparkles size={14} /> EVALUATE CURRENT STATE</button>}
     />
     {notice && <div className="mb-5 border-l-2 border-[#4e9690] bg-[#eaf3ef] px-4 py-3 text-[11px] text-[#39736e]">{notice}</div>}
     <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <MetricCard icon={Sparkles} label="RECOMMENDATIONS" value={String(recommendations.data?.length ?? 0)} note={`${blockedCount} with blockers`} status={blockedCount ? 'warning' : 'ready'} accent="amber" />
+      <MetricCard icon={Sparkles} label="EVIDENCE ITEMS" value={String(recommendations.data?.length ?? 0)} note={`${blockedCount} need a blocker resolved`} status={blockedCount ? 'warning' : 'ready'} accent="amber" />
       <MetricCard icon={ShieldCheck} label="AWAITING REVIEW" value={String(pendingCount)} note="Explicit operator decisions" status={pendingCount ? 'warning' : 'ready'} />
       <MetricCard icon={Network} label="PROVIDERS READY" value={String(providerItems.filter((item) => item.operational).length)} note={`${providerItems.length} adapters checked`} status="idle" />
       <MetricCard icon={History} label="OPERATIONS" value={String(operations.data?.length ?? 0)} note="Durable audit history" status="idle" />
     </div>
     <div className="grid gap-5 xl:grid-cols-[1.35fr_.8fr]">
       <section className="archive-panel overflow-hidden" data-testid="panel-review-queue">
-        <div className="flex items-center justify-between border-b border-[#e3e8e7] px-5 py-4"><div><div className="archive-mono text-[9px] tracking-[.14em] text-[#9a7c35]">APPROVAL QUEUE</div><h2 className="archive-display mt-1 text-lg font-extrabold">Operator decisions</h2></div><StatusPill status={pendingCount ? 'pending' : 'ready'} /></div>
-        {(reviews.data ?? []).length ? <div className="divide-y divide-[#e3e8e7]">{(reviews.data ?? []).map((item) => <article key={item.id} className="p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-[13px] font-bold text-[#354850]">{item.title}</div><div className="archive-mono mt-1 text-[9px] tracking-[.1em] text-[#8c999c]">{item.kind.replaceAll('_', ' ')} / #{item.id}</div></div><StatusPill status={item.state} /></div>
+        <div className="flex items-center justify-between border-b border-[#e3e8e7] px-5 py-4"><div><div className="archive-mono text-[9px] tracking-[.14em] text-[#9a7c35]">APPROVAL QUEUE</div><h2 className="archive-display mt-1 text-lg font-extrabold">Decisions to make</h2></div><StatusPill status={pendingCount ? 'pending' : 'ready'} /></div>
+        {actionableReviews.length ? <div className="divide-y divide-[#e3e8e7]">{actionableReviews.map((item) => <article key={item.id} className="p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><div className="text-[13px] font-bold text-[#354850]">{item.title}</div><Link href={`/workload/${encodeURIComponent(`review:${item.id}`)}?from=assistant`} className="text-[9px] font-bold tracking-[.08em] text-[#39736e]">FULL STORY</Link></div><div className="archive-mono mt-1 text-[9px] tracking-[.1em] text-[#8c999c]">{item.kind.replaceAll('_', ' ')}</div></div><StatusPill status={item.state} /></div>
           {Array.isArray(item.payload.blockers) && item.payload.blockers.length > 0 && <div className="mt-3 border-l-2 border-[#cf695f] bg-[#fff1ef] px-3 py-2 text-[11px] leading-5 text-[#8d4a45]">{item.payload.blockers.map(String).join(' ')}</div>}
+          {item.kind === 'acquisition_recommendation' && <div className="mt-3 border-l-2 border-[#4e9690] bg-[#f1f7f5] px-3 py-2 text-[11px] leading-5 text-[#56736f]"><strong>What approval means:</strong> this records your decision. The download is not started by opening or approving this review; a separate job must be created and started. The system will keep its safety checks and verify the file where supported.</div>}
           <div className="mt-4 flex flex-wrap gap-2">
             {['pending', 'reopened'].includes(item.state) && <>
               <button onClick={() => decide(item.id, 'approve')} className="border border-[#5a938a] px-3 py-2 text-[9px] font-bold tracking-[.1em] text-[#39736e]">APPROVE</button>
@@ -370,8 +461,25 @@ function AssistantPage() {
         </article>)}</div> : <div className="p-8 text-center text-[12px] text-[#829095]">No review items. Evaluate the current state to reconcile recommendations.</div>}
       </section>
       <div className="space-y-5">
-        <section className="archive-panel p-5" data-testid="panel-recommendation-evidence"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">RECOMMENDATION EVIDENCE</div><div className="mt-4 space-y-4">{(recommendations.data ?? []).map((recommendation) => <article key={recommendation.id} className="border-t border-[#e3e8e7] pt-3"><div className="flex justify-between gap-3"><div className="text-[11px] font-bold text-[#42545b]">{recommendation.title}</div><span className="archive-mono text-[9px] uppercase text-[#80652e]">{recommendation.priority} / {recommendation.confidence}</span></div><p className="mt-2 text-[10px] leading-5 text-[#66787d]">{String(recommendation.evidence.reason ?? 'Evidence is recorded in the recommendation payload.')}</p>{recommendation.blockers.length > 0 && <ul className="mt-2 list-disc pl-4 text-[10px] leading-5 text-[#9b514a]">{recommendation.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul>}<p className="mt-2 border-l-2 border-[#4e9690] pl-2 text-[10px] leading-5 text-[#39736e]">{recommendation.recommendedAction}</p></article>)}{!(recommendations.data ?? []).length && <p className="text-[11px] text-[#829095]">Evaluate current state to generate deterministic recommendations.</p>}</div></section>
-        <section className="archive-panel p-5" data-testid="panel-provider-health"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">PROVIDER HEALTH</div><div className="mt-4 space-y-3">{providerItems.map((provider) => <div key={provider.id} className="flex items-center justify-between gap-3 border-t border-[#e3e8e7] pt-3"><div><div className="text-[11px] font-bold text-[#42545b]">{provider.name}</div><div className="mt-1 text-[9px] text-[#8b999c]">{provider.detail}</div></div><StatusPill status={provider.state} /></div>)}</div></section>
+        <section className="archive-panel p-5" data-testid="panel-blocked-review-items"><div className="archive-mono text-[9px] tracking-[.12em] text-[#8d681d]">WAITING / BLOCKED</div><h2 className="archive-display mt-1 text-lg font-extrabold">{blockedReviews.length.toLocaleString()} decisions are waiting on a blocker</h2><p className="mt-2 text-[11px] leading-5 text-[#82765d]">These items remain available as evidence, but approval is not meaningful until their provider or source blocker is resolved.</p></section><section className="archive-panel p-5" data-testid="panel-recommendation-evidence"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">RECOMMENDATION EVIDENCE</div><div className="mt-4 space-y-4">{(recommendations.data ?? []).map((recommendation) => <article key={recommendation.id} className="border-t border-[#e3e8e7] pt-3"><div className="flex justify-between gap-3"><div className="text-[11px] font-bold text-[#42545b]">{recommendation.title}</div><span className="archive-mono text-[9px] uppercase text-[#80652e]">{recommendation.priority} / {recommendation.confidence}</span></div><p className="mt-2 text-[10px] leading-5 text-[#66787d]">{String(recommendation.evidence.reason ?? 'Evidence is recorded in the recommendation payload.')}</p>{recommendation.blockers.length > 0 && <ul className="mt-2 list-disc pl-4 text-[10px] leading-5 text-[#9b514a]">{recommendation.blockers.map(blocker => <li key={blocker}>{blocker}</li>)}</ul>}<p className="mt-2 border-l-2 border-[#4e9690] pl-2 text-[10px] leading-5 text-[#39736e]">{recommendation.recommendedAction}</p></article>)}{!(recommendations.data ?? []).length && <p className="text-[11px] text-[#829095]">Evaluate current state to generate deterministic recommendations.</p>}</div></section>
+        <section className="archive-panel p-5" data-testid="panel-provider-health"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">PROVIDER HEALTH</div><div className="mt-4 space-y-3">{providerItems.map((provider) => <div key={provider.id} className="flex items-center justify-between gap-3 border-t border-[#e3e8e7] pt-3"><div><div className="text-[11px] font-bold text-[#42545b]">{provider.name}</div><div className="mt-1 text-[9px] text-[#8b999c]">{provider.detail}</div></div><StatusPill status={provider.configured ? provider.state : 'not_configured'} /></div>)}</div></section>
+        <AcquisitionJobsPanel
+          jobs={acquisitionJobs.data ?? []}
+          downloads={downloads.data ?? []}
+          busy={linkDownload.isPending || planImport.isPending || refreshAcquisition.isPending}
+          onLinkDownload={(jobId, downloadJobId) => acquire(
+            () => linkDownload.mutateAsync({ id: jobId, data: { downloadJobId } }),
+            () => `Acquisition job #${jobId} linked to download #${downloadJobId}.`,
+          )}
+          onPlanImport={(jobId, destinationPath) => acquire(
+            () => planImport.mutateAsync({ id: jobId, data: { destinationPath } }),
+            (operation) => `Planned import operation #${(operation as { id: number }).id}. It requires preflight and explicit execution confirmation.`,
+          )}
+          onRefreshJob={(jobId) => acquire(
+            () => refreshAcquisition.mutateAsync({ id: jobId }),
+            () => `Refreshed acquisition job #${jobId} from its provider.`,
+          )}
+        />
         <section className="archive-panel p-5" data-testid="panel-operation-history"><div className="archive-mono text-[9px] tracking-[.14em] text-[#7d9093]">SAFE OPERATIONS</div><div className="mt-4 space-y-3">{(operations.data ?? []).slice(0, 8).map((operation) => <div key={operation.id} className="border-t border-[#e3e8e7] pt-3"><div className="flex items-center justify-between"><span className="text-[11px] font-bold uppercase text-[#42545b]">{operation.action} #{operation.id}</span><StatusPill status={operation.status} /></div><div className="mt-1 truncate text-[9px] text-[#8b999c]">{operation.destinationPath}</div>{operation.errorMessage && <div className="mt-2 text-[10px] text-[#a24d46]">{operation.errorMessage}</div>}<div className="mt-2 flex flex-wrap gap-1">{operation.status === 'planned' && <button onClick={() => operate(operation.id, 'preflight')} className="border px-2 py-1 text-[8px] font-bold">PREFLIGHT</button>}{operation.status === 'ready' && <button onClick={() => operate(operation.id, 'execute')} className="bg-[#1d2b38] px-2 py-1 text-[8px] font-bold text-white">EXECUTE</button>}{['planned', 'preflight', 'ready', 'failed'].includes(operation.status) && <button onClick={() => operate(operation.id, 'cancel')} className="border px-2 py-1 text-[8px] font-bold">CANCEL</button>}{['failed', 'cancelled'].includes(operation.status) && operation.retryCount < operation.maxRetries && <button onClick={() => operate(operation.id, 'retry')} className="border px-2 py-1 text-[8px] font-bold">RETRY</button>}{operation.status === 'completed' && <button onClick={() => operate(operation.id, 'rollback')} className="border border-[#d79a94] px-2 py-1 text-[8px] font-bold text-[#9b514a]">ROLLBACK</button>}</div>{operation.events.length > 0 && <details className="mt-2 text-[9px] text-[#75868a]"><summary>{operation.events.length} audit events</summary>{operation.events.map(event => <div key={event.id} className="mt-1">{formatTime(event.createdAt)} · {event.detail}</div>)}</details>}</div>)}{!(operations.data ?? []).length && <p className="text-[11px] leading-5 text-[#829095]">No operations have been planned. Filesystem mutation remains disabled.</p>}</div></section>
       </div>
     </div>
@@ -465,7 +573,7 @@ function PlexPage() {
   const canSync = isConnected;
   const showInventory = isSynced || isSyncing || data.libraryCount > 0;
 
-  return <><PageIntro eyebrow="INTEGRATION / PLEX" title="Plex inventory" description="Verify the configured server, synchronize its libraries, and inspect only inventory proven by the local node." action={<StatusPill status={data.configured ? data.status : 'not_configured'} label={data.configured ? statusText(data.status) : 'NOT CONFIGURED'} />} /><div className="grid gap-5 xl:grid-cols-[1fr_330px]"><form className="archive-panel p-5 md:p-7" data-testid="panel-plex-form" onSubmit={(event) => { event.preventDefault(); save(); }}><div className="mb-7 flex items-start gap-3 border-b border-[#e3e8e7] pb-5"><div className="grid h-9 w-9 place-items-center bg-[#fff0c9] text-[#a77517]"><PlaySquare size={18} /></div><div><h2 className="archive-display text-lg font-extrabold">Server endpoint</h2><p className="mt-1 text-[11px] text-[#859296]">Credentials stay on the local API</p></div></div><label className="mb-5 block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">SERVER URL</span><div className="flex items-center border border-[#d6dfdc] bg-[#fbfcfa] focus-within:border-[#4e9690]"><Link2 size={15} className="ml-3 text-[#8a9b9e]" /><input autoComplete="url" value={serverUrl} onChange={(event) => setServerUrl(event.target.value)} placeholder="http://localhost:32400" className="w-full bg-transparent px-3 py-3 text-[13px] outline-none" data-testid="input-plex-server-url" /></div></label><label className="block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">PLEX TOKEN <span className="text-[#a7b0b0]">/ OPTIONAL UPDATE</span></span><input autoComplete="current-password" type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder={data.hasToken ? 'Token is stored — enter to replace' : 'Paste token when ready'} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-3 text-[13px] outline-none focus:border-[#4e9690]" data-testid="input-plex-token" /></label><div className="mt-7 flex flex-wrap items-center gap-3"><button type="submit" disabled={mutation.isPending || isSyncing} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-plex">{mutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} {mutation.isPending ? 'SAVING' : 'SAVE CONFIGURATION'}</button>{notice && <span className={`text-[11px] ${notice.includes('failed') || notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-plex-save">{notice}</span>}</div></form><section className="archive-panel h-fit p-5 md:p-6 flex flex-col gap-4" data-testid="panel-plex-status"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">NODE CONNECTION</div><h2 className="archive-display text-lg font-extrabold -mt-3">State & Actions</h2><div className="space-y-4 text-[12px]"><Readout label="Endpoint stored" value={data.configured ? 'YES' : 'NO'} tone={data.configured ? 'good' : 'warn'} /><Readout label="Token present" value={data.hasToken ? 'YES' : 'NO'} tone={data.hasToken ? 'good' : 'warn'} /><Readout label="Connection" value={statusText(data.connectionStatus)} tone={data.connectionStatus === 'connection_failed' ? 'warn' : isConnected ? 'good' : 'neutral'} /><Readout label="Synchronization" value={statusText(data.syncStatus)} tone={data.syncStatus === 'sync_error' ? 'warn' : isSynced ? 'good' : 'neutral'} /><Readout label="Libraries" value={String(data.libraryCount)} tone={data.libraryCount ? 'good' : 'neutral'} /><Readout label="Items / media" value={`${data.itemCount} / ${data.mediaCount}`} tone={data.itemCount ? 'good' : 'neutral'} /><Readout label="Last attempted" value={formatTime(data.lastAttemptedAt)} /><Readout label="Last successful" value={formatTime(data.lastSuccessfulSyncAt)} tone={data.lastSuccessfulSyncAt ? 'good' : 'neutral'} /></div><div className="mt-2 flex flex-col gap-2"><button type="button" onClick={handleTestConnection} disabled={!data.configured || testConn.isPending || isSyncing} className="inline-flex justify-center items-center gap-2 border border-[#d6dfdc] bg-white/50 px-4 py-2 text-[10px] font-bold tracking-[.1em] text-[#53656b] disabled:opacity-50 hover:bg-[#eaf0ed] transition-colors" data-testid="button-test-connection">{testConn.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Network size={13} />}{testConn.isPending ? 'VERIFYING' : 'TEST CONNECTION'}</button><button type="button" onClick={handleStartSync} disabled={!canSync || startSync.isPending || isSyncing} className="inline-flex justify-center items-center gap-2 border border-[#4e9690] bg-[#eaf3ef] px-4 py-2 text-[10px] font-bold tracking-[.1em] text-[#39736e] disabled:opacity-50 hover:bg-[#dcebe7] transition-colors" data-testid="button-start-sync">{isSyncing || startSync.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}{isSyncing ? 'SYNCING INVENTORY' : startSync.isPending ? 'STARTING SYNC' : 'SYNC INVENTORY'}</button></div>{data.lastError && <div className="mt-2 border-l-2 border-[#c85b51] bg-[#fcedea] p-3 text-[11px] leading-5 text-[#994b43]" data-testid="text-plex-error">{data.lastError}</div>}</section></div>{showInventory && <section className="mt-7 archive-panel p-5 md:p-7" data-testid="panel-plex-inventory"><div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL INVENTORY</div><h2 className="archive-display mt-1 text-2xl font-extrabold text-[#263844]">Synchronized Libraries</h2></div>{data.lastSuccessfulSyncAt && <div className="text-left sm:text-right"><div className="archive-mono text-[10px] tracking-[.12em] text-[#7f9194]">LAST SYNC</div><div className="mt-1 text-[12px] font-semibold text-[#4e9690]">{formatTime(data.lastSuccessfulSyncAt)}</div></div>}</div>{inventoryLoading && !inventory ? <div className="space-y-4"><Skeleton className="h-20" /><Skeleton className="h-20" /></div> : inventory?.libraries?.length ? <div className="space-y-6">{inventory.libraries.map(library => <div key={library.id} className="border border-[#e3e8e7] bg-[#fbfcfa]" data-testid={`library-${library.id}`}><div className="flex items-center justify-between border-b border-[#e3e8e7] bg-[#f3f5f4] px-4 py-3"><div className="flex items-center gap-3"><Library size={16} className="text-[#4e9690]" /><h3 className="text-[13px] font-bold text-[#344851]">{library.name}</h3><span className="archive-mono rounded-sm bg-[#e3e8e7] px-2 py-0.5 text-[9px] tracking-[.1em] text-[#65767a]">{library.type.toUpperCase()}</span></div><div className="archive-mono text-[10px] text-[#7f9194]">{library.itemCount} ITEMS</div></div><div className="grid gap-3 p-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">{inventory.items.filter(item => item.libraryId === library.id).slice(0, 8).map(item => <div key={item.id} className="flex gap-3 border border-[#f0f4f3] bg-white p-3 transition-colors hover:border-[#d6dfdc]" data-testid={`inventory-item-${item.id}`}><div className="grid h-12 w-12 shrink-0 place-items-center bg-[#e8efed] text-[#8ca3a0]">{item.itemType === 'movie' ? <PlaySquare size={16} /> : <FolderOpen size={16} />}</div><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-bold text-[#344851]" title={item.title}>{item.title}</div><div className="mt-1 text-[10px] text-[#7f9194]">{item.year ? `${item.year} • ` : ''}{item.itemType}</div><div className="archive-mono mt-1 text-[9px] text-[#a0afaf]">{item.mediaCount} MEDIA / {item.partCount} PARTS</div></div></div>)}{inventory.items.filter(item => item.libraryId === library.id).length > 8 && <div className="flex items-center justify-center border border-dashed border-[#d6dfdc] bg-[#f8faf8] p-3 text-[11px] font-semibold text-[#8ca3a0]">+ {inventory.items.filter(item => item.libraryId === library.id).length - 8} MORE</div>}{inventory.items.filter(item => item.libraryId === library.id).length === 0 && <div className="col-span-full py-4 text-center text-[11px] text-[#8ca3a0]">No items populated in this library.</div>}</div></div>)}</div> : !isSyncing && <div className="flex flex-col items-center justify-center border border-dashed border-[#d6dfdc] bg-[#f8faf8] p-8 text-center text-[#7f9194]"><Library size={24} className="mb-3 text-[#a0afaf]" /><div className="text-[12px] font-semibold">No libraries found</div><div className="mt-1 text-[11px]">The synchronized inventory is empty.</div></div>}</section>}</>;
+  return <><PageIntro eyebrow="MEDIA HOST / PLEX" title="What Plex knows" description="A trusted view of the media host's current inventory." action={<StatusPill status={data.configured ? data.status : 'not_configured'} label={data.configured ? statusText(data.status) : 'NOT CONFIGURED'} />} /><section className="archive-panel mb-5 border-l-2 border-[#4e9690] p-5 md:p-7" data-testid="panel-plex-briefing"><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="archive-mono text-[9px] tracking-[.16em] text-[#7f9194]">PLEX / CURRENT READOUT</div><h2 className="archive-display mt-2 text-2xl font-extrabold text-[#263844]">{isConnected ? 'Plex is connected.' : isConfigured ? 'Plex is configured but not connected.' : 'Plex is not connected yet.'}</h2><p className="mt-2 text-[12px] leading-5 text-[#718187]">{data.libraryCount ? `${data.libraryCount} librar${data.libraryCount === 1 ? 'y' : 'ies'} · ${data.itemCount.toLocaleString()} items currently known.` : 'Connect Plex to compare what it knows with your local archive.'}</p>{data.lastSuccessfulSyncAt && <p className="mt-1 text-[11px] text-[#829095]">Last checked {formatTime(data.lastSuccessfulSyncAt)}.</p>}</div><div className="flex flex-wrap gap-2"><button type="button" onClick={handleTestConnection} disabled={!data.configured || testConn.isPending || isSyncing} className="border border-[#d6dfdc] bg-white/70 px-3 py-2 text-[10px] font-bold tracking-[.08em] text-[#53656b] disabled:opacity-50" data-testid="button-test-connection">{testConn.isPending ? 'CHECKING' : 'TEST CONNECTION'}</button><button type="button" onClick={handleStartSync} disabled={!canSync || startSync.isPending || isSyncing} className="bg-[#39736e] px-3 py-2 text-[10px] font-bold tracking-[.08em] text-white disabled:opacity-50" data-testid="button-start-sync">{isSyncing ? 'SYNCING' : 'SYNC INVENTORY'}</button></div></div></section><details className="mb-5"><summary className="cursor-pointer archive-panel p-4 text-[10px] font-bold tracking-[.1em] text-[#39736e]">CONNECTION SETTINGS AND TECHNICAL DETAILS</summary><div className="grid gap-5 pt-4 xl:grid-cols-[1fr_330px]"><form className="archive-panel p-5 md:p-7" data-testid="panel-plex-form" onSubmit={(event) => { event.preventDefault(); save(); }}><div className="mb-7 flex items-start gap-3 border-b border-[#e3e8e7] pb-5"><div className="grid h-9 w-9 place-items-center bg-[#fff0c9] text-[#a77517]"><PlaySquare size={18} /></div><div><h2 className="archive-display text-lg font-extrabold">Server endpoint</h2><p className="mt-1 text-[11px] text-[#859296]">Credentials stay on the local API</p></div></div><label className="mb-5 block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">SERVER URL</span><div className="flex items-center border border-[#d6dfdc] bg-[#fbfcfa] focus-within:border-[#4e9690]"><Link2 size={15} className="ml-3 text-[#8a9b9e]" /><input autoComplete="url" value={serverUrl} onChange={(event) => setServerUrl(event.target.value)} placeholder="http://localhost:32400" className="w-full bg-transparent px-3 py-3 text-[13px] outline-none" data-testid="input-plex-server-url" /></div></label><label className="block"><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">PLEX TOKEN <span className="text-[#a7b0b0]">/ OPTIONAL UPDATE</span></span><input autoComplete="current-password" type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder={data.hasToken ? 'Token is stored — enter to replace' : 'Paste token when ready'} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-3 text-[13px] outline-none focus:border-[#4e9690]" data-testid="input-plex-token" /></label><div className="mt-7 flex flex-wrap items-center gap-3"><button type="submit" disabled={mutation.isPending || isSyncing} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-3 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-plex">{mutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />} {mutation.isPending ? 'SAVING' : 'SAVE CONFIGURATION'}</button>{notice && <span className={`text-[11px] ${notice.includes('failed') || notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-plex-save">{notice}</span>}</div></form><section className="archive-panel h-fit p-5 md:p-6 flex flex-col gap-4" data-testid="panel-plex-status"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">NODE CONNECTION</div><h2 className="archive-display text-lg font-extrabold -mt-3">State & Actions</h2><div className="space-y-4 text-[12px]"><Readout label="Endpoint stored" value={data.configured ? 'YES' : 'NO'} tone={data.configured ? 'good' : 'warn'} /><Readout label="Token present" value={data.hasToken ? 'YES' : 'NO'} tone={data.hasToken ? 'good' : 'warn'} /><Readout label="Connection" value={statusText(data.connectionStatus)} tone={data.connectionStatus === 'connection_failed' ? 'warn' : isConnected ? 'good' : 'neutral'} /><Readout label="Synchronization" value={statusText(data.syncStatus)} tone={data.syncStatus === 'sync_error' ? 'warn' : isSynced ? 'good' : 'neutral'} /><Readout label="Libraries" value={String(data.libraryCount)} tone={data.libraryCount ? 'good' : 'neutral'} /><Readout label="Items / media" value={`${data.itemCount} / ${data.mediaCount}`} tone={data.itemCount ? 'good' : 'neutral'} /><Readout label="Last attempted" value={formatTime(data.lastAttemptedAt)} /><Readout label="Last successful" value={formatTime(data.lastSuccessfulSyncAt)} tone={data.lastSuccessfulSyncAt ? 'good' : 'neutral'} /></div><div className="mt-2 flex flex-col gap-2"><button type="button" onClick={handleTestConnection} disabled={!data.configured || testConn.isPending || isSyncing} className="inline-flex justify-center items-center gap-2 border border-[#d6dfdc] bg-white/50 px-4 py-2 text-[10px] font-bold tracking-[.1em] text-[#53656b] disabled:opacity-50 hover:bg-[#eaf0ed] transition-colors" data-testid="button-test-connection">{testConn.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Network size={13} />}{testConn.isPending ? 'VERIFYING' : 'TEST CONNECTION'}</button><button type="button" onClick={handleStartSync} disabled={!canSync || startSync.isPending || isSyncing} className="inline-flex justify-center items-center gap-2 border border-[#4e9690] bg-[#eaf3ef] px-4 py-2 text-[10px] font-bold tracking-[.1em] text-[#39736e] disabled:opacity-50 hover:bg-[#dcebe7] transition-colors" data-testid="button-start-sync">{isSyncing || startSync.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}{isSyncing ? 'SYNCING INVENTORY' : startSync.isPending ? 'STARTING SYNC' : 'SYNC INVENTORY'}</button></div>{data.lastError && <div className="mt-2 border-l-2 border-[#c85b51] bg-[#fcedea] p-3 text-[11px] leading-5 text-[#994b43]" data-testid="text-plex-error">{data.lastError}</div>}</section></div></details>{showInventory && <section className="mt-7 archive-panel p-5 md:p-7" data-testid="panel-plex-inventory"><div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL INVENTORY</div><h2 className="archive-display mt-1 text-2xl font-extrabold text-[#263844]">Synchronized Libraries</h2></div>{data.lastSuccessfulSyncAt && <div className="text-left sm:text-right"><div className="archive-mono text-[10px] tracking-[.12em] text-[#7f9194]">LAST SYNC</div><div className="mt-1 text-[12px] font-semibold text-[#4e9690]">{formatTime(data.lastSuccessfulSyncAt)}</div></div>}</div>{inventoryLoading && !inventory ? <div className="space-y-4"><Skeleton className="h-20" /><Skeleton className="h-20" /></div> : inventory?.libraries?.length ? <div className="space-y-6">{inventory.libraries.map(library => <div key={library.id} className="border border-[#e3e8e7] bg-[#fbfcfa]" data-testid={`library-${library.id}`}><div className="flex items-center justify-between border-b border-[#e3e8e7] bg-[#f3f5f4] px-4 py-3"><div className="flex items-center gap-3"><Library size={16} className="text-[#4e9690]" /><h3 className="text-[13px] font-bold text-[#344851]">{library.name}</h3><span className="archive-mono rounded-sm bg-[#e3e8e7] px-2 py-0.5 text-[9px] tracking-[.1em] text-[#65767a]">{library.type.toUpperCase()}</span></div><div className="archive-mono text-[10px] text-[#7f9194]">{library.itemCount} ITEMS</div></div><div className="grid gap-3 p-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">{inventory.items.filter(item => item.libraryId === library.id).slice(0, 8).map(item => <div key={item.id} className="flex gap-3 border border-[#f0f4f3] bg-white p-3 transition-colors hover:border-[#d6dfdc]" data-testid={`inventory-item-${item.id}`}><div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden bg-[#e8efed] text-[#8ca3a0]">{item.thumbPathAvailable ? <img src={apiUrl(`/api/plex/artwork/${encodeURIComponent(item.ratingKey)}`)} alt="" loading="lazy" className="h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : item.itemType === 'movie' ? <PlaySquare size={16} /> : <FolderOpen size={16} />}</div><div className="min-w-0 flex-1"><div className="truncate text-[12px] font-bold text-[#344851]" title={item.title}>{item.title}</div><div className="mt-1 text-[10px] text-[#7f9194]">{item.year ? `${item.year} • ` : ''}{item.itemType}</div><div className="archive-mono mt-1 text-[9px] text-[#a0afaf]">{item.mediaCount} MEDIA / {item.partCount} PARTS</div></div></div>)}{inventory.items.filter(item => item.libraryId === library.id).length > 8 && <div className="flex items-center justify-center border border-dashed border-[#d6dfdc] bg-[#f8faf8] p-3 text-[11px] font-semibold text-[#8ca3a0]">+ {inventory.items.filter(item => item.libraryId === library.id).length - 8} MORE</div>}{inventory.items.filter(item => item.libraryId === library.id).length === 0 && <div className="col-span-full py-4 text-center text-[11px] text-[#8ca3a0]">No items populated in this library.</div>}</div></div>)}</div> : !isSyncing && <div className="flex flex-col items-center justify-center border border-dashed border-[#d6dfdc] bg-[#f8faf8] p-8 text-center text-[#7f9194]"><Library size={24} className="mb-3 text-[#a0afaf]" /><div className="text-[12px] font-semibold">No libraries found</div><div className="mt-1 text-[11px]">The synchronized inventory is empty.</div></div>}</section>}</>;
 }
 
 
@@ -489,7 +597,7 @@ type FindingRecord = {
   qualitySummary: string;
   qualityDifferences: string[];
   duplicateOfId: number | null;
-  plexMatch: { title: string; year: number | null; qualityDifferences: string[] } | null;
+  plexMatch: { title: string; year: number | null; qualityDifferences: string[]; providerLabel?: string | null } | null;
   reviewStatus: string;
 };
 
@@ -544,15 +652,16 @@ function explainFinding(record: FindingRecord) {
     assessment = 'REVIEW';
   } else if (record.plexMatch && differences.length > 0) {
     const severity = qualityReviewSeverity(differences);
-    finding = `LOCAL is matched to PLEX item "${record.plexMatch.title}"${record.plexMatch.year ? ` (${record.plexMatch.year})` : ''}, with quality differences already reported by the system.`;
+    const provider = (record.plexMatch.providerLabel || 'Plex').toUpperCase();
+    finding = `LOCAL is matched to ${provider} item "${record.plexMatch.title}"${record.plexMatch.year ? ` (${record.plexMatch.year})` : ''}, with quality differences already reported by the system.`;
     if (severity === 'HIGH') {
-      why = 'A high-impact visual or dynamic-range difference exists between LOCAL and PLEX.';
+      why = `A high-impact visual or dynamic-range difference exists between LOCAL and ${provider}.`;
     } else if (severity === 'MEDIUM') {
-      why = 'A codec difference exists between LOCAL and PLEX and may affect compatibility or playback characteristics.';
+      why = `A codec difference exists between LOCAL and ${provider} and may affect compatibility or playback characteristics.`;
     } else {
       why = 'The reported differences are limited to lower-impact technical metadata.';
     }
-    consider = `Review the supplied LOCAL / PLEX differences: ${differences.join('; ')}`;
+    consider = `Review the supplied LOCAL / ${provider} differences: ${differences.join('; ')}`;
     assessment = `${severity} / REVIEW`;
   } else if (record.qualityStatus === 'higher_quality_available') {
     finding = 'A higher-quality local version is available for this media identity.';
@@ -618,7 +727,7 @@ function reviewPriorityLabel(record: Pick<FindingRecord, 'qualityStatus' | 'dupl
   if (priority >= 25) return 'DEFERRED';
   return 'INFO';
 }
-function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }) {
+export function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }) {
   const queryClient = useQueryClient();
   const { data: record, isLoading, isError, refetch } = useGetArchiveRecord(id);
   const updateReview = useUpdateArchiveRecordReview();
@@ -734,7 +843,7 @@ function ArchiveRecordPanel({ id, onClose }: { id: number; onClose: () => void }
 
       {record.plexMatch && (
         <div className="mt-6 border-t border-[#e3e8e7] pt-5">
-           <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194] mb-3">PLEX MATCH</div>
+           <div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194] mb-3">{(record.plexMatch.providerLabel || 'PLEX').toUpperCase()} MATCH</div>
            <div className="font-bold text-[#344851] text-[13px]">{record.plexMatch.title} {record.plexMatch.year ? `(${record.plexMatch.year})` : ''}</div>
            {record.plexMatch.qualityDifferences.length > 0 && (
              <div className="mt-3 space-y-2">
@@ -761,38 +870,130 @@ export function ArchivePage() {
   const [notice, setNotice] = useState('');
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
+  const [selectedNamingIds, setSelectedNamingIds] = useState<number[]>([]);
+  const [powerRenamerBusy, setPowerRenamerBusy] = useState(false);
+  const [powerRenamerNotice, setPowerRenamerNotice] = useState<string | null>(null);
+  const [powerRenamerPlan, setPowerRenamerPlan] = useState<{ reviewItemId: number; files: number } | null>(null);
+  const [powerRenamerOperation, setPowerRenamerOperation] = useState<{ id: number; status: string } | null>(null);
+  const [powerProviderStatus, setPowerProviderStatus] = useState<string | null>(null);
   const [bulkNotice, setBulkNotice] = useState('');
   const [bulkFailures, setBulkFailures] = useState<Array<{ id: number; error: string }>>([]);
-  const [view, setView] = useState<'local' | 'naming_proposals' | 'plex_only' | 'missing_media'>('local');
+  const [view, setView] = useState<'library' | 'local' | 'naming_proposals' | 'plex_only' | 'missing_media'>('library');
   const [filter, setFilter] = useState<'all' | 'queue' | 'duplicates' | 'conflicts' | 'integrity' | 'missing' | 'local_only' | 'reviewed' | 'unresolved'>('all');
   const [acquisitionTarget, setAcquisitionTarget] = useState<ArchiveAcquisitionTarget | null>(null);
 
   const [isScanning, setIsScanning] = useState(false);
+  const scanEvents = useArchiveScanEvents({
+    onScanStarted: () => {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+    },
+    onScanFinished: () => {
+      queryClient.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
+    }
+  });
   const { data: scan, isLoading: scanLoading, refetch: refetchScan } = useGetArchiveScan({
     query: {
-      refetchInterval: isScanning ? 2000 : false,
+      // Interval polling is only a fallback while the SSE feed is down; the
+      // live event stream drives updates when connected.
+      refetchInterval: isScanning && !scanEvents.connected ? 2000 : false,
       queryKey: getGetArchiveScanQueryKey()
     }
   });
 
+  // A connected live feed is authoritative about whether a scan is running; a
+  // persisted `scanning` with no live session is interrupted residue, not an
+  // active scan. Merging the two with OR let the stale record win forever.
+  const scanLifecycle = resolveScanLifecycle({
+    persistedStatus: scan?.status,
+    liveStatus: scanEvents.status,
+    liveConnected: scanEvents.connected,
+    liveHasSession: Boolean(scanEvents.sessionId),
+  });
+  const scanInterrupted = scanLifecycle === 'interrupted';
+
   useEffect(() => {
     const wasScanning = isScanning;
-    const nowScanning = scan?.status === 'scanning';
+    const nowScanning = scanLifecycle === 'scanning';
     setIsScanning(nowScanning);
 
     if (wasScanning && !nowScanning) {
       queryClient.invalidateQueries({ queryKey: getGetArchiveInventoryQueryKey() });
     }
-  }, [scan?.status, isScanning, queryClient]);
+  }, [scanLifecycle, isScanning, queryClient]);
 
   const { data: inventory, isLoading: invLoading, isError: invError, refetch: refetchInv } = useGetArchiveInventory({
     query: {
-      refetchInterval: isScanning ? 3000 : false,
+      refetchInterval: isScanning && !scanEvents.connected ? 3000 : false,
       queryKey: getGetArchiveInventoryQueryKey()
     }
   });
 
   const { data: namingProposals, isLoading: namingLoading, isError: namingError, refetch: refetchNaming } = useGetArchiveNamingProposals();
+
+  async function planPowerRenamer() {
+    if (!selectedNamingIds.length) return;
+    setPowerRenamerBusy(true); setPowerRenamerNotice(null);
+    try {
+      const response = await fetch(apiUrl('/api/archive/power-renamer/plan'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fileRecordIds: selectedNamingIds }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? 'Power Renamer could not create a supervised plan.');
+      setPowerRenamerPlan({ reviewItemId: Number(result.reviewItemId), files: Number(result.summary.files) });
+      setPowerRenamerNotice(`Plan created for ${result.summary.files} files. Review item ${result.reviewItemId} is pending approval; nothing has changed.`);
+      setSelectedNamingIds([]);
+    } catch (error) { setPowerRenamerNotice(error instanceof Error ? error.message : 'Power Renamer could not create a plan.'); }
+    finally { setPowerRenamerBusy(false); }
+  }
+
+  async function advancePowerRenamer(action: 'approve' | 'create' | 'preflight' | 'execute' | 'refresh') {
+    if (!powerRenamerPlan && action !== 'approve') return;
+    setPowerRenamerBusy(true); setPowerRenamerNotice(null);
+    try {
+      if (action === 'approve') {
+        if (!powerRenamerPlan) throw new Error('Create a plan first.');
+        const response = await fetch(apiUrl(`/api/review-items/${powerRenamerPlan.reviewItemId}/approve`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ note: 'Approved from supervised Power Renamer.' }) });
+        if (!response.ok) throw new Error((await response.json()).error ?? 'Approval could not be saved.');
+        setPowerRenamerNotice('Approved. Create the protected archive operation when ready.');
+      } else if (action === 'create') {
+        const response = await fetch(apiUrl('/api/archive/power-renamer/operations'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reviewItemId: powerRenamerPlan!.reviewItemId }) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? 'The approved operation could not be created.');
+        setPowerRenamerOperation({ id: Number(result.id), status: String(result.status) });
+        setPowerRenamerNotice(`Operation ${result.id} created. No files changed; preflight is required.`);
+      } else {
+        if (!powerRenamerOperation) throw new Error('Create the operation first.');
+        if (action === 'refresh') {
+          const response = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/refresh-providers`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmed: true, providers: ['plex', 'jellyfin'] }) });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error ?? 'Provider refresh could not start.');
+          let latestProviderStatus: string | null = null;
+          let providerPollTimedOut = false;
+          for (let attempt = 0; attempt < 6; attempt += 1) {
+            const statusResponse = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/provider-status`));
+            const statusResult = await statusResponse.json();
+            if (!statusResponse.ok) break;
+            const plex = statusResult.providers?.plex?.syncStatus ?? 'unknown';
+            const jellyfin = statusResult.providers?.jellyfin?.syncStatus ?? 'unknown';
+            latestProviderStatus = `Plex: ${plex} · Jellyfin: ${jellyfin}`;
+            setPowerProviderStatus(latestProviderStatus);
+            if (plex !== 'syncing' && jellyfin !== 'syncing') break;
+            providerPollTimedOut = attempt === 5;
+            if (!providerPollTimedOut) await new Promise(resolve => setTimeout(resolve, 500));
+          }
+          setPowerRenamerNotice(`Provider refresh requested. Started: ${result.started.join(', ') || 'none configured'}.${latestProviderStatus ? ` Latest status: ${latestProviderStatus}.` : ''}${providerPollTimedOut ? ' Polling timed out while synchronization was still active; reconciliation is not complete.' : ' Reconciliation remains explicit and can be checked again.'}`);
+        } else {
+          const path = action === 'preflight' ? 'preflight' : 'execute';
+          const body = action === 'execute' ? { confirmed: true } : {};
+          const response = await fetch(apiUrl(`/api/archive-operations/${powerRenamerOperation.id}/${path}`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error ?? `Power Renamer ${path} failed.`);
+          setPowerRenamerOperation({ id: Number(result.id), status: String(result.status) });
+          setPowerRenamerNotice(action === 'preflight' ? 'Preflight passed. Explicit execution is now available.' : `Operation is ${result.status}. Verification and rollback remain available in Archive Operations.`);
+        }
+      }
+    } catch (error) { setPowerRenamerNotice(error instanceof Error ? error.message : 'Power Renamer could not advance.'); }
+    finally { setPowerRenamerBusy(false); }
+  }
 
   const startScan = useStartArchiveScan();
   const bulkReview = useUpdateArchiveRecordReviews();
@@ -831,6 +1032,9 @@ export function ArchivePage() {
   else if (filter === 'unresolved') displayedRecords = records.filter(r => ['unreviewed', 'unresolved'].includes(r.reviewStatus));
 
   const plexOnly = inventory?.plexOnly ?? [];
+  // The reference media server is operator-selected; label the provider-only
+  // view with whichever server actually produced the inventory.
+  const providerName = (inventory?.providerLabel ?? 'Plex').toUpperCase();
   const showPlex = view === 'plex_only';
   const selectableRecords = displayedRecords.filter(record => record.reviewStatus !== 'not_applicable');
   const selectedSet = new Set(selectedRecordIds);
@@ -889,7 +1093,7 @@ export function ArchivePage() {
             data-testid="button-start-archive-scan"
           >
             {isScanning || startScan.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-            {isScanning ? 'SCANNING' : 'START INVENTORY SCAN'}
+            {isScanning ? 'SCANNING' : scanInterrupted ? 'RESUME INVENTORY SCAN' : 'START INVENTORY SCAN'}
           </button>
         }
       />
@@ -900,25 +1104,30 @@ export function ArchivePage() {
         </div>
       )}
 
-      {scan && (
-        <div className="mb-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <MetricCard icon={FileCheck2} label="ACTIVE FILES" value={String(scan.activeFiles)} note="Verified local media" status={isScanning ? 'processing' : 'ready'} />
-            <MetricCard icon={Activity} label="SCAN FAILURES" value={String(scan.failedFiles)} note={`${inventory?.summary?.integrityFailureCount ?? 0} integrity / ${inventory?.summary?.inspectionFailureCount ?? 0} operational`} accent={scan.failedFiles ? 'red' : 'teal'} status={scan.failedFiles ? 'error' : 'idle'} />
-           <MetricCard icon={ShieldCheck} label="ARCHIVE HEALTH" value={(inventory?.summary?.healthStatus ?? 'healthy').replace('_', ' ').toUpperCase()} note="Pre-existing media findings stay visible" accent={inventory?.summary?.healthStatus === 'attention_required' ? 'amber' : 'teal'} status={inventory?.summary?.healthStatus === 'attention_required' ? 'error' : 'ready'} />
-          <MetricCard icon={Archive} label="MISSING FILES" value={String(scan.missingCount)} note="Known but missing" accent={scan.missingCount ? 'red' : 'teal'} status={scan.missingCount ? 'error' : 'idle'} />
-          <MetricCard icon={Library} label="DUPLICATES" value={String(scan.duplicateCount)} note="Identical files found" accent={scan.duplicateCount ? 'amber' : 'teal'} />
-          <MetricCard icon={Activity} label="QUALITY CONFLICTS" value={String(scan.qualityConflictCount)} note="Multiple versions exist" accent={scan.qualityConflictCount ? 'amber' : 'teal'} />
+      {scanInterrupted && (
+        <div
+          className="mb-5 border-l-2 border-[#d9bd77] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]"
+          data-testid="status-archive-scan-interrupted"
+        >
+          The last archive scan stopped before it finished, most likely because the application was
+          closed while it was running. {scan?.scannedFiles ? `${scan.scannedFiles.toLocaleString()} files were already examined and ` : 'Files already examined were kept, and '}
+          starting a scan will resume from where it stopped rather than beginning again.
         </div>
       )}
 
-      <div className={`grid items-start gap-5 ${selectedRecordId || acquisitionTarget ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : 'grid-cols-1'}`}>
+      <ArchiveScanPanel live={scanEvents} />
+
+      {scan && <section className="mb-7 border-l-2 border-[#4e9690] bg-[#f1f7f5] p-4" data-testid="panel-archive-readout"><div className="flex flex-wrap items-baseline justify-between gap-3"><div><div className="archive-display text-lg font-extrabold text-[#263844]">{scan.status === 'completed' ? 'Your archive has been checked.' : scan.status === 'not_scanned' ? 'Your archive has not been checked yet.' : scan.status === 'scanning' ? 'Your archive is being checked.' : 'The last archive check needs attention.'}</div><div className="mt-1 text-[11px] text-[#56736f]">{scan.completedAt ? `Last checked ${formatTime(scan.completedAt)}.` : 'Start a scan when you are ready.'}</div></div><span className="archive-mono text-[10px] text-[#39736e]">{scan.activeFiles.toLocaleString()} known files</span></div><details className="mt-4 border-t border-[#c9dfd9] pt-3"><summary className="cursor-pointer text-[10px] font-bold tracking-[.1em] text-[#39736e]">SHOW INVENTORY DETAILS</summary><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"><MetricCard icon={FileCheck2} label="ACTIVE FILES" value={String(scan.activeFiles)} note="Verified local media" status={isScanning ? 'processing' : 'ready'} /><MetricCard icon={Activity} label="SCAN FAILURES" value={String(scan.failedFiles)} note={`${inventory?.summary?.integrityFailureCount ?? 0} integrity / ${inventory?.summary?.inspectionFailureCount ?? 0} operational`} accent={scan.failedFiles ? 'red' : 'teal'} status={scan.failedFiles ? 'error' : 'idle'} /><MetricCard icon={ShieldCheck} label="ARCHIVE HEALTH" value={(inventory?.summary?.healthStatus ?? 'healthy').replace('_', ' ').toUpperCase()} note="Pre-existing media findings stay visible" accent={inventory?.summary?.healthStatus === 'attention_required' ? 'amber' : 'teal'} status={inventory?.summary?.healthStatus === 'attention_required' ? 'error' : 'ready'} /><MetricCard icon={Archive} label="MISSING FILES" value={String(scan.missingCount)} note="Known but missing" accent={scan.missingCount ? 'red' : 'teal'} status={scan.missingCount ? 'error' : 'idle'} /><MetricCard icon={Library} label="DUPLICATES" value={String(scan.duplicateCount)} note="Identical files found" accent={scan.duplicateCount ? 'amber' : 'teal'} /><MetricCard icon={Activity} label="QUALITY CONFLICTS" value={String(scan.qualityConflictCount)} note="Multiple versions exist" accent={scan.qualityConflictCount ? 'amber' : 'teal'} /></div></details></section>}
+
+      {view === 'library' && <div className="mb-3 flex justify-end"><button type="button" onClick={() => setView('local')} className="border border-[#d6dfdc] bg-white px-3 py-2 text-[10px] font-bold tracking-[.08em] text-[#53656b] hover:border-[#4e9690]" data-testid="tab-local-inventory">LOCAL REVIEW</button></div>}
+      {view === 'library' ? <VisualMediaLibrary onLocalReview={() => setView('local')} /> : <div className={`grid items-start gap-5 ${selectedRecordId || acquisitionTarget ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : 'grid-cols-1'}`}>
         <section className="archive-panel flex min-h-[500px] flex-col" data-testid="panel-archive-list">
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e3e8e7] bg-[#fbfcfa] p-4 md:px-6">
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
-              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL INVENTORY</button>
+              <button onClick={() => { setView('library'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className="bg-[#dcebe7] px-3 py-1.5 text-[10px] font-bold tracking-[.1em] text-[#39736e]" data-testid="tab-browse-archive">BROWSE ARCHIVE</button>
+              <button onClick={() => { setView('local'); setFilter('all'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'local' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-local-inventory">LOCAL REVIEW</button>
               <button onClick={() => { setView('naming_proposals'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'naming_proposals' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-naming-proposals">NAMING PROPOSALS</button>
-              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">PLEX ONLY ({scan?.plexOnlyCount ?? 0})</button>
+              <button onClick={() => { setView('plex_only'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'plex_only' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-plex-only">{providerName} ONLY ({plexOnly.length})</button>
               <button onClick={() => { setView('missing_media'); setSelectedRecordId(null); setAcquisitionTarget(null); setSelectedRecordIds([]); setBulkNotice(''); setBulkFailures([]); }} className={`px-3 py-1.5 text-[10px] font-bold tracking-[.1em] ${view === 'missing_media' ? 'bg-[#dcebe7] text-[#39736e]' : 'text-[#8a9b9e] hover:bg-[#f3f5f4]'}`} data-testid="tab-missing-media">MISSING MEDIA</button>
             </div>
 
@@ -986,8 +1195,15 @@ export function ArchivePage() {
                 <EmptyState icon={Sparkles} title="No naming proposals" description="The archive currently has no naming changes requiring review." />
               ) : (
                 <div className="space-y-3" data-testid="panel-naming-proposals">
+                  <div className="archive-panel border-l-2 border-[#39736e] bg-[#f1f8f5] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="archive-mono text-[9px] tracking-[.14em] text-[#39736e]">POWER RENAMER / SUPERVISED MODE</div><p className="mt-1 text-[12px] text-[#43545b]">Select safe proposals to build a collision-safe, reversible batch. Approval and preflight are still required.</p></div><button disabled={!selectedNamingIds.length || powerRenamerBusy} onClick={planPowerRenamer} className="bg-[#1d2b38] px-4 py-2 text-[10px] font-bold tracking-[.1em] text-white disabled:opacity-40">{powerRenamerBusy ? 'PLANNING…' : `PLAN ${selectedNamingIds.length || ''} RENAME${selectedNamingIds.length === 1 ? '' : 'S'}`}</button></div>
+                    {powerRenamerNotice && <p className="mt-3 text-[11px] font-semibold text-[#39736e]">{powerRenamerNotice}</p>}
+                    {powerRenamerPlan && <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#d9e8e1] pt-3"><span className="archive-mono mr-2 text-[9px] text-[#39736e]">PLAN / {powerRenamerPlan.files} FILES / REVIEW #{powerRenamerPlan.reviewItemId}</span><button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('approve')} className="border border-[#39736e] px-3 py-2 text-[9px] font-bold text-[#39736e] disabled:opacity-40">APPROVE PLAN</button><button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('create')} className="bg-[#1d2b38] px-3 py-2 text-[9px] font-bold text-white disabled:opacity-40">CREATE OPERATION</button>{powerRenamerOperation?.status === 'planned' && <button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('preflight')} className="border px-3 py-2 text-[9px] font-bold disabled:opacity-40">PREFLIGHT</button>}{powerRenamerOperation?.status === 'ready' && <button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('execute')} className="bg-[#39736e] px-3 py-2 text-[9px] font-bold text-white disabled:opacity-40">EXECUTE</button>}{powerRenamerOperation?.status === 'completed' && <button disabled={powerRenamerBusy} onClick={() => advancePowerRenamer('refresh')} className="border border-[#39736e] px-3 py-2 text-[9px] font-bold text-[#39736e] disabled:opacity-40">REFRESH PROVIDERS</button>}{powerRenamerOperation && <span className="archive-mono text-[9px] text-[#7f9194]">OPERATION {powerRenamerOperation.id} / {powerRenamerOperation.status.toUpperCase()}</span>}{powerProviderStatus && <span className="archive-mono text-[9px] text-[#39736e]">PROVIDERS / {powerProviderStatus.toUpperCase()}</span>}</div>}
+                  </div>
                   {namingProposals.results.map(proposal => (
+
                     <div key={proposal.fileRecordId} className="border border-[#e1e8e5] bg-white/50 p-4">
+                      {proposal.proposedPath && proposal.operation !== 'uncertain/no_action' && !proposal.collision && proposal.researchGrade === 'corroborated' && <label className="mb-3 flex items-center gap-2 text-[10px] font-bold tracking-[.08em] text-[#39736e]"><input type="checkbox" checked={selectedNamingIds.includes(proposal.fileRecordId)} onChange={() => setSelectedNamingIds(current => current.includes(proposal.fileRecordId) ? current.filter(id => id !== proposal.fileRecordId) : [...current, proposal.fileRecordId])} className="h-4 w-4 accent-[#39736e]" /> INCLUDE IN POWER RENAMER PLAN</label>}
                       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                         <div className="min-w-0">
                           <div className="archive-mono text-[9px] tracking-[.12em] text-[#7f9194]">CURRENT</div>
@@ -1001,16 +1217,19 @@ export function ArchivePage() {
                       <div className="mt-4 flex flex-wrap gap-x-3 gap-y-2 border-t border-[#edf1ef] pt-3">
                         <span className="archive-mono text-[9px] text-[#7f9194]">CONFIDENCE / {proposal.confidence.toUpperCase()}</span>
                         <span className="archive-mono text-[9px] text-[#7f9194]">OPERATION / {proposal.operation.toUpperCase()}</span>
+                        <span className={`archive-mono text-[9px] ${proposal.researchGrade === 'corroborated' ? 'text-[#39736e]' : 'text-[#a77517]'}`}>RESEARCH / {(proposal.researchGrade ?? 'blocked').toUpperCase()}</span>
                         <span className="archive-mono text-[9px] text-[#7f9194]">PATTERN / {proposal.patternId}</span>
                         <span className="archive-mono text-[9px] text-[#7f9194]">MEDIA TYPE / {proposal.mediaType.toUpperCase()}</span>
                         <span className="archive-mono text-[9px] text-[#7f9194]">VOLUME / {proposal.volumeId}</span>
                         {(proposal.confidence === 'uncertain' || proposal.operation === 'uncertain/no_action') && <span className="archive-mono text-[9px] text-[#a77517]">UNCERTAIN</span>}
                         {proposal.collision && <span className="archive-mono text-[9px] text-[#994b43]">COLLISION / YES</span>}
                       </div>
-                      {(proposal.reason || proposal.evidence.length > 0) && (
+                      {(proposal.reason || proposal.evidence.length > 0 || proposal.researchSources.length > 0 || proposal.researchBlockers.length > 0) && (
                         <div className="mt-3 border-l-2 border-[#d9bd77] bg-[#fff8e7] p-3 text-[11px] leading-5 text-[#80652e]">
                           {proposal.reason && <div><span className="font-bold">WHY / </span>{proposal.reason}</div>}
                           {proposal.evidence.length > 0 && <div className="mt-1"><span className="font-bold">EVIDENCE / </span>{proposal.evidence.join('; ')}</div>}
+                          {proposal.researchSources.length > 0 && <div className="mt-1"><span className="font-bold">RESEARCH SOURCES / </span>{proposal.researchSources.join('; ')}</div>}
+                          {proposal.researchBlockers.length > 0 && <div className="mt-1 font-semibold text-[#994b43]"><span className="font-bold">BLOCKERS / </span>{proposal.researchBlockers.join('; ')}</div>}
                         </div>
                       )}
                       <div className="mt-3 archive-mono text-[9px] tracking-[.08em] text-[#a0afaf]">PROPOSAL ONLY / NO FILESYSTEM ACTION</div>
@@ -1050,8 +1269,7 @@ export function ArchivePage() {
                         data-testid={`row-archive-record-${r.id}`}
                       >
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[12px] font-semibold text-[#43545b]" title={r.filename}>{r.filename}</div>
-                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+                        <div className="flex items-center gap-3"><div className="grid h-12 w-9 shrink-0 place-items-center overflow-hidden bg-[#e8efed] text-[#7f9c98]">{r.plexMatch ? <img src={apiUrl(`/api/plex/artwork/${encodeURIComponent(r.plexMatch.ratingKey)}`)} alt="" loading="lazy" className="h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : <Library size={16} />}</div><div className="min-w-0"><div className="truncate text-[13px] font-semibold text-[#344851]" title={r.plexMatch?.title ?? r.filename}>{r.plexMatch?.title ?? r.filename}</div><div className="mt-1 text-[10px] text-[#829095]">{r.plexMatch ? `${r.plexMatch.year ? `${r.plexMatch.year} · ` : ''}${r.mediaType ?? 'Media'} · local file found` : 'Local identity not matched to the configured host'}</div></div></div><div className="mt-2 truncate text-[10px] text-[#a0aaaa]" title={r.path}>{r.filename}</div><div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
 <span className={`archive-mono tracking-[.05em] ${
   reviewPriority(r) >= 90
     ? 'text-[#994b43]'
@@ -1108,7 +1326,7 @@ export function ArchivePage() {
             />
           )}
         </div>
-      </div>
+      </div>}
     </>
   );
 }
@@ -1184,15 +1402,46 @@ function ArchiveMissingMediaView({
   );
 }
 
-const settingsGroups = [{ name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel'] }, { name: 'Downloads', icon: Download, fields: ['downloadDirectory', 'temporaryDirectory', 'concurrentDownloads', 'maxRetries', 'bandwidthLimit'] }, { name: 'Archive', icon: Archive, fields: ['archiveDirectory', 'outputContainer', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'] }, { name: 'Plex', icon: PlaySquare, fields: [] }, { name: 'AI', icon: Sparkles, fields: [] }, { name: 'Local Model', icon: Cpu, fields: [] }, { name: 'OpenAI', icon: Zap, fields: [] }, { name: 'Local Engine', icon: Terminal, fields: ['ytDlpPath', 'ffmpegPath', 'ffprobePath'] }, { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration', 'hardwareAccelerationMode'] }, { name: 'Network', icon: Network, fields: ['networkMode'] }, { name: 'Security', icon: ShieldCheck, fields: [] }, { name: 'Logging', icon: Terminal, fields: [] }];
+const settingsGroups = [{ name: 'General', icon: SlidersHorizontal, fields: ['mockMode', 'dataDirectory', 'logLevel', 'startWithWindows'] }, { name: 'Downloads', icon: Download, fields: ['downloadDirectory', 'temporaryDirectory', 'concurrentDownloads', 'maxRetries', 'bandwidthLimit'] }, { name: 'Archive', icon: Archive, fields: ['archiveDirectory', 'outputContainer', 'inspectionCacheMinutes', 'warningFreePercent', 'criticalFreePercent'] }, { name: 'Local Engine', icon: Terminal, fields: ['ytDlpPath', 'ffmpegPath', 'ffprobePath'] }, { name: 'Hardware Acceleration', icon: Cpu, fields: ['hardwareAcceleration', 'hardwareAccelerationMode'] }, { name: 'Network', icon: Network, fields: ['networkMode'] }];
+type UpdateStatus = { available: boolean; version: string | null; date: string | null; body: string | null };
+
+function UpdaterPanel() {
+  const [status, setStatus] = useState<'idle' | 'checking' | 'available' | 'current' | 'error' | 'installing'>('idle');
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [message, setMessage] = useState('Release updates are checked only when requested.');
+  const check = async () => {
+    setStatus('checking');
+    try {
+      const result = await invoke<UpdateStatus>('check_for_update');
+      setUpdate(result);
+      setStatus(result.available ? 'available' : 'current');
+      setMessage(result.available ? `Signed release ${result.version ?? ''} is ready for review.` : 'This release is up to date.');
+    } catch {
+      setStatus('error');
+      setMessage('Update checks are unavailable in this build or the release endpoint did not answer.');
+    }
+  };
+  const install = async () => {
+    setStatus('installing');
+    setMessage('Downloading the approved signed release. The app will restart after installation.');
+    try {
+      await invoke('install_update');
+    } catch {
+      setStatus('error');
+      setMessage('The signed update was not installed. The current app and local data remain unchanged.');
+    }
+  };
+  return <section className="archive-panel p-5 md:p-6" data-testid="panel-updater"><div className="flex items-start justify-between gap-4"><div><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">RELEASE CHANNEL / SIGNED</div><h2 className="archive-display mt-1 text-lg font-extrabold">Application updates</h2><p className="mt-2 text-[11px] leading-5 text-[#879599]">Updates come from signed GitHub releases. Nothing installs without operator approval.</p></div><RefreshCw size={17} className={status === 'checking' ? 'animate-spin text-[#39736e]' : 'text-[#7f9194]'} /></div><div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={check} disabled={status === 'checking' || status === 'installing'} className="border border-[#4e9690] bg-[#eaf3ef] px-3 py-2 text-[10px] font-bold tracking-[.08em] text-[#39736e] disabled:opacity-50" data-testid="button-check-updates">CHECK FOR UPDATES</button>{status === 'available' && <button type="button" onClick={install} className="bg-[#39736e] px-3 py-2 text-[10px] font-bold tracking-[.08em] text-white" data-testid="button-install-update">INSTALL {update?.version ?? 'UPDATE'}</button>}</div><div className={`mt-3 text-[10px] leading-5 ${status === 'error' ? 'text-[#994b43]' : 'text-[#71858a]'}`} data-testid="status-updater">{message}</div></section>;
+}
+
 function SettingsPage() {
   const queryClient = useQueryClient(); const { data, isLoading, isError, refetch } = useGetSettings(); const { data: dependencyStatus } = useGetSystemDependencies(); const mutation = useUpdateSettings(); const [form, setForm] = useState<Partial<AppSettings>>({}); const [notice, setNotice] = useState('');
   useEffect(() => { if (data) setForm(data); }, [data]);
   const update = (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => setForm((current) => ({ ...current, [key]: value }));
-  const save = () => { setNotice(''); mutation.mutate({ data: form as AppSettingsUpdate }, { onSuccess: (result) => { setForm(result); setNotice('Settings saved to the local node.'); queryClient.setQueryData(getGetSettingsQueryKey(), result); }, onError: () => setNotice('Settings could not be saved. The local node did not accept the update.') }); };
+  const save = () => { setNotice(''); mutation.mutate({ data: form as AppSettingsUpdate }, { onSuccess: async (result) => { setForm(result); setNotice('Settings saved to the local node.'); queryClient.setQueryData(getGetSettingsQueryKey(), result); try { await invoke('set_start_with_windows', { enabled: result.startWithWindows }); } catch { setNotice('Settings saved, but Windows startup could not be updated in this build.'); } }, onError: () => setNotice('Settings could not be saved. The local node did not accept the update.') }); };
   if (isLoading) return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Loading editable local preferences." /><Skeleton className="h-[520px]" /></>;
   if (isError || !data) return <ErrorState title="Settings unavailable" message="Preferences could not be read from the local node." onRetry={() => refetch()} testId="button-retry-settings" />;
-  return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Persistent preferences for the local-first control room. Changes are sent to the real settings API." action={<div className="flex items-center gap-3">{notice && <span className={`hidden text-[11px] sm:inline ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save">{notice}</span>}<button onClick={save} disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-settings"><Save size={14} /> {mutation.isPending ? 'SAVING' : 'SAVE CHANGES'}</button></div>} />{notice && <div className={`mb-4 text-[11px] sm:hidden ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save-mobile">{notice}</div>}<WebhookSecretPanel /><div className="grid gap-5 xl:grid-cols-[1fr_280px]"><div className="space-y-4">{settingsGroups.map(({ name, icon: Icon, fields }) => <SettingsGroup key={name} name={name} icon={Icon} fields={fields} form={form} update={update} />)}</div><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL DEPENDENCIES</div><h2 className="archive-display mt-1 text-lg font-extrabold">Capability check</h2>{dependencyStatus?.mediaBundle ? <div className="mt-5 border border-[#c9dfd9] bg-[#f1f9f5] p-3" data-testid="panel-media-bundle"><div className="flex items-center justify-between gap-3"><div className="archive-mono text-[9px] font-bold tracking-[.12em] text-[#39736e]">NATIVE MEDIA BUNDLE</div><span className="archive-mono bg-[#dcebe7] px-1.5 py-1 text-[9px] font-bold text-[#39736e]" data-testid="text-media-bundle-architecture">{dependencyStatus.mediaBundle.architecture.toUpperCase()}</span></div><div className="mt-2 text-[11px] font-semibold text-[#53656b]">{dependencyStatus.mediaBundle.targetTriple}</div><div className="mt-1 archive-mono text-[9px] text-[#799094]">yt-dlp {dependencyStatus.mediaBundle.ytDlpVersion} / FFmpeg {dependencyStatus.mediaBundle.ffmpegVersion}</div><div className="mt-2 text-[10px] leading-4 text-[#6e8583]">Managed native tools selected for this desktop build.</div></div> : <div className="mt-5 border border-[#e5e9e7] bg-[#f8faf8] p-3 text-[10px] leading-4 text-[#879599]" data-testid="panel-media-bundle-empty">No managed media bundle was detected. System tools or operator overrides may be in use.</div>}<div className="mt-5 space-y-3">{dependencyStatus?.dependencies?.length ? dependencyStatus.dependencies.map((dep) => <div key={dep.name} className="flex items-center gap-3" data-testid={`row-dependency-${dep.name}`}><span className={`status-dot ${dep.status === 'available' ? 'ready' : dep.status === 'missing' ? 'error' : 'warning'}`} /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><div className="truncate text-[11px] font-semibold text-[#53656b]">{dep.name}</div><span className={`archive-mono px-1 py-0.5 text-[8px] font-bold tracking-[.08em] ${dep.source === 'override' ? 'bg-[#fff0c9] text-[#8d681d]' : dep.source === 'bundled' ? 'bg-[#dcebe7] text-[#39736e]' : 'bg-[#eef1f0] text-[#879599]'}`} data-testid={`badge-dependency-source-${dep.name}`}>{dep.source.toUpperCase()}</span></div><div className="archive-mono text-[9px] text-[#96a3a5]">{dep.version ?? dep.status}</div></div></div>) : <p className="text-[11px] leading-5 text-[#879599]">No dependency data returned yet.</p>}</div><div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[10px] leading-5 text-[#879599]">Only versions, architecture, and source labels are shown here; filesystem paths are intentionally omitted.</div></aside></div></>;
+  return <><PageIntro eyebrow="SYSTEM / SETTINGS" title="System settings" description="Persistent preferences for the local-first control room. Changes are sent to the real settings API." action={<div className="flex items-center gap-3">{notice && <span className={`hidden text-[11px] sm:inline ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save">{notice}</span>}<button onClick={save} disabled={mutation.isPending} className="inline-flex items-center gap-2 bg-[#1d2b38] px-4 py-2.5 text-[11px] font-bold tracking-[.1em] text-[#f5f6f3] disabled:opacity-50" data-testid="button-save-settings"><Save size={14} /> {mutation.isPending ? 'SAVING' : 'SAVE CHANGES'}</button></div>} />{notice && <div className={`mb-4 text-[11px] sm:hidden ${notice.includes('could not') ? 'text-[#c85b51]' : 'text-[#39736e]'}`} data-testid="status-settings-save-mobile">{notice}</div>}<StorageDiagnosticsPanel /><UpdaterPanel /><WebhookSecretPanel /><div className="grid gap-5 xl:grid-cols-[1fr_280px]"><div className="space-y-4">{settingsGroups.filter(({ fields }) => fields.length > 0).map(({ name, icon: Icon, fields }) => <SettingsGroup key={name} name={name} icon={Icon} fields={fields} form={form} update={update} />)}</div><aside className="archive-panel h-fit p-5 md:p-6"><div className="archive-mono text-[10px] tracking-[.14em] text-[#7f9194]">LOCAL DEPENDENCIES</div><h2 className="archive-display mt-1 text-lg font-extrabold">Capability check</h2>{dependencyStatus?.mediaBundle ? <div className="mt-5 border border-[#c9dfd9] bg-[#f1f9f5] p-3" data-testid="panel-media-bundle"><div className="flex items-center justify-between gap-3"><div className="archive-mono text-[9px] font-bold tracking-[.12em] text-[#39736e]">NATIVE MEDIA BUNDLE</div><span className="archive-mono bg-[#dcebe7] px-1.5 py-1 text-[9px] font-bold text-[#39736e]" data-testid="text-media-bundle-architecture">{dependencyStatus.mediaBundle.architecture.toUpperCase()}</span></div><div className="mt-2 text-[11px] font-semibold text-[#53656b]">{dependencyStatus.mediaBundle.targetTriple}</div><div className="mt-1 archive-mono text-[9px] text-[#799094]">yt-dlp {dependencyStatus.mediaBundle.ytDlpVersion} / FFmpeg {dependencyStatus.mediaBundle.ffmpegVersion}</div><div className="mt-2 text-[10px] leading-4 text-[#6e8583]">Managed native tools selected for this desktop build.</div></div> : <div className="mt-5 border border-[#e5e9e7] bg-[#f8faf8] p-3 text-[10px] leading-4 text-[#879599]" data-testid="panel-media-bundle-empty">No managed media bundle was detected. System tools or operator overrides may be in use.</div>}<div className="mt-5 space-y-3">{dependencyStatus?.dependencies?.length ? dependencyStatus.dependencies.map((dep) => <div key={dep.name} className="flex items-center gap-3" data-testid={`row-dependency-${dep.name}`}><span className={`status-dot ${dep.status === 'available' ? 'ready' : dep.status === 'missing' ? 'error' : 'warning'}`} /><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><div className="truncate text-[11px] font-semibold text-[#53656b]">{dep.name}</div><span className={`archive-mono px-1 py-0.5 text-[8px] font-bold tracking-[.08em] ${dep.source === 'override' ? 'bg-[#fff0c9] text-[#8d681d]' : dep.source === 'bundled' ? 'bg-[#dcebe7] text-[#39736e]' : 'bg-[#eef1f0] text-[#879599]'}`} data-testid={`badge-dependency-source-${dep.name}`}>{dep.source.toUpperCase()}</span></div><div className="archive-mono text-[9px] text-[#96a3a5]">{dep.version ?? dep.status}</div></div></div>) : <p className="text-[11px] leading-5 text-[#879599]">No dependency data returned yet.</p>}</div><div className="mt-6 border-t border-[#e3e8e7] pt-4 text-[10px] leading-5 text-[#879599]">Only versions, architecture, and source labels are shown here; filesystem paths are intentionally omitted.</div></aside></div></>;
 }
 
 type WebhookForm = {
@@ -1295,11 +1544,11 @@ function WebhookSecretRow({ provider, status, form, disabled, onChange, onSave }
 }
 function SettingsGroup({ name, icon: Icon, fields, form, update }: { name: string; icon: typeof SlidersHorizontal; fields: string[]; form: Partial<AppSettings>; update: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => void }) {
   const [open, setOpen] = useState(fields.length > 0); const slug = name.toLowerCase().replace(/\s/g, '-');
-  return <section className={`archive-panel overflow-hidden ${fields.length ? '' : 'opacity-75'}`} data-testid={`settings-group-${slug}`}><button onClick={() => setOpen((value) => !value)} className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-white/50" data-testid={`button-toggle-settings-${slug}`}><span className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center bg-[#e8efed] text-[#4e9690]"><Icon size={15} /></span><span className="archive-display text-[14px] font-extrabold text-[#354851]">{name}</span>{fields.length === 0 && <span className="archive-mono text-[8px] tracking-[.1em] text-[#9ba6a7]">RESERVED</span>}</span><ChevronRight size={16} className={`text-[#9aa7a7] transition-transform ${open ? 'rotate-90' : ''}`} /></button>{open && fields.length > 0 && <div className="grid gap-4 border-t border-[#e3e8e7]/60 px-5 py-5 md:grid-cols-2">{fields.map((field) => <SettingField key={field} field={field} form={form} update={update} />)}</div>}</section>;
+  return <section className="archive-panel overflow-hidden" data-testid={`settings-group-${slug}`}><button onClick={() => setOpen((value) => !value)} className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-white/50" data-testid={`button-toggle-settings-${slug}`}><span className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center bg-[#e8efed] text-[#4e9690]"><Icon size={15} /></span><span className="archive-display text-[14px] font-extrabold text-[#354851]">{name}</span></span><ChevronRight size={16} className={`text-[#9aa7a7] transition-transform ${open ? 'rotate-90' : ''}`} /></button>{open && fields.length > 0 && <div className="grid gap-4 border-t border-[#e3e8e7]/60 px-5 py-5 md:grid-cols-2">{fields.map((field) => <SettingField key={field} field={field} form={form} update={update} />)}</div>}</section>;
 }
 function SettingField({ field, form, update }: { field: string; form: Partial<AppSettings>; update: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => void }) {
   const key = field as keyof AppSettings; const value = form[key];
-  if (field === 'mockMode' || field === 'hardwareAcceleration') return <label className="flex items-center justify-between gap-4 border border-[#e2e8e6] bg-white/50 px-3 py-3"><span><span className="block text-[11px] font-semibold text-[#53656b]">{field === 'mockMode' ? 'Mock mode' : 'Hardware acceleration'}</span><span className="mt-1 block text-[10px] text-[#94a1a3]">{field === 'mockMode' ? 'Use backend-provided demo data' : 'Allow accelerated media work'}</span></span><input type="checkbox" checked={Boolean(value)} onChange={(event) => update(key, event.target.checked)} className="h-4 w-4 accent-[#4e9690]" data-testid={`input-setting-${field}`} /></label>;
+  if (field === 'mockMode' || field === 'hardwareAcceleration' || field === 'startWithWindows') return <label className="flex items-center justify-between gap-4 border border-[#e2e8e6] bg-white/50 px-3 py-3"><span><span className="block text-[11px] font-semibold text-[#53656b]">{field === 'mockMode' ? 'Mock mode' : field === 'hardwareAcceleration' ? 'Hardware acceleration' : 'Start Archive Assistant with Windows'}</span><span className="mt-1 block text-[10px] text-[#94a1a3]">{field === 'mockMode' ? 'Use backend-provided demo data' : field === 'hardwareAcceleration' ? 'Allow accelerated media work' : 'Launch quietly to the system tray. Existing installs stay disabled until enabled.'}</span></span><input type="checkbox" checked={Boolean(value)} onChange={(event) => update(key, event.target.checked)} className="h-4 w-4 accent-[#4e9690]" data-testid={`input-setting-${field}`} /></label>;
   const selectOptions: Record<string, string[]> = { logLevel: ['info', 'debug', 'warn', 'error'], networkMode: ['offline', 'local_only', 'allow_network'], hardwareAccelerationMode: ['auto', 'disabled'], outputContainer: ['mp4', 'mkv', 'webm'] };
    const labels: Record<string, string> = { dataDirectory: 'DATA DIRECTORY', downloadDirectory: 'DOWNLOAD DIRECTORY', archiveDirectory: 'ARCHIVE DIRECTORY', temporaryDirectory: 'TEMPORARY DIRECTORY', ytDlpPath: 'YT-DLP EXECUTABLE', ffmpegPath: 'FFMPEG EXECUTABLE', ffprobePath: 'FFPROBE EXECUTABLE', concurrentDownloads: 'CONCURRENT DOWNLOADS', maxRetries: 'MAX RETRIES', bandwidthLimit: 'BANDWIDTH LIMIT (BYTES / SEC)', inspectionCacheMinutes: 'INSPECTION CACHE (MINUTES)', warningFreePercent: 'WARNING FREE (%)', criticalFreePercent: 'CRITICAL FREE (%)' };
   if (selectOptions[field]) return <label><span className="archive-mono mb-2 block text-[10px] tracking-[.1em] text-[#6e8185]">{labels[field] ?? field.toUpperCase()}</span><select value={String(value ?? '')} onChange={(event) => update(key, event.target.value)} className="w-full border border-[#d6dfdc] bg-[#fbfcfa] px-3 py-2.5 text-[12px] outline-none" data-testid={`select-setting-${field}`}>{selectOptions[field].map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
@@ -1321,6 +1570,32 @@ function SignInPage() {
 
 function SignUpPage() {
   return <div className="flex min-h-[100dvh] items-center justify-center bg-[#f3f5f4] px-4 py-8"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>;
+}
+
+function DesktopLifecycleBridge() {
+  const [, setLocation] = useLocation();
+  const client = useQueryClient();
+  useEffect(() => {
+    let dispose: (() => void) | undefined;
+    listen<string>('tray://action', async (event) => {
+      switch (event.payload) {
+        case 'open': await invoke('open_archive_assistant').catch(() => undefined); break;
+        case 'scan':
+          await fetch(apiUrl('/api/archive/scan'), { method: 'POST' }).catch(() => undefined);
+          client.invalidateQueries({ queryKey: getGetArchiveScanQueryKey() });
+          break;
+        case 'plex':
+          await fetch(apiUrl('/api/plex/sync'), { method: 'POST' }).catch(() => undefined);
+          client.invalidateQueries({ queryKey: getGetPlexConfigQueryKey() });
+          client.invalidateQueries({ queryKey: getGetPlexInventoryQueryKey() });
+          break;
+        case 'activity': setLocation('/history'); break;
+        case 'settings': setLocation('/settings'); break;
+      }
+    }).then((unlisten) => { dispose = unlisten; }).catch(() => undefined);
+    return () => dispose?.();
+  }, [client, setLocation]);
+  return null;
 }
 
 function QueryCacheInvalidator() {
@@ -1346,7 +1621,7 @@ function Workspace() {
   const { isLoaded, isSignedIn } = useAppAuth();
   if (!isLoaded) return <AuthLoading />;
   if (!isSignedIn) return <Redirect to="/" />;
-  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/assistant" component={AssistantPage} /><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/plex" component={PlexPage} /><Route path="/sources" component={SourcePage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
+  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/user-portal" component={Home} /><Route path="/workload/:workloadId" component={WorkloadDetailPage} /><Route path="/archive/ordering/:proposalId" component={IntelligentOrderingPage} /><Route path="/archive/health" component={ArchiveHealthPage} /><Route path="/assistant" component={AssistantPage} /><Route path="/discover" component={DiscoverPage} /><Route path="/queue" component={QueuePage} /><Route path="/archive" component={ArchivePage} /><Route path="/plex" component={PlexPage} /><Route path="/jellyfin" component={JellyfinPage} /><Route path="/sources" component={SourcesPage} /><Route path="/monitoring" component={MonitoringPage} /><Route path="/history" component={HistoryPage} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} /></Switch></AppShell></ErrorBoundary>;
 }
 
 function Router() {
@@ -1364,7 +1639,7 @@ function ClerkApp() {
 }
 
 function ApplicationProviders() {
-  return <QueryClientProvider client={queryClient}><QueryCacheInvalidator /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><QueryCacheInvalidator /><DesktopLifecycleBridge /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>;
 }
 
 function LocalApp() {

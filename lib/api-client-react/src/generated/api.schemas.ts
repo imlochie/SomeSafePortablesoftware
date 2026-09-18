@@ -114,6 +114,1402 @@ export const StatusValue = {
   processing: 'processing',
 } as const;
 
+export type AssistantGroupType = typeof AssistantGroupType[keyof typeof AssistantGroupType];
+
+
+export const AssistantGroupType = {
+  download: 'download',
+  integrity: 'integrity',
+  rename: 'rename',
+  duplicate: 'duplicate',
+  identity: 'identity',
+  quality: 'quality',
+} as const;
+
+export type AssistantGroupState = typeof AssistantGroupState[keyof typeof AssistantGroupState];
+
+
+export const AssistantGroupState = {
+  actionable: 'actionable',
+  blocked: 'blocked',
+  uncertain: 'uncertain',
+  informational: 'informational',
+  resolved: 'resolved',
+} as const;
+
+export type AssistantGroupPriority = typeof AssistantGroupPriority[keyof typeof AssistantGroupPriority];
+
+
+export const AssistantGroupPriority = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  info: 'info',
+} as const;
+
+export interface AssistantGroup {
+  id: string;
+  type: AssistantGroupType;
+  state: AssistantGroupState;
+  priority: AssistantGroupPriority;
+  confidence: string;
+  title: string;
+  explanation: string;
+  evidence: string[];
+  recommendedAction: string;
+  underlyingItemIds: number[];
+  /** @minimum 1 */
+  itemCount: number;
+}
+
+export type AssistantRecommendationType = typeof AssistantRecommendationType[keyof typeof AssistantRecommendationType];
+
+
+export const AssistantRecommendationType = {
+  download: 'download',
+  integrity: 'integrity',
+  rename: 'rename',
+  duplicate: 'duplicate',
+  identity: 'identity',
+  quality: 'quality',
+} as const;
+
+export type AssistantRecommendationPriority = typeof AssistantRecommendationPriority[keyof typeof AssistantRecommendationPriority];
+
+
+export const AssistantRecommendationPriority = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  info: 'info',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AssistantRecommendationPersonalContext = {
+  watchState: string;
+  /** @nullable */
+  lastWatchedAt: string | null;
+  /** @minimum 0 */
+  playCount: number;
+  /** @minimum 0 */
+  watchedMinutes: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     * @nullable
+     */
+  seriesProgress: number | null;
+  isNextEpisode: boolean;
+} | null;
+
+export type AssistantRecommendationPersonalAffinityPriority = typeof AssistantRecommendationPersonalAffinityPriority[keyof typeof AssistantRecommendationPersonalAffinityPriority];
+
+
+export const AssistantRecommendationPersonalAffinityPriority = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * @nullable
+ */
+export type AssistantRecommendationPersonalAffinity = {
+  priority: AssistantRecommendationPersonalAffinityPriority;
+  basedOn: string[];
+} | null;
+
+export interface AssistantRecommendation {
+  id: string;
+  type: AssistantRecommendationType;
+  priority: AssistantRecommendationPriority;
+  confidence: string;
+  title: string;
+  explanation: string;
+  evidence: string[];
+  recommendedAction: string;
+  state: string;
+  /** @nullable */
+  reviewItemId: number | null;
+  /** @nullable */
+  personalContext?: AssistantRecommendationPersonalContext;
+  /** @nullable */
+  personalAffinity?: AssistantRecommendationPersonalAffinity;
+}
+
+export type CreateSourceMonitorKind = typeof CreateSourceMonitorKind[keyof typeof CreateSourceMonitorKind];
+
+
+export const CreateSourceMonitorKind = {
+  rss: 'rss',
+  atom: 'atom',
+  json: 'json',
+  html: 'html',
+  telegram: 'telegram',
+} as const;
+
+export type CreateSourceMonitorTargetsItemMediaType = typeof CreateSourceMonitorTargetsItemMediaType[keyof typeof CreateSourceMonitorTargetsItemMediaType];
+
+
+export const CreateSourceMonitorTargetsItemMediaType = {
+  movie: 'movie',
+  series: 'series',
+  episode: 'episode',
+} as const;
+
+export type CreateSourceMonitorTargetsItem = {
+  title: string;
+  mediaType?: CreateSourceMonitorTargetsItemMediaType;
+  /** @minimum 0 */
+  season?: number;
+};
+
+export interface CreateSourceMonitor {
+  name?: string;
+  /** @minLength 1 */
+  url: string;
+  kind?: CreateSourceMonitorKind;
+  /**
+     * @minimum 5
+     * @maximum 1440
+     */
+  intervalMinutes?: number;
+  discovery?: boolean;
+  targets?: CreateSourceMonitorTargetsItem[];
+}
+
+export interface AgentDownloadInspectInput {
+  /** @minLength 1 */
+  sourceUrl: string;
+  title?: string;
+  forceRefresh?: boolean;
+}
+
+export type AgentDownloadQueueInputOutputContainer = typeof AgentDownloadQueueInputOutputContainer[keyof typeof AgentDownloadQueueInputOutputContainer];
+
+
+export const AgentDownloadQueueInputOutputContainer = {
+  mp4: 'mp4',
+  mkv: 'mkv',
+  webm: 'webm',
+} as const;
+
+export interface AgentDownloadQueueInput {
+  /** @minimum 1 */
+  reviewItemId: number;
+  sourceUrl?: string;
+  title?: string;
+  selectedFormatId?: string;
+  /** @nullable */
+  selectedVideoFormatId?: string | null;
+  /** @nullable */
+  selectedAudioFormatId?: string | null;
+  outputContainer?: AgentDownloadQueueInputOutputContainer;
+  temporaryDirectory?: string;
+  destinationDirectory?: string;
+  finalFilename?: string;
+  start?: boolean;
+}
+
+export type AgentDownloadSelectionKind = typeof AgentDownloadSelectionKind[keyof typeof AgentDownloadSelectionKind];
+
+
+export const AgentDownloadSelectionKind = {
+  download_source_selection: 'download_source_selection',
+} as const;
+
+export type AgentDownloadSelectionContract = typeof AgentDownloadSelectionContract[keyof typeof AgentDownloadSelectionContract];
+
+
+export const AgentDownloadSelectionContract = {
+  'agent-download-v1': 'agent-download-v1',
+} as const;
+
+export type AgentDownloadSelectionSource = { [key: string]: unknown };
+
+export type AgentDownloadSelectionSelected = { [key: string]: unknown };
+
+export type AgentDownloadSelectionAlternativesItem = { [key: string]: unknown };
+
+export type AgentDownloadSelectionReview = { [key: string]: unknown };
+
+export type AgentDownloadSelectionSafety = { [key: string]: unknown };
+
+export interface AgentDownloadSelection {
+  kind: AgentDownloadSelectionKind;
+  contract: AgentDownloadSelectionContract;
+  source: AgentDownloadSelectionSource;
+  selected: AgentDownloadSelectionSelected;
+  alternatives: AgentDownloadSelectionAlternativesItem[];
+  review: AgentDownloadSelectionReview;
+  safety: AgentDownloadSelectionSafety;
+}
+
+export type AgentDownloadQueuedKind = typeof AgentDownloadQueuedKind[keyof typeof AgentDownloadQueuedKind];
+
+
+export const AgentDownloadQueuedKind = {
+  download_queued: 'download_queued',
+} as const;
+
+export type AgentDownloadQueuedContract = typeof AgentDownloadQueuedContract[keyof typeof AgentDownloadQueuedContract];
+
+
+export const AgentDownloadQueuedContract = {
+  'agent-download-v1': 'agent-download-v1',
+} as const;
+
+export type AgentDownloadQueuedJob = { [key: string]: unknown };
+
+export interface AgentDownloadQueued {
+  kind: AgentDownloadQueuedKind;
+  contract: AgentDownloadQueuedContract;
+  job: AgentDownloadQueuedJob;
+  started: boolean;
+  verification: string;
+}
+
+export interface CreateAgentResearch {
+  /** @maxLength 1000 */
+  query?: string;
+  includeComparisons?: boolean;
+  includeUpcoming?: boolean;
+}
+
+export type AgentResearchBriefKind = typeof AgentResearchBriefKind[keyof typeof AgentResearchBriefKind];
+
+
+export const AgentResearchBriefKind = {
+  archive_research_brief: 'archive_research_brief',
+} as const;
+
+export type AgentResearchBriefContract = typeof AgentResearchBriefContract[keyof typeof AgentResearchBriefContract];
+
+
+export const AgentResearchBriefContract = {
+  'agent-research-v1': 'agent-research-v1',
+} as const;
+
+export type AgentResearchBriefSourcePolicy = { [key: string]: unknown };
+
+export type AgentResearchBriefUpcoming = { [key: string]: unknown };
+
+export type AgentResearchBriefRecentItem = { [key: string]: unknown };
+
+export type AgentResearchBriefQueryResearch = { [key: string]: unknown };
+
+export type AgentResearchBriefComparisons = { [key: string]: unknown };
+
+export type AgentResearchBriefPersonalContext = { [key: string]: unknown };
+
+export interface AgentResearchBrief {
+  kind: AgentResearchBriefKind;
+  contract: AgentResearchBriefContract;
+  generatedAt: string;
+  /** @nullable */
+  question?: string | null;
+  ownerScoped: boolean;
+  sourcePolicy: AgentResearchBriefSourcePolicy;
+  upcoming: AgentResearchBriefUpcoming;
+  recent: AgentResearchBriefRecentItem[];
+  queryResearch: AgentResearchBriefQueryResearch;
+  comparisons: AgentResearchBriefComparisons;
+  comparisonLimitations: string[];
+  personalContext: AgentResearchBriefPersonalContext;
+}
+
+export interface CreateAgentInsight {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  question: string;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  maxActions?: number;
+  includeOperationPlans?: boolean;
+}
+
+export type AgentInsightBriefKind = typeof AgentInsightBriefKind[keyof typeof AgentInsightBriefKind];
+
+
+export const AgentInsightBriefKind = {
+  archive_insight_brief: 'archive_insight_brief',
+} as const;
+
+export type AgentInsightBriefContract = typeof AgentInsightBriefContract[keyof typeof AgentInsightBriefContract];
+
+
+export const AgentInsightBriefContract = {
+  'agent-insight-v1': 'agent-insight-v1',
+} as const;
+
+export type AgentInsightBriefSource = { [key: string]: unknown };
+
+export type AgentInsightBriefSafety = { [key: string]: unknown };
+
+export type AgentInsightBriefSnapshot = { [key: string]: unknown };
+
+export type AgentInsightBriefPrioritizedEvidenceItem = { [key: string]: unknown };
+
+export type AgentInsightBriefPersonalSignals = { [key: string]: unknown };
+
+export type AgentInsightBriefUnknownsItem = { [key: string]: unknown };
+
+export interface AgentInsightBrief {
+  kind: AgentInsightBriefKind;
+  contract: AgentInsightBriefContract;
+  generatedAt: string;
+  question: string;
+  source: AgentInsightBriefSource;
+  safety: AgentInsightBriefSafety;
+  answerRequirements: string[];
+  snapshot: AgentInsightBriefSnapshot;
+  prioritizedEvidence: AgentInsightBriefPrioritizedEvidenceItem[];
+  personalSignals: AgentInsightBriefPersonalSignals;
+  unknowns: AgentInsightBriefUnknownsItem[];
+}
+
+export type AgentContextSource = {
+  system: string;
+  contract: string;
+  ownerScoped: boolean;
+};
+
+export type AgentContextSafetyMode = typeof AgentContextSafetyMode[keyof typeof AgentContextSafetyMode];
+
+
+export const AgentContextSafetyMode = {
+  evidence_only: 'evidence_only',
+} as const;
+
+export type AgentContextSafety = {
+  mode: AgentContextSafetyMode;
+  approvalRequired: boolean;
+  preflightRequired: boolean;
+  directMutation: boolean;
+  providerExecution: boolean;
+  unknownsMustRemainExplicit: boolean;
+};
+
+export type AgentContextArchive = { [key: string]: unknown };
+
+export type AgentContextPersonal = { [key: string]: unknown };
+
+export interface AgentContext {
+  generatedAt: string;
+  source: AgentContextSource;
+  safety: AgentContextSafety;
+  archive: AgentContextArchive;
+  personal: AgentContextPersonal;
+}
+
+export type AgentCapabilitiesAgentMode = typeof AgentCapabilitiesAgentMode[keyof typeof AgentCapabilitiesAgentMode];
+
+
+export const AgentCapabilitiesAgentMode = {
+  local: 'local',
+  hosted: 'hosted',
+} as const;
+
+export type AgentCapabilitiesAgent = {
+  id: string;
+  mode: AgentCapabilitiesAgentMode;
+};
+
+export type AgentCapabilitiesCapabilities = {
+  read: boolean;
+  plan: boolean;
+  operate: boolean;
+};
+
+export type AgentCapabilitiesOperationPolicy = {
+  approvalRequired: boolean;
+  preflightRequired: boolean;
+  directMutation: boolean;
+  providerExecution: boolean;
+};
+
+export interface AgentCapabilities {
+  agent: AgentCapabilitiesAgent;
+  capabilities: AgentCapabilitiesCapabilities;
+  operationPolicy: AgentCapabilitiesOperationPolicy;
+}
+
+export type AssistantOverviewSummaryHealth = typeof AssistantOverviewSummaryHealth[keyof typeof AssistantOverviewSummaryHealth];
+
+
+export const AssistantOverviewSummaryHealth = {
+  healthy: 'healthy',
+  mostly_healthy: 'mostly_healthy',
+  attention_required: 'attention_required',
+} as const;
+
+export type AssistantOverviewSummaryCounts = {
+  /** @minimum 0 */
+  critical: number;
+  /** @minimum 0 */
+  high: number;
+  /** @minimum 0 */
+  medium: number;
+  /** @minimum 0 */
+  low: number;
+  /** @minimum 0 */
+  info: number;
+};
+
+export interface AssistantOverviewSummary {
+  health: AssistantOverviewSummaryHealth;
+  /** @minimum 0 */
+  attentionCount: number;
+  counts: AssistantOverviewSummaryCounts;
+  /** @minimum 0 */
+  blockedCount: number;
+  /** @minimum 0 */
+  uncertainCount: number;
+  /** @nullable */
+  lastScan: string | null;
+  freshness: string;
+}
+
+export type AssistantWorkloadCounts = {
+  /** @minimum 0 */
+  needs_you: number;
+  /** @minimum 0 */
+  being_handled: number;
+  /** @minimum 0 */
+  waiting: number;
+  /** @minimum 0 */
+  interesting: number;
+  /** @minimum 0 */
+  completed: number;
+  /** @minimum 0 */
+  dismissed: number;
+  /** @minimum 0 */
+  superseded: number;
+  /** @minimum 0 */
+  blocked: number;
+  /** @minimum 0 */
+  uncertain: number;
+};
+
+export type AssistantWorkloadItemState = typeof AssistantWorkloadItemState[keyof typeof AssistantWorkloadItemState];
+
+
+export const AssistantWorkloadItemState = {
+  needs_you: 'needs_you',
+  being_handled: 'being_handled',
+  waiting: 'waiting',
+  interesting: 'interesting',
+  completed: 'completed',
+  dismissed: 'dismissed',
+  blocked: 'blocked',
+  uncertain: 'uncertain',
+} as const;
+
+export type AssistantWorkloadItemDestination = typeof AssistantWorkloadItemDestination[keyof typeof AssistantWorkloadItemDestination];
+
+
+export const AssistantWorkloadItemDestination = {
+  assistant: 'assistant',
+  queue: 'queue',
+  history: 'history',
+} as const;
+
+export type AssistantWorkloadItemSource = typeof AssistantWorkloadItemSource[keyof typeof AssistantWorkloadItemSource];
+
+
+export const AssistantWorkloadItemSource = {
+  assistant: 'assistant',
+  download: 'download',
+  review: 'review',
+  health: 'health',
+} as const;
+
+export type AssistantWorkloadItemFreshness = typeof AssistantWorkloadItemFreshness[keyof typeof AssistantWorkloadItemFreshness];
+
+
+export const AssistantWorkloadItemFreshness = {
+  fresh: 'fresh',
+  recent: 'recent',
+  stale: 'stale',
+  unknown: 'unknown',
+} as const;
+
+export type AssistantWorkloadItemChangeContext = {
+  previousObservationId: number;
+  previousEvidenceKey: string;
+  previousObservedAt: string;
+} | null;
+
+export interface AssistantWorkloadItem {
+  id: string;
+  title: string;
+  reviewItemId: number | null;
+  findingClassification: string | null;
+  currentObservationId: number | null;
+  provider: string | null;
+  refreshId: string | null;
+  evidenceKey: string | null;
+  observedAt: string | null;
+  changeContext: AssistantWorkloadItemChangeContext;
+  summary: string;
+  state: AssistantWorkloadItemState;
+  needsUserAction: boolean;
+  nextStep: string;
+  destination: AssistantWorkloadItemDestination;
+  source: AssistantWorkloadItemSource;
+  sourceId: string;
+  evidence: string[];
+  /** @nullable */
+  confidence: string | null;
+  /** @nullable */
+  lastConfirmedAt: string | null;
+  freshness: AssistantWorkloadItemFreshness;
+}
+
+export interface AssistantWorkload {
+  items: AssistantWorkloadItem[];
+  counts: AssistantWorkloadCounts;
+  generatedAt: string;
+}
+
+export type AssistantLineageStageStatus = typeof AssistantLineageStageStatus[keyof typeof AssistantLineageStageStatus];
+
+
+export const AssistantLineageStageStatus = {
+  known: 'known',
+  unknown: 'unknown',
+  not_applicable: 'not_applicable',
+} as const;
+
+export interface AssistantLineageStage {
+  status: AssistantLineageStageStatus;
+  /** @nullable */
+  id?: string | null;
+  label?: string;
+  detail?: string;
+  /** @nullable */
+  occurredAt?: string | null;
+}
+
+export interface AssistantWorkloadLineage {
+  workloadId: string;
+  title: string;
+  origin: AssistantLineageStage;
+  review: AssistantLineageStage;
+  approval: AssistantLineageStage;
+  acquisition: AssistantLineageStage;
+  download: AssistantLineageStage;
+  verification: AssistantLineageStage;
+  operation: AssistantLineageStage;
+  outcome: AssistantLineageStage;
+}
+
+export type AssistantOverviewActiveWork = {
+  scanStatus: string;
+  /** @minimum 0 */
+  acquisitionJobs: number;
+};
+
+export type MediaExperienceSourceStatus = typeof MediaExperienceSourceStatus[keyof typeof MediaExperienceSourceStatus];
+
+
+export const MediaExperienceSourceStatus = {
+  provider_metadata: 'provider_metadata',
+  no_synced_provider_data: 'no_synced_provider_data',
+} as const;
+
+export type MediaExperienceItemProvider = typeof MediaExperienceItemProvider[keyof typeof MediaExperienceItemProvider];
+
+
+export const MediaExperienceItemProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export type MediaExperienceItemItemType = typeof MediaExperienceItemItemType[keyof typeof MediaExperienceItemItemType];
+
+
+export const MediaExperienceItemItemType = {
+  movie: 'movie',
+  show: 'show',
+  episode: 'episode',
+  unknown: 'unknown',
+} as const;
+
+export type MediaExperienceItemStatus = typeof MediaExperienceItemStatus[keyof typeof MediaExperienceItemStatus];
+
+
+export const MediaExperienceItemStatus = {
+  completed: 'completed',
+  in_progress: 'in_progress',
+  unwatched: 'unwatched',
+  unknown: 'unknown',
+} as const;
+
+export interface MediaExperienceItem {
+  key: string;
+  provider: MediaExperienceItemProvider;
+  title: string;
+  itemType: MediaExperienceItemItemType;
+  /** @nullable */
+  year: number | null;
+  /** @nullable */
+  releaseDate: string | null;
+  /** @nullable */
+  durationMinutes: number | null;
+  status: MediaExperienceItemStatus;
+  /** @nullable */
+  progressPercent: number | null;
+  /** @minimum 0 */
+  playCount: number;
+  /** @nullable */
+  lastWatchedAt: string | null;
+  /** @minimum 0 */
+  watchedMinutes: number;
+  /** @nullable */
+  seriesTitle: string | null;
+  /** @nullable */
+  seasonNumber: number | null;
+  /** @nullable */
+  episodeNumber: number | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     * @nullable
+     */
+  seriesProgress: number | null;
+  isNextEpisode: boolean;
+  evidence: string[];
+}
+
+export interface MediaExperienceSummary {
+  /** @minimum 0 */
+  completedCount: number;
+  /** @minimum 0 */
+  inProgressCount: number;
+  /** @minimum 0 */
+  watchedMinutes: number;
+  /** @minimum 0 */
+  watchedHours: number;
+}
+
+export interface CurrentViewingMomentum {
+  /** @minimum 0 */
+  activeSeriesCount: number;
+  /** @minimum 0 */
+  recentlyWatchedCount: number;
+  windowDays: 30;
+}
+
+export type MediaExperienceWatchlistStatus = typeof MediaExperienceWatchlistStatus[keyof typeof MediaExperienceWatchlistStatus];
+
+
+export const MediaExperienceWatchlistStatus = {
+  not_available: 'not_available',
+} as const;
+
+export type MediaExperienceWatchlist = {
+  status: MediaExperienceWatchlistStatus;
+  items: MediaExperienceItem[];
+};
+
+export interface MediaExperience {
+  sourceStatus: MediaExperienceSourceStatus;
+  items: MediaExperienceItem[];
+  completed: MediaExperienceItem[];
+  inProgress: MediaExperienceItem[];
+  summary: MediaExperienceSummary;
+  currentViewingMomentum: CurrentViewingMomentum;
+  watchlist: MediaExperienceWatchlist;
+}
+
+export type DiscoverySectionStatus = typeof DiscoverySectionStatus[keyof typeof DiscoverySectionStatus];
+
+
+export const DiscoverySectionStatus = {
+  available: 'available',
+  limited: 'limited',
+  not_available: 'not_available',
+} as const;
+
+export type DiscoveryItemProvider = typeof DiscoveryItemProvider[keyof typeof DiscoveryItemProvider];
+
+
+export const DiscoveryItemProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export type DiscoveryItemItemType = typeof DiscoveryItemItemType[keyof typeof DiscoveryItemItemType];
+
+
+export const DiscoveryItemItemType = {
+  movie: 'movie',
+  show: 'show',
+  episode: 'episode',
+  unknown: 'unknown',
+} as const;
+
+export type DiscoveryItemPersonalRelevance = typeof DiscoveryItemPersonalRelevance[keyof typeof DiscoveryItemPersonalRelevance];
+
+
+export const DiscoveryItemPersonalRelevance = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  unknown: 'unknown',
+} as const;
+
+export interface DiscoveryItem {
+  id: string;
+  title: string;
+  provider: DiscoveryItemProvider;
+  itemType: DiscoveryItemItemType;
+  /** @nullable */
+  releaseDate: string | null;
+  personalRelevance: DiscoveryItemPersonalRelevance;
+  reasons: string[];
+  evidence: string[];
+}
+
+export interface DiscoverySection {
+  status: DiscoverySectionStatus;
+  /** @nullable */
+  reason: string | null;
+  items: DiscoveryItem[];
+}
+
+export interface DiscoverySections {
+  upcoming: DiscoverySection;
+  recentlyReleased: DiscoverySection;
+  trending: DiscoverySection;
+  suggestedForYou: DiscoverySection;
+}
+
+export type AssistantBriefingItemArchivePriority = typeof AssistantBriefingItemArchivePriority[keyof typeof AssistantBriefingItemArchivePriority];
+
+
+export const AssistantBriefingItemArchivePriority = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  info: 'info',
+} as const;
+
+export type AssistantBriefingItemPersonalAffinity = typeof AssistantBriefingItemPersonalAffinity[keyof typeof AssistantBriefingItemPersonalAffinity];
+
+
+export const AssistantBriefingItemPersonalAffinity = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  unknown: 'unknown',
+} as const;
+
+export type AssistantBriefingItemAvailability = typeof AssistantBriefingItemAvailability[keyof typeof AssistantBriefingItemAvailability];
+
+
+export const AssistantBriefingItemAvailability = {
+  available: 'available',
+  blocked: 'blocked',
+  uncertain: 'uncertain',
+} as const;
+
+export interface AssistantBriefingItem {
+  /** @minimum 1 */
+  rank: number;
+  recommendationId: string;
+  title: string;
+  archivePriority: AssistantBriefingItemArchivePriority;
+  personalAffinity: AssistantBriefingItemPersonalAffinity;
+  availability: AssistantBriefingItemAvailability;
+  confidence: string;
+  reasons: string[];
+  /** @nullable */
+  blockedReason: string | null;
+}
+
+export interface AssistantOverview {
+  summary: AssistantOverviewSummary;
+  attention: AssistantRecommendation[];
+  recommendations: AssistantRecommendation[];
+  groups: AssistantGroup[];
+  blocked: AssistantRecommendation[];
+  uncertain: AssistantRecommendation[];
+  informational: string[];
+  activeWork: AssistantOverviewActiveWork;
+  mediaExperience: MediaExperience;
+  discovery: DiscoverySections;
+  personalizedBriefing: AssistantBriefingItem[];
+}
+
+export type PersonalMediaProfileViewing = { [key: string]: unknown };
+
+export type PersonalMediaProfileTemporal = { [key: string]: unknown };
+
+export type PersonalMediaProfilePatterns = { [key: string]: unknown };
+
+export type PersonalMediaProfileArchive = { [key: string]: unknown };
+
+export interface PersonalMediaProfile {
+  viewing: PersonalMediaProfileViewing;
+  temporal: PersonalMediaProfileTemporal;
+  patterns: PersonalMediaProfilePatterns;
+  archive: PersonalMediaProfileArchive;
+  unknowns: string[];
+}
+
+export type ArchiveGraphClustersItem = { [key: string]: unknown };
+
+export type ArchiveGraphGapsItem = { [key: string]: unknown };
+
+export type ArchiveGraphRedundanciesItem = { [key: string]: unknown };
+
+export type ArchiveGraphRelationshipsItem = { [key: string]: unknown };
+
+export interface ArchiveGraph {
+  clusters: ArchiveGraphClustersItem[];
+  gaps: ArchiveGraphGapsItem[];
+  redundancies: ArchiveGraphRedundanciesItem[];
+  relationships: ArchiveGraphRelationshipsItem[];
+  unknowns: string[];
+}
+
+export interface MediaProfileResponse {
+  profile: PersonalMediaProfile;
+  archiveGraph: ArchiveGraph;
+}
+
+export type PersonalReasoningResponseStatus = typeof PersonalReasoningResponseStatus[keyof typeof PersonalReasoningResponseStatus];
+
+
+export const PersonalReasoningResponseStatus = {
+  available: 'available',
+  limited: 'limited',
+} as const;
+
+export type PersonalReasoningResponseSource = typeof PersonalReasoningResponseSource[keyof typeof PersonalReasoningResponseSource];
+
+
+export const PersonalReasoningResponseSource = {
+  'tvmaze+imdb': 'tvmaze+imdb',
+} as const;
+
+export const ResearchHistoryBoundsValue = {
+  maxWatchedSeeds: 20,
+  maxCandidates: 100,
+} as const;
+export type ResearchHistoryBounds = typeof ResearchHistoryBoundsValue;
+
+export type ResearchCandidateIdentityMediaType = typeof ResearchCandidateIdentityMediaType[keyof typeof ResearchCandidateIdentityMediaType];
+
+
+export const ResearchCandidateIdentityMediaType = {
+  show: 'show',
+} as const;
+
+export type ResearchCandidateIdentitySource = typeof ResearchCandidateIdentitySource[keyof typeof ResearchCandidateIdentitySource];
+
+
+export const ResearchCandidateIdentitySource = {
+  tvmaze: 'tvmaze',
+} as const;
+
+export interface ResearchCandidateIdentity {
+  id: string;
+  title: string;
+  mediaType: ResearchCandidateIdentityMediaType;
+  source: ResearchCandidateIdentitySource;
+  sourceItemId: string;
+  /** @nullable */
+  releaseDate: string | null;
+  /** @nullable */
+  year: number | null;
+  genres: string[];
+}
+
+export type ReasoningConclusionConclusion = typeof ReasoningConclusionConclusion[keyof typeof ReasoningConclusionConclusion];
+
+
+export const ReasoningConclusionConclusion = {
+  strong_watch_candidate: 'strong_watch_candidate',
+  watch_candidate: 'watch_candidate',
+  strong_archive_candidate: 'strong_archive_candidate',
+  archive_candidate: 'archive_candidate',
+  interesting_but_uncertain: 'interesting_but_uncertain',
+  research_further: 'research_further',
+  not_recommended: 'not_recommended',
+  already_satisfied: 'already_satisfied',
+  archive_redundant: 'archive_redundant',
+} as const;
+
+export type ReasoningConclusionConfidence = typeof ReasoningConclusionConfidence[keyof typeof ReasoningConclusionConfidence];
+
+
+export const ReasoningConclusionConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export interface ReasoningConclusion {
+  conclusion: ReasoningConclusionConclusion;
+  confidence: ReasoningConclusionConfidence;
+}
+
+export type PersonalMediaReasoningEvidenceReferencesItem = {
+  source: string;
+  sourceItemId: string;
+  field: string;
+  category: string;
+};
+
+export type PersonalMediaReasoningPerspectives = {
+  personal: string[];
+  current: string[];
+  longTerm: string[];
+  archiveValue: string[];
+  archiveGap: string[];
+  relationship: string[];
+  external: string[];
+  novelty: string[];
+  temporal: string[];
+  availability: string[];
+  identity: string[];
+  counterEvidence: string[];
+  unknowns: string[];
+};
+
+export interface PersonalMediaReasoning {
+  candidate: ResearchCandidateIdentity;
+  claim: string;
+  supportingEvidence: string[];
+  counterEvidence: string[];
+  patternEvidence: string[];
+  context: string[];
+  gaps: string[];
+  unknowns: string[];
+  watch: ReasoningConclusion;
+  archive: ReasoningConclusion;
+  evidenceReferences: PersonalMediaReasoningEvidenceReferencesItem[];
+  perspectives: PersonalMediaReasoningPerspectives;
+}
+
+export interface PersonalReasoningResponse {
+  status: PersonalReasoningResponseStatus;
+  source: PersonalReasoningResponseSource;
+  /** @minimum 0 */
+  identityUncertain: number;
+  bounds: ResearchHistoryBounds;
+  items: PersonalMediaReasoning[];
+}
+
+export type PersonalCurationResponseStatus = typeof PersonalCurationResponseStatus[keyof typeof PersonalCurationResponseStatus];
+
+
+export const PersonalCurationResponseStatus = {
+  available: 'available',
+  limited: 'limited',
+} as const;
+
+export type PersonalCurationResponseSource = typeof PersonalCurationResponseSource[keyof typeof PersonalCurationResponseSource];
+
+
+export const PersonalCurationResponseSource = {
+  'tvmaze+imdb': 'tvmaze+imdb',
+} as const;
+
+export type PersonalCurationItemPriorityType = typeof PersonalCurationItemPriorityType[keyof typeof PersonalCurationItemPriorityType];
+
+
+export const PersonalCurationItemPriorityType = {
+  watch: 'watch',
+  archive: 'archive',
+} as const;
+
+export type PersonalCurationItemPriority = typeof PersonalCurationItemPriority[keyof typeof PersonalCurationItemPriority];
+
+
+export const PersonalCurationItemPriority = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  unknown: 'unknown',
+} as const;
+
+export type ResearchEvidenceDetailedCategory = typeof ResearchEvidenceDetailedCategory[keyof typeof ResearchEvidenceDetailedCategory];
+
+
+export const ResearchEvidenceDetailedCategory = {
+  personal: 'personal',
+  relationship: 'relationship',
+  archive: 'archive',
+  external_metric: 'external_metric',
+  release: 'release',
+} as const;
+
+export interface ResearchEvidenceDetailed {
+  source: string;
+  sourceItemId: string;
+  category: ResearchEvidenceDetailedCategory;
+  field: string;
+  value: string;
+  explanation: string;
+}
+
+export type PersonalCurationItemConfidence = typeof PersonalCurationItemConfidence[keyof typeof PersonalCurationItemConfidence];
+
+
+export const PersonalCurationItemConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type PersonalCurationItemArchiveState = typeof PersonalCurationItemArchiveState[keyof typeof PersonalCurationItemArchiveState];
+
+
+export const PersonalCurationItemArchiveState = {
+  present: 'present',
+  missing: 'missing',
+  uncertain: 'uncertain',
+} as const;
+
+export type PersonalCurationItemApprovalState = typeof PersonalCurationItemApprovalState[keyof typeof PersonalCurationItemApprovalState];
+
+
+export const PersonalCurationItemApprovalState = {
+  not_created: 'not_created',
+} as const;
+
+export interface PersonalCurationItem {
+  candidate: ResearchCandidateIdentity;
+  priorityType: PersonalCurationItemPriorityType;
+  priority: PersonalCurationItemPriority;
+  /** @minimum 1 */
+  rank: number;
+  reasons: string[];
+  supportingEvidence: ResearchEvidenceDetailed[];
+  conflicts: string[];
+  unknowns: string[];
+  confidence: PersonalCurationItemConfidence;
+  archiveState: PersonalCurationItemArchiveState;
+  approvalState: PersonalCurationItemApprovalState;
+}
+
+export interface PersonalCurationResponse {
+  status: PersonalCurationResponseStatus;
+  source: PersonalCurationResponseSource;
+  /** @minimum 0 */
+  identityUncertain: number;
+  bounds: ResearchHistoryBounds;
+  watch: PersonalCurationItem[];
+  archive: PersonalCurationItem[];
+}
+
+export type ResearchSynthesisResponseStatus = typeof ResearchSynthesisResponseStatus[keyof typeof ResearchSynthesisResponseStatus];
+
+
+export const ResearchSynthesisResponseStatus = {
+  available: 'available',
+  limited: 'limited',
+} as const;
+
+export type ResearchSynthesisResponseSource = typeof ResearchSynthesisResponseSource[keyof typeof ResearchSynthesisResponseSource];
+
+
+export const ResearchSynthesisResponseSource = {
+  'tvmaze+imdb': 'tvmaze+imdb',
+} as const;
+
+export type ResearchRelationshipType = typeof ResearchRelationshipType[keyof typeof ResearchRelationshipType];
+
+
+export const ResearchRelationshipType = {
+  same_cast: 'same_cast',
+  same_creator: 'same_creator',
+} as const;
+
+export type ResearchRelationshipStrength = typeof ResearchRelationshipStrength[keyof typeof ResearchRelationshipStrength];
+
+
+export const ResearchRelationshipStrength = {
+  direct: 'direct',
+} as const;
+
+export type ResearchRelationshipSource = typeof ResearchRelationshipSource[keyof typeof ResearchRelationshipSource];
+
+
+export const ResearchRelationshipSource = {
+  tvmaze: 'tvmaze',
+} as const;
+
+export interface ResearchRelationship {
+  type: ResearchRelationshipType;
+  strength: ResearchRelationshipStrength;
+  source: ResearchRelationshipSource;
+  sourceItemId: string;
+  personId: string;
+  personName: string;
+  sourceWatchedItemKey: string;
+  sourceWatchedItemTitle: string;
+}
+
+export type ResearchHistoryCandidateArchiveState = typeof ResearchHistoryCandidateArchiveState[keyof typeof ResearchHistoryCandidateArchiveState];
+
+
+export const ResearchHistoryCandidateArchiveState = {
+  present: 'present',
+  missing: 'missing',
+  uncertain: 'uncertain',
+} as const;
+
+export interface ResearchEvidence {
+  source: string;
+  field: string;
+  value: string;
+}
+
+export type ResearchHistoryCandidateSourceWatchedItem = {
+  key: string;
+  title: string;
+  provider: string;
+};
+
+export interface ResearchHistoryCandidate {
+  candidate: ResearchCandidateIdentity;
+  sourceWatchedItem: ResearchHistoryCandidateSourceWatchedItem;
+  relationships: ResearchRelationship[];
+  archiveState: ResearchHistoryCandidateArchiveState;
+  evidence: ResearchEvidence[];
+  unknowns: string[];
+}
+
+export type ResearchEvaluationPersonalRelevance = typeof ResearchEvaluationPersonalRelevance[keyof typeof ResearchEvaluationPersonalRelevance];
+
+
+export const ResearchEvaluationPersonalRelevance = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  unknown: 'unknown',
+} as const;
+
+export type ResearchEvaluationConfidence = typeof ResearchEvaluationConfidence[keyof typeof ResearchEvaluationConfidence];
+
+
+export const ResearchEvaluationConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type ResearchEvaluation = ResearchHistoryCandidate & {
+  personalRelevance: ResearchEvaluationPersonalRelevance;
+  confidence: ResearchEvaluationConfidence;
+  whyYou: string[];
+  whyThis: string[];
+  whyNow: string[];
+  recommendationEvidence: ResearchEvidenceDetailed[];
+  unknowns: string[];
+};
+
+export interface ResearchSynthesisEvidence {
+  source: string;
+  sourceItemId: string;
+  category: string;
+  field: string;
+  value: string;
+  /** @nullable */
+  scale?: string | null;
+  observedAt: string;
+  provenance: string;
+}
+
+export type ResearchSynthesis = ResearchEvaluation & {
+  whatSupportsIt: string[];
+  whatConflicts: string[];
+  whatIsUnknown: string[];
+  sourceEvidence: ResearchSynthesisEvidence[];
+};
+
+export interface ResearchSynthesisResponse {
+  status: ResearchSynthesisResponseStatus;
+  source: ResearchSynthesisResponseSource;
+  /** @minimum 0 */
+  identityUncertain: number;
+  bounds: ResearchHistoryBounds;
+  items: ResearchSynthesis[];
+}
+
+export type ResearchEvaluationResponseStatus = typeof ResearchEvaluationResponseStatus[keyof typeof ResearchEvaluationResponseStatus];
+
+
+export const ResearchEvaluationResponseStatus = {
+  available: 'available',
+  limited: 'limited',
+} as const;
+
+export type ResearchEvaluationResponseSource = typeof ResearchEvaluationResponseSource[keyof typeof ResearchEvaluationResponseSource];
+
+
+export const ResearchEvaluationResponseSource = {
+  tvmaze: 'tvmaze',
+} as const;
+
+export interface ResearchEvaluationResponse {
+  status: ResearchEvaluationResponseStatus;
+  source: ResearchEvaluationResponseSource;
+  /** @minimum 0 */
+  identityUncertain: number;
+  bounds: ResearchHistoryBounds;
+  items: ResearchEvaluation[];
+}
+
+export type ResearchHistoryResponseStatus = typeof ResearchHistoryResponseStatus[keyof typeof ResearchHistoryResponseStatus];
+
+
+export const ResearchHistoryResponseStatus = {
+  available: 'available',
+  limited: 'limited',
+} as const;
+
+export type ResearchHistoryResponseSource = typeof ResearchHistoryResponseSource[keyof typeof ResearchHistoryResponseSource];
+
+
+export const ResearchHistoryResponseSource = {
+  tvmaze: 'tvmaze',
+} as const;
+
+export type ResearchHistoryResponseBounds = {
+  maxWatchedSeeds: 20;
+  maxCandidates: 100;
+};
+
+export interface ResearchHistoryResponse {
+  status: ResearchHistoryResponseStatus;
+  source: ResearchHistoryResponseSource;
+  /** @minimum 0 */
+  identityUncertain: number;
+  bounds: ResearchHistoryResponseBounds;
+  items: ResearchHistoryCandidate[];
+}
+
+export type ResearchResponseStatus = typeof ResearchResponseStatus[keyof typeof ResearchResponseStatus];
+
+
+export const ResearchResponseStatus = {
+  available: 'available',
+  unavailable: 'unavailable',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ResearchResponseSource = typeof ResearchResponseSource[keyof typeof ResearchResponseSource] | null;
+
+
+export const ResearchResponseSource = {
+  tvmaze: 'tvmaze',
+} as const;
+
+export type ResearchRecommendationMediaType = typeof ResearchRecommendationMediaType[keyof typeof ResearchRecommendationMediaType];
+
+
+export const ResearchRecommendationMediaType = {
+  show: 'show',
+} as const;
+
+export type ResearchRecommendationSource = typeof ResearchRecommendationSource[keyof typeof ResearchRecommendationSource];
+
+
+export const ResearchRecommendationSource = {
+  tvmaze: 'tvmaze',
+} as const;
+
+export type ResearchRecommendationArchiveState = typeof ResearchRecommendationArchiveState[keyof typeof ResearchRecommendationArchiveState];
+
+
+export const ResearchRecommendationArchiveState = {
+  present: 'present',
+  missing: 'missing',
+  uncertain: 'uncertain',
+} as const;
+
+export type ResearchRecommendationPersonalRelevance = typeof ResearchRecommendationPersonalRelevance[keyof typeof ResearchRecommendationPersonalRelevance];
+
+
+export const ResearchRecommendationPersonalRelevance = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  unknown: 'unknown',
+} as const;
+
+export type ResearchRecommendationConfidence = typeof ResearchRecommendationConfidence[keyof typeof ResearchRecommendationConfidence];
+
+
+export const ResearchRecommendationConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ResearchRecommendationRating = {
+  value: number;
+  scale: 10;
+  /** @nullable */
+  voteCount: number | null;
+} | null;
+
+export type ResearchRecommendationEvidenceItem = {
+  source: string;
+  field: string;
+  value: string;
+};
+
+export interface ResearchRecommendation {
+  id: string;
+  title: string;
+  mediaType: ResearchRecommendationMediaType;
+  /** @nullable */
+  releaseDate: string | null;
+  /** @nullable */
+  year: number | null;
+  genres: string[];
+  /** @nullable */
+  rating: ResearchRecommendationRating;
+  source: ResearchRecommendationSource;
+  sourceItemId: string;
+  archiveState: ResearchRecommendationArchiveState;
+  personalRelevance: ResearchRecommendationPersonalRelevance;
+  reasons: string[];
+  evidence: ResearchRecommendationEvidenceItem[];
+  confidence: ResearchRecommendationConfidence;
+}
+
+export interface ResearchResponse {
+  status: ResearchResponseStatus;
+  /** @nullable */
+  reason: string | null;
+  /** @nullable */
+  source?: ResearchResponseSource;
+  items: ResearchRecommendation[];
+}
+
 export type SystemEventLevel = typeof SystemEventLevel[keyof typeof SystemEventLevel];
 
 
@@ -229,6 +1625,36 @@ export interface SystemDependencies {
   mediaBundle: MediaBundleStatus | null;
 }
 
+export type StorageDiagnosticsDatabasePathSource = typeof StorageDiagnosticsDatabasePathSource[keyof typeof StorageDiagnosticsDatabasePathSource];
+
+
+export const StorageDiagnosticsDatabasePathSource = {
+  ARCHIVE_DB_PATH: 'ARCHIVE_DB_PATH',
+  working_directory_fallback: 'working_directory_fallback',
+} as const;
+
+export type StorageDiagnosticsCounts = {
+  fileRecords: number;
+  activeFileRecords: number;
+  plexItems: number;
+  jellyfinItems: number;
+  reviewItems: number;
+  archiveOperations: number;
+  settings: number;
+};
+
+export interface StorageDiagnostics {
+  databasePath: string;
+  databasePathSource: StorageDiagnosticsDatabasePathSource;
+  databasePathIsAbsolute: boolean;
+  workingDirectory: string;
+  databaseSizeBytes: number | null;
+  counts: StorageDiagnosticsCounts;
+  plexConfigured: boolean;
+  journalMode: string | null;
+  walSidecars: string[];
+}
+
 export type AppSettingsLogLevel = typeof AppSettingsLogLevel[keyof typeof AppSettingsLogLevel];
 
 
@@ -306,6 +1732,7 @@ export interface AppSettings {
      * @maximum 25
      */
   criticalFreePercent: number;
+  startWithWindows: boolean;
 }
 
 export type AppSettingsUpdateLogLevel = typeof AppSettingsUpdateLogLevel[keyof typeof AppSettingsUpdateLogLevel];
@@ -385,6 +1812,73 @@ export interface AppSettingsUpdate {
      * @maximum 25
      */
   criticalFreePercent?: number;
+  startWithWindows?: boolean;
+}
+
+export type ProviderRefreshProvider = typeof ProviderRefreshProvider[keyof typeof ProviderRefreshProvider];
+
+
+export const ProviderRefreshProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export type ProviderRefreshStatus = typeof ProviderRefreshStatus[keyof typeof ProviderRefreshStatus];
+
+
+export const ProviderRefreshStatus = {
+  syncing: 'syncing',
+  synced: 'synced',
+  sync_error: 'sync_error',
+} as const;
+
+export type ProviderRefreshSnapshotCompleteness = typeof ProviderRefreshSnapshotCompleteness[keyof typeof ProviderRefreshSnapshotCompleteness];
+
+
+export const ProviderRefreshSnapshotCompleteness = {
+  complete: 'complete',
+  partial: 'partial',
+  unknown: 'unknown',
+} as const;
+
+export interface ProviderRefresh {
+  refreshId: string;
+  provider: ProviderRefreshProvider;
+  startedAt: string;
+  completedAt: string | null;
+  status: ProviderRefreshStatus;
+  snapshotCompleteness: ProviderRefreshSnapshotCompleteness;
+  itemCount: number | null;
+  authoritative: boolean;
+  reason: string | null;
+  snapshotReference: string | null;
+}
+
+export type ProviderRefreshStateProvider = typeof ProviderRefreshStateProvider[keyof typeof ProviderRefreshStateProvider];
+
+
+export const ProviderRefreshStateProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export interface ProviderRefreshState {
+  provider: ProviderRefreshStateProvider;
+  lastAttemptedRefresh: ProviderRefresh | null;
+  lastSuccessfulRefresh: ProviderRefresh | null;
+  currentAuthoritativeRefresh: ProviderRefresh | null;
+}
+
+export type ProviderRefreshHistoryPagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export interface ProviderRefreshHistory {
+  results: ProviderRefresh[];
+  pagination: ProviderRefreshHistoryPagination;
 }
 
 export type PlexConfigStatus = typeof PlexConfigStatus[keyof typeof PlexConfigStatus];
@@ -448,6 +1942,60 @@ export interface PlexConfigUpdate {
   token?: string;
 }
 
+export type PlexHierarchyEpisodeLocalMatch = typeof PlexHierarchyEpisodeLocalMatch[keyof typeof PlexHierarchyEpisodeLocalMatch];
+
+
+export const PlexHierarchyEpisodeLocalMatch = {
+  matched: 'matched',
+  unmatched: 'unmatched',
+  uncertain: 'uncertain',
+  conflicting: 'conflicting',
+} as const;
+
+export interface PlexHierarchyEpisode {
+  identity: string;
+  /** @nullable */
+  episodeNumber: number | null;
+  title: string;
+  /** @nullable */
+  artworkRatingKey: string | null;
+  localMatch: PlexHierarchyEpisodeLocalMatch;
+  verifiedCount: number;
+  localRecordIds: number[];
+}
+
+export interface PlexHierarchySeason {
+  identity: string;
+  seasonNumber: number;
+  /** @nullable */
+  title: string | null;
+  episodeCount: number;
+  localMatchedCount: number;
+  verifiedCount: number;
+  episodes: PlexHierarchyEpisode[];
+}
+
+export interface PlexHierarchySeries {
+  identity: string;
+  title: string;
+  /** @nullable */
+  year: number | null;
+  /** @nullable */
+  artworkRatingKey: string | null;
+  seasonCount: number;
+  episodeCount: number;
+  localMatchedCount: number;
+  verifiedCount: number;
+  seasons: PlexHierarchySeason[];
+}
+
+export interface PlexHierarchy {
+  page: number;
+  pageSize: number;
+  total: number;
+  series: PlexHierarchySeries[];
+}
+
 export interface PlexLibrary {
   id: number;
   key: string;
@@ -488,11 +2036,138 @@ export interface PlexInventory {
   items: PlexInventoryItem[];
 }
 
+/**
+ * Media server supplying the reference inventory.
+ */
+export type ArchiveProvider = typeof ArchiveProvider[keyof typeof ArchiveProvider];
+
+
+export const ArchiveProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export interface ArchiveProviderSelection {
+  provider: ArchiveProvider;
+  providerLabel: string;
+  /** Providers that currently hold synchronized inventory. */
+  available: ArchiveProvider[];
+}
+
+export interface ArchiveProviderSelectionUpdate {
+  provider: ArchiveProvider;
+}
+
+export type JellyfinConfigStatus = typeof JellyfinConfigStatus[keyof typeof JellyfinConfigStatus];
+
+
+export const JellyfinConfigStatus = {
+  not_configured: 'not_configured',
+  configured: 'configured',
+  connection_failed: 'connection_failed',
+  connected: 'connected',
+  syncing: 'syncing',
+  synced: 'synced',
+  sync_error: 'sync_error',
+} as const;
+
+export type JellyfinConfigConnectionStatus = typeof JellyfinConfigConnectionStatus[keyof typeof JellyfinConfigConnectionStatus];
+
+
+export const JellyfinConfigConnectionStatus = {
+  not_configured: 'not_configured',
+  configured: 'configured',
+  connection_failed: 'connection_failed',
+  connected: 'connected',
+} as const;
+
+export type JellyfinConfigSyncStatus = typeof JellyfinConfigSyncStatus[keyof typeof JellyfinConfigSyncStatus];
+
+
+export const JellyfinConfigSyncStatus = {
+  idle: 'idle',
+  syncing: 'syncing',
+  synced: 'synced',
+  sync_error: 'sync_error',
+} as const;
+
+export interface JellyfinConfig {
+  serverUrl: string;
+  configured: boolean;
+  hasApiKey: boolean;
+  /** @nullable */
+  userId: string | null;
+  status: JellyfinConfigStatus;
+  connectionStatus: JellyfinConfigConnectionStatus;
+  syncStatus: JellyfinConfigSyncStatus;
+  /** @nullable */
+  lastAttemptedAt: string | null;
+  /** @nullable */
+  lastSuccessfulSyncAt: string | null;
+  /** @nullable */
+  lastError: string | null;
+  /** @nullable */
+  serverName: string | null;
+  /** @minimum 0 */
+  libraryCount: number;
+  /** @minimum 0 */
+  itemCount: number;
+  /** @minimum 0 */
+  mediaCount: number;
+}
+
+export interface JellyfinConfigUpdate {
+  serverUrl?: string;
+  apiKey?: string;
+  userId?: string;
+}
+
+export interface JellyfinLibrary {
+  id: number;
+  key: string;
+  name: string;
+  type: string;
+  serverUrl: string;
+  /** @minimum 0 */
+  itemCount: number;
+  /** @nullable */
+  lastSyncedAt: string | null;
+  syncStatus: string;
+  /** @nullable */
+  syncError: string | null;
+}
+
+export interface JellyfinInventoryItem {
+  id: number;
+  libraryId: number;
+  libraryName: string;
+  itemKey: string;
+  title: string;
+  itemType: string;
+  /** @nullable */
+  year: number | null;
+  thumbPathAvailable: boolean;
+  /** @nullable */
+  addedAt: string | null;
+  /** @nullable */
+  updatedAt: string | null;
+  /** @minimum 0 */
+  mediaCount: number;
+  /** @minimum 0 */
+  partCount: number;
+}
+
+export interface JellyfinInventory {
+  libraries: JellyfinLibrary[];
+  items: JellyfinInventoryItem[];
+}
+
 export type IntegrationStatusId = typeof IntegrationStatusId[keyof typeof IntegrationStatusId];
 
 
 export const IntegrationStatusId = {
   plex: 'plex',
+  jellyfin: 'jellyfin',
   sonarr: 'sonarr',
   radarr: 'radarr',
   prowlarr: 'prowlarr',
@@ -591,6 +2266,64 @@ export interface WebhookSecretStatus {
   diagnostics: WebhookDeliveryDiagnostics;
 }
 
+export type WebhookDeliveryClassification = typeof WebhookDeliveryClassification[keyof typeof WebhookDeliveryClassification];
+
+
+export const WebhookDeliveryClassification = {
+  processed: 'processed',
+  ignored: 'ignored',
+  duplicate: 'duplicate',
+  rejected: 'rejected',
+  unavailable: 'unavailable',
+  malformed: 'malformed',
+} as const;
+
+/**
+ * @nullable
+ */
+export type WebhookDeliveryHistoryItemDeduplication = typeof WebhookDeliveryHistoryItemDeduplication[keyof typeof WebhookDeliveryHistoryItemDeduplication] | null;
+
+
+export const WebhookDeliveryHistoryItemDeduplication = {
+  event_id: 'event_id',
+  unavailable: 'unavailable',
+} as const;
+
+export interface WebhookDeliveryHistoryItem {
+  id: number;
+  provider: WebhookProvider;
+  receivedAt: string;
+  classification: WebhookDeliveryClassification;
+  reasonCode: string;
+  /** @nullable */
+  providerEventId: string | null;
+  /** @nullable */
+  providerJobId: string | null;
+  /** @nullable */
+  resolvedOwnerId: string | null;
+  /** @nullable */
+  acquisitionJobId: number | null;
+  detail: string;
+  /** @nullable */
+  deduplication: WebhookDeliveryHistoryItemDeduplication;
+}
+
+export interface ReportPagination {
+  /** @minimum 1 */
+  page: number;
+  /** @minimum 1 */
+  pageSize: number;
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  totalPages: number;
+}
+
+export interface WebhookDeliveryHistoryResponse {
+  pagination: ReportPagination;
+  results: WebhookDeliveryHistoryItem[];
+}
+
 export interface WebhookSecretStatusesResponse {
   providers: WebhookSecretStatus[];
 }
@@ -663,6 +2396,7 @@ export type ArchiveScanStatus = typeof ArchiveScanStatus[keyof typeof ArchiveSca
 export const ArchiveScanStatus = {
   not_scanned: 'not_scanned',
   scanning: 'scanning',
+  interrupted: 'interrupted',
   completed: 'completed',
   failed: 'failed',
 } as const;
@@ -691,6 +2425,13 @@ export interface ArchiveScan {
   plexOnlyCount: number;
   /** @minimum 0 */
   localOnlyCount: number;
+  /**
+     * How many times the current or most recent scan pass was resumed.
+     * @minimum 0
+     */
+  resumedCount: number;
+  /** Whether starting a scan will continue an interrupted pass. */
+  resumable: boolean;
 }
 
 export type ArchiveInventorySummaryHealthStatus = typeof ArchiveInventorySummaryHealthStatus[keyof typeof ArchiveInventorySummaryHealthStatus];
@@ -820,6 +2561,9 @@ export interface ArchivePlexMatch {
   /** @nullable */
   year: number | null;
   qualityDifferences: string[];
+  provider: ArchiveProvider;
+  /** Operator-facing provider name, for example Plex or Jellyfin. */
+  providerLabel: string;
 }
 
 export interface ArchivePlexOnlyRecord {
@@ -829,6 +2573,8 @@ export interface ArchivePlexOnlyRecord {
   /** @nullable */
   year: number | null;
   qualitySummary: string;
+  provider: ArchiveProvider;
+  providerLabel: string;
 }
 
 export type ArchiveInventoryRecordScanStatus = typeof ArchiveInventoryRecordScanStatus[keyof typeof ArchiveInventoryRecordScanStatus];
@@ -935,6 +2681,9 @@ export interface ArchiveInventoryRecord {
 
 export interface ArchiveInventory {
   scan: ArchiveScan;
+  provider: ArchiveProvider;
+  /** Operator-facing name of the active reference provider. */
+  providerLabel: string;
   summary: ArchiveInventorySummary;
   records: ArchiveInventoryRecord[];
   plexOnly: ArchivePlexOnlyRecord[];
@@ -1427,6 +3176,16 @@ export const RecommendationPriority = {
   low: 'low',
 } as const;
 
+export interface AcquisitionIdentity {
+  mediaType: string;
+  seriesId?: string;
+  seriesTitle?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  episodeId?: string;
+  episodeTitle?: string;
+}
+
 export type AcquisitionRecommendationTarget = { [key: string]: unknown };
 
 export type AcquisitionRecommendationEvidence = { [key: string]: unknown };
@@ -1446,6 +3205,7 @@ export interface AcquisitionRecommendation {
   year: number | null;
   /** @nullable */
   externalId: string | null;
+  identity: AcquisitionIdentity | null;
   target: AcquisitionRecommendationTarget;
   evidence: AcquisitionRecommendationEvidence;
   preferredQuality: AcquisitionRecommendationPreferredQuality;
@@ -1505,6 +3265,44 @@ export interface ArchiveOperationEvent {
   createdAt: string;
 }
 
+export type OrderingProposalResponseSourceMappingsItem = { [key: string]: unknown };
+
+export interface OrderingProposalResponse {
+  proposalId: string;
+  proposalVersion: string;
+  reviewItemId: number;
+  collectionId: string;
+  confidence: string;
+  evidence: string[];
+  unknowns?: string[];
+  sourceMappings: OrderingProposalResponseSourceMappingsItem[];
+  reviewState?: string;
+  staleStatus?: string;
+  /** @nullable */
+  linkedOperationId?: number | null;
+  [key: string]: unknown;
+ }
+
+export type ArchiveBatchMappingState = typeof ArchiveBatchMappingState[keyof typeof ArchiveBatchMappingState];
+
+
+export const ArchiveBatchMappingState = {
+  planned: 'planned',
+  temporary: 'temporary',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export interface ArchiveBatchMapping {
+  id: string;
+  originalPath: string;
+  temporaryPath: string;
+  finalPath: string;
+  state: ArchiveBatchMappingState;
+  /** @nullable */
+  error?: string | null;
+}
+
 export type ArchiveOperationPreflight = { [key: string]: unknown };
 
 export type ArchiveOperationRollback = { [key: string]: unknown };
@@ -1520,6 +3318,9 @@ export interface ArchiveOperation {
   sourceId: string | null;
   sourcePath: string;
   destinationPath: string;
+  batch: ArchiveBatchMapping[];
+  /** @nullable */
+  proposalId: string | null;
   reviewItemId: number;
   /** @nullable */
   acquisitionJobId: number | null;
@@ -1554,11 +3355,12 @@ export interface CreateArchiveOperation {
   /** @nullable */
   sourceId?: string | null;
   /** @minLength 1 */
-  sourcePath: string;
+  sourcePath?: string;
   /** @minLength 1 */
-  destinationPath: string;
+  destinationPath?: string;
+  batch?: ArchiveBatchMapping[];
   /** @minimum 1 */
-  reviewItemId: number;
+  reviewItemId?: number;
   /**
      * @minimum 1
      * @nullable
@@ -1571,6 +3373,7 @@ export interface CreateArchiveOperation {
   downloadJobId?: number | null;
   dryRun?: boolean;
   idempotencyKey?: string;
+  proposalId?: string;
 }
 
 export interface OperationConfirmation {
@@ -1588,21 +3391,73 @@ export interface PlanAcquisitionImport {
   dryRun?: boolean;
 }
 
+export type FindingSeverity = typeof FindingSeverity[keyof typeof FindingSeverity];
+
+
+export const FindingSeverity = {
+  info: 'info',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  critical: 'critical',
+} as const;
+
+export type SeverityBreakdownBySeverity = {
+  info: number;
+  low: number;
+  medium: number;
+  high: number;
+  critical: number;
+};
+
+export interface SeverityBreakdown {
+  total: number;
+  reviewRequired: number;
+  informational: number;
+  bySeverity: SeverityBreakdownBySeverity;
+}
+
 export interface ReviewSyncResult {
   namingItems: number;
   archiveFindingItems: number;
+  informationalFindings: number;
+  severity: SeverityBreakdown;
   total: number;
 }
 
-export interface ReportPagination {
-  /** @minimum 1 */
-  page: number;
-  /** @minimum 1 */
-  pageSize: number;
-  /** @minimum 0 */
-  total: number;
-  /** @minimum 0 */
-  totalPages: number;
+export type ReconciliationFindingLineageFinding = {
+  reviewItemId: number;
+  subjectKey: string;
+  state: string;
+  classification: string | null;
+  title: string;
+  evidenceKey: string | null;
+};
+
+export type ReconciliationFindingLineageCurrentObservation = {
+  observationId: number;
+  evidenceKey: string;
+  observedAt: string;
+} | null;
+
+export type ReconciliationFindingLineageProvider = {
+  provider: string | null;
+  refreshId: string | null;
+  capturedAt: string | null;
+  snapshotReference: string | null;
+} | null;
+
+export type ReconciliationFindingLineagePreviousObservation = {
+  observationId: number;
+  evidenceKey: string;
+  observedAt: string;
+} | null;
+
+export interface ReconciliationFindingLineage {
+  finding: ReconciliationFindingLineageFinding;
+  currentObservation: ReconciliationFindingLineageCurrentObservation;
+  provider: ReconciliationFindingLineageProvider;
+  previousObservation: ReconciliationFindingLineagePreviousObservation;
 }
 
 export interface ReconciliationSummary {
@@ -1828,6 +3683,15 @@ export const NamingProposalResultOperation = {
   'uncertain/no_action': 'uncertain/no_action',
 } as const;
 
+export type NamingProposalResultResearchGrade = typeof NamingProposalResultResearchGrade[keyof typeof NamingProposalResultResearchGrade];
+
+
+export const NamingProposalResultResearchGrade = {
+  corroborated: 'corroborated',
+  observed: 'observed',
+  blocked: 'blocked',
+} as const;
+
 export type NamingProposalResultMediaType = typeof NamingProposalResultMediaType[keyof typeof NamingProposalResultMediaType];
 
 
@@ -1853,6 +3717,9 @@ export interface NamingProposalResult {
   operation: NamingProposalResultOperation;
   reason: string;
   evidence: string[];
+  researchGrade: NamingProposalResultResearchGrade;
+  researchSources: string[];
+  researchBlockers: string[];
   mediaType: NamingProposalResultMediaType;
   volumeId: string;
   archiveRoot: string;
@@ -2005,6 +3872,104 @@ export type PageParameter = number;
 
 export type PageSizeParameter = number;
 
+export type GetArenaCanonicalStatus200 = { [key: string]: unknown };
+
+export type GetArenaCanonicalTools200 = { [key: string]: unknown };
+
+export type AskArenaCanonicalBody = { [key: string]: unknown };
+
+export type AskArenaCanonical200 = { [key: string]: unknown };
+
+export type TestIntegrationConnection200 = { [key: string]: unknown };
+
+export type GetIntegrationConfigurationStatus200 = { [key: string]: unknown };
+
+export type UpdateIntegrationConfigurationBody = { [key: string]: unknown };
+
+export type UpdateIntegrationConfiguration200 = { [key: string]: unknown };
+
+export type ListAgentSourceMonitors200 = { [key: string]: unknown };
+
+export type CreateAgentSourceMonitor201 = { [key: string]: unknown };
+
+export type MarkAgentMonitorNotificationRead200 = { [key: string]: unknown };
+
+export type CheckAgentSourceMonitor200 = { [key: string]: unknown };
+
+export type UpdateAgentSourceMonitorBody = { [key: string]: unknown };
+
+export type UpdateAgentSourceMonitor200 = { [key: string]: unknown };
+
+export type ResolveAgentDownloadRedirectsBody = { [key: string]: unknown };
+
+export type ResolveAgentDownloadRedirects200 = { [key: string]: unknown };
+
+export type ResearchAssistantCandidateParams = {
+query: string;
+};
+
+export type GetProviderRefreshStateParams = {
+provider: GetProviderRefreshStateProvider;
+};
+
+export type GetProviderRefreshStateProvider = typeof GetProviderRefreshStateProvider[keyof typeof GetProviderRefreshStateProvider];
+
+
+export const GetProviderRefreshStateProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export type ListProviderRefreshHistoryParams = {
+provider: ListProviderRefreshHistoryProvider;
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+pageSize?: number;
+};
+
+export type ListProviderRefreshHistoryProvider = typeof ListProviderRefreshHistoryProvider[keyof typeof ListProviderRefreshHistoryProvider];
+
+
+export const ListProviderRefreshHistoryProvider = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export type GetPlexHierarchyParams = {
+/**
+ * @minimum 1
+ */
+libraryId?: number;
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+pageSize?: number;
+};
+
+export type GetWebhookDeliveryHistoryParams = {
+provider?: WebhookProvider;
+/**
+ * @minimum 1
+ */
+page?: PageParameter;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+pageSize?: PageSizeParameter;
+};
+
 export type GetAcquisitionJobsParams = {
 state?: AcquisitionJobState;
 };
@@ -2051,6 +4016,35 @@ page?: PageParameter;
 pageSize?: PageSizeParameter;
 };
 
+export type GetArchiveOperationProviderStatus200 = { [key: string]: unknown };
+
+export type RefreshProvidersAfterArchiveOperationBodyProvidersItem = typeof RefreshProvidersAfterArchiveOperationBodyProvidersItem[keyof typeof RefreshProvidersAfterArchiveOperationBodyProvidersItem];
+
+
+export const RefreshProvidersAfterArchiveOperationBodyProvidersItem = {
+  plex: 'plex',
+  jellyfin: 'jellyfin',
+} as const;
+
+export type RefreshProvidersAfterArchiveOperationBody = {
+  confirmed: boolean;
+  providers?: RefreshProvidersAfterArchiveOperationBodyProvidersItem[];
+};
+
+export type RefreshProvidersAfterArchiveOperation202 = { [key: string]: unknown };
+
+export type CreatePowerRenamerPlanBody = {
+  fileRecordIds: number[];
+};
+
+export type CreatePowerRenamerPlan201 = { [key: string]: unknown };
+
+export type CreatePowerRenamerOperationBody = {
+  reviewItemId: number;
+};
+
+export type CreatePowerRenamerOperation201 = { [key: string]: unknown };
+
 export type GetArchiveNamingProposalsParams = {
 /**
  * @minimum 1
@@ -2085,4 +4079,8 @@ confidence?: string;
 mediaType?: string;
 needsReview?: boolean;
 };
+
+export type GetAssistantArchiveHealth200 = { [key: string]: unknown };
+
+export type CreateArchiveOrderingProposalBody = { [key: string]: unknown };
 
