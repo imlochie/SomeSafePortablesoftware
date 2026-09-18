@@ -6,6 +6,7 @@ The public read-only control plane is intentionally limited to current truth, bo
 
 | Concept | Public endpoint | OpenAPI | Generated client | Runtime response validation | Owner boundary |
 | --- | --- | --- | --- | --- | --- |
+| Assistant overview | `GET /assistant/overview` | yes | yes | yes | authenticated owner |
 | Workload | `GET /assistant/workload` | yes | yes | yes | authenticated owner |
 | Workload lineage | `GET /assistant/workload/{workloadId}/lineage` | yes | yes | yes | authenticated owner |
 | Reconciliation report/summary | `GET /archive/reconciliation` | yes | yes | yes | authenticated owner |
