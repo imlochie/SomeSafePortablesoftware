@@ -46,6 +46,7 @@ import {
   requestMediaAcquisition,
 } from "../services/media-acquisition";
 import { readReconciliationReport } from "../services/reconciliation";
+import { readReconciliationFindingLineage } from "../services/reconciliation-lineage";
 import { readNamingProposals } from "../services/naming-intelligence";
 import { readIdentityAudit } from "../services/identity-audit";
 import { createOrderingProposalSnapshot, readOrderingProposal, currentOrderingProposalValidation } from "../services/ordering-proposals";
@@ -169,6 +170,18 @@ router.get("/archive/reconciliation", async (req, res, next) => {
     res.json(GetArchiveReconciliationResponse.parse(report));
   } catch (error) {
     next(error);
+  }
+});
+
+router.get("/archive/reconciliation/findings/:reviewItemId/lineage", (req, res, next) => {
+  try {
+    const reviewItemId = Number(req.params.reviewItemId);
+    if (!Number.isInteger(reviewItemId) || reviewItemId < 1) return res.status(400).json({ message: "Review item id must be positive." });
+    const lineage = readReconciliationFindingLineage(getAuthenticatedUserId(req), reviewItemId);
+    if (!lineage) return res.status(404).json({ message: "Reconciliation finding not found." });
+    return res.json(lineage);
+  } catch (error) {
+    return next(error);
   }
 });
 

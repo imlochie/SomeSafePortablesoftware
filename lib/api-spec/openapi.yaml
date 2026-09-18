@@ -623,6 +623,20 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ProviderRefreshHistory' }
+  /archive/reconciliation/findings/{reviewItemId}/lineage:
+    get:
+      operationId: getReconciliationFindingLineage
+      summary: Read bounded reconciliation finding lineage
+      parameters:
+        - { name: reviewItemId, in: path, required: true, schema: { type: number, minimum: 1 } }
+      responses:
+        '200':
+          description: Current and previous reconciliation observation context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReconciliationFindingLineage' }
+        '404':
+          description: Finding not found
   /plex/config:
     get:
       operationId: getPlexConfig
@@ -5048,6 +5062,45 @@ components:
         pageSize: { type: number, minimum: 1 }
         total: { type: number, minimum: 0 }
         totalPages: { type: number, minimum: 0 }
+    ReconciliationFindingLineage:
+      type: object
+      required: [finding, currentObservation, provider, previousObservation]
+      properties:
+        finding:
+          type: object
+          required: [reviewItemId, subjectKey, state, classification, title, evidenceKey]
+          properties:
+            reviewItemId: { type: number }
+            subjectKey: { type: string }
+            state: { type: string }
+            classification: { type: string, nullable: true }
+            title: { type: string }
+            evidenceKey: { type: string, nullable: true }
+        currentObservation:
+          type: object
+          nullable: true
+          required: [observationId, evidenceKey, observedAt]
+          properties:
+            observationId: { type: number }
+            evidenceKey: { type: string }
+            observedAt: { type: string, format: date-time }
+        provider:
+          type: object
+          nullable: true
+          required: [provider, refreshId, capturedAt, snapshotReference]
+          properties:
+            provider: { type: string, nullable: true }
+            refreshId: { type: string, nullable: true }
+            capturedAt: { type: string, format: date-time, nullable: true }
+            snapshotReference: { type: string, nullable: true }
+        previousObservation:
+          type: object
+          nullable: true
+          required: [observationId, evidenceKey, observedAt]
+          properties:
+            observationId: { type: number }
+            evidenceKey: { type: string }
+            observedAt: { type: string, format: date-time }
     ReconciliationSummary:
       type: object
       required: [localCount, plexCount, matchedCount, localOnlyCount, plexOnlyCount, uncertainCount, duplicateCount, qualityConflictCount]

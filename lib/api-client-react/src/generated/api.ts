@@ -118,6 +118,7 @@ import type {
   ProgressAcquisitionJob,
   ProviderRefreshHistory,
   ProviderRefreshState,
+  ReconciliationFindingLineage,
   ReconciliationReport,
   RefreshProvidersAfterArchiveOperation202,
   RefreshProvidersAfterArchiveOperationBody,
@@ -3253,6 +3254,83 @@ export function useListProviderRefreshHistory<TData = Awaited<ReturnType<typeof 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListProviderRefreshHistoryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetReconciliationFindingLineageUrl = (reviewItemId: number,) => {
+
+
+
+
+  return `/api/archive/reconciliation/findings/${reviewItemId}/lineage`
+}
+
+/**
+ * @summary Read bounded reconciliation finding lineage
+ */
+export const getReconciliationFindingLineage = async (reviewItemId: number, options?: Parameters<typeof customFetch>[1]): Promise<ReconciliationFindingLineage> => {
+
+  return customFetch<ReconciliationFindingLineage>(getGetReconciliationFindingLineageUrl(reviewItemId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReconciliationFindingLineageQueryKey = (reviewItemId: number,) => {
+    return [
+    `/api/archive/reconciliation/findings/${reviewItemId}/lineage`
+    ] as const;
+    }
+
+
+export const getGetReconciliationFindingLineageQueryOptions = <TData = Awaited<ReturnType<typeof getReconciliationFindingLineage>>, TError = ErrorType<void>>(reviewItemId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationFindingLineage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReconciliationFindingLineageQueryKey(reviewItemId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReconciliationFindingLineage>>> = ({ signal }) => getReconciliationFindingLineage(reviewItemId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: reviewItemId !== null && reviewItemId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReconciliationFindingLineage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReconciliationFindingLineageQueryResult = NonNullable<Awaited<ReturnType<typeof getReconciliationFindingLineage>>>
+export type GetReconciliationFindingLineageQueryError = ErrorType<void>
+
+
+/**
+ * @summary Read bounded reconciliation finding lineage
+ */
+
+export function useGetReconciliationFindingLineage<TData = Awaited<ReturnType<typeof getReconciliationFindingLineage>>, TError = ErrorType<void>>(
+ reviewItemId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReconciliationFindingLineage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReconciliationFindingLineageQueryOptions(reviewItemId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

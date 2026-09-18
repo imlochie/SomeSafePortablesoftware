@@ -3423,6 +3423,41 @@ export interface ReviewSyncResult {
   total: number;
 }
 
+export type ReconciliationFindingLineageFinding = {
+  reviewItemId: number;
+  subjectKey: string;
+  state: string;
+  classification: string | null;
+  title: string;
+  evidenceKey: string | null;
+};
+
+export type ReconciliationFindingLineageCurrentObservation = {
+  observationId: number;
+  evidenceKey: string;
+  observedAt: string;
+} | null;
+
+export type ReconciliationFindingLineageProvider = {
+  provider: string | null;
+  refreshId: string | null;
+  capturedAt: string | null;
+  snapshotReference: string | null;
+} | null;
+
+export type ReconciliationFindingLineagePreviousObservation = {
+  observationId: number;
+  evidenceKey: string;
+  observedAt: string;
+} | null;
+
+export interface ReconciliationFindingLineage {
+  finding: ReconciliationFindingLineageFinding;
+  currentObservation: ReconciliationFindingLineageCurrentObservation;
+  provider: ReconciliationFindingLineageProvider;
+  previousObservation: ReconciliationFindingLineagePreviousObservation;
+}
+
 export interface ReconciliationSummary {
   /** @minimum 0 */
   localCount: number;

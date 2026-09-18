@@ -1634,6 +1634,44 @@ export const ListProviderRefreshHistoryResponse = zod.object({
 
 
 /**
+ * @summary Read bounded reconciliation finding lineage
+ */
+
+
+
+export const GetReconciliationFindingLineageParams = zod.object({
+  "reviewItemId": zod.coerce.number().min(1)
+})
+
+export const GetReconciliationFindingLineageResponse = zod.object({
+  "finding": zod.object({
+  "reviewItemId": zod.number(),
+  "subjectKey": zod.string(),
+  "state": zod.string(),
+  "classification": zod.string().nullable(),
+  "title": zod.string(),
+  "evidenceKey": zod.string().nullable()
+}),
+  "currentObservation": zod.object({
+  "observationId": zod.number(),
+  "evidenceKey": zod.string(),
+  "observedAt": zod.coerce.date()
+}).nullable(),
+  "provider": zod.object({
+  "provider": zod.string().nullable(),
+  "refreshId": zod.string().nullable(),
+  "capturedAt": zod.coerce.date().nullable(),
+  "snapshotReference": zod.string().nullable()
+}).nullable(),
+  "previousObservation": zod.object({
+  "observationId": zod.number(),
+  "evidenceKey": zod.string(),
+  "observedAt": zod.coerce.date()
+}).nullable()
+})
+
+
+/**
  * @summary Get Plex configuration status
  */
 export const getPlexConfigResponseLibraryCountMin = 0;
