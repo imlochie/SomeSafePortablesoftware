@@ -882,7 +882,15 @@ export async function inspectBatchOperation(
     if (original && !temporary && !final) classification = step.state === "reverted" ? "CONFIRMED_REVERTED" : "CONFIRMED_NOT_STARTED";
     else if (!original && temporary && !final) classification = "CONFIRMED_TEMPORARY";
     else if (!original && !temporary && final) classification = step.state === "reverted" ? "CONFLICT" : "CONFIRMED_FINAL";
-    else if (original && !temporary && final) classification = expectedFinalPaths.has(step.originalPath) ? "CONFIRMED_FINAL" : "CONFLICT";
+    // Both paths existing is only final when persisted state says this step
+    // completed and the source is another mapping's expected destination (the
+    // normal shape of a completed swap). A planned or temporary step with both
+    // paths is ambiguous and must remain a conflict.
+    else if (original && !temporary && final) {
+      classification = step.state === "completed" && expectedFinalPaths.has(step.originalPath)
+        ? "CONFIRMED_FINAL"
+        : "CONFLICT";
+    }
     results.push({ id: step.id, classification });
   }
   return results;

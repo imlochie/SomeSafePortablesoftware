@@ -40,6 +40,17 @@ test("recovery inspection keeps partial and missing temporary states unresolved"
   await rm(root, { recursive: true, force: true });
 });
 
+test("recovery inspection does not infer completion when a cycle still has both paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "archive-assistant-recovery-cycle-partial-"));
+  await writeFile(join(root, "A"), "A-content");
+  await writeFile(join(root, "B"), "B-content");
+  const result = await inspectBatchOperation({ batch: [
+    { id: "a", originalPath: join(root, "A"), temporaryPath: join(root, "tmp-a"), finalPath: join(root, "B"), state: "planned" },
+  ] } as never);
+  assert.equal(result[0].classification, "CONFLICT");
+  await rm(root, { recursive: true, force: true });
+});
+
 test("recovery inspection understands a completed two-file swap", async () => {
   const root = await mkdtemp(join(tmpdir(), "archive-assistant-recovery-cycle-"));
   await writeFile(join(root, "A"), "B-content");
