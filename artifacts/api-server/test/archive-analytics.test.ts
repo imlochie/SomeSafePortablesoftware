@@ -174,6 +174,12 @@ describe("archive analytics observation foundation", () => {
     const typedSignal: BehavioralSignal = parsed.temporalSignals[0];
     assert.equal(typedSignal.derivedAt, parsed.temporalSignals[0].derivedAt);
     assert.equal(typedSignal.derivedAt, context.temporalSignals[0].derivedAt);
+    assert.deepEqual(parsed.temporalSignals[0].provenance, context.temporalSignals[0].provenance);
+    for (const key of ["observationIds", "evidenceKeys", "providerEventIds", "ingestionBatchIds", "eventOccurredAt", "observedAt", "scopeIdentity"]) {
+      assert.ok(key in parsed.temporalSignals[0].provenance);
+    }
+    assert.equal("personalAffinity" in parsed, false);
+    assert.equal("personalizedBriefing" in parsed, false);
     assert.deepEqual(parsed.interpretations, []);
     assert.deepEqual(parsed.uncertainties, []);
   });
