@@ -2,7 +2,7 @@ import { archiveDb } from "../lib/archive-db";
 import { getAnalytics } from "./archive-analytics";
 
 export type BehavioralProfile = "long_term" | "recent" | "collection";
-export type BehavioralSignalType = "recent_activity" | "long_term_affinity" | "rewatch_affinity" | "collection_relationship";
+export type BehavioralSignalType = "recent_activity" | "recent_activity_previous" | "long_term_affinity" | "rewatch_affinity" | "collection_relationship";
 
 type EventRow = {
   id: number; scope_identity: string; media_identity: string; title: string; viewed_at: string; observed_at: string;
@@ -68,13 +68,17 @@ export function deriveBehavioralSignals(ownerId: string, now = new Date()) {
         title: watches.at(-1)?.title, totalWatches: watches.length, firstWatchedAt: new Date(Math.min(...timestamps)).toISOString(),
         lastWatchedAt: new Date(Math.max(...timestamps)).toISOString(), activeMonths: new Set(watches.map((e) => e.viewed_at.slice(0, 7))).size,
       }, watches, coverage, now.toISOString());
-      insertSignal(ownerId, scope, "recent", "recent_activity", subject, {
-        title: watches.at(-1)?.title, watchesLast30Days: recent30.length, watchesLast90Days: recent90.length,
+      if (recent90.length > 0) insertSignal(ownerId, scope, "recent", "recent_activity", subject, {
+        title: watches.at(-1)?.title, watches: recent90.length,
+        watchesLast30Days: recent30.length, watchesLast90Days: recent90.length,
         watchesPrevious90Days: previous90.length,
         lastWatchedAt: new Date(Math.max(...timestamps)).toISOString(), comparisonWindowDays: 90,
         window: { startsAt: recent90StartsAt, endsAt: windowEndsAt },
-        previousWindow: { startsAt: previous90StartsAt, endsAt: recent90StartsAt },
-      }, watches, coverage, now.toISOString());
+      }, recent90, coverage, windowEndsAt);
+      if (previous90.length > 0) insertSignal(ownerId, scope, "recent", "recent_activity_previous", subject, {
+        title: watches.at(-1)?.title, watches: previous90.length,
+        window: { startsAt: previous90StartsAt, endsAt: recent90StartsAt },
+      }, previous90, coverage, windowEndsAt);
       if (repeatCount > 0) insertSignal(ownerId, scope, "long_term", "rewatch_affinity", subject, {
         title: watches.at(-1)?.title, firstWatch: watches[0].viewed_at, rewatchCount: repeatCount,
         rewatchIntervalsDays: intervals, lastRewatchAt: watches.at(-1)?.viewed_at,
@@ -106,7 +110,7 @@ export function readBehavioralSignals(ownerId: string) {
   const rows = archiveDb.prepare(`SELECT * FROM behavioral_signal WHERE owner_id = ?
     ORDER BY profile, signal_type, subject_identity`).all(ownerId) as any[];
   return rows.map((row) => ({
-    evidenceClass: row.signal_type === "recent_activity" ? "temporal_signal"
+    evidenceClass: ["recent_activity", "recent_activity_previous"].includes(row.signal_type) ? "temporal_signal"
       : row.signal_type === "collection_relationship" ? "collection_fact" : "observed_signal",
     signalId: String(row.id), profile: row.profile, signalType: row.signal_type, subjectType: row.subject_type,
     subjectIdentity: row.subject_identity, value: JSON.parse(row.value_json),
@@ -141,8 +145,8 @@ export function getPersonalisationContext(ownerId: string) {
   return {
     domain: "archive.personalisation",
     facts,
-    observedSignals: signals.filter((signal) => !["recent_activity", "collection_relationship"].includes(signal.signalType)),
-    temporalSignals: signals.filter((signal) => signal.signalType === "recent_activity"),
+    observedSignals: signals.filter((signal) => !["recent_activity", "recent_activity_previous", "collection_relationship"].includes(signal.signalType)),
+    temporalSignals: signals.filter((signal) => ["recent_activity", "recent_activity_previous"].includes(signal.signalType)),
     collectionFacts: signals.filter((signal) => signal.signalType === "collection_relationship"),
     interpretations: [],
     uncertainties: [],

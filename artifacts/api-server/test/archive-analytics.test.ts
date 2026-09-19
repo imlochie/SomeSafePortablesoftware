@@ -148,19 +148,27 @@ describe("archive analytics observation foundation", () => {
     ], { scopeIdentity: scope, collectingSince: "2026-09-19" });
     const signals = deriveBehavioralSignals(owner, new Date("2026-09-19T00:00:00.000Z"));
     const recent = signals.find((x: any) => x.signalType === "recent_activity" && x.subjectIdentity === "behaviour-film") as any;
+    const previous = signals.find((x: any) => x.signalType === "recent_activity_previous" && x.subjectIdentity === "behaviour-film") as any;
+    const temporalRows = signals.filter((x: any) => x.subjectIdentity === "behaviour-film" && ["recent_activity", "recent_activity_previous"].includes(x.signalType));
     const rewatch = signals.find((x: any) => x.signalType === "rewatch_affinity" && x.subjectIdentity === "behaviour-film") as any;
     assert.equal(recent.scopeIdentity, scope);
+    assert.equal(temporalRows.length, 2);
+    assert.equal(recent.value.watches, 2);
+    assert.equal(previous.value.watches, 1);
     assert.equal(recent.value.watchesLast90Days, 2);
     assert.deepEqual(recent.value.window, {
       startsAt: "2026-06-21T00:00:00.000Z",
       endsAt: "2026-09-19T00:00:00.000Z",
     });
-    assert.deepEqual(recent.value.previousWindow, {
+    assert.deepEqual(previous.value.window, {
       startsAt: "2026-03-23T00:00:00.000Z",
       endsAt: "2026-06-21T00:00:00.000Z",
     });
     assert.equal(recent.value.watchesPrevious90Days, 1);
-    assert.equal(recent.derivedAt, recent.value.window.endsAt);
+    assert.equal(recent.derivedAt, "2026-09-19T00:00:00.000Z");
+    assert.equal(previous.derivedAt, recent.derivedAt);
+    assert.equal(previous.value.window.endsAt, recent.value.window.startsAt);
+    assert.ok(previous.value.window.endsAt <= recent.value.window.startsAt);
     assert.equal(rewatch.value.rewatchCount, 3);
     assert.equal(rewatch.coverage.collectingSince, "2026-09-19");
     assert.ok(typeof recent.signalId === "string");
@@ -171,6 +179,14 @@ describe("archive analytics observation foundation", () => {
     assert.ok(Array.isArray(recent.provenance.ingestionBatchIds));
     assert.ok(Array.isArray(recent.provenance.eventOccurredAt));
     assert.ok(Array.isArray(recent.provenance.observedAt));
+    for (const row of [recent, previous]) {
+      assert.equal(row.epistemicStatus, "derived");
+      assert.ok(typeof row.signalId === "string");
+      for (const key of ["observationIds", "evidenceKeys", "providerEventIds", "ingestionBatchIds", "batchIds", "eventOccurredAt", "observedAt", "scopeIdentity"]) {
+        assert.ok(key in row.provenance);
+      }
+      assert.ok(row.provenance.eventIds.length > 0);
+    }
     recordExplicitPreference(owner, { scopeIdentity: scope, subjectType: "genre", subjectIdentity: "Japanese cinema", statement: "I am into Japanese cinema right now." });
     const context = getPersonalisationContext(owner) as any;
     assert.equal(context.explicitPreferences[0].statement, "I am into Japanese cinema right now.");

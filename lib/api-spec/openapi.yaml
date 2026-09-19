@@ -1521,10 +1521,12 @@ components:
             value: { $ref: '#/components/schemas/TemporalSignalValue' }
     TemporalSignalValue:
       type: object
-      required: [window, previousWindow]
+      required: [window]
       properties:
         window: { $ref: '#/components/schemas/TemporalWindow' }
-        previousWindow: { $ref: '#/components/schemas/TemporalWindow' }
+        previousWindow:
+          description: Legacy compatibility field; new producers emit a separate previous temporal row.
+          $ref: '#/components/schemas/TemporalWindow'
       additionalProperties: true
     TemporalWindow:
       type: object

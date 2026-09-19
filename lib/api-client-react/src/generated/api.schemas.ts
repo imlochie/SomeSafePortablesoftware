@@ -137,7 +137,8 @@ export interface TemporalWindow {
 
 export interface TemporalSignalValue {
   window: TemporalWindow;
-  previousWindow: TemporalWindow;
+  /** Legacy compatibility field; new producers emit a separate previous temporal row. */
+  previousWindow?: TemporalWindow;
   [key: string]: unknown;
  }
 

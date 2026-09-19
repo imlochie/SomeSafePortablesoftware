@@ -3167,7 +3167,7 @@ export const GetArchivePersonalisationContextResponse = zod.object({
   "previousWindow": zod.object({
   "startsAt": zod.string(),
   "endsAt": zod.string()
-})
+}).optional().describe('Legacy compatibility field; new producers emit a separate previous temporal row.')
 })
 }))),
   "collectionFacts": zod.array(zod.object({
