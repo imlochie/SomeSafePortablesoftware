@@ -7,7 +7,9 @@
  */
 import type { BehavioralSignal } from './behavioralSignal';
 import type { PersonalisationTemporalSignalEvidenceClass } from './personalisationTemporalSignalEvidenceClass';
+import type { TemporalSignalValue } from './temporalSignalValue';
 
 export type PersonalisationTemporalSignal = BehavioralSignal & {
   evidenceClass: PersonalisationTemporalSignalEvidenceClass;
+  value: TemporalSignalValue;
 };

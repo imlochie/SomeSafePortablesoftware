@@ -130,8 +130,19 @@ export const PersonalisationTemporalSignalEvidenceClass = {
   temporal_signal: 'temporal_signal',
 } as const;
 
+export interface TemporalWindow {
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface TemporalSignalValue {
+  window: TemporalWindow;
+  [key: string]: unknown;
+ }
+
 export type PersonalisationTemporalSignal = BehavioralSignal & {
   evidenceClass: PersonalisationTemporalSignalEvidenceClass;
+  value: TemporalSignalValue;
 };
 
 export type PersonalisationCollectionFactEvidenceClass = typeof PersonalisationCollectionFactEvidenceClass[keyof typeof PersonalisationCollectionFactEvidenceClass];

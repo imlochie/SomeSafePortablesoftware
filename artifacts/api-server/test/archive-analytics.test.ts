@@ -150,6 +150,10 @@ describe("archive analytics observation foundation", () => {
     const rewatch = signals.find((x: any) => x.signalType === "rewatch_affinity" && x.subjectIdentity === "behaviour-film") as any;
     assert.equal(recent.scopeIdentity, scope);
     assert.equal(recent.value.watchesLast90Days, 2);
+    assert.deepEqual(recent.value.window, {
+      startsAt: "2026-06-21T00:00:00.000Z",
+      endsAt: "2026-09-19T00:00:00.000Z",
+    });
     assert.equal(rewatch.value.rewatchCount, 2);
     assert.equal(rewatch.coverage.collectingSince, "2026-09-19");
     assert.ok(typeof recent.signalId === "string");

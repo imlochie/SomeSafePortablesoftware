@@ -55,8 +55,11 @@ export function deriveBehavioralSignals(ownerId: string, now = new Date()) {
     for (const event of scoped) subjects.set(event.media_identity, [...(subjects.get(event.media_identity) ?? []), event]);
     for (const [subject, watches] of subjects) {
       const timestamps = watches.map((event) => Date.parse(event.viewed_at)).filter(Number.isFinite);
-      const recent30 = watches.filter((event) => now.getTime() - Date.parse(event.viewed_at) <= 30 * 86400000);
-      const recent90 = watches.filter((event) => now.getTime() - Date.parse(event.viewed_at) <= 90 * 86400000);
+      const windowEndsAt = now.toISOString();
+      const recent30StartsAt = new Date(now.getTime() - 30 * 86400000).toISOString();
+      const recent90StartsAt = new Date(now.getTime() - 90 * 86400000).toISOString();
+      const recent30 = watches.filter((event) => event.viewed_at >= recent30StartsAt && event.viewed_at <= windowEndsAt);
+      const recent90 = watches.filter((event) => event.viewed_at >= recent90StartsAt && event.viewed_at <= windowEndsAt);
       const repeatCount = Math.max(0, watches.length - 1);
       const intervals = timestamps.slice(1).map((time, index) => Math.round((time - timestamps[index]) / 86400000));
       insertSignal(ownerId, scope, "long_term", "long_term_affinity", subject, {
@@ -66,6 +69,7 @@ export function deriveBehavioralSignals(ownerId: string, now = new Date()) {
       insertSignal(ownerId, scope, "recent", "recent_activity", subject, {
         title: watches.at(-1)?.title, watchesLast30Days: recent30.length, watchesLast90Days: recent90.length,
         lastWatchedAt: new Date(Math.max(...timestamps)).toISOString(), comparisonWindowDays: 90,
+        window: { startsAt: recent90StartsAt, endsAt: windowEndsAt },
       }, watches, coverage);
       if (repeatCount > 0) insertSignal(ownerId, scope, "long_term", "rewatch_affinity", subject, {
         title: watches.at(-1)?.title, firstWatch: watches[0].viewed_at, rewatchCount: repeatCount,

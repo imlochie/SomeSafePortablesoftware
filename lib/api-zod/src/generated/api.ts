@@ -3158,7 +3158,13 @@ export const GetArchivePersonalisationContextResponse = zod.object({
 }),
   "derivedAt": zod.string()
 }).and(zod.object({
-  "evidenceClass": zod.enum(['temporal_signal'])
+  "evidenceClass": zod.enum(['temporal_signal']),
+  "value": zod.object({
+  "window": zod.object({
+  "startsAt": zod.string(),
+  "endsAt": zod.string()
+})
+})
 }))),
   "collectionFacts": zod.array(zod.object({
   "signalId": zod.string(),

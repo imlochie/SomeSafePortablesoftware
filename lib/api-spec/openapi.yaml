@@ -1515,9 +1515,23 @@ components:
       allOf:
         - $ref: '#/components/schemas/BehavioralSignal'
         - type: object
-          required: [evidenceClass]
+          required: [evidenceClass, value]
           properties:
             evidenceClass: { type: string, enum: [temporal_signal] }
+            value: { $ref: '#/components/schemas/TemporalSignalValue' }
+    TemporalSignalValue:
+      type: object
+      required: [window]
+      properties:
+        window: { $ref: '#/components/schemas/TemporalWindow' }
+      additionalProperties: true
+    TemporalWindow:
+      type: object
+      required: [startsAt, endsAt]
+      properties:
+        startsAt: { type: string }
+        endsAt: { type: string }
+      additionalProperties: false
     PersonalisationCollectionFact:
       allOf:
         - $ref: '#/components/schemas/BehavioralSignal'

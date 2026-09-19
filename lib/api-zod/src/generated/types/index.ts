@@ -221,6 +221,8 @@ export * from './systemEvent';
 export * from './systemEventLevel';
 export * from './systemEventRetentionClass';
 export * from './systemOverview';
+export * from './temporalSignalValue';
+export * from './temporalWindow';
 export * from './webhookDeliveryCounts';
 export * from './webhookDeliveryDiagnostics';
 export * from './webhookDeliveryResultClass';
