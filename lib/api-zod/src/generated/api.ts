@@ -3099,6 +3099,10 @@ export const getArchivePersonalisationContextResponseCollectionFactsItemOneProve
 
 export const getArchivePersonalisationContextResponseCollectionFactsItemOneProvenanceEventIdsItemMultipleOf = 1;
 
+export const getArchivePersonalisationContextResponseExplicitPreferencesItemPreferenceIdMultipleOf = 1;
+
+export const getArchivePersonalisationContextResponseExplicitPreferencesItemProvenanceOnePreferenceIdMultipleOf = 1;
+
 
 
 export const GetArchivePersonalisationContextResponse = zod.object({
@@ -3209,6 +3213,20 @@ export const GetArchivePersonalisationContextResponse = zod.object({
   "coverage": zod.record(zod.string(), zod.unknown()).optional(),
   "provenance": zod.record(zod.string(), zod.unknown()).optional()
 })),
-  "explicitPreferences": zod.array(zod.record(zod.string(), zod.unknown())),
+  "explicitPreferences": zod.array(zod.object({
+  "preferenceId": zod.number().min(1).multipleOf(getArchivePersonalisationContextResponseExplicitPreferencesItemPreferenceIdMultipleOf),
+  "subjectType": zod.string(),
+  "subjectIdentity": zod.string(),
+  "statement": zod.string(),
+  "scopeIdentity": zod.string(),
+  "observedAt": zod.string(),
+  "provenanceStatus": zod.enum(['authoritative', 'legacy']),
+  "provenance": zod.object({
+  "preferenceId": zod.number().min(1).multipleOf(getArchivePersonalisationContextResponseExplicitPreferencesItemProvenanceOnePreferenceIdMultipleOf),
+  "source": zod.enum(['operator_statement']),
+  "observedAt": zod.string(),
+  "scopeIdentity": zod.string()
+}).nullable()
+})),
   "constraints": zod.array(zod.string())
 })

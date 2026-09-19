@@ -187,9 +187,27 @@ describe("archive analytics observation foundation", () => {
       }
       assert.ok(row.provenance.eventIds.length > 0);
     }
-    recordExplicitPreference(owner, { scopeIdentity: scope, subjectType: "genre", subjectIdentity: "Japanese cinema", statement: "I am into Japanese cinema right now." });
+    recordExplicitPreference(owner, { scopeIdentity: scope, subjectType: "genre", subjectIdentity: "Japanese cinema", statement: "I am into Japanese cinema right now.", observedAt: "2026-09-18T12:00:00.000Z" });
+    const persistedPreference = archiveDb.prepare("SELECT id, owner_id, scope_identity, observed_at, provenance_json FROM explicit_preference WHERE owner_id = ? ORDER BY id DESC LIMIT 1").get(owner) as any;
     const context = getPersonalisationContext(owner) as any;
-    assert.equal(context.explicitPreferences[0].statement, "I am into Japanese cinema right now.");
+    const preference = context.explicitPreferences.find((item: any) => item.subjectIdentity === "Japanese cinema");
+    assert.equal(preference.preferenceId, persistedPreference.id);
+    assert.equal(preference.provenanceStatus, "authoritative");
+    assert.deepEqual(preference.provenance, {
+      preferenceId: persistedPreference.id, source: "operator_statement", observedAt: persistedPreference.observed_at, scopeIdentity: scope,
+    });
+    assert.equal(preference.observedAt, persistedPreference.observed_at);
+    assert.equal(preference.scopeIdentity, persistedPreference.scope_identity);
+    assert.equal(preference.statement, "I am into Japanese cinema right now.");
+    recordExplicitPreference(`${owner}-other`, { scopeIdentity: scope, subjectType: "genre", subjectIdentity: "Other owner preference", statement: "Other owner statement" });
+    assert.equal((getPersonalisationContext(owner) as any).explicitPreferences.some((item: any) => item.subjectIdentity === "Other owner preference"), false);
+    archiveDb.prepare(`INSERT INTO explicit_preference
+      (owner_id, scope_identity, subject_type, subject_identity, statement, observed_at, provenance_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(owner, scope, "genre", "legacy preference", "Legacy statement", "2020-01-01T00:00:00.000Z", JSON.stringify({ source: "operator statement" }));
+    const legacy = (getPersonalisationContext(owner) as any).explicitPreferences.find((item: any) => item.subjectIdentity === "legacy preference");
+    assert.equal(legacy.provenanceStatus, "legacy");
+    assert.equal(legacy.provenance, null);
     assert.ok(context.facts.length > 0);
     assert.ok(context.observedSignals.every((signal: any) => signal.evidenceClass === "observed_signal"));
     assert.ok(context.temporalSignals.every((signal: any) => signal.evidenceClass === "temporal_signal"));

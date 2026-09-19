@@ -97,13 +97,16 @@ export function deriveBehavioralSignals(ownerId: string, now = new Date()) {
 
 export function recordExplicitPreference(ownerId: string, input: {
   scopeIdentity: string; subjectType: string; subjectIdentity: string; statement: string;
-  observedAt?: string; provenance?: Record<string, unknown>;
+  observedAt?: string;
 }) {
-  archiveDb.prepare(`INSERT INTO explicit_preference
+  const observedAt = input.observedAt ?? new Date().toISOString();
+  const result = archiveDb.prepare(`INSERT INTO explicit_preference
     (owner_id, scope_identity, subject_type, subject_identity, statement, observed_at, provenance_json)
     VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run(ownerId, input.scopeIdentity, input.subjectType, input.subjectIdentity, input.statement,
-      input.observedAt ?? new Date().toISOString(), JSON.stringify(input.provenance ?? { source: "operator statement" }));
+    .run(ownerId, input.scopeIdentity, input.subjectType, input.subjectIdentity, input.statement, observedAt, "{}");
+  const preferenceId = Number(result.lastInsertRowid);
+  archiveDb.prepare("UPDATE explicit_preference SET provenance_json = ? WHERE id = ? AND owner_id = ?")
+    .run(JSON.stringify({ preferenceId, source: "operator_statement", observedAt, scopeIdentity: input.scopeIdentity }), preferenceId, ownerId);
 }
 
 export function readBehavioralSignals(ownerId: string) {
@@ -140,8 +143,19 @@ export function getPersonalisationContext(ownerId: string) {
     .map(([factType, value]) => ({ evidenceClass: "fact", factType, value: value.value,
       epistemicStatus: value.epistemicStatus, provenance: value.provenance }));
   const explicitPreferences = (archiveDb.prepare("SELECT * FROM explicit_preference WHERE owner_id = ? ORDER BY observed_at DESC").all(ownerId) as any[])
-    .map((row) => ({ subjectType: row.subject_type, subjectIdentity: row.subject_identity, statement: row.statement,
-      scopeIdentity: row.scope_identity, observedAt: row.observed_at, provenance: JSON.parse(row.provenance_json) }));
+    .map((row) => {
+      const storedProvenance = JSON.parse(row.provenance_json) as Record<string, unknown>;
+      const isAuthoritative = storedProvenance.preferenceId === row.id
+        && storedProvenance.source === "operator_statement"
+        && storedProvenance.observedAt === row.observed_at
+        && storedProvenance.scopeIdentity === row.scope_identity;
+      return {
+        preferenceId: row.id, subjectType: row.subject_type, subjectIdentity: row.subject_identity, statement: row.statement,
+        scopeIdentity: row.scope_identity, observedAt: row.observed_at,
+        provenanceStatus: isAuthoritative ? "authoritative" : "legacy",
+        provenance: isAuthoritative ? storedProvenance : null,
+      };
+    });
   return {
     domain: "archive.personalisation",
     facts,

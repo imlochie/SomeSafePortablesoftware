@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { PersonalisationCollectionFact } from './personalisationCollectionFact';
-import type { PersonalisationContextExplicitPreferencesItem } from './personalisationContextExplicitPreferencesItem';
+import type { PersonalisationExplicitPreference } from './personalisationExplicitPreference';
 import type { PersonalisationFact } from './personalisationFact';
 import type { PersonalisationInterpretation } from './personalisationInterpretation';
 import type { PersonalisationObservedSignal } from './personalisationObservedSignal';
@@ -21,6 +21,6 @@ export interface PersonalisationContext {
   collectionFacts: PersonalisationCollectionFact[];
   interpretations: PersonalisationInterpretation[];
   uncertainties: PersonalisationUncertainty[];
-  explicitPreferences: PersonalisationContextExplicitPreferencesItem[];
+  explicitPreferences: PersonalisationExplicitPreference[];
   constraints: string[];
 }

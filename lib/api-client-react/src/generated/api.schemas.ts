@@ -212,7 +212,40 @@ export interface PersonalisationUncertainty {
   [key: string]: unknown;
  }
 
-export type PersonalisationContextExplicitPreferencesItem = { [key: string]: unknown };
+export type PersonalisationExplicitPreferenceProvenanceStatus = typeof PersonalisationExplicitPreferenceProvenanceStatus[keyof typeof PersonalisationExplicitPreferenceProvenanceStatus];
+
+
+export const PersonalisationExplicitPreferenceProvenanceStatus = {
+  authoritative: 'authoritative',
+  legacy: 'legacy',
+} as const;
+
+export type PreferenceProvenanceSource = typeof PreferenceProvenanceSource[keyof typeof PreferenceProvenanceSource];
+
+
+export const PreferenceProvenanceSource = {
+  operator_statement: 'operator_statement',
+} as const;
+
+export interface PreferenceProvenance {
+  /** @minimum 1 */
+  preferenceId: number;
+  source: PreferenceProvenanceSource;
+  observedAt: string;
+  scopeIdentity: string;
+}
+
+export interface PersonalisationExplicitPreference {
+  /** @minimum 1 */
+  preferenceId: number;
+  subjectType: string;
+  subjectIdentity: string;
+  statement: string;
+  scopeIdentity: string;
+  observedAt: string;
+  provenanceStatus: PersonalisationExplicitPreferenceProvenanceStatus;
+  provenance: PreferenceProvenance | null;
+}
 
 export interface PersonalisationContext {
   domain: string;
@@ -222,7 +255,7 @@ export interface PersonalisationContext {
   collectionFacts: PersonalisationCollectionFact[];
   interpretations: PersonalisationInterpretation[];
   uncertainties: PersonalisationUncertainty[];
-  explicitPreferences: PersonalisationContextExplicitPreferencesItem[];
+  explicitPreferences: PersonalisationExplicitPreference[];
   constraints: string[];
 }
 

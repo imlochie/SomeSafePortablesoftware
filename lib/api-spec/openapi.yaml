@@ -1573,8 +1573,32 @@ components:
         collectionFacts: { type: array, items: { $ref: '#/components/schemas/PersonalisationCollectionFact' } }
         interpretations: { type: array, items: { $ref: '#/components/schemas/PersonalisationInterpretation' } }
         uncertainties: { type: array, items: { $ref: '#/components/schemas/PersonalisationUncertainty' } }
-        explicitPreferences: { type: array, items: { type: object, additionalProperties: true } }
+        explicitPreferences: { type: array, items: { $ref: '#/components/schemas/PersonalisationExplicitPreference' } }
         constraints: { type: array, items: { type: string } }
+    PersonalisationExplicitPreference:
+      type: object
+      required: [preferenceId, subjectType, subjectIdentity, statement, scopeIdentity, observedAt, provenanceStatus, provenance]
+      properties:
+        preferenceId: { type: number, minimum: 1, multipleOf: 1 }
+        subjectType: { type: string }
+        subjectIdentity: { type: string }
+        statement: { type: string }
+        scopeIdentity: { type: string }
+        observedAt: { type: string }
+        provenanceStatus: { type: string, enum: [authoritative, legacy] }
+        provenance:
+          nullable: true
+          oneOf:
+            - $ref: '#/components/schemas/PreferenceProvenance'
+    PreferenceProvenance:
+      type: object
+      required: [preferenceId, source, observedAt, scopeIdentity]
+      properties:
+        preferenceId: { type: number, minimum: 1, multipleOf: 1 }
+        source: { type: string, enum: [operator_statement] }
+        observedAt: { type: string }
+        scopeIdentity: { type: string }
+      additionalProperties: false
     AnalyticsFact:
       type: object
       required: [value, epistemicStatus, provenance]
