@@ -137,6 +137,7 @@ export interface TemporalWindow {
 
 export interface TemporalSignalValue {
   window: TemporalWindow;
+  previousWindow: TemporalWindow;
   [key: string]: unknown;
  }
 

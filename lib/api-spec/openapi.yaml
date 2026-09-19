@@ -1521,9 +1521,10 @@ components:
             value: { $ref: '#/components/schemas/TemporalSignalValue' }
     TemporalSignalValue:
       type: object
-      required: [window]
+      required: [window, previousWindow]
       properties:
         window: { $ref: '#/components/schemas/TemporalWindow' }
+        previousWindow: { $ref: '#/components/schemas/TemporalWindow' }
       additionalProperties: true
     TemporalWindow:
       type: object

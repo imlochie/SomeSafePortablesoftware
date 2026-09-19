@@ -142,6 +142,7 @@ describe("archive analytics observation foundation", () => {
     const scope = "plex:movies-v1";
     ingestWatchEvents(owner, [
       { ...event("behaviour-old", "behaviour-film", "2020-01-01T10:00:00.000Z"), scopeIdentity: scope },
+      { ...event("behaviour-previous", "behaviour-film", "2026-05-01T10:00:00.000Z"), scopeIdentity: scope },
       { ...event("behaviour-new-1", "behaviour-film", "2026-08-01T10:00:00.000Z"), scopeIdentity: scope },
       { ...event("behaviour-new-2", "behaviour-film", "2026-09-01T10:00:00.000Z"), scopeIdentity: scope },
     ], { scopeIdentity: scope, collectingSince: "2026-09-19" });
@@ -154,8 +155,13 @@ describe("archive analytics observation foundation", () => {
       startsAt: "2026-06-21T00:00:00.000Z",
       endsAt: "2026-09-19T00:00:00.000Z",
     });
+    assert.deepEqual(recent.value.previousWindow, {
+      startsAt: "2026-03-23T00:00:00.000Z",
+      endsAt: "2026-06-21T00:00:00.000Z",
+    });
+    assert.equal(recent.value.watchesPrevious90Days, 1);
     assert.equal(recent.derivedAt, recent.value.window.endsAt);
-    assert.equal(rewatch.value.rewatchCount, 2);
+    assert.equal(rewatch.value.rewatchCount, 3);
     assert.equal(rewatch.coverage.collectingSince, "2026-09-19");
     assert.ok(typeof recent.signalId === "string");
     assert.ok(Array.isArray(recent.provenance.eventIds));

@@ -9,5 +9,6 @@ import type { TemporalWindow } from './temporalWindow';
 
 export interface TemporalSignalValue {
   window: TemporalWindow;
+  previousWindow: TemporalWindow;
   [key: string]: unknown;
  }

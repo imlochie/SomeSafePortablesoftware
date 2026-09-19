@@ -3163,6 +3163,10 @@ export const GetArchivePersonalisationContextResponse = zod.object({
   "window": zod.object({
   "startsAt": zod.string(),
   "endsAt": zod.string()
+}),
+  "previousWindow": zod.object({
+  "startsAt": zod.string(),
+  "endsAt": zod.string()
 })
 })
 }))),
