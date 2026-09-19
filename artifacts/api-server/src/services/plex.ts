@@ -495,6 +495,30 @@ export function savePlexConfig(ownerId: string, updates: { serverUrl?: string; t
   return getPlexConfig(ownerId);
 }
 
+export type PlexHistoryPage = {
+  metadata: PlexRecord[];
+  offset: number;
+  size: number;
+  totalSize: number | null;
+  complete: boolean;
+};
+
+/** API-first, read-only history page used by Archive Analytics ingestion. */
+export async function readPlexHistoryPage(ownerId: string, offset = 0, size = 500) {
+  const { serverUrl, token } = readPlexCredentials(ownerId);
+  if (!serverUrl || !token) throw new PlexConfigurationError("Configure a Plex server URL and token before reading Plex history.");
+  if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(size) || size < 1 || size > 1000) {
+    throw new PlexConfigurationError("Plex history pagination bounds are invalid.");
+  }
+  const target = await validateServerTarget(serverUrl);
+  const payload = containerFrom(await requestJson(target, token,
+    `/status/sessions/history?sort=viewedAt:desc&X-Plex-Container-Start=${offset}&X-Plex-Container-Size=${size}`));
+  const metadata = asArray(payload.Metadata);
+  const totalValue = number(payload.totalSize);
+  const complete = totalValue !== null ? offset + metadata.length >= totalValue : metadata.length < size;
+  return { metadata, offset, size, totalSize: totalValue, complete } satisfies PlexHistoryPage;
+}
+
 export async function testPlexConnection(ownerId: string) {
   const { serverUrl, token } = readPlexCredentials(ownerId);
   if (!serverUrl || !token) {

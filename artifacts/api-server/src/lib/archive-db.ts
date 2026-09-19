@@ -694,6 +694,110 @@ archiveDb.exec(`
     ON system_event(owner_id, timestamp DESC, id DESC);
 `);
 
+// Archive Analytics observation layer. Raw events are canonical; sessions and facts are rebuildable.
+archiveDb.exec(`
+  CREATE TABLE IF NOT EXISTS watch_event (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_event_id TEXT NOT NULL,
+    media_identity TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    year INTEGER,
+    started_at TEXT,
+    viewed_at TEXT NOT NULL,
+    duration_observed_seconds REAL,
+    duration_semantics TEXT NOT NULL DEFAULT 'unknown',
+    account_id TEXT,
+    client_device TEXT,
+    source TEXT NOT NULL,
+    scope_identity TEXT NOT NULL DEFAULT 'plex:default',
+    historical_coverage_start TEXT,
+    collecting_since TEXT,
+    ingestion_id TEXT,
+    currently_owned INTEGER NOT NULL DEFAULT 0,
+    ownership_resolution TEXT NOT NULL DEFAULT 'never_matched',
+    observed_at TEXT NOT NULL,
+    provenance_json TEXT NOT NULL,
+    UNIQUE(owner_id, provider, provider_event_id)
+  );
+  CREATE INDEX IF NOT EXISTS watch_event_owner_viewed_idx ON watch_event(owner_id, viewed_at DESC);
+  CREATE TABLE IF NOT EXISTS watch_ownership_history (
+    owner_id TEXT NOT NULL, media_identity TEXT NOT NULL, first_owned_at TEXT NOT NULL,
+    last_owned_at TEXT NOT NULL, departure_confirmed INTEGER NOT NULL DEFAULT 0,
+    departure_at TEXT, departure_evidence_json TEXT NOT NULL DEFAULT '{}',
+    PRIMARY KEY(owner_id, media_identity)
+  );
+  CREATE TABLE IF NOT EXISTS watch_session (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, started_at TEXT NOT NULL,
+    ended_at TEXT NOT NULL, event_count INTEGER NOT NULL, duration_observed_seconds REAL,
+    provenance_json TEXT NOT NULL, UNIQUE(owner_id, started_at, ended_at)
+  );
+  CREATE TABLE IF NOT EXISTS analytics_coverage (
+    owner_id TEXT NOT NULL, provider TEXT NOT NULL, historical_coverage_start TEXT,
+    collecting_since TEXT, last_successful_ingestion TEXT, updated_at TEXT NOT NULL,
+    PRIMARY KEY(owner_id, provider)
+  );
+  CREATE TABLE IF NOT EXISTS watch_ingestion_batch (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    scope_identity TEXT NOT NULL,
+    requested_start TEXT,
+    requested_end TEXT,
+    covered_start TEXT,
+    covered_end TEXT,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    status TEXT NOT NULL,
+    completeness TEXT NOT NULL,
+    page_count INTEGER NOT NULL DEFAULT 0,
+    accepted_event_count INTEGER NOT NULL DEFAULT 0,
+    provider_total INTEGER,
+    request_context_json TEXT NOT NULL DEFAULT '{}',
+    error_message TEXT
+  );
+  CREATE INDEX IF NOT EXISTS watch_ingestion_batch_owner_idx
+    ON watch_ingestion_batch(owner_id, started_at DESC);
+  CREATE TABLE IF NOT EXISTS behavioral_signal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id TEXT NOT NULL,
+    scope_identity TEXT NOT NULL,
+    profile TEXT NOT NULL,
+    signal_type TEXT NOT NULL,
+    subject_type TEXT NOT NULL,
+    subject_identity TEXT NOT NULL,
+    value_json TEXT NOT NULL,
+    epistemic_status TEXT NOT NULL,
+    coverage_json TEXT NOT NULL,
+    provenance_json TEXT NOT NULL,
+    derived_at TEXT NOT NULL,
+    UNIQUE(owner_id, scope_identity, profile, signal_type, subject_type, subject_identity)
+  );
+  CREATE INDEX IF NOT EXISTS behavioral_signal_owner_profile_idx
+    ON behavioral_signal(owner_id, scope_identity, profile);
+  CREATE TABLE IF NOT EXISTS explicit_preference (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id TEXT NOT NULL,
+    scope_identity TEXT NOT NULL,
+    subject_type TEXT NOT NULL,
+    subject_identity TEXT NOT NULL,
+    statement TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    provenance_json TEXT NOT NULL
+  );
+`);
+ensureColumn("watch_event", "scope_identity", "TEXT NOT NULL DEFAULT 'plex:default'");
+ensureColumn("watch_event", "duration_semantics", "TEXT NOT NULL DEFAULT 'unknown'");
+ensureColumn("watch_event", "historical_coverage_start", "TEXT");
+ensureColumn("watch_event", "collecting_since", "TEXT");
+ensureColumn("watch_event", "ingestion_id", "TEXT");
+ensureColumn("watch_event", "ownership_resolution", "TEXT NOT NULL DEFAULT 'never_matched'");
+ensureColumn("watch_ownership_history", "departure_confirmed", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("watch_ownership_history", "departure_at", "TEXT");
+ensureColumn("watch_ownership_history", "departure_evidence_json", "TEXT NOT NULL DEFAULT '{}'");
+
 const defaultSettings = {
   mockMode: runtimeConfig.mockMode,
   dataDirectory: runtimeConfig.paths.data,

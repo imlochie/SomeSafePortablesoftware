@@ -30,6 +30,8 @@ tags:
     description: Generic owner-scoped approval queue
   - name: operations
     description: Approval-gated archive filesystem operations
+  - name: analytics
+    description: Read-only evidence-bearing archive viewing and behavioural facts
 paths:
   /healthz:
     get:
@@ -1403,6 +1405,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DownloadJob"
+  /analytics:
+    get:
+      operationId: getArchiveAnalytics
+      tags: [analytics]
+      summary: Read archive viewing analytics
+      description: Normalized, owner-scoped facts from persisted provider history. This endpoint never queries providers directly.
+      responses:
+        '200':
+          description: Evidence-bearing analytics snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchiveAnalytics'
+  /assistant/personalisation-context:
+    get:
+      operationId: getArchivePersonalisationContext
+      tags: [analytics]
+      summary: Read bounded behavioural context for Arena
+      responses:
+        '200':
+          description: Six-class evidence context and separate explicit preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalisationContext'
+
 components:
   parameters:
     Page:
@@ -1427,6 +1455,113 @@ components:
       schema:
         type: number
   schemas:
+    ArchiveAnalytics:
+      type: object
+      description: All numeric facts carry epistemic status and provenance.
+      additionalProperties: true
+      properties:
+        coverage: { type: object, additionalProperties: true }
+        totalPlays: { $ref: '#/components/schemas/AnalyticsFact' }
+        uniqueTitlesWatched: { $ref: '#/components/schemas/AnalyticsFact' }
+        rewatches: { $ref: '#/components/schemas/AnalyticsFact' }
+    BehavioralSignal:
+      type: object
+      required: [signalId, profile, signalType, subjectIdentity, value, epistemicStatus, scopeIdentity, coverage, provenance, derivedAt]
+      properties:
+        signalId: { type: string }
+        profile: { type: string, enum: [long_term, recent, collection] }
+        signalType: { type: string }
+        subjectIdentity: { type: string }
+        value: { type: object, additionalProperties: true }
+        epistemicStatus: { type: string, enum: [derived] }
+        scopeIdentity: { type: string }
+        coverage: { type: object, additionalProperties: true }
+        provenance: { $ref: '#/components/schemas/SignalProvenance' }
+        derivedAt: { type: string }
+      additionalProperties: true
+    SignalProvenance:
+      type: object
+      required: [derivedFrom, eventIds, providerEventIds, batchIds, scopeIdentity]
+      properties:
+        derivedFrom: { type: string }
+        eventIds: { type: array, items: { type: number, multipleOf: 1 } }
+        providerEventIds: { type: array, items: { type: string } }
+        batchIds: { type: array, items: { type: string } }
+        scopeIdentity: { type: string }
+      additionalProperties: true
+    PersonalisationFact:
+      type: object
+      required: [evidenceClass, factType, value, epistemicStatus, provenance]
+      properties:
+        evidenceClass: { type: string, enum: [fact] }
+        factType: { type: string }
+        value: {}
+        epistemicStatus: { type: string, enum: [observed, derived, coverage-limited, unknown] }
+        provenance: { type: object, additionalProperties: true }
+      additionalProperties: true
+    PersonalisationObservedSignal:
+      allOf:
+        - $ref: '#/components/schemas/BehavioralSignal'
+        - type: object
+          required: [evidenceClass]
+          properties:
+            evidenceClass: { type: string, enum: [observed_signal] }
+    PersonalisationTemporalSignal:
+      allOf:
+        - $ref: '#/components/schemas/BehavioralSignal'
+        - type: object
+          required: [evidenceClass]
+          properties:
+            evidenceClass: { type: string, enum: [temporal_signal] }
+    PersonalisationCollectionFact:
+      allOf:
+        - $ref: '#/components/schemas/BehavioralSignal'
+        - type: object
+          required: [evidenceClass]
+          properties:
+            evidenceClass: { type: string, enum: [collection_fact] }
+    PersonalisationInterpretation:
+      type: object
+      required: [evidenceClass]
+      properties:
+        evidenceClass: { type: string, enum: [interpretation] }
+        statement: { type: string }
+        epistemicStatus: { type: string, enum: [derived, unknown] }
+        provenance: { type: object, additionalProperties: true }
+      additionalProperties: true
+    PersonalisationUncertainty:
+      type: object
+      required: [evidenceClass]
+      properties:
+        evidenceClass: { type: string, enum: [uncertainty] }
+        reason: { type: string }
+        epistemicStatus: { type: string, enum: [coverage-limited, unknown] }
+        scopeIdentity: { type: string }
+        coverage: { type: object, additionalProperties: true }
+        provenance: { type: object, additionalProperties: true }
+      additionalProperties: true
+    PersonalisationContext:
+      type: object
+      required: [domain, facts, observedSignals, temporalSignals, collectionFacts, interpretations, uncertainties, explicitPreferences, constraints]
+      properties:
+        domain: { type: string }
+        facts: { type: array, items: { $ref: '#/components/schemas/PersonalisationFact' } }
+        observedSignals: { type: array, items: { $ref: '#/components/schemas/PersonalisationObservedSignal' } }
+        temporalSignals: { type: array, items: { $ref: '#/components/schemas/PersonalisationTemporalSignal' } }
+        collectionFacts: { type: array, items: { $ref: '#/components/schemas/PersonalisationCollectionFact' } }
+        interpretations: { type: array, items: { $ref: '#/components/schemas/PersonalisationInterpretation' } }
+        uncertainties: { type: array, items: { $ref: '#/components/schemas/PersonalisationUncertainty' } }
+        explicitPreferences: { type: array, items: { type: object, additionalProperties: true } }
+        constraints: { type: array, items: { type: string } }
+    AnalyticsFact:
+      type: object
+      required: [value, epistemicStatus, provenance]
+      properties:
+        value: {}
+        epistemicStatus:
+          type: string
+          enum: [observed, derived, coverage-limited, unknown]
+        provenance: { type: object, additionalProperties: true }
     HealthStatus:
       type: object
       properties:
@@ -3416,4 +3551,3 @@ components:
       properties:
         error:
           type: string
-

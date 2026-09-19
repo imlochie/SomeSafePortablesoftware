@@ -3060,3 +3060,124 @@ export const RetryDownloadResponse = zod.object({
 })
 
 
+/**
+ * Normalized, owner-scoped facts from persisted provider history. This endpoint never queries providers directly.
+ * @summary Read archive viewing analytics
+ */
+export const GetArchiveAnalyticsResponse = zod.object({
+  "coverage": zod.record(zod.string(), zod.unknown()).optional(),
+  "totalPlays": zod.object({
+  "value": zod.unknown(),
+  "epistemicStatus": zod.enum(['observed', 'derived', 'coverage-limited', 'unknown']),
+  "provenance": zod.record(zod.string(), zod.unknown())
+}).optional(),
+  "uniqueTitlesWatched": zod.object({
+  "value": zod.unknown(),
+  "epistemicStatus": zod.enum(['observed', 'derived', 'coverage-limited', 'unknown']),
+  "provenance": zod.record(zod.string(), zod.unknown())
+}).optional(),
+  "rewatches": zod.object({
+  "value": zod.unknown(),
+  "epistemicStatus": zod.enum(['observed', 'derived', 'coverage-limited', 'unknown']),
+  "provenance": zod.record(zod.string(), zod.unknown())
+}).optional()
+}).describe('All numeric facts carry epistemic status and provenance.')
+
+
+/**
+ * @summary Read bounded behavioural context for Arena
+ */
+export const getArchivePersonalisationContextResponseObservedSignalsItemOneProvenanceEventIdsItemMultipleOf = 1;
+
+export const getArchivePersonalisationContextResponseTemporalSignalsItemOneProvenanceEventIdsItemMultipleOf = 1;
+
+export const getArchivePersonalisationContextResponseCollectionFactsItemOneProvenanceEventIdsItemMultipleOf = 1;
+
+
+
+export const GetArchivePersonalisationContextResponse = zod.object({
+  "domain": zod.string(),
+  "facts": zod.array(zod.object({
+  "evidenceClass": zod.enum(['fact']),
+  "factType": zod.string(),
+  "value": zod.unknown(),
+  "epistemicStatus": zod.enum(['observed', 'derived', 'coverage-limited', 'unknown']),
+  "provenance": zod.record(zod.string(), zod.unknown())
+})),
+  "observedSignals": zod.array(zod.object({
+  "signalId": zod.string(),
+  "profile": zod.enum(['long_term', 'recent', 'collection']),
+  "signalType": zod.string(),
+  "subjectIdentity": zod.string(),
+  "value": zod.record(zod.string(), zod.unknown()),
+  "epistemicStatus": zod.enum(['derived']),
+  "scopeIdentity": zod.string(),
+  "coverage": zod.record(zod.string(), zod.unknown()),
+  "provenance": zod.object({
+  "derivedFrom": zod.string(),
+  "eventIds": zod.array(zod.number().multipleOf(getArchivePersonalisationContextResponseObservedSignalsItemOneProvenanceEventIdsItemMultipleOf)),
+  "providerEventIds": zod.array(zod.string()),
+  "batchIds": zod.array(zod.string()),
+  "scopeIdentity": zod.string()
+}),
+  "derivedAt": zod.string()
+}).and(zod.object({
+  "evidenceClass": zod.enum(['observed_signal'])
+}))),
+  "temporalSignals": zod.array(zod.object({
+  "signalId": zod.string(),
+  "profile": zod.enum(['long_term', 'recent', 'collection']),
+  "signalType": zod.string(),
+  "subjectIdentity": zod.string(),
+  "value": zod.record(zod.string(), zod.unknown()),
+  "epistemicStatus": zod.enum(['derived']),
+  "scopeIdentity": zod.string(),
+  "coverage": zod.record(zod.string(), zod.unknown()),
+  "provenance": zod.object({
+  "derivedFrom": zod.string(),
+  "eventIds": zod.array(zod.number().multipleOf(getArchivePersonalisationContextResponseTemporalSignalsItemOneProvenanceEventIdsItemMultipleOf)),
+  "providerEventIds": zod.array(zod.string()),
+  "batchIds": zod.array(zod.string()),
+  "scopeIdentity": zod.string()
+}),
+  "derivedAt": zod.string()
+}).and(zod.object({
+  "evidenceClass": zod.enum(['temporal_signal'])
+}))),
+  "collectionFacts": zod.array(zod.object({
+  "signalId": zod.string(),
+  "profile": zod.enum(['long_term', 'recent', 'collection']),
+  "signalType": zod.string(),
+  "subjectIdentity": zod.string(),
+  "value": zod.record(zod.string(), zod.unknown()),
+  "epistemicStatus": zod.enum(['derived']),
+  "scopeIdentity": zod.string(),
+  "coverage": zod.record(zod.string(), zod.unknown()),
+  "provenance": zod.object({
+  "derivedFrom": zod.string(),
+  "eventIds": zod.array(zod.number().multipleOf(getArchivePersonalisationContextResponseCollectionFactsItemOneProvenanceEventIdsItemMultipleOf)),
+  "providerEventIds": zod.array(zod.string()),
+  "batchIds": zod.array(zod.string()),
+  "scopeIdentity": zod.string()
+}),
+  "derivedAt": zod.string()
+}).and(zod.object({
+  "evidenceClass": zod.enum(['collection_fact'])
+}))),
+  "interpretations": zod.array(zod.object({
+  "evidenceClass": zod.enum(['interpretation']),
+  "statement": zod.string().optional(),
+  "epistemicStatus": zod.enum(['derived', 'unknown']).optional(),
+  "provenance": zod.record(zod.string(), zod.unknown()).optional()
+})),
+  "uncertainties": zod.array(zod.object({
+  "evidenceClass": zod.enum(['uncertainty']),
+  "reason": zod.string().optional(),
+  "epistemicStatus": zod.enum(['coverage-limited', 'unknown']).optional(),
+  "scopeIdentity": zod.string().optional(),
+  "coverage": zod.record(zod.string(), zod.unknown()).optional(),
+  "provenance": zod.record(zod.string(), zod.unknown()).optional()
+})),
+  "explicitPreferences": zod.array(zod.record(zod.string(), zod.unknown())),
+  "constraints": zod.array(zod.string())
+})

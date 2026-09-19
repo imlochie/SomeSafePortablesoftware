@@ -5,6 +5,209 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type ArchiveAnalyticsCoverage = { [key: string]: unknown };
+
+export type AnalyticsFactEpistemicStatus = typeof AnalyticsFactEpistemicStatus[keyof typeof AnalyticsFactEpistemicStatus];
+
+
+export const AnalyticsFactEpistemicStatus = {
+  observed: 'observed',
+  derived: 'derived',
+  'coverage-limited': 'coverage-limited',
+  unknown: 'unknown',
+} as const;
+
+export type AnalyticsFactProvenance = { [key: string]: unknown };
+
+export interface AnalyticsFact {
+  value: unknown;
+  epistemicStatus: AnalyticsFactEpistemicStatus;
+  provenance: AnalyticsFactProvenance;
+}
+
+/**
+ * All numeric facts carry epistemic status and provenance.
+ */
+export interface ArchiveAnalytics {
+  coverage?: ArchiveAnalyticsCoverage;
+  totalPlays?: AnalyticsFact;
+  uniqueTitlesWatched?: AnalyticsFact;
+  rewatches?: AnalyticsFact;
+  [key: string]: unknown;
+ }
+
+export type BehavioralSignalProfile = typeof BehavioralSignalProfile[keyof typeof BehavioralSignalProfile];
+
+
+export const BehavioralSignalProfile = {
+  long_term: 'long_term',
+  recent: 'recent',
+  collection: 'collection',
+} as const;
+
+export type BehavioralSignalValue = { [key: string]: unknown };
+
+export type BehavioralSignalEpistemicStatus = typeof BehavioralSignalEpistemicStatus[keyof typeof BehavioralSignalEpistemicStatus];
+
+
+export const BehavioralSignalEpistemicStatus = {
+  derived: 'derived',
+} as const;
+
+export type BehavioralSignalCoverage = { [key: string]: unknown };
+
+export interface SignalProvenance {
+  derivedFrom: string;
+  eventIds: number[];
+  providerEventIds: string[];
+  batchIds: string[];
+  scopeIdentity: string;
+  [key: string]: unknown;
+ }
+
+export interface BehavioralSignal {
+  signalId: string;
+  profile: BehavioralSignalProfile;
+  signalType: string;
+  subjectIdentity: string;
+  value: BehavioralSignalValue;
+  epistemicStatus: BehavioralSignalEpistemicStatus;
+  scopeIdentity: string;
+  coverage: BehavioralSignalCoverage;
+  provenance: SignalProvenance;
+  derivedAt: string;
+  [key: string]: unknown;
+ }
+
+export type PersonalisationFactEvidenceClass = typeof PersonalisationFactEvidenceClass[keyof typeof PersonalisationFactEvidenceClass];
+
+
+export const PersonalisationFactEvidenceClass = {
+  fact: 'fact',
+} as const;
+
+export type PersonalisationFactEpistemicStatus = typeof PersonalisationFactEpistemicStatus[keyof typeof PersonalisationFactEpistemicStatus];
+
+
+export const PersonalisationFactEpistemicStatus = {
+  observed: 'observed',
+  derived: 'derived',
+  'coverage-limited': 'coverage-limited',
+  unknown: 'unknown',
+} as const;
+
+export type PersonalisationFactProvenance = { [key: string]: unknown };
+
+export interface PersonalisationFact {
+  evidenceClass: PersonalisationFactEvidenceClass;
+  factType: string;
+  value: unknown;
+  epistemicStatus: PersonalisationFactEpistemicStatus;
+  provenance: PersonalisationFactProvenance;
+  [key: string]: unknown;
+ }
+
+export type PersonalisationObservedSignalEvidenceClass = typeof PersonalisationObservedSignalEvidenceClass[keyof typeof PersonalisationObservedSignalEvidenceClass];
+
+
+export const PersonalisationObservedSignalEvidenceClass = {
+  observed_signal: 'observed_signal',
+} as const;
+
+export type PersonalisationObservedSignal = BehavioralSignal & {
+  evidenceClass: PersonalisationObservedSignalEvidenceClass;
+};
+
+export type PersonalisationTemporalSignalEvidenceClass = typeof PersonalisationTemporalSignalEvidenceClass[keyof typeof PersonalisationTemporalSignalEvidenceClass];
+
+
+export const PersonalisationTemporalSignalEvidenceClass = {
+  temporal_signal: 'temporal_signal',
+} as const;
+
+export type PersonalisationTemporalSignal = BehavioralSignal & {
+  evidenceClass: PersonalisationTemporalSignalEvidenceClass;
+};
+
+export type PersonalisationCollectionFactEvidenceClass = typeof PersonalisationCollectionFactEvidenceClass[keyof typeof PersonalisationCollectionFactEvidenceClass];
+
+
+export const PersonalisationCollectionFactEvidenceClass = {
+  collection_fact: 'collection_fact',
+} as const;
+
+export type PersonalisationCollectionFact = BehavioralSignal & {
+  evidenceClass: PersonalisationCollectionFactEvidenceClass;
+};
+
+export type PersonalisationInterpretationEvidenceClass = typeof PersonalisationInterpretationEvidenceClass[keyof typeof PersonalisationInterpretationEvidenceClass];
+
+
+export const PersonalisationInterpretationEvidenceClass = {
+  interpretation: 'interpretation',
+} as const;
+
+export type PersonalisationInterpretationEpistemicStatus = typeof PersonalisationInterpretationEpistemicStatus[keyof typeof PersonalisationInterpretationEpistemicStatus];
+
+
+export const PersonalisationInterpretationEpistemicStatus = {
+  derived: 'derived',
+  unknown: 'unknown',
+} as const;
+
+export type PersonalisationInterpretationProvenance = { [key: string]: unknown };
+
+export interface PersonalisationInterpretation {
+  evidenceClass: PersonalisationInterpretationEvidenceClass;
+  statement?: string;
+  epistemicStatus?: PersonalisationInterpretationEpistemicStatus;
+  provenance?: PersonalisationInterpretationProvenance;
+  [key: string]: unknown;
+ }
+
+export type PersonalisationUncertaintyEvidenceClass = typeof PersonalisationUncertaintyEvidenceClass[keyof typeof PersonalisationUncertaintyEvidenceClass];
+
+
+export const PersonalisationUncertaintyEvidenceClass = {
+  uncertainty: 'uncertainty',
+} as const;
+
+export type PersonalisationUncertaintyEpistemicStatus = typeof PersonalisationUncertaintyEpistemicStatus[keyof typeof PersonalisationUncertaintyEpistemicStatus];
+
+
+export const PersonalisationUncertaintyEpistemicStatus = {
+  'coverage-limited': 'coverage-limited',
+  unknown: 'unknown',
+} as const;
+
+export type PersonalisationUncertaintyCoverage = { [key: string]: unknown };
+
+export type PersonalisationUncertaintyProvenance = { [key: string]: unknown };
+
+export interface PersonalisationUncertainty {
+  evidenceClass: PersonalisationUncertaintyEvidenceClass;
+  reason?: string;
+  epistemicStatus?: PersonalisationUncertaintyEpistemicStatus;
+  scopeIdentity?: string;
+  coverage?: PersonalisationUncertaintyCoverage;
+  provenance?: PersonalisationUncertaintyProvenance;
+  [key: string]: unknown;
+ }
+
+export type PersonalisationContextExplicitPreferencesItem = { [key: string]: unknown };
+
+export interface PersonalisationContext {
+  domain: string;
+  facts: PersonalisationFact[];
+  observedSignals: PersonalisationObservedSignal[];
+  temporalSignals: PersonalisationTemporalSignal[];
+  collectionFacts: PersonalisationCollectionFact[];
+  interpretations: PersonalisationInterpretation[];
+  uncertainties: PersonalisationUncertainty[];
+  explicitPreferences: PersonalisationContextExplicitPreferencesItem[];
+  constraints: string[];
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -2085,4 +2288,3 @@ confidence?: string;
 mediaType?: string;
 needsReview?: boolean;
 };
-

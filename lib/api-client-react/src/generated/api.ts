@@ -28,6 +28,7 @@ import type {
   AppSettings,
   AppSettingsUpdate,
   ApprovedAcquisitionResult,
+  ArchiveAnalytics,
   ArchiveBulkReviewResponse,
   ArchiveBulkReviewUpdate,
   ArchiveInventory,
@@ -66,6 +67,7 @@ import type {
   MissingMediaResponse,
   NamingProposalReport,
   OperationConfirmation,
+  PersonalisationContext,
   PlanAcquisitionImport,
   PlexConfig,
   PlexConfigUpdate,
@@ -5339,3 +5341,151 @@ export const useRetryDownload = <TError = ErrorType<unknown>,
       return useMutation(getRetryDownloadMutationOptions(options));
     }
 
+export const getGetArchiveAnalyticsUrl = () => {
+
+
+
+
+  return `/api/analytics`
+}
+
+/**
+ * Normalized, owner-scoped facts from persisted provider history. This endpoint never queries providers directly.
+ * @summary Read archive viewing analytics
+ */
+export const getArchiveAnalytics = async ( options?: Parameters<typeof customFetch>[1]): Promise<ArchiveAnalytics> => {
+
+  return customFetch<ArchiveAnalytics>(getGetArchiveAnalyticsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchiveAnalyticsQueryKey = () => {
+    return [
+    `/api/analytics`
+    ] as const;
+    }
+
+
+export const getGetArchiveAnalyticsQueryOptions = <TData = Awaited<ReturnType<typeof getArchiveAnalytics>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveAnalytics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchiveAnalyticsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchiveAnalytics>>> = ({ signal }) => getArchiveAnalytics({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchiveAnalytics>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchiveAnalyticsQueryResult = NonNullable<Awaited<ReturnType<typeof getArchiveAnalytics>>>
+export type GetArchiveAnalyticsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read archive viewing analytics
+ */
+
+export function useGetArchiveAnalytics<TData = Awaited<ReturnType<typeof getArchiveAnalytics>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchiveAnalytics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchiveAnalyticsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetArchivePersonalisationContextUrl = () => {
+
+
+
+
+  return `/api/assistant/personalisation-context`
+}
+
+/**
+ * @summary Read bounded behavioural context for Arena
+ */
+export const getArchivePersonalisationContext = async ( options?: Parameters<typeof customFetch>[1]): Promise<PersonalisationContext> => {
+
+  return customFetch<PersonalisationContext>(getGetArchivePersonalisationContextUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArchivePersonalisationContextQueryKey = () => {
+    return [
+    `/api/assistant/personalisation-context`
+    ] as const;
+    }
+
+
+export const getGetArchivePersonalisationContextQueryOptions = <TData = Awaited<ReturnType<typeof getArchivePersonalisationContext>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchivePersonalisationContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArchivePersonalisationContextQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArchivePersonalisationContext>>> = ({ signal }) => getArchivePersonalisationContext({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArchivePersonalisationContext>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArchivePersonalisationContextQueryResult = NonNullable<Awaited<ReturnType<typeof getArchivePersonalisationContext>>>
+export type GetArchivePersonalisationContextQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read bounded behavioural context for Arena
+ */
+
+export function useGetArchivePersonalisationContext<TData = Awaited<ReturnType<typeof getArchivePersonalisationContext>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArchivePersonalisationContext>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArchivePersonalisationContextQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
