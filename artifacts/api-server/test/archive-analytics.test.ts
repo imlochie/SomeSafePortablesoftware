@@ -154,6 +154,7 @@ describe("archive analytics observation foundation", () => {
       startsAt: "2026-06-21T00:00:00.000Z",
       endsAt: "2026-09-19T00:00:00.000Z",
     });
+    assert.equal(recent.derivedAt, recent.value.window.endsAt);
     assert.equal(rewatch.value.rewatchCount, 2);
     assert.equal(rewatch.coverage.collectingSince, "2026-09-19");
     assert.ok(typeof recent.signalId === "string");

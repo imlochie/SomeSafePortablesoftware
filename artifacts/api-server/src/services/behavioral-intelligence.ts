@@ -19,7 +19,7 @@ function coverageFor(ownerId: string) {
 }
 
 function insertSignal(ownerId: string, scope: string, profile: BehavioralProfile, signalType: BehavioralSignalType,
-  subject: string, value: unknown, events: EventRow[], coverage: unknown) {
+  subject: string, value: unknown, events: EventRow[], coverage: unknown, derivedAt: string) {
   const eventIds = events.map((event) => event.id);
   const providerEventIds = events.map((event) => event.provider_event_id);
   const evidenceKeys = events.map((event) => event.evidence_key).filter((key): key is string => Boolean(key));
@@ -35,7 +35,7 @@ function insertSignal(ownerId: string, scope: string, profile: BehavioralProfile
       provenance_json=excluded.provenance_json, derived_at=excluded.derived_at`)
     .run(ownerId, scope, profile, signalType, subject, JSON.stringify(value), JSON.stringify(coverage),
       JSON.stringify({ derivedFrom: "watch_event", observationIds: eventIds, eventIds, evidenceKeys, providerEventIds,
-        ingestionBatchIds: batchIds, batchIds, eventOccurredAt, observedAt, scopeIdentity: scope }), new Date().toISOString());
+        ingestionBatchIds: batchIds, batchIds, eventOccurredAt, observedAt, scopeIdentity: scope }), derivedAt);
 }
 
 /** Rebuilds all supported behavioral facts from canonical watch events. No recommendation score is produced. */
@@ -65,16 +65,16 @@ export function deriveBehavioralSignals(ownerId: string, now = new Date()) {
       insertSignal(ownerId, scope, "long_term", "long_term_affinity", subject, {
         title: watches.at(-1)?.title, totalWatches: watches.length, firstWatchedAt: new Date(Math.min(...timestamps)).toISOString(),
         lastWatchedAt: new Date(Math.max(...timestamps)).toISOString(), activeMonths: new Set(watches.map((e) => e.viewed_at.slice(0, 7))).size,
-      }, watches, coverage);
+      }, watches, coverage, now.toISOString());
       insertSignal(ownerId, scope, "recent", "recent_activity", subject, {
         title: watches.at(-1)?.title, watchesLast30Days: recent30.length, watchesLast90Days: recent90.length,
         lastWatchedAt: new Date(Math.max(...timestamps)).toISOString(), comparisonWindowDays: 90,
         window: { startsAt: recent90StartsAt, endsAt: windowEndsAt },
-      }, watches, coverage);
+      }, watches, coverage, now.toISOString());
       if (repeatCount > 0) insertSignal(ownerId, scope, "long_term", "rewatch_affinity", subject, {
         title: watches.at(-1)?.title, firstWatch: watches[0].viewed_at, rewatchCount: repeatCount,
         rewatchIntervalsDays: intervals, lastRewatchAt: watches.at(-1)?.viewed_at,
-      }, watches, coverage);
+      }, watches, coverage, now.toISOString());
     }
     const relationship = scoped.reduce((result, event) => {
       const key = event.ownership_resolution;
@@ -82,7 +82,7 @@ export function deriveBehavioralSignals(ownerId: string, now = new Date()) {
       return result;
     }, {} as Record<string, number>);
     insertSignal(ownerId, scope, "collection", "collection_relationship", "archive", relationship,
-      scoped, coverage);
+      scoped, coverage, now.toISOString());
   }
   return readBehavioralSignals(ownerId);
 }
