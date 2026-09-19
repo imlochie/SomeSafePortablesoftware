@@ -14,7 +14,7 @@ const owner = `${runtimeConfig.localOwnerId}-analytics`;
 
 function event(id: string, identity: string, viewedAt: string) {
   return { providerEventId: id, mediaIdentity: identity, mediaType: "movie" as const, title: identity, viewedAt,
-    durationObservedSeconds: 3600, accountId: "primary" };
+    durationObservedSeconds: 3600, accountId: "primary", scopeIdentity: "plex:default" };
 }
 
 describe("archive analytics observation foundation", () => {
@@ -25,8 +25,15 @@ describe("archive analytics observation foundation", () => {
       { historicalCoverageStart: "2019-04-17", collectingSince: "2026-09-19", accountId: "primary" });
     ingestWatchEvents(owner, [event("play-1", "owned-film", "2019-04-17T10:00:00.000Z")], { accountId: "primary" });
     assert.equal((archiveDb.prepare("SELECT COUNT(*) AS n FROM watch_event WHERE owner_id = ?").get(owner) as any).n, 2);
-    const persisted = archiveDb.prepare("SELECT historical_coverage_start, collecting_since, provenance_json FROM watch_event WHERE owner_id = ? LIMIT 1").get(owner) as any;
+    const persisted = archiveDb.prepare("SELECT historical_coverage_start, collecting_since, provenance_json, evidence_key, ingestion_id, viewed_at, observed_at, owner_id, scope_identity FROM watch_event WHERE owner_id = ? LIMIT 1").get(owner) as any;
     assert.equal(persisted.historical_coverage_start, "2019-04-17");
+    assert.ok(persisted.evidence_key);
+    assert.equal(persisted.ingestion_id.startsWith("manual-"), true);
+    assert.equal(persisted.owner_id, owner);
+    assert.equal(persisted.scope_identity, "plex:default");
+    assert.equal(JSON.parse(persisted.provenance_json).eventOccurredAt, persisted.viewed_at);
+    assert.equal(JSON.parse(persisted.provenance_json).observedAt, persisted.observed_at);
+    assert.notEqual(persisted.viewed_at, persisted.observed_at);
     assert.equal(persisted.collecting_since, "2026-09-19");
     assert.equal((archiveDb.prepare("SELECT duration_semantics FROM watch_event WHERE owner_id = ? LIMIT 1").get(owner) as any).duration_semantics, "provider_reported");
     assert.equal(JSON.parse(persisted.provenance_json).provider, "plex");
@@ -50,7 +57,19 @@ describe("archive analytics observation foundation", () => {
     assert.equal(analytics.ownership.value.neverMatched, 1);
   });
 
+  test("requires provenance-complete observation admission", () => {
+    assert.throws(() => ingestWatchEvents(owner, [{ ...event("missing-scope", "scope-required", "2026-09-01T10:00:00.000Z"), scopeIdentity: undefined }]), /scope/i);
+    assert.throws(() => ingestWatchEvents(owner, [{ ...event("", "missing-provider-id", "2026-09-01T10:00:00.000Z") }]), /provider event identity/i);
+    assert.throws(() => ingestWatchEvents(owner, [{ ...event("missing-time", "missing-time", "not-a-date") }]), /event time/i);
+    assert.throws(() => ingestWatchEvents(owner, [{ ...event("missing-batch", "missing-batch", "2026-09-01T10:00:00.000Z") }], { ingestionId: "not-a-durable-batch" }), /durable watch ingestion batch/i);
+    const rows = archiveDb.prepare("SELECT evidence_key, provider, scope_identity FROM watch_event WHERE owner_id = ? AND media_identity IN ('scope-required', 'missing-provider-id', 'missing-time', 'missing-batch')").all(owner) as any[];
+    assert.equal(rows.length, 0);
+  });
+
   test("rejects out-of-scope, live, DVR, unsupported, and ineligible observations", () => {
+    archiveDb.prepare(`INSERT INTO watch_ingestion_batch
+      (id, owner_id, provider, scope_identity, started_at, status, completeness, request_context_json)
+      VALUES ('scope-refresh-1', ?, 'plex', 'plex:movies-v1', CURRENT_TIMESTAMP, 'running', 'partial', '{}')`).run(owner);
     ingestWatchEvents(owner, [
       { ...event("accepted-scope", "scope-film", "2026-09-01T10:00:00.000Z"), scopeIdentity: "plex:movies-v1", libraryIdentity: "movies" },
       { ...event("wrong-scope", "wrong-scope", "2026-09-01T10:00:00.000Z"), scopeIdentity: "plex:tv-v1", libraryIdentity: "tv" },
@@ -110,7 +129,7 @@ describe("archive analytics observation foundation", () => {
     const address = server.address() as { port: number };
     writeUserSetting(apiOwner, "plexServerUrl", `http://127.0.0.1:${address.port}`);
     writeUserSetting(apiOwner, "plexToken", "test-token");
-    ingestWatchEvents(apiOwner, [], { historicalCoverageStart: "2019-04-17", collectingSince: "2026-09-19" });
+    ingestWatchEvents(apiOwner, [], { scope: { identity: "plex:default" }, historicalCoverageStart: "2019-04-17", collectingSince: "2026-09-19" });
     const before = (archiveDb.prepare("SELECT last_successful_ingestion FROM analytics_coverage WHERE owner_id = ?").get(apiOwner) as any).last_successful_ingestion;
     const result = await ingestPlexHistoryFromApi(apiOwner, { scope: { identity: "plex:partial-v1", allowedMediaTypes: ["movie"] as Array<"movie"> }, historicalCoverageStart: "2019-04-17", collectingSince: "2026-09-19", pageSize: 1 });
     assert.equal(result.status, "partial");
@@ -135,7 +154,12 @@ describe("archive analytics observation foundation", () => {
     assert.equal(rewatch.coverage.collectingSince, "2026-09-19");
     assert.ok(typeof recent.signalId === "string");
     assert.ok(Array.isArray(recent.provenance.eventIds));
+    assert.ok(Array.isArray(recent.provenance.observationIds));
+    assert.ok(Array.isArray(recent.provenance.evidenceKeys));
     assert.ok(Array.isArray(recent.provenance.providerEventIds));
+    assert.ok(Array.isArray(recent.provenance.ingestionBatchIds));
+    assert.ok(Array.isArray(recent.provenance.eventOccurredAt));
+    assert.ok(Array.isArray(recent.provenance.observedAt));
     recordExplicitPreference(owner, { scopeIdentity: scope, subjectType: "genre", subjectIdentity: "Japanese cinema", statement: "I am into Japanese cinema right now." });
     const context = getPersonalisationContext(owner) as any;
     assert.equal(context.explicitPreferences[0].statement, "I am into Japanese cinema right now.");

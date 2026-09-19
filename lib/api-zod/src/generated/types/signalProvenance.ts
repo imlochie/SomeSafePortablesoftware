@@ -8,9 +8,14 @@
 
 export interface SignalProvenance {
   derivedFrom: string;
+  observationIds: number[];
   eventIds: number[];
+  evidenceKeys: string[];
   providerEventIds: string[];
+  ingestionBatchIds: string[];
   batchIds: string[];
+  eventOccurredAt: string[];
+  observedAt: string[];
   scopeIdentity: string;
   [key: string]: unknown;
  }

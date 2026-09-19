@@ -701,6 +701,7 @@ archiveDb.exec(`
     owner_id TEXT NOT NULL,
     provider TEXT NOT NULL,
     provider_event_id TEXT NOT NULL,
+    evidence_key TEXT,
     media_identity TEXT NOT NULL,
     media_type TEXT NOT NULL,
     title TEXT NOT NULL,
@@ -789,6 +790,10 @@ archiveDb.exec(`
   );
 `);
 ensureColumn("watch_event", "scope_identity", "TEXT NOT NULL DEFAULT 'plex:default'");
+ensureColumn("watch_event", "evidence_key", "TEXT");
+archiveDb.exec(`CREATE UNIQUE INDEX IF NOT EXISTS watch_event_evidence_key_idx
+  ON watch_event(owner_id, provider, scope_identity, evidence_key)
+  WHERE evidence_key IS NOT NULL`);
 ensureColumn("watch_event", "duration_semantics", "TEXT NOT NULL DEFAULT 'unknown'");
 ensureColumn("watch_event", "historical_coverage_start", "TEXT");
 ensureColumn("watch_event", "collecting_since", "TEXT");

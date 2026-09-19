@@ -1481,12 +1481,17 @@ components:
       additionalProperties: true
     SignalProvenance:
       type: object
-      required: [derivedFrom, eventIds, providerEventIds, batchIds, scopeIdentity]
+      required: [derivedFrom, observationIds, eventIds, evidenceKeys, providerEventIds, ingestionBatchIds, batchIds, eventOccurredAt, observedAt, scopeIdentity]
       properties:
         derivedFrom: { type: string }
+        observationIds: { type: array, items: { type: number, multipleOf: 1 } }
         eventIds: { type: array, items: { type: number, multipleOf: 1 } }
+        evidenceKeys: { type: array, items: { type: string } }
         providerEventIds: { type: array, items: { type: string } }
+        ingestionBatchIds: { type: array, items: { type: string } }
         batchIds: { type: array, items: { type: string } }
+        eventOccurredAt: { type: array, items: { type: string } }
+        observedAt: { type: array, items: { type: string } }
         scopeIdentity: { type: string }
       additionalProperties: true
     PersonalisationFact:

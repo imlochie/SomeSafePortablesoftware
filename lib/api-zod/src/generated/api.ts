@@ -3087,9 +3087,15 @@ export const GetArchiveAnalyticsResponse = zod.object({
 /**
  * @summary Read bounded behavioural context for Arena
  */
+export const getArchivePersonalisationContextResponseObservedSignalsItemOneProvenanceObservationIdsItemMultipleOf = 1;
+
 export const getArchivePersonalisationContextResponseObservedSignalsItemOneProvenanceEventIdsItemMultipleOf = 1;
 
+export const getArchivePersonalisationContextResponseTemporalSignalsItemOneProvenanceObservationIdsItemMultipleOf = 1;
+
 export const getArchivePersonalisationContextResponseTemporalSignalsItemOneProvenanceEventIdsItemMultipleOf = 1;
+
+export const getArchivePersonalisationContextResponseCollectionFactsItemOneProvenanceObservationIdsItemMultipleOf = 1;
 
 export const getArchivePersonalisationContextResponseCollectionFactsItemOneProvenanceEventIdsItemMultipleOf = 1;
 
@@ -3115,9 +3121,14 @@ export const GetArchivePersonalisationContextResponse = zod.object({
   "coverage": zod.record(zod.string(), zod.unknown()),
   "provenance": zod.object({
   "derivedFrom": zod.string(),
+  "observationIds": zod.array(zod.number().multipleOf(getArchivePersonalisationContextResponseObservedSignalsItemOneProvenanceObservationIdsItemMultipleOf)),
   "eventIds": zod.array(zod.number().multipleOf(getArchivePersonalisationContextResponseObservedSignalsItemOneProvenanceEventIdsItemMultipleOf)),
+  "evidenceKeys": zod.array(zod.string()),
   "providerEventIds": zod.array(zod.string()),
+  "ingestionBatchIds": zod.array(zod.string()),
   "batchIds": zod.array(zod.string()),
+  "eventOccurredAt": zod.array(zod.string()),
+  "observedAt": zod.array(zod.string()),
   "scopeIdentity": zod.string()
 }),
   "derivedAt": zod.string()
@@ -3135,9 +3146,14 @@ export const GetArchivePersonalisationContextResponse = zod.object({
   "coverage": zod.record(zod.string(), zod.unknown()),
   "provenance": zod.object({
   "derivedFrom": zod.string(),
+  "observationIds": zod.array(zod.number().multipleOf(getArchivePersonalisationContextResponseTemporalSignalsItemOneProvenanceObservationIdsItemMultipleOf)),
   "eventIds": zod.array(zod.number().multipleOf(getArchivePersonalisationContextResponseTemporalSignalsItemOneProvenanceEventIdsItemMultipleOf)),
+  "evidenceKeys": zod.array(zod.string()),
   "providerEventIds": zod.array(zod.string()),
+  "ingestionBatchIds": zod.array(zod.string()),
   "batchIds": zod.array(zod.string()),
+  "eventOccurredAt": zod.array(zod.string()),
+  "observedAt": zod.array(zod.string()),
   "scopeIdentity": zod.string()
 }),
   "derivedAt": zod.string()
@@ -3155,9 +3171,14 @@ export const GetArchivePersonalisationContextResponse = zod.object({
   "coverage": zod.record(zod.string(), zod.unknown()),
   "provenance": zod.object({
   "derivedFrom": zod.string(),
+  "observationIds": zod.array(zod.number().multipleOf(getArchivePersonalisationContextResponseCollectionFactsItemOneProvenanceObservationIdsItemMultipleOf)),
   "eventIds": zod.array(zod.number().multipleOf(getArchivePersonalisationContextResponseCollectionFactsItemOneProvenanceEventIdsItemMultipleOf)),
+  "evidenceKeys": zod.array(zod.string()),
   "providerEventIds": zod.array(zod.string()),
+  "ingestionBatchIds": zod.array(zod.string()),
   "batchIds": zod.array(zod.string()),
+  "eventOccurredAt": zod.array(zod.string()),
+  "observedAt": zod.array(zod.string()),
   "scopeIdentity": zod.string()
 }),
   "derivedAt": zod.string()

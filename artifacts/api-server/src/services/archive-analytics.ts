@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { archiveDb } from "../lib/archive-db";
 import { readPlexHistoryPage } from "./plex";
 
@@ -38,6 +39,18 @@ export type AnalyticsFact<T> = {
 
 function coverage(ownerId: string) {
   return archiveDb.prepare("SELECT * FROM analytics_coverage WHERE owner_id = ? AND provider = 'plex'").get(ownerId) as any;
+}
+
+/** Stable Archive Assistant identity for one provider evidence tuple. */
+export function evidenceKeyFor(provider: string, providerEventId: string, scopeIdentity: string) {
+  return JSON.stringify(["archive-assistant.evidence.v1", provider, providerEventId, scopeIdentity]);
+}
+
+function requireIngestionBatch(ownerId: string, provider: string, batchId: string, scopeIdentity: string) {
+  const batch = archiveDb.prepare("SELECT owner_id, provider, scope_identity FROM watch_ingestion_batch WHERE id = ?").get(batchId) as any;
+  if (!batch || batch.owner_id !== ownerId || batch.provider !== provider || batch.scope_identity !== scopeIdentity) {
+    throw new Error("A durable watch ingestion batch with matching owner, provider, and scope is required.");
+  }
 }
 
 /** Provider adapter boundary: only this function knows Plex history field names. */
@@ -158,41 +171,57 @@ export function ingestWatchEvents(ownerId: string, observations: WatchObservatio
 } = {}) {
   const provider = options.provider ?? "plex";
   const configuredScopeIdentity = options.scope?.identity ?? options.scopeIdentity;
-  const defaultScopeIdentity = configuredScopeIdentity ?? `${provider}:default`;
-  const now = new Date().toISOString();
-  const ingestionId = options.ingestionId ?? `${provider}-history-${now}`;
+  const batchScopeIdentity = configuredScopeIdentity ?? observations[0]?.scopeIdentity;
+  if (!batchScopeIdentity?.trim()) throw new Error("A declared observation scope is required.");
+  const ingestionId = options.ingestionId ?? `manual-${randomUUID()}`;
+  const existingBatch = archiveDb.prepare("SELECT id FROM watch_ingestion_batch WHERE id = ?").get(ingestionId);
+  if (options.ingestionId && !existingBatch) throw new Error("A durable watch ingestion batch with matching owner, provider, and scope is required.");
+  if (existingBatch) requireIngestionBatch(ownerId, provider, ingestionId, batchScopeIdentity);
+  const createsBatch = !existingBatch;
+  if (createsBatch) {
+    archiveDb.prepare(`INSERT INTO watch_ingestion_batch
+      (id, owner_id, provider, scope_identity, started_at, status, completeness, request_context_json)
+      VALUES (?, ?, ?, ?, ?, 'running', 'partial', ?)`)
+      .run(ingestionId, ownerId, provider, batchScopeIdentity, new Date().toISOString(),
+        JSON.stringify({ kind: "direct-observation-ingestion", scope: options.scope ?? { identity: batchScopeIdentity } }));
+  }
   const allowedMediaTypes = options.scope?.allowedMediaTypes ?? ["movie", "episode"];
   const excludedEventTypes = new Set(options.scope?.excludedEventTypes ?? ["live", "dvr"]);
   const insert = archiveDb.prepare(`INSERT OR IGNORE INTO watch_event
-    (owner_id, provider, provider_event_id, media_identity, media_type, title, year, started_at, viewed_at,
+    (owner_id, provider, provider_event_id, evidence_key, media_identity, media_type, title, year, started_at, viewed_at,
      duration_observed_seconds, duration_semantics, account_id, client_device, source, scope_identity,
      historical_coverage_start, collecting_since, ingestion_id, observed_at, provenance_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  const observedAt = new Date().toISOString();
   let inserted = 0;
-  const transaction = () => {
+  try {
     archiveDb.exec("BEGIN IMMEDIATE");
-    try {
-      for (const event of observations) {
-        if (!event.providerEventId.trim() || !event.mediaIdentity.trim()) continue;
-        if (event.eventType && event.eventType !== "history") continue;
-        if (event.eventType && excludedEventTypes.has(event.eventType)) continue;
-        if (event.accountEligible === false) continue;
-        if (!allowedMediaTypes.includes(event.mediaType as "movie" | "episode")) continue;
-        if (options.accountId && event.accountId !== options.accountId) continue;
-        if (options.scope?.allowedLibraries && !options.scope.allowedLibraries.includes(event.libraryIdentity ?? "")) continue;
-        if (configuredScopeIdentity && event.scopeIdentity && event.scopeIdentity !== configuredScopeIdentity) continue;
-        const acceptedScope = event.scopeIdentity ?? defaultScopeIdentity;
-        const result = insert.run(ownerId, provider, event.providerEventId, event.mediaIdentity, event.mediaType,
-          event.title, event.year ?? null, event.startedAt ?? null, event.viewedAt, event.durationObservedSeconds ?? null,
-          event.durationSemantics ?? (event.durationObservedSeconds == null ? "unknown" : "provider_reported"),
-          event.accountId ?? null, event.clientDevice ?? null, event.source ?? `${provider}.history`, acceptedScope,
-          options.historicalCoverageStart ?? null, options.collectingSince ?? null, ingestionId, now,
-          JSON.stringify({ provider, providerEventId: event.providerEventId, scopeIdentity: acceptedScope,
-            ingestionId, historicalCoverageStart: options.historicalCoverageStart ?? null,
-            collectingSince: options.collectingSince ?? null, ...(event.provenance ?? {}) }));
-        inserted += Number(result.changes);
-      }
-      if (options.updateCoverage !== false && (options.historicalCoverageStart || options.collectingSince)) {
+    for (const event of observations) {
+      if (!event.providerEventId?.trim()) throw new Error("Provider event identity is required for provenance-backed observations.");
+      if (!event.mediaIdentity.trim()) continue;
+      if (event.eventType && event.eventType !== "history") continue;
+      if (event.eventType && excludedEventTypes.has(event.eventType)) continue;
+      if (event.accountEligible === false) continue;
+      if (!allowedMediaTypes.includes(event.mediaType as "movie" | "episode")) continue;
+      if (options.accountId && event.accountId !== options.accountId) continue;
+      if (options.scope?.allowedLibraries && !options.scope.allowedLibraries.includes(event.libraryIdentity ?? "")) continue;
+      if (configuredScopeIdentity && event.scopeIdentity && event.scopeIdentity !== configuredScopeIdentity) continue;
+      const acceptedScope = event.scopeIdentity ?? configuredScopeIdentity;
+      if (!acceptedScope?.trim()) throw new Error("A declared observation scope is required.");
+      if (!Number.isFinite(Date.parse(event.viewedAt))) throw new Error("A valid provider event time is required.");
+      const evidenceKey = evidenceKeyFor(provider, event.providerEventId, acceptedScope);
+      const result = insert.run(ownerId, provider, event.providerEventId, evidenceKey, event.mediaIdentity, event.mediaType,
+        event.title, event.year ?? null, event.startedAt ?? null, event.viewedAt, event.durationObservedSeconds ?? null,
+        event.durationSemantics ?? (event.durationObservedSeconds == null ? "unknown" : "provider_reported"),
+        event.accountId ?? null, event.clientDevice ?? null, event.source ?? `${provider}.history`, acceptedScope,
+        options.historicalCoverageStart ?? null, options.collectingSince ?? null, ingestionId, observedAt,
+        JSON.stringify({ provider, providerEventId: event.providerEventId, evidenceKey, scopeIdentity: acceptedScope,
+          ingestionBatchId: ingestionId, eventOccurredAt: event.viewedAt, observedAt,
+          historicalCoverageStart: options.historicalCoverageStart ?? null,
+          collectingSince: options.collectingSince ?? null, ...(event.provenance ?? {}) }));
+      inserted += Number(result.changes);
+    }
+    if (options.updateCoverage !== false && (options.historicalCoverageStart || options.collectingSince)) {
       archiveDb.prepare(`INSERT INTO analytics_coverage
         (owner_id, provider, historical_coverage_start, collecting_since, last_successful_ingestion, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -200,17 +229,21 @@ export function ingestWatchEvents(ownerId: string, observations: WatchObservatio
           historical_coverage_start=COALESCE(excluded.historical_coverage_start, historical_coverage_start),
           collecting_since=COALESCE(excluded.collecting_since, collecting_since),
           last_successful_ingestion=excluded.last_successful_ingestion, updated_at=excluded.updated_at`)
-          .run(ownerId, provider, options.historicalCoverageStart ?? null, options.collectingSince ?? null, now, now);
-      }
-      resolveOwnership(ownerId);
-      archiveDb.exec("COMMIT");
-    } catch (error) {
-      archiveDb.exec("ROLLBACK");
-      throw error;
+        .run(ownerId, provider, options.historicalCoverageStart ?? null, options.collectingSince ?? null, observedAt, observedAt);
     }
-  };
-  transaction();
-  return { inserted, attempted: observations.length, lastSuccessfulIngestion: now };
+    resolveOwnership(ownerId);
+    archiveDb.exec("COMMIT");
+    if (createsBatch) archiveDb.prepare(`UPDATE watch_ingestion_batch
+      SET completed_at = ?, status = 'complete', completeness = 'complete', accepted_event_count = ? WHERE id = ?`)
+      .run(new Date().toISOString(), inserted, ingestionId);
+  } catch (error) {
+    try { archiveDb.exec("ROLLBACK"); } catch { /* transaction may already be closed */ }
+    if (createsBatch) archiveDb.prepare(`UPDATE watch_ingestion_batch
+      SET completed_at = ?, status = 'failed', completeness = 'failed', error_message = ? WHERE id = ?`)
+      .run(new Date().toISOString(), error instanceof Error ? error.message : "Observation ingestion failed.", ingestionId);
+    throw error;
+  }
+  return { inserted, attempted: observations.length, lastSuccessfulIngestion: observedAt, ingestionId };
 }
 
 /** Re-evaluates relationship without deleting historical events. */

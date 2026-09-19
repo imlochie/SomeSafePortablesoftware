@@ -5,8 +5,8 @@ export type BehavioralProfile = "long_term" | "recent" | "collection";
 export type BehavioralSignalType = "recent_activity" | "long_term_affinity" | "rewatch_affinity" | "collection_relationship";
 
 type EventRow = {
-  id: number; scope_identity: string; media_identity: string; title: string; viewed_at: string;
-  ownership_resolution: string; provider: string; provider_event_id: string; ingestion_id: string | null; provenance_json: string;
+  id: number; scope_identity: string; media_identity: string; title: string; viewed_at: string; observed_at: string;
+  ownership_resolution: string; provider: string; provider_event_id: string; evidence_key: string | null; ingestion_id: string | null; provenance_json: string;
 };
 
 function coverageFor(ownerId: string) {
@@ -22,7 +22,10 @@ function insertSignal(ownerId: string, scope: string, profile: BehavioralProfile
   subject: string, value: unknown, events: EventRow[], coverage: unknown) {
   const eventIds = events.map((event) => event.id);
   const providerEventIds = events.map((event) => event.provider_event_id);
+  const evidenceKeys = events.map((event) => event.evidence_key).filter((key): key is string => Boolean(key));
   const batchIds = [...new Set(events.map((event) => event.ingestion_id).filter((id): id is string => Boolean(id)))];
+  const eventOccurredAt = events.map((event) => event.viewed_at);
+  const observedAt = events.map((event) => event.observed_at);
   archiveDb.prepare(`INSERT INTO behavioral_signal
     (owner_id, scope_identity, profile, signal_type, subject_type, subject_identity, value_json,
      epistemic_status, coverage_json, provenance_json, derived_at)
@@ -31,14 +34,18 @@ function insertSignal(ownerId: string, scope: string, profile: BehavioralProfile
     DO UPDATE SET value_json=excluded.value_json, coverage_json=excluded.coverage_json,
       provenance_json=excluded.provenance_json, derived_at=excluded.derived_at`)
     .run(ownerId, scope, profile, signalType, subject, JSON.stringify(value), JSON.stringify(coverage),
-      JSON.stringify({ derivedFrom: "watch_event", eventIds, providerEventIds, batchIds, scopeIdentity: scope }), new Date().toISOString());
+      JSON.stringify({ derivedFrom: "watch_event", observationIds: eventIds, eventIds, evidenceKeys, providerEventIds,
+        ingestionBatchIds: batchIds, batchIds, eventOccurredAt, observedAt, scopeIdentity: scope }), new Date().toISOString());
 }
 
 /** Rebuilds all supported behavioral facts from canonical watch events. No recommendation score is produced. */
 export function deriveBehavioralSignals(ownerId: string, now = new Date()) {
-  const events = archiveDb.prepare(`SELECT id, scope_identity, media_identity, title, viewed_at, ownership_resolution,
-    provider, provider_event_id, ingestion_id, provenance_json
-    FROM watch_event WHERE owner_id = ? ORDER BY viewed_at, id`).all(ownerId) as EventRow[];
+  const events = archiveDb.prepare(`SELECT id, scope_identity, media_identity, title, viewed_at, observed_at, ownership_resolution,
+    provider, provider_event_id, evidence_key, ingestion_id, provenance_json
+    FROM watch_event
+    WHERE owner_id = ? AND evidence_key IS NOT NULL AND ingestion_id IS NOT NULL
+      AND scope_identity IS NOT NULL AND viewed_at IS NOT NULL AND observed_at IS NOT NULL
+    ORDER BY viewed_at, id`).all(ownerId) as EventRow[];
   const scopes = new Set(events.map((event) => event.scope_identity));
   archiveDb.prepare("DELETE FROM behavioral_signal WHERE owner_id = ?").run(ownerId);
   const coverage = coverageFor(ownerId);
