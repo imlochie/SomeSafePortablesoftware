@@ -18,7 +18,7 @@ export function readReconciliationFindingLineage(ownerId: string, reviewItemId: 
   `).get(ownerId, reviewItemId) as { id: number; evidence_key: string; observed_at: string; payload_json: string } | undefined;
   const payload = finding.payload;
   const snapshot = payload.snapshot && typeof payload.snapshot === "object" ? payload.snapshot as Record<string, unknown> : null;
-  const refresh = snapshot?.refreshId && typeof snapshot.provider === "string"
+  const refresh = typeof snapshot?.refreshId === "string" && typeof snapshot.provider === "string"
     ? archiveDb.prepare(`
         SELECT snapshot_reference FROM provider_refresh
         WHERE owner_id = ? AND provider = ? AND refresh_id = ?
