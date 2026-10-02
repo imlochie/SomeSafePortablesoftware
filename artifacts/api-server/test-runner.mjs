@@ -233,7 +233,10 @@ try {
   const exitCode = await new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ["--test", "--test-concurrency=1", ...outputFiles.map((file) => pathToFileURL(file).pathname)],
+      // Node's test runner accepts native absolute paths (and glob patterns),
+      // but not file:// URLs. Pass the platform-native paths directly so the
+      // invocation works on POSIX and Windows alike.
+      ["--test", "--test-concurrency=1", ...outputFiles],
       {
         stdio: "inherit",
         env: {

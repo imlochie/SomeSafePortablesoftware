@@ -79,6 +79,15 @@ async function filesUnder(directory: string) {
   return files.sort();
 }
 
+// Generated files may be checked out with CRLF endings (Windows) while a
+// fresh local regeneration produces LF (or vice versa); line endings and
+// trailing whitespace must not register as contract drift.
+const normalizeGeneratedText = (buffer: Buffer) =>
+  Buffer.from(
+    buffer.toString("utf8").replace(/\r\n/g, "\n").trimEnd() + "\n",
+    "utf8",
+  );
+
 async function compareGeneratedDirectory(
   checkedInDirectory: string,
   freshDirectory: string,
@@ -103,8 +112,8 @@ async function compareGeneratedDirectory(
       readFile(resolve(checkedInDirectory, file)),
       readFile(resolve(freshDirectory, file)),
     ]);
-    const normalizedCheckedIn = file === "api.ts" ? Buffer.from(checkedIn.toString("utf8").trimEnd() + "\n") : checkedIn;
-    const normalizedFresh = file === "api.ts" ? Buffer.from(fresh.toString("utf8").trimEnd() + "\n") : fresh;
+    const normalizedCheckedIn = normalizeGeneratedText(checkedIn);
+    const normalizedFresh = normalizeGeneratedText(fresh);
     if (!normalizedCheckedIn.equals(normalizedFresh)) {
       const checkedInLines = checkedIn.toString("utf8").split(/\r?\n/);
       const freshLines = fresh.toString("utf8").split(/\r?\n/);
