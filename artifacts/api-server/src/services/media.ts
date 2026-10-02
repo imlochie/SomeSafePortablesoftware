@@ -1,10 +1,8 @@
-import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { basename, extname, isAbsolute, join, resolve, sep } from "node:path";
-import { promisify } from "node:util";
 import type { SettingsRecord } from "../lib/archive-db";
 import { expandPath } from "../lib/expand-path";
-import { getLocalToolPaths } from "./local-tools";
+import { getLocalToolPaths, runLocalTool } from "./local-tools";
 import {
   chooseArchiveVolume,
   ensureArchiveVolume,
@@ -12,8 +10,6 @@ import {
   getArchiveScanRoots,
   type ArchiveMediaType,
 } from "./storage";
-
-const execFileAsync = promisify(execFile);
 
 export type NormalizedMediaFormat = {
   formatId: string;
@@ -282,7 +278,12 @@ function validateSourceUrl(sourceUrl: string) {
 export function isPathWithin(candidate: string, root: string) {
   const candidatePortable = candidate.replaceAll("/", "\\");
   const rootPortable = root.replaceAll("/", "\\");
-  if (/^[a-z]:\\/i.test(candidatePortable) || /^[a-z]:\\/i.test(rootPortable)) {
+  // Windows drive-letter paths can be compared without expansion, but only
+  // when BOTH sides are drive-letter paths. A drive-letter candidate against
+  // a "~"-rooted configured path (or the reverse) must fall through to the
+  // shared expansion below, or the guard disagrees with expandPath and
+  // rejects exactly the paths it is meant to contain.
+  if (/^[a-z]:\\/i.test(candidatePortable) && /^[a-z]:\\/i.test(rootPortable)) {
     const left = candidatePortable.toLowerCase().replace(/[\\]+$/, "");
     const right = rootPortable.toLowerCase().replace(/[\\]+$/, "");
     return left === right || left.startsWith(`${right}\\`);
@@ -462,7 +463,7 @@ export async function inspectMediaSource(url: string, settings: SettingsRecord, 
   }
 
   const { ytDlp } = getLocalToolPaths(settings);
-  const { stdout } = await execFileAsync(ytDlp, [
+  const { stdout } = await runLocalTool(ytDlp, [
     "--dump-single-json",
     "--skip-download",
     "--no-playlist",
@@ -498,7 +499,7 @@ export async function inspectLocalMedia(filePath: string, settings: SettingsReco
   const stat = await fs.stat(candidate);
   if (!stat.isFile()) throw new Error("The selected local path is not a file.");
   const { ffprobe } = getLocalToolPaths(settings);
-  const { stdout } = await execFileAsync(ffprobe, [
+  const { stdout } = await runLocalTool(ffprobe, [
     "-v", "error", "-print_format", "json", "-show_format", "-show_streams", candidate,
   ], { timeout: 20_000, maxBuffer: 10 * 1024 * 1024 });
   const probe = JSON.parse(stdout) as { format?: Record<string, unknown>; streams?: Array<Record<string, unknown>> };

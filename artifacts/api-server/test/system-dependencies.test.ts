@@ -32,12 +32,18 @@ describe("system dependency status", { concurrency: false }, () => {
   });
 
   test("uses the managed directory when no tool override is supplied", () => {
+    const managedDirectory = "/managed/media-tools";
     const config = resolveRuntimeConfig({
-      ARCHIVE_MEDIA_TOOLS_DIR: "/managed/media-tools",
+      ARCHIVE_MEDIA_TOOLS_DIR: managedDirectory,
     });
-    assert.equal(config.tools.ytDlp, "/managed/media-tools/yt-dlp");
-    assert.equal(config.tools.ffmpeg, "/managed/media-tools/ffmpeg");
-    assert.equal(config.tools.ffprobe, "/managed/media-tools/ffprobe");
+    // Managed tools carry the platform executable suffix (.exe on Windows)
+    // and native separators; the expectation must be joined, not assumed to
+    // be a POSIX string.
+    const expectedManagedTool = (name: string) =>
+      join(managedDirectory, process.platform === "win32" ? `${name}.exe` : name);
+    assert.equal(config.tools.ytDlp, expectedManagedTool("yt-dlp"));
+    assert.equal(config.tools.ffmpeg, expectedManagedTool("ffmpeg"));
+    assert.equal(config.tools.ffprobe, expectedManagedTool("ffprobe"));
     assert.equal(config.mediaBundle, null);
   });
 
