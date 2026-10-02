@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test, vi } from "vitest";
 import {
+  obtainVerifiedAsset,
+  readCachedVerifiedAsset,
+  resolveMediaToolsCacheDirectory,
   resolveTargetArchitecture,
   selectTargetManifest,
+  verifyAssetBytes,
 } from "../scripts/stage-media-tools.mjs";
 
 const manifestPath = join(
@@ -124,5 +130,122 @@ describe("native media tool manifest", () => {
   test("normalizes supported architecture aliases", () => {
     expect(resolveTargetArchitecture(" AMD64 ")).toBe("x64");
     expect(resolveTargetArchitecture("AARCH64")).toBe("arm64");
+  });
+});
+
+describe("media tool developer cache", () => {
+  const fixtureBytes = Buffer.from(
+    "archive-assistant cache verification fixture 0123456789",
+    "utf8",
+  );
+  const fixtureTool = {
+    asset: "fixture-asset.bin",
+    url: "https://example.invalid/fixture-asset.bin",
+    downloadBytes: fixtureBytes.byteLength,
+    sha256: createHash("sha256").update(fixtureBytes).digest("hex"),
+  };
+
+  async function withTempCache(run: (cacheDirectory: string) => Promise<void>) {
+    const cacheDirectory = await mkdtemp(join(tmpdir(), "archive-media-cache-"));
+    try {
+      await run(cacheDirectory);
+    } finally {
+      await rm(cacheDirectory, { recursive: true, force: true });
+    }
+  }
+
+  test("accepts a cached asset that matches the exact size and SHA-256", async () => {
+    await withTempCache(async (cacheDirectory) => {
+      await writeFile(join(cacheDirectory, fixtureTool.asset), fixtureBytes);
+      const cached = await readCachedVerifiedAsset(fixtureTool, cacheDirectory);
+      expect(Buffer.isBuffer(cached)).toBe(true);
+      expect(cached?.equals(fixtureBytes)).toBe(true);
+    });
+  });
+
+  test("treats a missing cached asset as absent so staging falls back to the network", async () => {
+    await withTempCache(async (cacheDirectory) => {
+      expect(await readCachedVerifiedAsset(fixtureTool, cacheDirectory)).toBeNull();
+    });
+  });
+
+  test("rejects a cached asset with the wrong byte size", async () => {
+    await withTempCache(async (cacheDirectory) => {
+      await writeFile(
+        join(cacheDirectory, fixtureTool.asset),
+        fixtureBytes.subarray(0, fixtureTool.byteLength - 1),
+      );
+      await expect(
+        readCachedVerifiedAsset(fixtureTool, cacheDirectory),
+      ).rejects.toThrow(/Cached media tool asset failed verification.*Unexpected size/s);
+    });
+  });
+
+  test("rejects a cached asset with the right size but the wrong checksum", async () => {
+    await withTempCache(async (cacheDirectory) => {
+      const corrupted = Buffer.from(fixtureBytes);
+      corrupted[0] = corrupted[0] ^ 0xff;
+      await writeFile(join(cacheDirectory, fixtureTool.asset), corrupted);
+      await expect(
+        readCachedVerifiedAsset(fixtureTool, cacheDirectory),
+      ).rejects.toThrow(/Cached media tool asset failed verification.*Checksum mismatch/s);
+    });
+  });
+
+  test("verifies byte buffers with the manifest size and SHA-256", () => {
+    expect(() => verifyAssetBytes(fixtureBytes, fixtureTool)).not.toThrow();
+    expect(() =>
+      verifyAssetBytes(Buffer.from("too short"), fixtureTool),
+    ).toThrow(/Unexpected size/);
+    const wrongHashTool = { ...fixtureTool, sha256: "0".repeat(64) };
+    expect(() => verifyAssetBytes(fixtureBytes, wrongHashTool)).toThrow(
+      /Checksum mismatch/,
+    );
+  });
+
+  test("resolves the cache directory from ARCHIVE_MEDIA_TOOLS_CACHE", () => {
+    expect(resolveMediaToolsCacheDirectory({})).toBeNull();
+    expect(
+      resolveMediaToolsCacheDirectory({ ARCHIVE_MEDIA_TOOLS_CACHE: "   " }),
+    ).toBeNull();
+    expect(
+      resolveMediaToolsCacheDirectory({
+        ARCHIVE_MEDIA_TOOLS_CACHE: "media-tool-cache",
+      }),
+    ).toBe(resolve("media-tool-cache"));
+  });
+
+  test("stages a verified cached asset without touching the network", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await withTempCache(async (cacheDirectory) => {
+        const target = join(cacheDirectory, "staged-asset.bin");
+        await writeFile(join(cacheDirectory, fixtureTool.asset), fixtureBytes);
+        await obtainVerifiedAsset(fixtureTool, target, cacheDirectory);
+        expect((await readFile(target)).equals(fixtureBytes)).toBe(true);
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("falls back to the network download when the cache is absent", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      arrayBuffer: async () => Uint8Array.from(fixtureBytes).buffer,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await withTempCache(async (cacheDirectory) => {
+        const target = join(cacheDirectory, "staged-asset.bin");
+        await obtainVerifiedAsset(fixtureTool, target, cacheDirectory);
+        expect((await readFile(target)).equals(fixtureBytes)).toBe(true);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

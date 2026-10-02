@@ -56,16 +56,7 @@ export function selectTargetManifest(manifest, targetArchitecture) {
   };
 }
 
-async function downloadVerified(tool, target) {
-  const response = await fetch(tool.url, {
-    headers: { "User-Agent": "archive-assistant-desktop-builder" },
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Could not download ${tool.asset}: HTTP ${response.status}.`,
-    );
-  }
-  const bytes = Buffer.from(await response.arrayBuffer());
+export function verifyAssetBytes(bytes, tool) {
   if (bytes.byteLength !== tool.downloadBytes) {
     throw new Error(
       `Unexpected size for ${tool.asset}: expected ${tool.downloadBytes} bytes, received ${bytes.byteLength}.`,
@@ -77,6 +68,66 @@ async function downloadVerified(tool, target) {
       `Checksum mismatch for ${tool.asset}: expected ${tool.sha256}, received ${digest}.`,
     );
   }
+}
+
+export function resolveMediaToolsCacheDirectory(environment = process.env) {
+  const configured = environment.ARCHIVE_MEDIA_TOOLS_CACHE?.trim();
+  return configured ? resolve(configured) : null;
+}
+
+/**
+ * Reads a manifest asset from the developer cache directory.
+ *
+ * Returns the verified bytes when the asset is present and passes the exact
+ * manifest size and SHA-256 checks, or null when the asset is absent (the
+ * caller then falls back to the network download). An asset that is present
+ * but fails verification is a hard error: the cache exists to serve exactly
+ * these pinned bytes, and a mismatch means the local copy is corrupted and
+ * must be re-fetched, not silently replaced from a network that may be the
+ * reason the cache is in use.
+ */
+export async function readCachedVerifiedAsset(tool, cacheDirectory) {
+  const cachedPath = join(cacheDirectory, tool.asset);
+  let bytes;
+  try {
+    bytes = await readFile(cachedPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+  try {
+    verifyAssetBytes(bytes, tool);
+  } catch (error) {
+    throw new Error(
+      `Cached media tool asset failed verification: ${error.message}`,
+    );
+  }
+  return bytes;
+}
+
+export async function obtainVerifiedAsset(tool, target, cacheDirectory) {
+  if (cacheDirectory) {
+    const cached = await readCachedVerifiedAsset(tool, cacheDirectory);
+    if (cached) {
+      await writeFile(target, cached);
+      console.log(`Using cached verified media tool asset: ${tool.asset}`);
+      return;
+    }
+  }
+  await downloadVerified(tool, target);
+}
+
+async function downloadVerified(tool, target) {
+  const response = await fetch(tool.url, {
+    headers: { "User-Agent": "archive-assistant-desktop-builder" },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Could not download ${tool.asset}: HTTP ${response.status}.`,
+    );
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  verifyAssetBytes(bytes, tool);
   await writeFile(target, bytes);
 }
 
@@ -145,7 +196,7 @@ async function main() {
     await mkdir(temporaryDirectory, { recursive: true });
 
     const ytDlpPath = join(temporaryDirectory, "yt-dlp.exe");
-    await downloadVerified(selectedManifest.tools.ytDlp, ytDlpPath);
+    await obtainVerifiedAsset(selectedManifest.tools.ytDlp, ytDlpPath, cacheDirectory);
     await copyFile(ytDlpPath, join(destination, "yt-dlp.exe"));
 
     const ffmpegZipPath = join(
@@ -153,7 +204,7 @@ async function main() {
       basename(selectedManifest.tools.ffmpeg.url),
     );
     const ffmpegExtractPath = join(temporaryDirectory, "ffmpeg");
-    await downloadVerified(selectedManifest.tools.ffmpeg, ffmpegZipPath);
+    await obtainVerifiedAsset(selectedManifest.tools.ffmpeg, ffmpegZipPath, cacheDirectory);
     await expandZip(ffmpegZipPath, ffmpegExtractPath);
     for (const executable of selectedManifest.tools.ffmpeg.includes) {
       const source = await findFile(ffmpegExtractPath, executable);
