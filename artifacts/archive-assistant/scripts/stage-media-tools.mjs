@@ -184,6 +184,7 @@ async function main() {
     ),
   );
   const selectedManifest = selectTargetManifest(manifest);
+  const cacheDirectory = resolveMediaToolsCacheDirectory();
   const temporaryDirectory = join(
     tmpdir(),
     `archive-assistant-media-tools-${process.pid}`,
