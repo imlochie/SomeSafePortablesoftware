@@ -25,13 +25,15 @@ $ErrorActionPreference = 'Stop'
 # consult .gitignore when collecting bundle resources, so ignore rules are
 # not a factor either way.
 
+# Paths are relative to their tree's root: the staged tree root IS
+# src-tauri/runtime, so its entries do not repeat the "runtime/" prefix.
 $requiredStagedPaths = @(
-  'runtime/node.exe',
-  'runtime/README.txt',
-  'runtime/THIRD-PARTY-NOTICES.txt',
-  'runtime/media-tools/ffmpeg.exe',
-  'runtime/media-tools/ffprobe.exe',
-  'runtime/media-tools/yt-dlp.exe'
+  'node.exe',
+  'README.txt',
+  'THIRD-PARTY-NOTICES.txt',
+  'media-tools/ffmpeg.exe',
+  'media-tools/ffprobe.exe',
+  'media-tools/yt-dlp.exe'
 )
 
 $requiredPackagedPaths = @(
