@@ -592,6 +592,40 @@ const processingColumns: Array<[string, string]> = [
 for (const [column, definition] of processingColumns) {
   ensureColumn("processing_job", column, definition);
 }
+// Additive migration for archive_operation. Databases created before a
+// column was introduced (for example, one predating error_code) must be
+// upgraded in place: archive-operations.ts runs
+// reconcileInterruptedArchiveOperations() at module scope and references
+// these columns, so a missing column crashes the whole API at startup with
+// "no such column" instead of failing one feature. Every column that can be
+// added safely to a populated table is ensured here; id, owner_id (operations
+// are born owned), and the NOT NULL identity columns without defaults
+// (operation_key, action, source_path, destination_path, review_item_id)
+// cannot be backfilled and are assumed to exist on any database that has the
+// table at all.
+const archiveOperationColumns: Array<[string, string]> = [
+  ["status", "TEXT NOT NULL DEFAULT 'planned'"],
+  ["source_kind", "TEXT NOT NULL DEFAULT 'unknown'"],
+  ["source_id", "TEXT"],
+  ["acquisition_job_id", "INTEGER REFERENCES acquisition_job(id) ON DELETE SET NULL"],
+  ["download_job_id", "INTEGER REFERENCES download_job(id) ON DELETE SET NULL"],
+  ["batch_json", "TEXT NOT NULL DEFAULT '{}'"],
+  ["proposal_id", "TEXT"],
+  ["dry_run", "INTEGER NOT NULL DEFAULT 0"],
+  ["retry_count", "INTEGER NOT NULL DEFAULT 0"],
+  ["max_retries", "INTEGER NOT NULL DEFAULT 3"],
+  ["preflight_json", "TEXT NOT NULL DEFAULT '{}'"],
+  ["rollback_json", "TEXT NOT NULL DEFAULT '{}'"],
+  ["postflight_json", "TEXT NOT NULL DEFAULT '{}'"],
+  ["error_code", "TEXT"],
+  ["error_message", "TEXT"],
+  ["started_at", "TEXT"],
+  ["completed_at", "TEXT"],
+  ["cancelled_at", "TEXT"],
+];
+for (const [column, definition] of archiveOperationColumns) {
+  ensureColumn("archive_operation", column, definition);
+}
 archiveDb.exec(`
   UPDATE download_job SET updated_at = CURRENT_TIMESTAMP WHERE updated_at = '';
   UPDATE processing_job SET updated_at = CURRENT_TIMESTAMP WHERE updated_at = '';

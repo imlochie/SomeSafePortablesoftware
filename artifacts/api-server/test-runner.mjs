@@ -115,6 +115,19 @@ try {
       progress REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE archive_operation (
+      id INTEGER PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      operation_key TEXT NOT NULL,
+      action TEXT NOT NULL,
+      source_path TEXT NOT NULL,
+      destination_path TEXT NOT NULL,
+      review_item_id INTEGER NOT NULL REFERENCES review_item(id),
+      status TEXT NOT NULL DEFAULT 'planned',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (owner_id, operation_key)
+    );
     CREATE TABLE assistant_conversation (
       id INTEGER PRIMARY KEY,
       title TEXT NOT NULL DEFAULT 'New conversation',
