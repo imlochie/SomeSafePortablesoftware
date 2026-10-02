@@ -9,14 +9,48 @@ import { build } from "esbuild";
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 const testDir = await mkdtemp(path.join(tmpdir(), "archive-assistant-tests-"));
 const testFiles = [
+  "agent-boundary.test.ts",
+  "assistant-overview.test.ts",
+  "media-research.test.ts",
+  "research-history.test.ts",
+  "research-evaluation.test.ts",
+  "research-synthesis.test.ts",
+  "personal-curation.test.ts",
+  "personal-reasoning.test.ts",
+  "media-profile.test.ts",
   "ownership.test.ts",
+  "ownership-http.test.ts",
+  "operation-ownership-http.test.ts",
   "integrations.test.ts",
+  "network-target.test.ts",
+  "jellyfin.test.ts",
+  "plex-lifecycle.test.ts",
+  "archive-provider.test.ts",
   "integration-http.test.ts",
   "acquisition-jobs.test.ts",
   "media-acquisition.test.ts",
   "control-plane.test.ts",
   "system-dependencies.test.ts",
   "media-integrity.test.ts",
+  "scan-events.test.ts",
+  "windows-compat.test.ts",
+  "desktop-cors.test.ts",
+  "plex-surfaces.test.ts",
+  "archive-operations-safety.test.ts",
+  "batch-filesystem.test.ts",
+  "batch-recovery-inspection.test.ts",
+  "ordering-http.test.ts",
+  "ordering-http-failure.test.ts",
+  "power-renamer.test.ts",
+  "power-renamer-http.test.ts",
+  "media-experience-ordering.test.ts",
+  "acquisition-approval.test.ts",
+  "finding-severity.test.ts",
+  "review-sync-severity.test.ts",
+  "provider-refresh-http.test.ts",
+  "storage-diagnostics.test.ts",
+  "scan-lifecycle-reconcile.test.ts",
+  "scan-resume.test.ts",
 ];
 const outputFiles = testFiles.map((file) => path.join(testDir, file.replace(/\.ts$/, ".cjs")));
 const databaseFile = path.join(testDir, "ownership.sqlite");
@@ -24,6 +58,12 @@ const databaseFile = path.join(testDir, "ownership.sqlite");
 try {
   const legacyDb = new DatabaseSync(databaseFile);
   legacyDb.exec(`
+    -- The fixture plants deliberately-dangling legacy references (for example
+    -- archive_operation rows whose review_item no longer exists), and
+    -- node:sqlite enables foreign key enforcement by default. Legacy content
+    -- must be plantable verbatim; production opens the database with its own
+    -- pragma afterwards.
+    PRAGMA foreign_keys = OFF;
     CREATE TABLE archive_item (
       id INTEGER PRIMARY KEY,
       title TEXT NOT NULL,
@@ -81,6 +121,23 @@ try {
       progress REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE archive_operation (
+      id INTEGER PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      operation_key TEXT NOT NULL,
+      action TEXT NOT NULL,
+      source_path TEXT NOT NULL,
+      destination_path TEXT NOT NULL,
+      review_item_id INTEGER NOT NULL REFERENCES review_item(id),
+      status TEXT NOT NULL DEFAULT 'planned',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (owner_id, operation_key)
+    );
+    INSERT INTO archive_operation (owner_id, operation_key, action, source_path, destination_path, review_item_id, status)
+      VALUES ('__legacy__', 'legacy-operation-planned', 'rename', 'C:\\legacy\\planned.mkv', 'C:\\legacy\\planned-renamed.mkv', 999, 'planned');
+    INSERT INTO archive_operation (owner_id, operation_key, action, source_path, destination_path, review_item_id, status)
+      VALUES ('__legacy__', 'legacy-operation-executing', 'rename', 'C:\\legacy\\executing.mkv', 'C:\\legacy\\executing-renamed.mkv', 999, 'executing');
     CREATE TABLE assistant_conversation (
       id INTEGER PRIMARY KEY,
       title TEXT NOT NULL DEFAULT 'New conversation',
@@ -199,7 +256,10 @@ try {
   const exitCode = await new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ["--test", "--test-concurrency=1", ...outputFiles.map((file) => pathToFileURL(file).pathname)],
+      // Node's test runner accepts native absolute paths (and glob patterns),
+      // but not file:// URLs. Pass the platform-native paths directly so the
+      // invocation works on POSIX and Windows alike.
+      ["--test", "--test-concurrency=1", ...outputFiles],
       {
         stdio: "inherit",
         env: {
@@ -207,6 +267,7 @@ try {
           NODE_ENV: process.env.NODE_ENV ?? "production",
           ARCHIVE_DB_PATH: databaseFile,
           ARCHIVE_TEST_ROOT: testDir,
+          API_SERVER_SRC: path.join(artifactDir, "src"),
         },
       },
     );

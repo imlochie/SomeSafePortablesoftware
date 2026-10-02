@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ArchiveBatchMapping } from './archiveBatchMapping';
 import type { ArchiveOperationAction } from './archiveOperationAction';
 import type { ArchiveOperationEvent } from './archiveOperationEvent';
 import type { ArchiveOperationPostflight } from './archiveOperationPostflight';
@@ -21,6 +22,9 @@ export interface ArchiveOperation {
   sourceId: string | null;
   sourcePath: string;
   destinationPath: string;
+  batch: ArchiveBatchMapping[];
+  /** @nullable */
+  proposalId: string | null;
   reviewItemId: number;
   /** @nullable */
   acquisitionJobId: number | null;

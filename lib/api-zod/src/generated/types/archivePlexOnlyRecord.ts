@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ArchiveProvider } from './archiveProvider';
 
 export interface ArchivePlexOnlyRecord {
   ratingKey: string;
@@ -13,4 +14,6 @@ export interface ArchivePlexOnlyRecord {
   /** @nullable */
   year: number | null;
   qualitySummary: string;
+  provider: ArchiveProvider;
+  providerLabel: string;
 }

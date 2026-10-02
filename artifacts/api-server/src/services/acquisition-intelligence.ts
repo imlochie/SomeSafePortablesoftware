@@ -11,6 +11,16 @@ export type RecommendationConfidence = (typeof recommendationConfidences)[number
 export const recommendationPriorities = ["critical", "high", "medium", "low"] as const;
 export type RecommendationPriority = (typeof recommendationPriorities)[number];
 
+export interface AcquisitionIdentity {
+  mediaType: string;
+  seriesId?: string;
+  seriesTitle?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  episodeId?: string;
+  episodeTitle?: string;
+}
+
 export interface AcquisitionRecommendation {
   id: number;
   recommendationKey: string;
@@ -18,6 +28,7 @@ export interface AcquisitionRecommendation {
   title: string;
   year: number | null;
   externalId: string | null;
+  identity: AcquisitionIdentity | null;
   target: Record<string, unknown>;
   evidence: Record<string, unknown>;
   preferredQuality: Record<string, unknown>;
@@ -41,6 +52,7 @@ type Candidate = {
   title: string;
   year: number | null;
   externalId: string | null;
+  identity?: AcquisitionIdentity;
   target: Record<string, unknown>;
   reason: string;
   preferredQuality: Record<string, unknown>;
@@ -88,6 +100,31 @@ function normalizeTitle(value: string) {
   return value.toLowerCase().replace(/\.[^.]+$/, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+function normalizeIdentity(value: unknown): AcquisitionIdentity | null {
+  const source = record(value);
+  if (typeof source.mediaType !== "string" || !source.mediaType) return null;
+  const identity: AcquisitionIdentity = { mediaType: source.mediaType };
+  for (const key of ["seriesId", "seriesTitle", "episodeId", "episodeTitle"] as const) {
+    if (typeof source[key] === "string" && source[key]) identity[key] = source[key];
+  }
+  for (const key of ["seasonNumber", "episodeNumber"] as const) {
+    if (typeof source[key] === "number" && Number.isInteger(source[key])) identity[key] = source[key];
+  }
+  return Object.keys(identity).length > 1 || identity.mediaType ? identity : null;
+}
+
+function identityFromProvider(item: MissingMediaRecord): AcquisitionIdentity {
+  return {
+    mediaType: item.mediaType,
+    ...(item.seriesId ? { seriesId: item.seriesId } : {}),
+    ...(item.seriesTitle ? { seriesTitle: item.seriesTitle } : {}),
+    ...(item.seasonNumber !== undefined ? { seasonNumber: item.seasonNumber } : {}),
+    ...(item.episodeNumber !== undefined ? { episodeNumber: item.episodeNumber } : {}),
+    ...(item.episodeId ? { episodeId: item.episodeId } : {}),
+    ...(item.episodeTitle ? { episodeTitle: item.episodeTitle } : {}),
+  };
+}
+
 function routeFor(mediaType: string): AcquisitionProviderId | null {
   const normalized = mediaType.toLowerCase();
   if (normalized === "movie" || normalized === "film") return "radarr";
@@ -97,6 +134,7 @@ function routeFor(mediaType: string): AcquisitionProviderId | null {
 
 function mapRecommendation(row: Record<string, unknown>): AcquisitionRecommendation {
   const blockers = parseStrings(row.blockers_json);
+  const target = parseRecord(row.target_json);
   return {
     id: Number(row.id),
     recommendationKey: String(row.recommendation_key),
@@ -104,7 +142,8 @@ function mapRecommendation(row: Record<string, unknown>): AcquisitionRecommendat
     title: String(row.title),
     year: row.year == null ? null : Number(row.year),
     externalId: row.external_id == null ? null : String(row.external_id),
-    target: parseRecord(row.target_json),
+    identity: normalizeIdentity(target.identity),
+    target,
     evidence: parseRecord(row.evidence_json),
     preferredQuality: parseRecord(row.quality_json),
     destination: parseRecord(row.destination_json),
@@ -239,6 +278,10 @@ function upsertRecommendation(
   },
 ) {
   const providerId = candidate.providerEvidence?.providerId ?? routeFor(candidate.mediaType);
+  const persistedTarget = {
+    ...candidate.target,
+    ...(candidate.identity ? { identity: candidate.identity } : {}),
+  };
   const providerStatus = providerId
     ? context.statuses.find((item) => item.id === providerId) ?? null
     : null;
@@ -266,7 +309,7 @@ function upsertRecommendation(
 
   const evidence = {
     reason: candidate.reason,
-    archive: candidate.target,
+    archive: persistedTarget,
     provider: candidate.providerEvidence
       ? {
           providerId: candidate.providerEvidence.providerId,
@@ -309,7 +352,7 @@ function upsertRecommendation(
     execution: "approval_required",
   };
   const evidenceHash = hash({
-    target: candidate.target,
+    target: persistedTarget,
     evidence,
     quality: candidate.preferredQuality,
     destination: destinationEvidence,
@@ -341,7 +384,7 @@ function upsertRecommendation(
     candidate.title,
     candidate.year,
     candidate.externalId,
-    JSON.stringify(candidate.target),
+    JSON.stringify(persistedTarget),
     JSON.stringify(evidence),
     JSON.stringify(candidate.preferredQuality),
     JSON.stringify(destinationEvidence),
@@ -391,6 +434,7 @@ export async function generateAcquisitionRecommendations(ownerId: string) {
       title: value.item.title,
       year: value.item.year,
       externalId: value.item.externalId,
+      identity: identityFromProvider(value.item),
       target: {
         kind: "provider_missing",
         providerId: value.providerId,

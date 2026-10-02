@@ -51,4 +51,5 @@ export interface AppSettingsUpdate {
      * @maximum 25
      */
   criticalFreePercent?: number;
+  startWithWindows?: boolean;
 }

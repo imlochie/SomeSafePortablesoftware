@@ -12,6 +12,7 @@ export type ArchiveScanStatus = typeof ArchiveScanStatus[keyof typeof ArchiveSca
 export const ArchiveScanStatus = {
   not_scanned: 'not_scanned',
   scanning: 'scanning',
+  interrupted: 'interrupted',
   completed: 'completed',
   failed: 'failed',
 } as const;

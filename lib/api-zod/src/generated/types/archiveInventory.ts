@@ -8,10 +8,14 @@
 import type { ArchiveInventoryRecord } from './archiveInventoryRecord';
 import type { ArchiveInventorySummary } from './archiveInventorySummary';
 import type { ArchivePlexOnlyRecord } from './archivePlexOnlyRecord';
+import type { ArchiveProvider } from './archiveProvider';
 import type { ArchiveScan } from './archiveScan';
 
 export interface ArchiveInventory {
   scan: ArchiveScan;
+  provider: ArchiveProvider;
+  /** Operator-facing name of the active reference provider. */
+  providerLabel: string;
   summary: ArchiveInventorySummary;
   records: ArchiveInventoryRecord[];
   plexOnly: ArchivePlexOnlyRecord[];

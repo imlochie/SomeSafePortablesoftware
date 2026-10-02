@@ -10,6 +10,8 @@ import {
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import {
   getPlexConfig,
+  readPlexArtwork,
+  readPlexHierarchy,
   PlexConfigurationError,
   readPlexInventory,
   savePlexConfig,
@@ -54,6 +56,24 @@ router.post("/plex/sync", (req, res) => {
 
 router.get("/plex/inventory", (req, res) => {
   res.json(GetPlexInventoryResponse.parse(readPlexInventory(getAuthenticatedUserId(req))));
+});
+
+router.get("/plex/hierarchy", (req, res) => {
+  const libraryId = typeof req.query.libraryId === "string" && /^\\d+$/.test(req.query.libraryId) ? Number(req.query.libraryId) : undefined;
+  const page = typeof req.query.page === "string" ? Number(req.query.page) : 1;
+  const pageSize = typeof req.query.pageSize === "string" ? Number(req.query.pageSize) : 24;
+  res.json(readPlexHierarchy(getAuthenticatedUserId(req), libraryId, page, pageSize));
+});
+
+router.get("/plex/artwork/:ratingKey", async (req, res, next) => {
+  try {
+    const artwork = await readPlexArtwork(getAuthenticatedUserId(req), req.params.ratingKey);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.type(artwork.contentType).send(artwork.body);
+  } catch (error) {
+    if (error instanceof PlexConfigurationError) return res.status(400).json({ error: error.message });
+    return next(error);
+  }
 });
 
 export default router;

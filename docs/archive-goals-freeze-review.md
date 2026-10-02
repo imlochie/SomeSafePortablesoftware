@@ -67,7 +67,8 @@ They did not replace the local engine or approval boundary.
 | Archive recommendations and review synchronization | Complete | `acquisition-intelligence.ts` and `review-sync.ts` preserve evidence and review context without autonomous mutations. |
 | Local single-user mode plus retained Clerk multi-user mode | Complete | Identity is resolved server-side as `__local__` or the authenticated Clerk user; existing owned data is not silently reassigned. |
 | Tauri shell that starts and monitors the Node API | Complete as an architecture boundary | `src-tauri` launches the API bundle and points the UI at its health-checked port. |
-| Self-contained Windows desktop packaging | Intentionally deferred | The current shell depends on an installed Node runtime or `ARCHIVE_NODE_PATH`; bundling a runtime, installer diagnostics, and Windows path hardening are separate release work. |
+| Self-contained Windows desktop packaging | Complete | The installer bundles a Node runtime and pinned media tools as Tauri resources, resolves them from the packaged layout, normalizes default paths to `USERPROFILE`, lets the operating system assign the sidecar port, and retains redacted launch diagnostics. Verified by installing and launching a real Windows build; not yet covered by continuous integration. |
+| Bundled media-tool packaging (FFmpeg, FFprobe, yt-dlp) | Complete | `scripts/stage-media-tools.mjs` stages pinned release assets during the release build and verifies each by size and SHA-256; the manifest forbids rolling tags. |
 | Autonomous AI decisions or archive changes | No longer applicable | Later requirements deliberately replaced autonomy with evidence, review, approval, and confirmation. |
 | Automatic duplicate deletion, replacement, or reorganization | No longer applicable | These conflict with the accepted approval boundary. Findings may recommend; only confirmed operations mutate files. |
 | Filename-only identity matching | No longer applicable | Identity is evidence-based and uncertain results require review. |
@@ -94,16 +95,30 @@ Archive filesystem operations satisfy the accepted boundary: a recommendation
 does not mutate a file, approval alone does not mutate a file, and execution
 requires confirmation.
 
-`POST /archive/acquisitions` is not equivalent to a filesystem mutation, but it
-currently starts provider work immediately. Its contract calls it a “request”
-and accepts optional policy metadata without proving an approved review or an
-explicit operator confirmation. Before this endpoint is presented as an
-approved archive action, its owner must either:
+Acquisition satisfies the same boundary. Option 1 was taken: acquisition is an
+archive operation, not a side door around the operation model. Provider work
+spends bandwidth, reaches a remote indexer or download client, and ends in a
+file destined for the archive, so it requires an approved owner-scoped
+`acquisition_recommendation` review.
 
-1. require and validate an approved owner-scoped review decision plus explicit
-   confirmation, or
-2. rename and document it as an immediate provider request with authorization
-   enforced in the UI and API contract.
+`assertAcquisitionApproval` in `services/acquisition-approval.ts` is the single
+gate, called from `startProvider`, which is the one function that contacts a
+provider. That places the check on every route into provider work rather than
+on one endpoint:
+
+- `POST /archive/acquisitions` already resolved an approved recommendation and
+  still does.
+- `POST /acquisition-jobs` with `start: true` was the actual gap. It accepted a
+  free-form body and began provider work with no approval; it is now refused
+  unless the job carries an approved review.
+- `retryAcquisitionJob` was the second, quieter gap: a job approved once could
+  be replayed after the approval was withdrawn. The approval is re-read on every
+  start, so it cannot.
+
+Planning is still unrestricted: `start: false` persists a `planned` job without
+contacting a provider, which is the intended place for an unapproved request to
+wait. A refusal leaves the job `planned` rather than `failed`, so it is never
+mistaken for a provider error or replayed by retry.
 
 ### Provider honesty
 
@@ -162,16 +177,29 @@ replaced by broader roadmap items:
 - Webhook counting, redacted history, hosted privacy, retention, and pagination.
 - Reliable API type checks.
 
-The review identifies three additional, bounded follow-ups:
+The review identified three additional, bounded follow-ups. The second and
+third are now closed; one remains open:
 
 1. **Contract owner:** reconcile public Express routes, OpenAPI, and generated
    clients; add a release check that detects drift.
-2. **Archive acquisition owner:** make immediate provider-start semantics
+2. ~~**Archive acquisition owner:** make immediate provider-start semantics
    explicit, or enforce approved owner-scoped review plus confirmation before
-   starting provider work.
-3. **Desktop release owner:** package a Windows-safe Node sidecar, normalize
+   starting provider work.~~ **Closed.** Acquisition is treated as an archive
+   operation rather than an immediate request. `assertAcquisitionApproval` is
+   the single gate in front of provider work and is called from `startProvider`,
+   so job creation with `start: true`, retry, and the orchestrated path from an
+   approved recommendation all require an approved, owner-scoped
+   `acquisition_recommendation` review. The approval is re-read at start time,
+   and a refusal leaves the job `planned` rather than `failed`.
+3. ~~**Desktop release owner:** package a Windows-safe Node sidecar, normalize
    default paths, remove the port reservation race, and retain redacted launch
-   diagnostics.
+   diagnostics.~~ **Closed.** The Node runtime and media tools ship as packaged
+   resources, path resolution matches the installed Windows layout, the sidecar
+   binds port `0` so the operating system assigns it, and redacted startup
+   diagnostics are retained as a supported feature rather than temporary
+   instrumentation. Closure rests on a real installed Windows build, not on
+   continuous integration; the Windows workflow has never run and the Rust
+   shell has never been compiled by CI.
 
 The stale product-status sections in `README.md` and `replit.md` were corrected
 as part of this review. That drift was documentation-only, not a product
@@ -182,9 +210,10 @@ architecture change.
 - **Complete:** original Phase 1 shell and local engine; archive inventory and
   intelligence; owner-scoped review; confirmed archive operations; Plex and
   provider capability boundaries; durable acquisition lifecycle; local/hosted
-  identity modes; generated-contract architecture.
-- **Intentionally deferred:** production AI providers and local models,
-  autonomous assistant behavior, and a self-contained Windows desktop package.
+  identity modes; generated-contract architecture; self-contained Windows
+  desktop packaging with a bundled Node runtime and pinned media tools.
+- **Intentionally deferred:** production AI providers and local models, and
+  autonomous assistant behavior.
 - **No longer applicable:** autonomous or automatic archive mutation,
   filename-only identity, opaque quality scoring, and a second hosted control
   plane for local use.
