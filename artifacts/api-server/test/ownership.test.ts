@@ -841,3 +841,60 @@ describe("legacy claim covers every owned table", () => {
     );
   });
 });
+
+describe("legacy archive_operation startup migration", () => {
+  test("adds every reconcile-required column to a legacy table before module-scope reconcile runs", () => {
+    // test-runner.mjs plants archive_operation in its birth form (no
+    // error_code, no payload columns) with one planned and one executing
+    // row. Production init must additively upgrade that table before
+    // archive-operations.ts runs reconcileInterruptedArchiveOperations() at
+    // module scope -- the exact crash an installed build hit with
+    // "no such column: error_code". If this import survived, the columns
+    // exist; the assertions below pin that fact and the data preservation.
+    const columns = archiveDb
+      .prepare("PRAGMA table_info(archive_operation)")
+      .all() as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+    for (const required of [
+      "status",
+      "source_kind",
+      "source_id",
+      "acquisition_job_id",
+      "download_job_id",
+      "batch_json",
+      "proposal_id",
+      "dry_run",
+      "retry_count",
+      "max_retries",
+      "preflight_json",
+      "rollback_json",
+      "postflight_json",
+      "error_code",
+      "error_message",
+      "started_at",
+      "completed_at",
+      "cancelled_at",
+      "updated_at",
+    ]) {
+      assert.ok(names.has(required), `legacy archive_operation must gain ${required} at startup`);
+    }
+
+    const planned = archiveDb
+      .prepare("SELECT source_path, status FROM archive_operation WHERE operation_key = 'legacy-operation-planned'")
+      .get() as { source_path: string; status: string } | undefined;
+    assert.ok(planned, "the pre-migration planned row must survive the additive migration");
+    assert.equal(planned.source_path, "C:\\legacy\\planned.mkv");
+    assert.equal(planned.status, "planned", "a row reconcile must not touch keeps its status");
+
+    const executing = archiveDb
+      .prepare("SELECT status, error_code, error_message FROM archive_operation WHERE operation_key = 'legacy-operation-executing'")
+      .get() as { status: string; error_code: string; error_message: string } | undefined;
+    assert.ok(executing, "the pre-migration executing row must survive the additive migration");
+    // reconcile ran against the migrated table without crashing and marked
+    // the interrupted operation for recovery -- proving error_code and
+    // error_message existed before it executed.
+    assert.equal(executing.status, "recovery_required");
+    assert.equal(executing.error_code, "RECOVERY_REQUIRED");
+    assert.ok(executing.error_message && executing.error_message.length > 0);
+  });
+});

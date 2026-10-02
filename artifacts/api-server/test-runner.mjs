@@ -58,6 +58,12 @@ const databaseFile = path.join(testDir, "ownership.sqlite");
 try {
   const legacyDb = new DatabaseSync(databaseFile);
   legacyDb.exec(`
+    -- The fixture plants deliberately-dangling legacy references (for example
+    -- archive_operation rows whose review_item no longer exists), and
+    -- node:sqlite enables foreign key enforcement by default. Legacy content
+    -- must be plantable verbatim; production opens the database with its own
+    -- pragma afterwards.
+    PRAGMA foreign_keys = OFF;
     CREATE TABLE archive_item (
       id INTEGER PRIMARY KEY,
       title TEXT NOT NULL,
@@ -128,6 +134,10 @@ try {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (owner_id, operation_key)
     );
+    INSERT INTO archive_operation (owner_id, operation_key, action, source_path, destination_path, review_item_id, status)
+      VALUES ('__legacy__', 'legacy-operation-planned', 'rename', 'C:\\legacy\\planned.mkv', 'C:\\legacy\\planned-renamed.mkv', 999, 'planned');
+    INSERT INTO archive_operation (owner_id, operation_key, action, source_path, destination_path, review_item_id, status)
+      VALUES ('__legacy__', 'legacy-operation-executing', 'rename', 'C:\\legacy\\executing.mkv', 'C:\\legacy\\executing-renamed.mkv', 999, 'executing');
     CREATE TABLE assistant_conversation (
       id INTEGER PRIMARY KEY,
       title TEXT NOT NULL DEFAULT 'New conversation',
