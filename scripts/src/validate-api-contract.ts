@@ -8,7 +8,7 @@ import {
   rm,
   symlink,
 } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -135,10 +135,26 @@ async function generatedDriftErrors() {
   const temporaryZodPackage = resolve(temporaryRoot, "lib/api-zod");
   const temporarySpecPackage = resolve(temporaryRoot, "lib/api-spec");
   try {
+    // pnpm package-local node_modules are symlink forests into the shared
+    // store (plus POSIX .bin shims). Recreating those symlinks inside the
+    // temporary workspace fails with EPERM on Windows without Developer
+    // Mode or administrator privileges. Exclude node_modules from the
+    // package copies; dependency resolution is provided by the temporary
+    // root node_modules link below and the spec-package link after the
+    // copies complete.
+    const copyPackageExcludingNodeModules = (source: string, destination: string) =>
+      cp(source, destination, {
+        recursive: true,
+        filter: (current) => {
+          const relativePath = relative(source, current);
+          return relativePath === "" || !relativePath.split(sep).includes("node_modules");
+        },
+      });
+
     await Promise.all([
-      cp(resolve(root, "lib/api-client-react"), temporaryClientPackage, { recursive: true }),
-      cp(resolve(root, "lib/api-zod"), temporaryZodPackage, { recursive: true }),
-      cp(resolve(root, "lib/api-spec"), temporarySpecPackage, { recursive: true }),
+      copyPackageExcludingNodeModules(resolve(root, "lib/api-client-react"), temporaryClientPackage),
+      copyPackageExcludingNodeModules(resolve(root, "lib/api-zod"), temporaryZodPackage),
+      copyPackageExcludingNodeModules(resolve(root, "lib/api-spec"), temporarySpecPackage),
       cp(resolve(root, "tsconfig.base.json"), resolve(temporaryRoot, "tsconfig.base.json")),
       cp(resolve(root, "tsconfig.json"), resolve(temporaryRoot, "tsconfig.json")),
       cp(resolve(root, "package.json"), resolve(temporaryRoot, "package.json")),
@@ -149,6 +165,16 @@ async function generatedDriftErrors() {
         process.platform === "win32" ? "junction" : "dir",
       ),
     ]);
+    // The generated spec package's orval.config.ts imports "orval", which
+    // the shared root node_modules cannot resolve (orval is a dependency of
+    // the spec package only, so it has no top-level root entry). Link the
+    // real spec-package node_modules with the same privilege-free mechanism
+    // used for the temporary root link.
+    await symlink(
+      resolve(root, "lib/api-spec/node_modules"),
+      resolve(temporarySpecPackage, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
     const orvalEntry = resolve(
       root,
       "lib/api-spec/node_modules/orval/dist/bin/orval.mjs",
