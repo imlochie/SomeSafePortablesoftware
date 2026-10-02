@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { win32 } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -456,5 +456,73 @@ describe('release build path selection', () => {
     expect(win32.parse(stripped).root).toBe('C:\\');
     expect(win32.basename(stripped)).toBe('index.mjs');
     expect(win32.isAbsolute(stripped)).toBe(true);
+  });
+});
+
+/**
+ * An installer shipped with runtime/ present but node.exe absent. The Tauri
+ * CLI pinned by the lockfile (2.11.4) does not consult .gitignore when
+ * collecting bundle resources -- tauri-utils's ResourcePaths walks with plain
+ * walkdir, the NSIS bundler copies from the source tree and fails loudly, and
+ * the CLI's only ignore-crate use is the `tauri dev` watcher. (Corroborating
+ * evidence: the earlier bare-`runtime` incident shipped api-server/dist even
+ * though the root .gitignore's unanchored `dist` rule matches it.)
+ *
+ * So a missing bundled file means it was absent from the staged or packaged
+ * tree at build time, and nothing verified either tree locally while CI was
+ * unavailable. These tests pin the local verification the Windows build must
+ * run after desktop:build.
+ */
+describe('local packaged-layout verification', () => {
+  const verifyScriptPath = path.resolve(
+    import.meta.dirname,
+    '..',
+    '..',
+    '..',
+    'scripts',
+    'verify-packaged-layout.ps1',
+  );
+  const stagingScriptPath = path.resolve(
+    import.meta.dirname,
+    '..',
+    'scripts',
+    'stage-node-runtime.mjs',
+  );
+
+  it('provides a local mirror of the CI packaged-layout step', () => {
+    expect(existsSync(verifyScriptPath)).toBe(true);
+  });
+
+  it.each([
+    'api-server/dist/index.mjs',
+    'runtime/node.exe',
+    'runtime/media-tools/ffmpeg.exe',
+    'runtime/media-tools/ffprobe.exe',
+    'runtime/media-tools/yt-dlp.exe',
+  ])('asserts %s is in the packaged tree', (relative) => {
+    const script = readFileSync(verifyScriptPath, 'utf8');
+    expect(script).toContain(`'${relative}'`);
+  });
+
+  it('also verifies the staged source tree so a vanished file is attributed', () => {
+    const script = readFileSync(verifyScriptPath, 'utf8');
+
+    // The staged tree is where the staging scripts write during
+    // beforeBuildCommand; the packaged tree is what the bundler collects.
+    // Checking both names the half of the build that lost the file.
+    expect(script).toMatch(/src-tauri/);
+    expect(script).toMatch(/runtime/);
+    expect(script).toMatch(/target.{1,3}release/);
+    expect(script).toMatch(/Staged/);
+    expect(script).toMatch(/Packaged/);
+    expect(script).toMatch(/resource missing/);
+  });
+
+  it('fails staging when the copied Node runtime is incomplete', () => {
+    const stagingScript = readFileSync(stagingScriptPath, 'utf8');
+
+    // A partial or intercepted copy must fail beforeBuildCommand, not ship.
+    expect(stagingScript).toMatch(/stagedStat\.size !== sourceStat\.size/);
+    expect(stagingScript).toMatch(/The staged Node runtime is incomplete/);
   });
 });

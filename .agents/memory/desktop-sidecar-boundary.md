@@ -91,3 +91,21 @@ rolling URL, update `totalDownloadBytes`, and let
 tags in CI. Note that `release-assets.githubusercontent.com` is blocked by the
 workspace network allowlist, so assets cannot be downloaded here for
 independent hashing; the API digest is the available source of truth.
+
+A 2026-10 installer shipped `runtime/` with README.txt, notices, and
+media-tools but no `node.exe`, and was first blamed on the .gitignore rule
+for `artifacts/archive-assistant/src-tauri/runtime/node.exe`. Reading the
+pinned Tauri CLI (2.11.4) source exonerates ignore rules for bundling:
+`tauri-utils`'s `ResourcePaths` collects resources with plain `walkdir`, the
+NSIS bundler copies from the source tree and fails loudly rather than
+skipping, and the CLI's only `ignore`-crate use is the `tauri dev` file
+watcher. Corroborating evidence: the earlier bare-`runtime` incident shipped
+`api-server/dist` even though the root `.gitignore`'s unanchored `dist` rule
+matches it. A missing bundled file therefore means it was absent from the
+staged or packaged tree at build time — antivirus quarantine of a freshly
+copied unsigned `node.exe` during the long first Rust build is the leading
+suspect. After `desktop:build` on Windows, run
+`scripts/verify-packaged-layout.ps1`: it asserts both the staged tree and
+`target/release`, attributing any missing file to the right half of the
+build. `stage-node-runtime.mjs` also fails the build if its copy lands
+incomplete.
