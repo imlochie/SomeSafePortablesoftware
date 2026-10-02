@@ -176,7 +176,16 @@ async function generatedDriftErrors() {
     if (process.env.KEEP_API_CONTRACT_TEMP === "1") {
       console.info(`Kept temporary generated output at ${temporaryRoot}`);
     } else {
-      await rm(temporaryRoot, { recursive: true, force: true });
+      // Windows can fail rmdir of freshly written directories with
+      // ENOTEMPTY while deletions are still pending (antivirus scanning
+      // amplifies this). Node retries these errno cases on Windows only
+      // when maxRetries is set; the default of 0 fails immediately.
+      await rm(temporaryRoot, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
     }
   }
 }
