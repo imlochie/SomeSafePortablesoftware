@@ -143,7 +143,11 @@ async function generatedDriftErrors() {
       cp(resolve(root, "tsconfig.json"), resolve(temporaryRoot, "tsconfig.json")),
       cp(resolve(root, "package.json"), resolve(temporaryRoot, "package.json")),
       cp(resolve(root, "pnpm-workspace.yaml"), resolve(temporaryRoot, "pnpm-workspace.yaml")),
-      symlink(resolve(root, "node_modules"), resolve(temporaryRoot, "node_modules"), "dir"),
+      symlink(
+        resolve(root, "node_modules"),
+        resolve(temporaryRoot, "node_modules"),
+        process.platform === "win32" ? "junction" : "dir",
+      ),
     ]);
     const orvalEntry = resolve(
       root,
