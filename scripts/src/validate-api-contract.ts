@@ -145,9 +145,14 @@ async function generatedDriftErrors() {
       cp(resolve(root, "pnpm-workspace.yaml"), resolve(temporaryRoot, "pnpm-workspace.yaml")),
       symlink(resolve(root, "node_modules"), resolve(temporaryRoot, "node_modules"), "dir"),
     ]);
+    const orvalEntry = resolve(
+      root,
+      "lib/api-spec/node_modules/orval/dist/bin/orval.mjs",
+    );
+
     await execFileAsync(
-      resolve(root, "lib/api-spec/node_modules/.bin/orval"),
-      ["--config", resolve(temporarySpecPackage, "orval.config.ts")],
+      process.execPath,
+      [orvalEntry, "--config", resolve(temporarySpecPackage, "orval.config.ts")],
       { cwd: temporarySpecPackage },
     );
     const [clientErrors, zodErrors] = await Promise.all([
