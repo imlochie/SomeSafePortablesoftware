@@ -1189,6 +1189,7 @@ type PlexTitleIndexes = {
   byTitleAndYear: Map<string, PlexRow[]>;
   byTitleWithoutYear: Map<string, PlexRow[]>;
   order: Map<PlexRow, number>;
+  quality: Map<PlexRow, QualityShape>;
 };
 
 function plexTitleIndexes(plexRows: PlexRow[]): PlexTitleIndexes {
@@ -1196,8 +1197,10 @@ function plexTitleIndexes(plexRows: PlexRow[]): PlexTitleIndexes {
   const byTitleAndYear = new Map<string, PlexRow[]>();
   const byTitleWithoutYear = new Map<string, PlexRow[]>();
   const order = new Map<PlexRow, number>();
+  const quality = new Map<PlexRow, QualityShape>();
   for (const [index, plex] of plexRows.entries()) {
     order.set(plex, index);
+    quality.set(plex, plexQualityShape(plex));
     const title = normalizeTitle(plex.title);
     if (!title) continue;
     const titleRows = byTitle.get(title) ?? [];
@@ -1214,7 +1217,7 @@ function plexTitleIndexes(plexRows: PlexRow[]): PlexTitleIndexes {
       byTitleAndYear.set(titleYearKey, rowsForYear);
     }
   }
-  return { byTitle, byTitleAndYear, byTitleWithoutYear, order };
+  return { byTitle, byTitleAndYear, byTitleWithoutYear, order, quality };
 }
 
 function integrityClassificationFor(row: Pick<FileRow, "integrity_classification" | "error_message">) {
@@ -1304,9 +1307,9 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
       qualitySummary = "A higher-quality local version exists; factors are listed below.";
     }
   } else if (row.scan_status === "active" && match) {
-    const differences = qualityDifferencesFor(row, match);
+    const differences = qualityDifferencesFor(row, match, plexTitleIndex.quality);
     const localQuality = qualityShape(row);
-    const providerQuality = plexQualityShape(match);
+    const providerQuality = plexTitleIndex.quality.get(match) ?? plexQualityShape(match);
     const localRank = qualityRank(localQuality);
     const providerRank = qualityRank(providerQuality);
     const resolutionDiffers =
@@ -1391,10 +1394,10 @@ function mapFile(ownerId: string, row: FileRow, indexes: InventoryIndexes, plexR
   };
 }
 
-function qualityDifferencesFor(local: FileRow, other: FileRow | PlexRow) {
+function qualityDifferencesFor(local: FileRow, other: FileRow | PlexRow, plexQuality?: Map<PlexRow, QualityShape>) {
   return qualityDifferences(
     qualityShape(local),
-    "rating_key" in other ? plexQualityShape(other) : qualityShape(other),
+    "rating_key" in other ? (plexQuality?.get(other) ?? plexQualityShape(other)) : qualityShape(other),
   );
 }
 
