@@ -1409,20 +1409,39 @@ type InventoryIndexes = {
 };
 
 function buildArchiveInventory(ownerId: string) {
+  const inventoryStartedAt = performance.now();
+  const phaseStartedAt = new Map<string, number>();
+  const phaseTimings: Record<string, number> = {};
+  const beginPhase = (phase: string) => phaseStartedAt.set(phase, performance.now());
+  const endPhase = (phase: string) => {
+    const startedAt = phaseStartedAt.get(phase);
+    if (startedAt !== undefined) phaseTimings[phase] = performance.now() - startedAt;
+  };
+  beginPhase("file_record query");
   const rows = archiveDb.prepare(
     "SELECT id, archive_item_id, local_identity_id, filename, path, relative_path, size_bytes, checksum, media_type, scan_status, error_message, integrity_classification, duration_seconds, video_codec, audio_codec, width, height, fps, bitrate, container, dynamic_range, audio_channels, audio_languages, subtitle_languages, fingerprint, modified_at_ms, last_seen_at FROM file_record WHERE owner_id = ? ORDER BY filename COLLATE NOCASE, path",
   ).all(ownerId) as FileRow[];
+  endPhase("file_record query");
+  beginPhase("local identity query");
   const identityRows = archiveDb.prepare(
     `SELECT id, identity_key, media_type, normalized_title, year, show_identity,
             season_number, episode_number, size_bytes, fingerprint, checksum
      FROM local_media_identity
      WHERE owner_id = ?`,
   ).all(ownerId) as LocalMediaIdentity[];
+  endPhase("local identity query");
   const identities = new Map(identityRows.map((identity) => [identity.id, identity]));
+  beginPhase("provider query");
   const provider = resolveArchiveProvider(ownerId);
   const plexRows = readProviderRows(ownerId, provider);
+  endPhase("provider query");
+  beginPhase("plexEpisodeIndex");
   const episodeIndex = plexEpisodeIndex(plexRows);
+  endPhase("plexEpisodeIndex");
+  beginPhase("plexTitleIndexes");
   const plexTitleIndex = plexTitleIndexes(plexRows);
+  endPhase("plexTitleIndexes");
+  beginPhase("local indexes");
   const indexes: InventoryIndexes = {
     identity: new Map(),
     checksum: new Map(),
@@ -1454,6 +1473,8 @@ function buildArchiveInventory(ownerId: string) {
       indexes.bestByIdentity.set(identityKey, row);
     }
   }
+  endPhase("local indexes");
+  beginPhase("review query/index");
   const reviews = new Map<string, ReviewRow>();
   const reviewRows = archiveDb.prepare(
     "SELECT owner_id, file_record_id, finding_type, evidence_key, status, note, updated_at FROM archive_review WHERE owner_id = ?",
@@ -1466,6 +1487,8 @@ function buildArchiveInventory(ownerId: string) {
   for (const review of reviewRows) {
     reviews.set(`${review.owner_id}:${review.file_record_id}:${review.finding_type}:${review.evidence_key}`, review);
   }
+  endPhase("review query/index");
+  beginPhase("rows.map(mapFile)");
   const records = rows.map((row) => mapFile(
     ownerId,
     row,
@@ -1479,7 +1502,11 @@ function buildArchiveInventory(ownerId: string) {
       ? undefined
       : identities.get(row.local_identity_id),
   ));
+  endPhase("rows.map(mapFile)");
+  beginPhase("matched Plex keys");
   const matchedPlexKeys = new Set(records.map((record) => record.plexMatch?.ratingKey).filter((key): key is string => Boolean(key)));
+  endPhase("matched Plex keys");
+  beginPhase("plexOnly construction");
   const plexOnly = plexRows
     .filter((plex) => !matchedPlexKeys.has(plex.rating_key))
     .map((plex) => ({
@@ -1491,6 +1518,8 @@ function buildArchiveInventory(ownerId: string) {
       providerLabel: providerLabel(plex.provider),
       qualitySummary: `${providerLabel(plex.provider)} contains this item, but no matching local file was found.`,
     }));
+  endPhase("plexOnly construction");
+  beginPhase("summary construction");
   const scan = readArchiveScan(ownerId);
   const integrityFailureCount = records.filter(
     (record) => record.integrityClassification === "corrupt_or_malformed_container",
@@ -1498,6 +1527,17 @@ function buildArchiveInventory(ownerId: string) {
   const inspectionFailureCount = records.filter(
     (record) => record.scanStatus === "error" && record.integrityClassification === "inspection_unavailable",
   ).length;
+  endPhase("summary construction");
+  if (process.env.ARCHIVE_INVENTORY_TIMINGS === "1") {
+    console.error(JSON.stringify({
+      event: "archive_inventory_timings",
+      ownerId,
+      rows: rows.length,
+      plexRows: plexRows.length,
+      totalMs: performance.now() - inventoryStartedAt,
+      phases: phaseTimings,
+    }));
+  }
   return {
     scan,
     provider,
