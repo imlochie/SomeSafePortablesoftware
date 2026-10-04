@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { performance } from "node:perf_hooks";
 import { GetAssistantOverviewResponse, GetAssistantWorkloadLineageParams, GetAssistantWorkloadLineageResponse, GetAssistantWorkloadResponse } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import { readAssistantOverview } from "../services/assistant-overview";
@@ -93,7 +94,17 @@ router.get("/assistant/health", async (req, res, next) => {
 
 router.get("/assistant/overview", async (req, res, next) => {
   try {
-    res.json(GetAssistantOverviewResponse.parse(await readAssistantOverview(getAuthenticatedUserId(req))));
+    const startedAt = performance.now();
+    const overview = GetAssistantOverviewResponse.parse(await readAssistantOverview(getAuthenticatedUserId(req)));
+    const serviceCompletedAt = performance.now();
+    res.json(overview);
+    if (process.env.ARCHIVE_ASSISTANT_TIMINGS === "1") {
+      console.error(JSON.stringify({
+        event: "archive_assistant_response_timings",
+        serviceMs: serviceCompletedAt - startedAt,
+        responseMs: performance.now() - serviceCompletedAt,
+      }));
+    }
   } catch (error) {
     next(error);
   }

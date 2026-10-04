@@ -5,6 +5,7 @@ import { readIdentityAudit } from "./identity-audit";
 import { archiveDb, readSettings } from "../lib/archive-db";
 import { readStorage } from "../routes/system";
 import { readMediaExperience } from "./media-experience";
+import { performance } from "node:perf_hooks";
 
 export const assistantPriorities = ["critical", "high", "medium", "low", "info"] as const;
 export type AssistantPriority = (typeof assistantPriorities)[number];
@@ -254,15 +255,31 @@ export function groupRecommendations(recommendations: AssistantRecommendation[])
 }
 
 export async function readAssistantOverview(ownerId: string) {
+  const startedAt = performance.now();
+  const timings: Record<string, number> = {};
+  const phaseStarts = new Map<string, number>();
+  const begin = (phase: string) => phaseStarts.set(phase, performance.now());
+  const end = (phase: string) => {
+    const start = phaseStarts.get(phase);
+    if (start !== undefined) timings[phase] = performance.now() - start;
+  };
+  begin("Promise.all");
   const [inventory, scan, naming, identityAudit] = await Promise.all([
     Promise.resolve(readArchiveInventory(ownerId)),
     Promise.resolve(readArchiveScan(ownerId)),
     readNamingProposals(ownerId, { page: 1, pageSize: 500 }),
     readIdentityAudit(ownerId, { page: 1, pageSize: 500, needsReview: true }),
   ]);
+  end("Promise.all");
+  begin("listAcquisitionRecommendations");
   const acquisition = listAcquisitionRecommendations(ownerId);
+  end("listAcquisitionRecommendations");
+  begin("readMediaExperience");
   const mediaExperience = readMediaExperience(ownerId);
+  end("readMediaExperience");
+  begin("readStorage");
   const storage = readStorage(readSettings());
+  end("readStorage");
   const recommendations: AssistantRecommendation[] = [];
   const mediaMatchFor = (title: string, seriesTitle?: string | null) => {
     const wanted = [title, seriesTitle].filter(Boolean).map((value) => String(value).toLowerCase());
@@ -299,6 +316,7 @@ export async function readAssistantOverview(ownerId: string) {
     };
   };
 
+  begin("acquisition recommendation mapping");
   for (const item of acquisition) {
     if (item.status === "completed" || item.status === "dismissed" || item.acquisitionJobId) continue;
     recommendations.push({
@@ -324,12 +342,14 @@ export async function readAssistantOverview(ownerId: string) {
       personalAffinity: personalAffinityFor(item.title, item.identity?.seriesTitle),
     });
   }
-
+  end("acquisition recommendation mapping");
+  begin("inventory recommendation mapping");
   for (const record of inventory.records) {
     const finding = integrityRecommendation(record);
     if (finding) recommendations.push(finding);
   }
-
+  end("inventory recommendation mapping");
+  begin("naming recommendation mapping");
   for (const proposal of naming.results) {
     const confidence = String(proposal.confidence ?? "uncertain");
     const priority: AssistantPriority = confidence === "high" && proposal.collision !== true ? "low" : "medium";
@@ -348,10 +368,17 @@ export async function readAssistantOverview(ownerId: string) {
       reviewItemId: null,
     });
   }
-
+  end("naming recommendation mapping");
+  begin("recommendation sorting");
   recommendations.sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority));
+  end("recommendation sorting");
+  begin("personalizedBriefing");
   const personalizedBriefing = rankPersonalizedBriefing(recommendations);
+  end("personalizedBriefing");
+  begin("buildDiscoverySections");
   const discovery = buildDiscoverySections(mediaExperience);
+  end("buildDiscoverySections");
+  begin("blocked/uncertain/attention/counts");
   const blocked = recommendations.filter((item) => item.state === "blocked");
   const uncertain = recommendations.filter((item) => item.state === "uncertain");
   const attention = recommendations.filter((item) => item.state === "actionable" && item.priority !== "info").slice(0, 20);
@@ -359,7 +386,11 @@ export async function readAssistantOverview(ownerId: string) {
     (result, item) => ({ ...result, [item.priority]: result[item.priority] + 1 }),
     { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
   );
+  end("blocked/uncertain/attention/counts");
+  begin("groupRecommendations");
   const groups = groupRecommendations(recommendations);
+  end("groupRecommendations");
+  begin("duplicateGroups");
   const duplicateRows = inventory.records.filter((record) => record.qualityStatus === "duplicate" && record.duplicateOfId !== null);
   const duplicateGroups = [...new Map(duplicateRows.map((record) => {
     const ids = [record.id, record.duplicateOfId!].sort((left, right) => left - right);
@@ -377,6 +408,8 @@ export async function readAssistantOverview(ownerId: string) {
     underlyingItemIds: ids,
     itemCount: ids.length,
   }));
+  end("duplicateGroups");
+  begin("identityGroups");
   const identityGroups = [...new Map(identityAudit.results.map((result) => {
     const key = result.auditType;
     const values = identityAudit.results.filter((item) => item.auditType === key);
@@ -394,9 +427,22 @@ export async function readAssistantOverview(ownerId: string) {
       itemCount: values.length,
     }];
   })).values()];
+  end("identityGroups");
+  begin("activeWork query");
   const semanticGroups = [...groups, ...duplicateGroups, ...identityGroups]
     .sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority) || left.title.localeCompare(right.title));
   const activeWork = archiveDb.prepare("SELECT COUNT(*) AS count FROM acquisition_job WHERE owner_id = ? AND state IN ('planned', 'downloading', 'processing', 'verifying')").get(ownerId) as { count: number };
+  end("activeWork query");
+  if (process.env.ARCHIVE_ASSISTANT_TIMINGS === "1") {
+    console.error(JSON.stringify({
+      event: "archive_assistant_timings",
+      ownerId,
+      inventoryRecords: inventory.records.length,
+      recommendations: recommendations.length,
+      totalMs: performance.now() - startedAt,
+      phases: timings,
+    }));
+  }
   return {
     summary: {
       health: counts.critical || counts.high ? "attention_required" : recommendations.length ? "mostly_healthy" : "healthy",
