@@ -302,11 +302,22 @@ export async function readAssistantOverview(ownerId: string) {
   const recommendations: AssistantRecommendation[] = [];
   let mediaMatchCount = 0;
   let mediaMatchElapsedMs = 0;
+  const mediaMatchIndex = new Map<string, { item: (typeof mediaExperience.items)[number]; index: number }>();
+  for (const [index, item] of mediaExperience.items.entries()) {
+    const keys = [item.title, item.seriesTitle]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase());
+    for (const key of keys) {
+      if (!mediaMatchIndex.has(key)) mediaMatchIndex.set(key, { item, index });
+    }
+  }
   const mediaMatchFor = (title: string, seriesTitle?: string | null) => {
     const matchStartedAt = performance.now();
     const wanted = [title, seriesTitle].filter(Boolean).map((value) => String(value).toLowerCase());
-    const result = mediaExperience.items.find((item) => wanted.includes(item.title.toLowerCase())
-      || (item.seriesTitle !== null && wanted.includes(item.seriesTitle.toLowerCase()))) ?? null;
+    const result = wanted
+      .map((key) => mediaMatchIndex.get(key))
+      .filter((match): match is { item: (typeof mediaExperience.items)[number]; index: number } => Boolean(match))
+      .sort((left, right) => left.index - right.index)[0]?.item ?? null;
     mediaMatchCount += 1;
     mediaMatchElapsedMs += performance.now() - matchStartedAt;
     return result;
