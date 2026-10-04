@@ -256,6 +256,15 @@ export function groupRecommendations(recommendations: AssistantRecommendation[])
 
 export async function readAssistantOverview(ownerId: string) {
   const startedAt = performance.now();
+  const phaseEvent = (phase: string, phaseStartedAt: number) => {
+    if (process.env.ARCHIVE_ASSISTANT_TIMINGS === "1") {
+      console.error(JSON.stringify({
+        event: "assistant_overview_phase",
+        phase,
+        elapsedMs: performance.now() - phaseStartedAt,
+      }));
+    }
+  };
   const timings: Record<string, number> = {};
   const phaseStarts = new Map<string, number>();
   const begin = (phase: string) => phaseStarts.set(phase, performance.now());
@@ -264,22 +273,32 @@ export async function readAssistantOverview(ownerId: string) {
     if (start !== undefined) timings[phase] = performance.now() - start;
   };
   begin("Promise.all");
+  const timed = <T>(phase: string, operation: () => T | Promise<T>) => {
+    const phaseStartedAt = performance.now();
+    return Promise.resolve().then(operation).then((value) => {
+      phaseEvent(phase, phaseStartedAt);
+      return value;
+    });
+  };
   const [inventory, scan, naming, identityAudit] = await Promise.all([
-    Promise.resolve(readArchiveInventory(ownerId)),
-    Promise.resolve(readArchiveScan(ownerId)),
-    readNamingProposals(ownerId, { page: 1, pageSize: 500 }),
-    readIdentityAudit(ownerId, { page: 1, pageSize: 500, needsReview: true }),
+    timed("inventory", () => readArchiveInventory(ownerId)),
+    timed("scan", () => readArchiveScan(ownerId)),
+    timed("naming", () => readNamingProposals(ownerId, { page: 1, pageSize: 500 })),
+    timed("identityAudit", () => readIdentityAudit(ownerId, { page: 1, pageSize: 500, needsReview: true })),
   ]);
   end("Promise.all");
   begin("listAcquisitionRecommendations");
   const acquisition = listAcquisitionRecommendations(ownerId);
   end("listAcquisitionRecommendations");
+  phaseEvent("acquisition", phaseStarts.get("listAcquisitionRecommendations") ?? startedAt);
   begin("readMediaExperience");
   const mediaExperience = readMediaExperience(ownerId);
   end("readMediaExperience");
+  phaseEvent("mediaExperience", phaseStarts.get("readMediaExperience") ?? startedAt);
   begin("readStorage");
   const storage = readStorage(readSettings());
   end("readStorage");
+  phaseEvent("storage", phaseStarts.get("readStorage") ?? startedAt);
   const recommendations: AssistantRecommendation[] = [];
   const mediaMatchFor = (title: string, seriesTitle?: string | null) => {
     const wanted = [title, seriesTitle].filter(Boolean).map((value) => String(value).toLowerCase());
