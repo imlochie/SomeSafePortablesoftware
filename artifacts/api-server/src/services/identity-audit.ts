@@ -1,4 +1,5 @@
 import { setImmediate } from "node:timers/promises";
+import { performance } from "node:perf_hooks";
 import { archiveDb } from "../lib/archive-db";
 import { localEpisodeIdentity, normalizeTitle, titleYear } from "./archive";
 
@@ -303,7 +304,11 @@ export async function readIdentityAudit(ownerId: string, options: {
   mediaType?: string;
   needsReview?: boolean;
 } = {}) {
+  const timings: Record<string, number> = {};
+  const plexStartedAt = performance.now();
   const plexRows = readPlexRows(ownerId);
+  timings.plexQuery = performance.now() - plexStartedAt;
+  const plexIndexStartedAt = performance.now();
   const plexByTitle = new Map<string, PlexRow[]>();
   const plexByTitleYear = new Map<string, PlexRow[]>();
   for (const row of plexRows) {
@@ -312,16 +317,25 @@ export async function readIdentityAudit(ownerId: string, options: {
     add(plexByTitle, title, row);
     if (row.year !== null) add(plexByTitleYear, `${title}:${row.year}`, row);
   }
+  timings.plexIndex = performance.now() - plexIndexStartedAt;
+  const localStartedAt = performance.now();
+  const localRows = readLocalRows(ownerId);
+  timings.localQuery = performance.now() - localStartedAt;
+  const auditStartedAt = performance.now();
   const results: AuditCandidate[] = [];
-  for (const row of readLocalRows(ownerId)) {
+  for (const row of localRows) {
     results.push(...auditRow(row, plexByTitle, plexByTitleYear));
     if (results.length % 500 === 0) await setImmediate();
   }
+  timings.auditRows = performance.now() - auditStartedAt;
+  const filteringStartedAt = performance.now();
   const filtered = results.filter((result) =>
     (!options.auditType || result.auditType === options.auditType)
     && (!options.confidence || result.confidence === options.confidence)
     && (!options.mediaType || result.mediaType === options.mediaType)
     && (options.needsReview === undefined || result.needsReview === options.needsReview));
+  timings.filtering = performance.now() - filteringStartedAt;
+  const summaryStartedAt = performance.now();
   const pageSize = Number.isInteger(options.pageSize) ? Math.max(1, Math.min(500, options.pageSize!)) : 100;
   const page = Number.isInteger(options.page) ? Math.max(1, options.page!) : 1;
   const counts = new Map<string, number>();
@@ -329,6 +343,10 @@ export async function readIdentityAudit(ownerId: string, options: {
   for (const result of filtered) {
     counts.set(result.auditType, (counts.get(result.auditType) ?? 0) + 1);
     confidenceCounts.set(result.confidence, (confidenceCounts.get(result.confidence) ?? 0) + 1);
+  }
+  timings.summary = performance.now() - summaryStartedAt;
+  if (process.env.ARCHIVE_ASSISTANT_TIMINGS === "1") {
+    console.error(JSON.stringify({ event: "identity_audit_timings", rows: localRows.length, plexRows: plexRows.length, results: results.length, filtered: filtered.length, timings }));
   }
   return {
     summary: {
