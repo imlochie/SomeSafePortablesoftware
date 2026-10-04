@@ -169,7 +169,7 @@ export function rankPersonalizedBriefing(recommendations: AssistantRecommendatio
   }));
 }
 
-function integrityRecommendation(record: any): AssistantRecommendation | null {
+export function integrityRecommendation(record: any): AssistantRecommendation | null {
   if (record.integrityClassification === "corrupt_or_malformed_container") {
     return {
       id: `integrity:${record.id}`,

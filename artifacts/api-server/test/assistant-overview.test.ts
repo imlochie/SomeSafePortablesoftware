@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { GetAssistantOverviewResponse } from "@workspace/api-zod";
 
@@ -107,7 +108,9 @@ test("assistant overview is deterministic, typed, and safe when the archive is e
   assert.equal(typeof parsed.activeWork.scanStatus, "string");
 });
 
-test("finding detail remains read-only and does not invent an unavailable finding", async () => {
+test("finding detail is focused and does not invoke the full assistant overview", async () => {
+  const source = await readFile("src/services/assistant-finding-detail.ts", "utf8");
+  assert.equal(source.includes("readAssistantOverview"), false);
   const { readAssistantFindingDetail } = await import("../src/services/assistant-finding-detail");
   assert.equal(await readAssistantFindingDetail("__local__", "missing:finding"), null);
   const { GetAssistantFindingDetailResponse } = await import("@workspace/api-zod");

@@ -108,6 +108,13 @@ A user should open Archive Assistant and see a calm, scoped briefing—not a das
 - **Boundary:** this slice explains only. It does not approve, execute, rename, move, delete, import, or start provider work.
 - **Tests:** generated contract alignment, API read-model behavior, evidence/state/uncertainty UI coverage, deep-link coverage, and release-check all pass.
 
+### Slice 2.1 — Finding detail hardening (implemented in this change)
+
+- The detail endpoint no longer calls `readAssistantOverview()`.
+- Finding groups are rebuilt from narrowly scoped archive, scan, naming, identity-audit, and acquisition reads; media experience, discovery, and unrelated recommendation work are not loaded.
+- Evidence now identifies the strongest direct persisted domain source available (`media_inspection`, `identity_audit`, `naming_proposal`, `acquisition_recommendation`, or `archive_comparison`). Grouped findings expose their aggregation limitation instead of pretending every statement belongs to one record.
+- The response contract and safety boundary are unchanged.
+
 ### Slice 3 — Decision flow and lineage
 
 - **Existing support:** review decisions, approval-bound acquisition, archive operations, preflight/execute/rollback, workload lineage.
