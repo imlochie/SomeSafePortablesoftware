@@ -21,7 +21,7 @@ This is an implementation audit. It does not claim that the values below have be
 
 ## Executive finding
 
-The release baseline can launch, but it cannot yet be called **archive-aware and ready to operate** without real-machine validation of:
+The release baseline can launch, but it cannot yet be called **archive-aware and ready to operate as the primary archive system** without real-machine validation of:
 
 1. At least one real, readable, writable archive root.
 2. A completed archive scan with the expected file count.
@@ -29,11 +29,53 @@ The release baseline can launch, but it cannot yet be called **archive-aware and
 4. A meaningful identity/matching result, with unresolved items explicitly understood.
 5. Mock mode disabled for real evaluation.
 6. Storage and temp/download paths verified on the intended volumes.
-7. Optional provider configuration only where the operator wants Plex/Jellyfin reconciliation or automated acquisition.
+
+Plex configuration is useful as an interoperability/reference-inventory test, but it is not a prerequisite for local archive understanding. Jellyfin, Sonarr, Radarr, Prowlarr, and qBittorrent must not be treated as setup failures. They are optional compatibility sources or delegated execution adapters while Archive Assistant builds native capability.
+
+The correct question is not “How many integrations are configured?” It is:
+
+> Which archive capabilities does Archive Assistant own, which are currently delegated, and which are compatibility bridges that can eventually be removed?
 
 The current product has no dedicated setup-readiness read model. Settings, diagnostics, provider statuses, scan status, and dependency status are separate surfaces. That is the central product gap.
 
-## Source-of-truth map
+## Capability ownership model
+
+Setup Readiness must report capability ownership before it reports integrations.
+
+| Product capability | Archive Assistant owns now | Currently delegated/borrowed | Destination |
+|---|---|---|---|
+| Understand local archive | **YES** — scan, persisted file records, metadata, integrity classifications, archive inventory | FFprobe/FFmpeg/yt-dlp are executable dependencies, not product authorities | AA remains the source of local archive truth. |
+| Inspect media | **YES, with tool dependencies** — local inspection and persisted results | FFprobe/FFmpeg/yt-dlp binaries | Replaceable local tools behind AA-owned policy and evidence. |
+| Identify media | **YES, conservatively** — local identity, provider comparison, identity audit, review | Plex/Jellyfin can provide reference candidates | AA owns the conclusion and uncertainty; providers are evidence sources. |
+| Compare quality/integrity | **YES** — archive comparison, integrity classification, review | Plex/Jellyfin metadata can be comparison input | AA owns the finding and decision. |
+| Name and organize | **YES, supervised** — naming proposals, collision-safe plans, approval-gated operations | None required for the core flow | AA owns proposals, review, preflight, and filesystem policy. |
+| Review and decide | **YES** — review items, notes, approval boundaries, operation planning | None | AA owns the decision record. |
+| Discover missing media | **PARTIAL** — deterministic acquisition recommendations exist | Sonarr/Radarr/Prowlarr may supply lookup/indexer/provider evidence | AA should progressively own discovery policy and recommendation truth. |
+| Acquire/download | **PARTIAL** — local download/processing engine and durable jobs exist | Sonarr/Radarr/qBittorrent can provide provider-backed execution | AA should own the queue and lifecycle; external tools become adapters. |
+| Verify acquired media | **YES/PARTIAL** — local processing verification and archive scan evidence exist | Provider completion/status can be an external signal, never final archive truth | AA must own final local verification and import completion. |
+| Preserve/history | **YES** — SQLite state, events, archive operations, review history | None required for local preservation | AA owns durable archive truth and audit history. |
+
+### Integration roles
+
+- **Plex:** optional reference/integration test. It is already synced and should remain valuable for reconciliation and interoperability validation, but local Archive Assistant readiness must not depend on it.
+- **Jellyfin:** optional compatibility source. Do not configure it merely to complete a checklist.
+- **Sonarr/Radarr:** delegated acquisition adapters during the transition; their absence is not a setup failure.
+- **Prowlarr:** delegated discovery/indexer compatibility adapter; its absence is not a setup failure.
+- **qBittorrent:** delegated execution backend while AA's native acquisition engine matures; report it as `COMPATIBILITY ONLY`, not as a missing core dependency.
+- **Native acquisition:** currently incomplete. This is a product capability gap, not a machine setup defect.
+
+A readiness report should therefore be able to say:
+
+```text
+Archive understanding: READY
+Plex integration: VERIFIED / OPTIONAL
+Jellyfin: OPTIONAL / NOT CONFIGURED
+Sonarr: OPTIONAL / DELEGATED ACQUISITION ADAPTER
+Radarr: OPTIONAL / DELEGATED ACQUISITION ADAPTER
+Prowlarr: OPTIONAL / DELEGATED DISCOVERY ADAPTER
+qBittorrent: COMPATIBILITY ONLY
+Native acquisition: NOT YET COMPLETE
+```
 
 ### Core local setup
 
@@ -130,6 +172,19 @@ Provider statuses have separate fields for configured, reachable, operational, c
 5. Provider status exposes operational reachability, while sync freshness lives in provider-specific records; the UI does not combine them.
 6. Hardware acceleration, log level, output container, cache TTL, and startup are configuration/optimization controls, not archive-understanding gates.
 7. Desktop updater and Windows startup have implementation seams but need real-machine validation; they must not be represented as archive readiness.
+
+## Recommended readiness result
+
+The top-level state should be computed from locally owned capabilities, not integration count:
+
+- **Archive understanding: READY** when the configured local roots are readable, a completed scan exists, FFprobe/media inspection is available, and the resulting inventory is usable. Identity ambiguity can remain visible as `DEGRADED` or `NEEDS REVIEW`; it must not be hidden as healthy.
+- **Archive understanding: BLOCKED** when no valid archive root exists, the roots cannot be accessed, no completed scan exists, or the required local inspection dependency is unavailable.
+- **Archive operations: READY/DEGRADED** separately, based on writable destinations, free space, and approval-gated operation checks.
+- **Provider reconciliation: OPTIONAL** unless the operator explicitly chooses Plex or Jellyfin as a reference source.
+- **Acquisition: PARTIALLY READY** while AA can recommend and process work but delegates discovery/provider execution. External adapters can improve this capability without becoming setup blockers.
+- **Native acquisition: NOT YET COMPLETE** until AA owns discovery, queue, provider selection, execution lifecycle, and final archive import without requiring an external orchestrator.
+
+This keeps “missing integration” separate from “missing capability.” A missing Sonarr instance should never make local archive understanding report `NOT SET UP`.
 
 ## Product recommendation
 
