@@ -953,6 +953,91 @@ export interface AssistantOverview {
   personalizedBriefing: AssistantBriefingItem[];
 }
 
+export interface AssistantFindingEvidence {
+  statement: string;
+  source: string;
+  /** @nullable */
+  sourceId: string | null;
+  available: boolean;
+  /** @nullable */
+  observedAt: string | null;
+}
+
+export type AssistantFindingReferenceKind = typeof AssistantFindingReferenceKind[keyof typeof AssistantFindingReferenceKind];
+
+
+export const AssistantFindingReferenceKind = {
+  archive_record: 'archive_record',
+  assistant: 'assistant',
+  review: 'review',
+  archive: 'archive',
+} as const;
+
+export interface AssistantFindingReference {
+  kind: AssistantFindingReferenceKind;
+  id: string;
+  label: string;
+  href: string;
+}
+
+export type AssistantFindingDetailType = typeof AssistantFindingDetailType[keyof typeof AssistantFindingDetailType];
+
+
+export const AssistantFindingDetailType = {
+  download: 'download',
+  integrity: 'integrity',
+  rename: 'rename',
+  duplicate: 'duplicate',
+  identity: 'identity',
+  quality: 'quality',
+} as const;
+
+export type AssistantFindingDetailState = typeof AssistantFindingDetailState[keyof typeof AssistantFindingDetailState];
+
+
+export const AssistantFindingDetailState = {
+  actionable: 'actionable',
+  blocked: 'blocked',
+  uncertain: 'uncertain',
+  informational: 'informational',
+  resolved: 'resolved',
+} as const;
+
+export type AssistantFindingDetailPriority = typeof AssistantFindingDetailPriority[keyof typeof AssistantFindingDetailPriority];
+
+
+export const AssistantFindingDetailPriority = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  info: 'info',
+} as const;
+
+export type AssistantFindingDetailFreshness = {
+  label: string;
+  /** @nullable */
+  observedAt: string | null;
+  available: boolean;
+};
+
+export interface AssistantFindingDetail {
+  id: string;
+  type: AssistantFindingDetailType;
+  state: AssistantFindingDetailState;
+  priority: AssistantFindingDetailPriority;
+  title: string;
+  explanation: string;
+  evidence: AssistantFindingEvidence[];
+  confidence: string;
+  freshness: AssistantFindingDetailFreshness;
+  uncertainty: string[];
+  blockers: string[];
+  recommendedAction: string;
+  consequence: string;
+  references: AssistantFindingReference[];
+}
+
 export type PersonalMediaProfileViewing = { [key: string]: unknown };
 
 export type PersonalMediaProfileTemporal = { [key: string]: unknown };

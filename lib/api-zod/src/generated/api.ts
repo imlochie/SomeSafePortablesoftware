@@ -1334,6 +1334,47 @@ export const GetAssistantOverviewResponse = zod.object({
 
 
 /**
+ * Read-only normalized finding detail with provenance, freshness, uncertainty, and safe references.
+ * @summary Get one evidence-first assistant finding
+ */
+export const GetAssistantFindingDetailParams = zod.object({
+  "findingId": zod.coerce.string()
+})
+
+export const GetAssistantFindingDetailResponse = zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['download', 'integrity', 'rename', 'duplicate', 'identity', 'quality']),
+  "state": zod.enum(['actionable', 'blocked', 'uncertain', 'informational', 'resolved']),
+  "priority": zod.enum(['critical', 'high', 'medium', 'low', 'info']),
+  "title": zod.string(),
+  "explanation": zod.string(),
+  "evidence": zod.array(zod.object({
+  "statement": zod.string(),
+  "source": zod.string(),
+  "sourceId": zod.string().nullable(),
+  "available": zod.boolean(),
+  "observedAt": zod.coerce.date().nullable()
+})),
+  "confidence": zod.string(),
+  "freshness": zod.object({
+  "label": zod.string(),
+  "observedAt": zod.coerce.date().nullable(),
+  "available": zod.boolean()
+}),
+  "uncertainty": zod.array(zod.string()),
+  "blockers": zod.array(zod.string()),
+  "recommendedAction": zod.string(),
+  "consequence": zod.string(),
+  "references": zod.array(zod.object({
+  "kind": zod.enum(['archive_record', 'assistant', 'review', 'archive']),
+  "id": zod.string(),
+  "label": zod.string(),
+  "href": zod.string()
+}))
+})
+
+
+/**
  * @summary Get archive system overview
  */
 export const GetSystemOverviewResponse = zod.object({

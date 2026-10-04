@@ -101,11 +101,12 @@ A user should open Archive Assistant and see a calm, scoped briefing—not a das
 - **UI behavior:** Home requests the assistant overview on initial load, shows loading/unavailable distinctly, and only claims a healthy state after the assistant readout has loaded successfully. Preserve the current Assistant decision surface.
 - **Tests:** contract/surface test protects against reintroducing a disabled assistant readout and against treating unavailable data as healthy.
 
-### Slice 2 — Evidence-first finding detail
+### Slice 2 — Evidence-first finding detail (implemented in this change)
 
-- **Existing support:** assistant group/recommendation evidence, archive record detail, identity audit, integrity classification, review notes.
-- **Missing support:** a normalized read-only finding detail response that can link a group to its underlying records without UI-specific joins.
-- **UI:** one reusable finding panel with conclusion, evidence, confidence, freshness, uncertainty, and safe next action; link to the correct domain queue.
+- **Backend:** added the read-only `GET /api/assistant/findings/{findingId}` model. It normalizes group/recommendation identity, state, priority, conclusion, evidence, confidence, freshness, uncertainty, blockers, consequence, and safe references. Evidence is labeled as coming from the assistant overview; unavailable timestamps and empty evidence remain explicit.
+- **UI:** added the reusable `FindingDetail` evidence record and `/assistant/findings/:findingId` route. Home findings and Assistant recommendation evidence now open it instead of sending the operator directly to a generic subsystem.
+- **Boundary:** this slice explains only. It does not approve, execute, rename, move, delete, import, or start provider work.
+- **Tests:** generated contract alignment, API read-model behavior, evidence/state/uncertainty UI coverage, deep-link coverage, and release-check all pass.
 
 ### Slice 3 — Decision flow and lineage
 

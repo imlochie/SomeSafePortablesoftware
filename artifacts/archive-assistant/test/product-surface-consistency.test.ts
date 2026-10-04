@@ -27,4 +27,15 @@ describe('pilot surface consistency', () => {
     expect(appSource).toContain('const assistantReady = !assistantOverview.isLoading && !assistantOverview.isError');
     expect(appSource).toContain("!assistantReady ? 'Briefing is not confirmed.'");
   });
+
+  it('opens meaningful findings in the shared evidence record instead of a generic subsystem page', async () => {
+    const findingSource = await readFile(join(import.meta.dirname, '..', 'src', 'components', 'finding-detail.tsx'), 'utf8');
+    expect(appSource).toContain('/assistant/findings/:findingId');
+    expect(appSource).toContain('encodeURIComponent(item.id)');
+    expect(findingSource).toContain('panel-finding-conclusion');
+    expect(findingSource).toContain('panel-finding-evidence');
+    expect(findingSource).toContain('panel-finding-uncertainty');
+    expect(findingSource).toContain('finding-confidence');
+    expect(findingSource).toContain('This is not a negative conclusion.');
+  });
 });

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { GetAssistantOverviewResponse, GetAssistantWorkloadLineageParams, GetAssistantWorkloadLineageResponse, GetAssistantWorkloadResponse } from "@workspace/api-zod";
+import { GetAssistantFindingDetailParams, GetAssistantFindingDetailResponse, GetAssistantOverviewResponse, GetAssistantWorkloadLineageParams, GetAssistantWorkloadLineageResponse, GetAssistantWorkloadResponse } from "@workspace/api-zod";
 import { getAuthenticatedUserId } from "../middlewares/requireAuth";
 import { readAssistantOverview } from "../services/assistant-overview";
 import { researchCandidate } from "../services/media-research";
@@ -12,6 +12,7 @@ import { readMediaProfile } from "../services/media-profile";
 import { readWorkload } from "../services/workload";
 import { readWorkloadLineage } from "../services/lineage";
 import { readArchiveHealth } from "../services/archive-health";
+import { readAssistantFindingDetail } from "../services/assistant-finding-detail";
 
 const router: IRouter = Router();
 
@@ -96,6 +97,17 @@ router.get("/assistant/overview", async (req, res, next) => {
     res.json(GetAssistantOverviewResponse.parse(await readAssistantOverview(getAuthenticatedUserId(req))));
   } catch (error) {
     next(error);
+  }
+});
+
+router.get("/assistant/findings/:findingId", async (req, res, next) => {
+  try {
+    const { findingId } = GetAssistantFindingDetailParams.parse(req.params);
+    const detail = await readAssistantFindingDetail(getAuthenticatedUserId(req), findingId);
+    if (!detail) return res.status(404).json({ message: "Assistant finding not found." });
+    return res.json(GetAssistantFindingDetailResponse.parse(detail));
+  } catch (error) {
+    return next(error);
   }
 });
 

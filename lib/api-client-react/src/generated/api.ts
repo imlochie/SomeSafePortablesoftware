@@ -49,6 +49,7 @@ import type {
   ArchiveScan,
   AskArenaCanonical200,
   AskArenaCanonicalBody,
+  AssistantFindingDetail,
   AssistantOverview,
   AssistantWorkload,
   AssistantWorkloadLineage,
@@ -2630,6 +2631,84 @@ export function useGetAssistantOverview<TData = Awaited<ReturnType<typeof getAss
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAssistantOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAssistantFindingDetailUrl = (findingId: string,) => {
+
+
+
+
+  return `/api/assistant/findings/${findingId}`
+}
+
+/**
+ * Read-only normalized finding detail with provenance, freshness, uncertainty, and safe references.
+ * @summary Get one evidence-first assistant finding
+ */
+export const getAssistantFindingDetail = async (findingId: string, options?: Parameters<typeof customFetch>[1]): Promise<AssistantFindingDetail> => {
+
+  return customFetch<AssistantFindingDetail>(getGetAssistantFindingDetailUrl(findingId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAssistantFindingDetailQueryKey = (findingId: string,) => {
+    return [
+    `/api/assistant/findings/${findingId}`
+    ] as const;
+    }
+
+
+export const getGetAssistantFindingDetailQueryOptions = <TData = Awaited<ReturnType<typeof getAssistantFindingDetail>>, TError = ErrorType<void>>(findingId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssistantFindingDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAssistantFindingDetailQueryKey(findingId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAssistantFindingDetail>>> = ({ signal }) => getAssistantFindingDetail(findingId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: findingId !== null && findingId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAssistantFindingDetail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAssistantFindingDetailQueryResult = NonNullable<Awaited<ReturnType<typeof getAssistantFindingDetail>>>
+export type GetAssistantFindingDetailQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get one evidence-first assistant finding
+ */
+
+export function useGetAssistantFindingDetail<TData = Awaited<ReturnType<typeof getAssistantFindingDetail>>, TError = ErrorType<void>>(
+ findingId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAssistantFindingDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAssistantFindingDetailQueryOptions(findingId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

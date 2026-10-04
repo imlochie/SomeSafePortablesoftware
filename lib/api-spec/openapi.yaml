@@ -518,6 +518,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AssistantOverview"
+  /assistant/findings/{findingId}:
+    get:
+      operationId: getAssistantFindingDetail
+      tags: [assistant]
+      summary: Get one evidence-first assistant finding
+      description: Read-only normalized finding detail with provenance, freshness, uncertainty, and safe references.
+      parameters:
+        - name: findingId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Evidence-first assistant finding detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantFindingDetail"
+        "404":
+          description: Finding not found for this owner
   /system/overview:
     get:
       operationId: getSystemOverview
@@ -2794,6 +2814,55 @@ components:
         personalizedBriefing:
           type: array
           items: { $ref: "#/components/schemas/AssistantBriefingItem" }
+    AssistantFindingEvidence:
+      type: object
+      required: [statement, source, sourceId, available, observedAt]
+      properties:
+        statement: { type: string }
+        source: { type: string }
+        sourceId: { type: [string, "null"] }
+        available: { type: boolean }
+        observedAt: { type: [string, "null"], format: date-time }
+    AssistantFindingReference:
+      type: object
+      required: [kind, id, label, href]
+      properties:
+        kind: { type: string, enum: [archive_record, assistant, review, archive] }
+        id: { type: string }
+        label: { type: string }
+        href: { type: string }
+    AssistantFindingDetail:
+      type: object
+      required: [id, type, state, priority, title, explanation, evidence, confidence, freshness, uncertainty, blockers, recommendedAction, consequence, references]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [download, integrity, rename, duplicate, identity, quality] }
+        state: { type: string, enum: [actionable, blocked, uncertain, informational, resolved] }
+        priority: { type: string, enum: [critical, high, medium, low, info] }
+        title: { type: string }
+        explanation: { type: string }
+        evidence:
+          type: array
+          items: { $ref: "#/components/schemas/AssistantFindingEvidence" }
+        confidence: { type: string }
+        freshness:
+          type: object
+          required: [label, observedAt, available]
+          properties:
+            label: { type: string }
+            observedAt: { type: [string, "null"], format: date-time }
+            available: { type: boolean }
+        uncertainty:
+          type: array
+          items: { type: string }
+        blockers:
+          type: array
+          items: { type: string }
+        recommendedAction: { type: string }
+        consequence: { type: string }
+        references:
+          type: array
+          items: { $ref: "#/components/schemas/AssistantFindingReference" }
     MediaProfileResponse:
       type: object
       required: [profile, archiveGraph]

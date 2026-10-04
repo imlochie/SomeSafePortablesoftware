@@ -107,6 +107,31 @@ test("assistant overview is deterministic, typed, and safe when the archive is e
   assert.equal(typeof parsed.activeWork.scanStatus, "string");
 });
 
+test("finding detail remains read-only and does not invent an unavailable finding", async () => {
+  const { readAssistantFindingDetail } = await import("../src/services/assistant-finding-detail");
+  assert.equal(await readAssistantFindingDetail("__local__", "missing:finding"), null);
+  const { GetAssistantFindingDetailResponse } = await import("@workspace/api-zod");
+  const detail = GetAssistantFindingDetailResponse.parse({
+    id: "integrity:12",
+    type: "integrity",
+    state: "uncertain",
+    priority: "medium",
+    title: "A file could not be inspected",
+    explanation: "The local node could not reliably inspect this file.",
+    evidence: [],
+    confidence: "needs_verification",
+    freshness: { label: "unknown", observedAt: null, available: false },
+    uncertainty: ["No completed archive scan timestamp is available for this briefing."],
+    blockers: [],
+    recommendedAction: "Check the path and media tools.",
+    consequence: "No action is taken by opening this record.",
+    references: [{ kind: "archive_record", id: "12", label: "Open archive record #12", href: "/archive?record=12" }],
+  });
+  assert.equal(detail.freshness.available, false);
+  assert.equal(detail.evidence.length, 0);
+  assert.equal(detail.uncertainty.length, 1);
+});
+
 test("assistant groups preserve item IDs and order related recommendations deterministically", async () => {
   const { groupRecommendations } = await import("../src/services/assistant-overview");
   const groups = groupRecommendations([
