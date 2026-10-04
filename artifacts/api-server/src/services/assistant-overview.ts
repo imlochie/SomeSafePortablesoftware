@@ -264,10 +264,21 @@ export async function readAssistantOverview(ownerId: string) {
   const mediaExperience = readMediaExperience(ownerId);
   const storage = readStorage(readSettings());
   const recommendations: AssistantRecommendation[] = [];
+  const mediaMatchIndex = new Map<string, { item: (typeof mediaExperience.items)[number]; index: number }>();
+  for (const [index, item] of mediaExperience.items.entries()) {
+    const keys = [item.title, item.seriesTitle]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase());
+    for (const key of keys) {
+      if (!mediaMatchIndex.has(key)) mediaMatchIndex.set(key, { item, index });
+    }
+  }
   const mediaMatchFor = (title: string, seriesTitle?: string | null) => {
     const wanted = [title, seriesTitle].filter(Boolean).map((value) => String(value).toLowerCase());
-    return mediaExperience.items.find((item) => wanted.includes(item.title.toLowerCase())
-      || (item.seriesTitle !== null && wanted.includes(item.seriesTitle.toLowerCase()))) ?? null;
+    return wanted
+      .map((key) => mediaMatchIndex.get(key))
+      .filter((match): match is { item: (typeof mediaExperience.items)[number]; index: number } => Boolean(match))
+      .sort((left, right) => left.index - right.index)[0]?.item ?? null;
   };
   const personalContextFor = (title: string, seriesTitle?: string | null) => {
     const match = mediaMatchFor(title, seriesTitle);
