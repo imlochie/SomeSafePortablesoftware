@@ -1,4 +1,5 @@
 import { setImmediate } from "node:timers/promises";
+import { performance } from "node:perf_hooks";
 import { basename, dirname, extname, relative, resolve, sep } from "node:path";
 import { archiveDb } from "../lib/archive-db";
 import { localEpisodeIdentity, normalizeTitle, titleYear } from "./archive";
@@ -367,11 +368,26 @@ export async function readNamingProposals(
   ownerId: string,
   filters: { page?: number; pageSize?: number; confidence?: string; operation?: string; pattern?: string; mediaType?: string; volume?: string; state?: string; uncertain?: boolean } = {},
 ) {
+  const timings: Record<string, number> = {};
+  const startedAt = performance.now();
   const rows = readRows(ownerId);
+  timings.localRowQuery = performance.now() - startedAt;
+  const plexEpisodesStartedAt = performance.now();
   const plexByShow = readPlexEpisodes(ownerId);
+  timings.plexEpisodeQueryIndex = performance.now() - plexEpisodesStartedAt;
+  const plexMoviesStartedAt = performance.now();
   const plexMovies = readPlexMovies(ownerId);
+  const plexMoviesByTitle = new Map<string, PlexMovie[]>();
+  for (const movie of plexMovies) {
+    const title = normalizeTitle(movie.title);
+    const values = plexMoviesByTitle.get(title) ?? [];
+    values.push(movie);
+    plexMoviesByTitle.set(title, values);
+  }
+  timings.plexMovieQueryIndex = performance.now() - plexMoviesStartedAt;
   const knownPaths = new Set(rows.map((row) => row.path.toLowerCase()));
   const proposals: Array<Record<string, unknown>> = [];
+  const proposalGenerationStartedAt = performance.now();
   for (let start = 0; start < rows.length; start += 500) {
     for (const row of rows.slice(start, start + 500)) {
       const volume = volumeForPath(row.path);
@@ -381,7 +397,7 @@ export async function readNamingProposals(
       } else {
         const title = normalizeTitle(row.filename);
         const year = titleYear(row.filename);
-        const match = plexMovies.find((movie) => normalizeTitle(movie.title) === title && (year === null || movie.year === null || movie.year === year));
+        const match = (plexMoviesByTitle.get(title) ?? []).find((movie) => year === null || movie.year === null || movie.year === year);
         const proposedFilename = match ? `${match.title}${match.year ? ` (${match.year})` : ""}${extname(row.filename).toLowerCase()}` : null;
         const destination = proposedFilename ? resolve(volume.root, proposedFilename) : null;
         const collision = Boolean(destination && knownPaths.has(destination.toLowerCase()) && destination.toLowerCase() !== row.path.toLowerCase());
@@ -412,6 +428,8 @@ export async function readNamingProposals(
     }
     await setImmediate();
   }
+  timings.proposalGeneration = performance.now() - proposalGenerationStartedAt;
+  const filteringStartedAt = performance.now();
   const filtered = proposals.filter((proposal) => {
     if (filters.confidence && proposal.confidence !== filters.confidence) return false;
     if (filters.operation && proposal.operation !== filters.operation) return false;
@@ -422,6 +440,10 @@ export async function readNamingProposals(
     if (filters.uncertain !== undefined && (proposal.operation === "uncertain/no_action") !== filters.uncertain) return false;
     return true;
   });
+  timings.filtering = performance.now() - filteringStartedAt;
+  if (process.env.ARCHIVE_ASSISTANT_TIMINGS === "1") {
+    console.error(JSON.stringify({ event: "naming_proposals_timings", rows: rows.length, plexMovies: plexMovies.length, proposals: proposals.length, filtered: filtered.length, timings }));
+  }
   const pageSize = Math.max(1, Math.min(500, Number.isInteger(filters.pageSize) ? filters.pageSize ?? 100 : 100));
   const page = Math.max(1, Number.isInteger(filters.page) ? filters.page ?? 1 : 1);
   const offset = (page - 1) * pageSize;
