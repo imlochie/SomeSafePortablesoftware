@@ -4,7 +4,7 @@ ARCHIVE ASSISTANT is a Windows-first, local-first personal media archive control
 
 ## Product status
 
-The project is designed to act as a control layer for a personal media archive, with foundations for Plex integration, media acquisition, processing, archive management, and future AI-assisted workflows.
+The project is designed to act as a control layer for a personal media archive, with foundations for Plex and Jellyfin integration, media acquisition, processing, archive management, and future AI-assisted workflows.
 
 ---
 
@@ -12,13 +12,24 @@ The project is designed to act as a control layer for a personal media archive, 
 
 - Production AI assistant responses and local-model integration.
 - Autonomous archive actions.
-- Bundled media-tool packaging (FFmpeg, FFprobe, and yt-dlp).
 
 The UI reports unconfigured providers as disconnected and surfaces real provider errors instead of fabricating availability.
 
-Plex synchronization, archive scanning and review, controlled archive
-operations, provider-backed acquisitions, and durable operational history are
-implemented. See [`docs/archive-goals-freeze-review.md`](docs/archive-goals-freeze-review.md)
+The Windows desktop package is self-contained. The installer ships a bundled
+Node runtime and pinned FFmpeg, FFprobe, and yt-dlp binaries, so a released
+build does not require an installed Node or media tools on the target machine.
+Media tools are staged from `scripts/media-tools-manifest.json` during the
+release build and verified by size and SHA-256 against pinned immutable
+release assets. This has been verified by installing and launching a real
+Windows build; it is not yet covered by continuous integration, because the
+Windows workflow has never run.
+
+Plex and Jellyfin synchronization, archive scanning and review, controlled
+archive operations, provider-backed acquisitions, and durable operational
+history are implemented. Plex and Jellyfin are interchangeable reference
+providers: exactly one is active per owner, selected with the
+`archiveProvider` setting, and archive findings are labelled with the provider
+that produced them. See [`docs/archive-goals-freeze-review.md`](docs/archive-goals-freeze-review.md)
 for the original-goal classification and remaining release work.
 
 The desktop application launches the Node.js API locally as a managed sidecar.
@@ -72,7 +83,7 @@ SOURCES
 HISTORY
 SETTINGS
 
-The application is split into a React/Vite interface and an Express API. The API owns SQLite access, dependency checks, settings, Plex secrets, media extraction, downloads, FFmpeg processing, and archive management. A Tauri shell starts this existing Node engine with its bundled Node runtime as a managed sidecar.
+The application is split into a React/Vite interface and an Express API. The API owns SQLite access, dependency checks, settings, Plex and Jellyfin secrets, media extraction, downloads, FFmpeg processing, and archive management. A Tauri shell starts this existing Node engine with its bundled Node runtime as a managed sidecar.
 
 Local Engine
 
@@ -82,7 +93,7 @@ Current foundations include:
 
 SQLite database access.
 Persistent application settings.
-Plex configuration storage.
+Plex and Jellyfin configuration storage.
 Archive item storage.
 Media metadata structures.
 Source tracking.
@@ -94,7 +105,7 @@ Dependency detection.
 Local mock mode.
 Server-side configuration and secret handling.
 
-The API is responsible for future filesystem operations, media acquisition, processing, Plex integration, and archive actions.
+The API is responsible for future filesystem operations, media acquisition, processing, Plex and Jellyfin integration, and archive actions.
 
 Database
 
@@ -239,7 +250,7 @@ Local desktop runtime.
 Managed API process.
 SQLite persistence.
 Archive state.
-Plex configuration.
+Plex and Jellyfin configuration.
 Media metadata.
 Sources.
 Download and processing jobs.
@@ -252,19 +263,21 @@ Not Yet Fully Implemented
 
 The following areas remain future development work:
 
-Real Plex library synchronization.
-Plex library browsing.
-Media acquisition through yt-dlp.
-Download execution.
-FFmpeg processing pipelines.
-Hardware-accelerated transcoding.
-Filesystem monitoring.
-Duplicate detection.
-Archive automation.
-Real job execution.
+Hardware-accelerated transcoding. FFmpeg hardware support is detected and
+reported as a capability, but processing does not select an accelerated
+encoder.
+Filesystem monitoring. Archive scanning is on demand and incremental; nothing
+watches the archive roots for changes between scans.
 AI provider connections.
 AI assistant responses.
-Automated archive workflows.
+
+Media acquisition through yt-dlp, download execution, FFmpeg processing,
+duplicate detection, and durable job execution are implemented and run real
+tools; earlier revisions of this list were stale. Archive automation and
+automated archive workflows are not pending work: they were deliberately
+replaced by the evidence, review, approval, and confirmation boundary, under
+which a finding may recommend a change but only a confirmed operation mutates a
+file.
 
 The application should continue to show unfinished systems honestly rather than presenting them as connected functionality.
 

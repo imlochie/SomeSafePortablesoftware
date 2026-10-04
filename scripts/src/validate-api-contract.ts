@@ -8,7 +8,7 @@ import {
   rm,
   symlink,
 } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -79,6 +79,15 @@ async function filesUnder(directory: string) {
   return files.sort();
 }
 
+// Generated files may be checked out with CRLF endings (Windows) while a
+// fresh local regeneration produces LF (or vice versa); line endings and
+// trailing whitespace must not register as contract drift.
+const normalizeGeneratedText = (buffer: Buffer) =>
+  Buffer.from(
+    buffer.toString("utf8").replace(/\r\n/g, "\n").trimEnd() + "\n",
+    "utf8",
+  );
+
 async function compareGeneratedDirectory(
   checkedInDirectory: string,
   freshDirectory: string,
@@ -103,7 +112,9 @@ async function compareGeneratedDirectory(
       readFile(resolve(checkedInDirectory, file)),
       readFile(resolve(freshDirectory, file)),
     ]);
-    if (!checkedIn.equals(fresh)) {
+    const normalizedCheckedIn = normalizeGeneratedText(checkedIn);
+    const normalizedFresh = normalizeGeneratedText(fresh);
+    if (!normalizedCheckedIn.equals(normalizedFresh)) {
       const checkedInLines = checkedIn.toString("utf8").split(/\r?\n/);
       const freshLines = fresh.toString("utf8").split(/\r?\n/);
       const changedLine = Math.max(
@@ -124,19 +135,54 @@ async function generatedDriftErrors() {
   const temporaryZodPackage = resolve(temporaryRoot, "lib/api-zod");
   const temporarySpecPackage = resolve(temporaryRoot, "lib/api-spec");
   try {
+    // pnpm package-local node_modules are symlink forests into the shared
+    // store (plus POSIX .bin shims). Recreating those symlinks inside the
+    // temporary workspace fails with EPERM on Windows without Developer
+    // Mode or administrator privileges. Exclude node_modules from the
+    // package copies; dependency resolution is provided by the temporary
+    // root node_modules link below and the spec-package link after the
+    // copies complete.
+    const copyPackageExcludingNodeModules = (source: string, destination: string) =>
+      cp(source, destination, {
+        recursive: true,
+        filter: (current) => {
+          const relativePath = relative(source, current);
+          return relativePath === "" || !relativePath.split(sep).includes("node_modules");
+        },
+      });
+
     await Promise.all([
-      cp(resolve(root, "lib/api-client-react"), temporaryClientPackage, { recursive: true }),
-      cp(resolve(root, "lib/api-zod"), temporaryZodPackage, { recursive: true }),
-      cp(resolve(root, "lib/api-spec"), temporarySpecPackage, { recursive: true }),
+      copyPackageExcludingNodeModules(resolve(root, "lib/api-client-react"), temporaryClientPackage),
+      copyPackageExcludingNodeModules(resolve(root, "lib/api-zod"), temporaryZodPackage),
+      copyPackageExcludingNodeModules(resolve(root, "lib/api-spec"), temporarySpecPackage),
       cp(resolve(root, "tsconfig.base.json"), resolve(temporaryRoot, "tsconfig.base.json")),
       cp(resolve(root, "tsconfig.json"), resolve(temporaryRoot, "tsconfig.json")),
       cp(resolve(root, "package.json"), resolve(temporaryRoot, "package.json")),
       cp(resolve(root, "pnpm-workspace.yaml"), resolve(temporaryRoot, "pnpm-workspace.yaml")),
-      symlink(resolve(root, "node_modules"), resolve(temporaryRoot, "node_modules"), "dir"),
+      symlink(
+        resolve(root, "node_modules"),
+        resolve(temporaryRoot, "node_modules"),
+        process.platform === "win32" ? "junction" : "dir",
+      ),
     ]);
+    // The generated spec package's orval.config.ts imports "orval", which
+    // the shared root node_modules cannot resolve (orval is a dependency of
+    // the spec package only, so it has no top-level root entry). Link the
+    // real spec-package node_modules with the same privilege-free mechanism
+    // used for the temporary root link.
+    await symlink(
+      resolve(root, "lib/api-spec/node_modules"),
+      resolve(temporarySpecPackage, "node_modules"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const orvalEntry = resolve(
+      root,
+      "lib/api-spec/node_modules/orval/dist/bin/orval.mjs",
+    );
+
     await execFileAsync(
-      resolve(root, "lib/api-spec/node_modules/.bin/orval"),
-      ["--config", resolve(temporarySpecPackage, "orval.config.ts")],
+      process.execPath,
+      [orvalEntry, "--config", resolve(temporarySpecPackage, "orval.config.ts")],
       { cwd: temporarySpecPackage },
     );
     const [clientErrors, zodErrors] = await Promise.all([
@@ -156,7 +202,16 @@ async function generatedDriftErrors() {
     if (process.env.KEEP_API_CONTRACT_TEMP === "1") {
       console.info(`Kept temporary generated output at ${temporaryRoot}`);
     } else {
-      await rm(temporaryRoot, { recursive: true, force: true });
+      // Windows can fail rmdir of freshly written directories with
+      // ENOTEMPTY while deletions are still pending (antivirus scanning
+      // amplifies this). Node retries these errno cases on Windows only
+      // when maxRetries is set; the default of 0 fails immediately.
+      await rm(temporaryRoot, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
     }
   }
 }

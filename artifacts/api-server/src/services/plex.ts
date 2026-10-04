@@ -1,9 +1,14 @@
-import { lookup } from "node:dns/promises";
-import { request as httpRequest, type IncomingMessage } from "node:http";
-import { request as httpsRequest } from "node:https";
-import { isIP } from "node:net";
+import { randomUUID } from "node:crypto";
 import { archiveDb, addEvent, readSettings, readUserSetting, writeUserSetting } from "../lib/archive-db";
-import { invalidateArchiveInventoryCache } from "./archive";
+import {
+  classifyAddress,
+  normalizeServerUrl as normalizeTargetUrl,
+  requestJson as requestTargetJson,
+  requestBinary as requestTargetBinary,
+  validateServerTarget as validateTargetForProvider,
+  type ValidatedTarget,
+} from "../lib/network-target";
+import { invalidateArchiveInventoryCache, readArchiveInventory } from "./archive";
 
 const requestTimeoutMs = 15_000;
 const plexPersistenceBatchSize = 100;
@@ -29,6 +34,17 @@ class PlexRequestError extends Error {
   }
 }
 
+/**
+ * Operator-facing provider name and the two error kinds the shared network
+ * helpers raise on Plex's behalf. Routing every message through these keeps
+ * the wording identical to the pre-refactor strings while the SSRF/egress
+ * rules themselves live in exactly one place (lib/network-target.ts), shared
+ * with Jellyfin.
+ */
+const PROVIDER_LABEL = "Plex";
+const plexConfigurationError = (message: string) => new PlexConfigurationError(message);
+const plexRequestError = (message: string) => new PlexRequestError(message);
+
 function asRecord(value: unknown): PlexRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? value as PlexRecord : {};
 }
@@ -48,18 +64,7 @@ function number(value: unknown) {
 }
 
 function normalizeServerUrl(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return "";
-  const candidate = value.trim().replace(/\/+$/, "");
-  let parsed: URL;
-  try {
-    parsed = new URL(candidate);
-  } catch {
-    throw new PlexConfigurationError("Enter a valid Plex server URL.");
-  }
-  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
-    throw new PlexConfigurationError("Plex server URL must use HTTP or HTTPS without embedded credentials.");
-  }
-  return candidate;
+  return normalizeTargetUrl(value, PROVIDER_LABEL, plexConfigurationError);
 }
 
 function readPlexCredentials(ownerId: string) {
@@ -81,112 +86,28 @@ function containerFrom(value: unknown) {
   return asRecord(root.MediaContainer ?? root.mediaContainer ?? root);
 }
 
-type ValidatedTarget = { url: URL; address: string; family: 4 | 6 };
-
 async function requestJson(target: ValidatedTarget, token: string, path: string) {
-  const relative = new URL(path, "http://plex.local");
-  const requestPath = `${target.url.pathname.replace(/\/$/, "")}${relative.pathname}${relative.search}`;
-  return new Promise<unknown>((resolve, reject) => {
-    const options = {
-      hostname: target.address,
-      family: target.family,
-      port: target.url.port || (target.url.protocol === "https:" ? 443 : 80),
-      path: requestPath,
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Host: target.url.host,
-        "X-Plex-Token": token,
-        "X-Plex-Client-Identifier": "archive-assistant",
-        "X-Plex-Product": "Archive Assistant",
-      },
-    };
-    const handleResponse = (response: IncomingMessage) => {
-      const chunks: Buffer[] = [];
-      let byteCount = 0;
-      response.on("data", (chunk: Buffer) => {
-        byteCount += chunk.length;
-        if (byteCount > 64 * 1024 * 1024) {
-          response.destroy(new PlexRequestError("Plex returned a response larger than 64 MB."));
-          return;
-        }
-        chunks.push(chunk);
-      });
-      response.on("error", (error) => reject(error instanceof PlexRequestError
-        ? error
-        : new PlexRequestError(error.message)));
-      response.on("end", () => {
-        if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
-          reject(new PlexRequestError(`Plex request failed with HTTP ${response.statusCode ?? 0}.`));
-          return;
-        }
-        try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown);
-        } catch {
-          reject(new PlexRequestError("Plex returned an unreadable response."));
-        }
-      });
-    };
-    const request = target.url.protocol === "https:"
-      ? httpsRequest({ ...options, servername: target.url.hostname }, handleResponse)
-      : httpRequest(options, handleResponse);
-    request.setTimeout(requestTimeoutMs, () => {
-      request.destroy(new PlexRequestError(`Plex request timed out after ${requestTimeoutMs} ms.`));
-    });
-    request.on("error", (error) => reject(error instanceof PlexRequestError
-      ? error
-      : new PlexRequestError(error.message)));
-    request.end();
+  return requestTargetJson({
+    target,
+    path,
+    label: PROVIDER_LABEL,
+    requestError: plexRequestError,
+    timeoutMs: requestTimeoutMs,
+    headers: {
+      "X-Plex-Token": token,
+      "X-Plex-Client-Identifier": "archive-assistant",
+      "X-Plex-Product": "Archive Assistant",
+    },
   });
 }
 
-function classifyAddress(address: string) {
-  const normalized = address.toLowerCase();
-  if (normalized.startsWith("::ffff:")) return classifyAddress(normalized.slice(7));
-  if (isIP(normalized) === 4) {
-    const octets = normalized.split(".").map(Number);
-    const first = octets[0] ?? 0;
-    const second = octets[1] ?? 0;
-    const unsafe = first === 0 || (first === 169 && second === 254) || first >= 224;
-    const local = first === 10
-      || first === 127
-      || (first === 172 && second >= 16 && second <= 31)
-      || (first === 192 && second === 168)
-      || (first === 100 && second >= 64 && second <= 127);
-    return { unsafe, local };
-  }
-  const unsafe = normalized === "::" || normalized.startsWith("fe8") || normalized.startsWith("fe9")
-    || normalized.startsWith("fea") || normalized.startsWith("feb") || normalized.startsWith("ff");
-  const local = normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd");
-  return { unsafe, local };
-}
-
 async function validateServerTarget(serverUrl: string): Promise<ValidatedTarget> {
-  const networkMode = String(readSettings().networkMode);
-  if (networkMode === "offline") {
-    throw new PlexConfigurationError("Network mode is offline. Enable local network access before contacting Plex.");
-  }
-  const hostname = new URL(serverUrl).hostname.replace(/^\[|\]$/g, "");
-  const addresses = isIP(hostname)
-    ? [{ address: hostname }]
-    : await lookup(hostname, { all: true, verbatim: true }).catch(() => {
-      throw new PlexRequestError("The Plex server hostname could not be resolved.");
-    });
-  if (!addresses.length) throw new PlexRequestError("The Plex server hostname did not resolve to an address.");
-  const classifications = addresses.map(({ address }) => classifyAddress(address));
-  if (classifications.some(({ unsafe }) => unsafe)) {
-    throw new PlexConfigurationError("The Plex server resolved to a blocked link-local, multicast, or unspecified address.");
-  }
-  if (networkMode === "local_only" && classifications.some(({ local }) => !local)) {
-    throw new PlexConfigurationError("Network mode only permits Plex servers on local or private addresses.");
-  }
-  const selected = addresses[0];
-  if (!selected) throw new PlexRequestError("The Plex server hostname did not resolve to an address.");
-  return {
-    url: new URL(serverUrl),
-    address: selected.address,
-    family: isIP(selected.address) as 4 | 6,
-  };
+  return validateTargetForProvider(serverUrl, {
+    label: PROVIDER_LABEL,
+    networkMode: String(readSettings().networkMode),
+    configurationError: plexConfigurationError,
+    requestError: plexRequestError,
+  });
 }
 
 async function readLibraries(target: ValidatedTarget, token: string) {
@@ -383,16 +304,17 @@ async function stageLibraryRatingKeys(ownerId: string, libraryId: number, rating
     "DELETE FROM plex_sync_keys WHERE owner_id = ? AND library_id = ?",
   ).run(ownerId, libraryId);
   for (let start = 0; start < ratingKeys.length; start += plexPersistenceBatchSize) {
-    archiveDb.exec("BEGIN IMMEDIATE");
+    archiveDb.exec("SAVEPOINT plex_sync_keys_batch");
     try {
       for (const ratingKey of ratingKeys.slice(start, start + plexPersistenceBatchSize)) {
         archiveDb.prepare(
           "INSERT OR IGNORE INTO plex_sync_keys (owner_id, library_id, rating_key) VALUES (?, ?, ?)",
         ).run(ownerId, libraryId, ratingKey);
       }
-      archiveDb.exec("COMMIT");
+      archiveDb.exec("RELEASE SAVEPOINT plex_sync_keys_batch");
     } catch (error) {
-      archiveDb.exec("ROLLBACK");
+      archiveDb.exec("ROLLBACK TO SAVEPOINT plex_sync_keys_batch");
+      archiveDb.exec("RELEASE SAVEPOINT plex_sync_keys_batch");
       throw error;
     }
     await yieldToEventLoop();
@@ -465,7 +387,11 @@ export function getPlexConfig(ownerId: string) {
     connectionStatus: exposedConnectionStatus,
     syncStatus: exposedSyncStatus,
     lastAttemptedAt: readState(ownerId, "plexLastAttemptedAt"),
+    lastAttemptedRefreshId: readState(ownerId, "plexLastAttemptedRefreshId"),
     lastSuccessfulSyncAt: readState(ownerId, "plexLastSuccessfulSyncAt"),
+    lastSuccessfulRefreshId: readState(ownerId, "plexLastSuccessfulRefreshId"),
+    snapshotCompleteness: readState(ownerId, "plexSnapshotCompleteness") ?? "unknown",
+    completenessReason: readState(ownerId, "plexCompletenessReason"),
     lastError: readState(ownerId, "plexLastError"),
     serverName: readState(ownerId, "plexServerName"),
     libraryCount: Number(stats.library_count ?? 0),
@@ -550,7 +476,7 @@ async function persistLibrary(
       if (item) ratingKeys.push(item.ratingKey);
     }
     for (let start = 0; start < items.length; start += plexPersistenceBatchSize) {
-      archiveDb.exec("BEGIN IMMEDIATE");
+      archiveDb.exec("SAVEPOINT plex_inventory_batch");
       try {
         const hierarchyCache: PlexHierarchyCache = {
           showIds: new Map(),
@@ -605,9 +531,10 @@ async function persistLibrary(
             }
           }
         }
-        archiveDb.exec("COMMIT");
+        archiveDb.exec("RELEASE SAVEPOINT plex_inventory_batch");
       } catch (error) {
-        archiveDb.exec("ROLLBACK");
+        archiveDb.exec("ROLLBACK TO SAVEPOINT plex_inventory_batch");
+        archiveDb.exec("RELEASE SAVEPOINT plex_inventory_batch");
         throw error;
       }
       await yieldToEventLoop();
@@ -634,14 +561,14 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
   type: string;
   complete: boolean;
   items: ReturnType<typeof mapItem>[];
-}>) {
-  for (const library of libraries) {
-    await persistLibrary(ownerId, serverUrl, library, library.items);
-    invalidateArchiveInventoryCache(ownerId);
-    await yieldToEventLoop();
-  }
+}>, refreshId: string, completedAt: string, snapshotItemCount: number) {
   archiveDb.exec("BEGIN IMMEDIATE");
   try {
+    for (const library of libraries) {
+      await persistLibrary(ownerId, serverUrl, library, library.items);
+      invalidateArchiveInventoryCache(ownerId);
+      await yieldToEventLoop();
+    }
     const currentLibraryKeys = new Set(libraries.map((library) => library.key));
     const existingLibraries = archiveDb.prepare(
       "SELECT id, library_key FROM plex_library WHERE owner_id = ? AND server_url = ?",
@@ -653,6 +580,13 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
         ).run(ownerId, serverUrl, library.id);
       }
     }
+    archiveDb.prepare("UPDATE provider_refresh SET authoritative = 0 WHERE owner_id = ? AND provider = 'plex' AND authoritative = 1").run(ownerId);
+    archiveDb.prepare(`
+      UPDATE provider_refresh
+      SET completed_at = ?, status = 'synced', snapshot_completeness = 'complete',
+          item_count = ?, authoritative = 1, reason = NULL
+        WHERE refresh_id = ? AND owner_id = ?
+      `).run(completedAt, snapshotItemCount, refreshId, ownerId);
     archiveDb.exec("COMMIT");
     invalidateArchiveInventoryCache(ownerId);
   } catch (error) {
@@ -662,10 +596,18 @@ async function reconcileInventory(ownerId: string, serverUrl: string, libraries:
 }
 
 export async function syncPlexInventory(ownerId: string) {
+  const refreshId = randomUUID();
+  const startedAt = new Date().toISOString();
   const { serverUrl, token } = readPlexCredentials(ownerId);
   if (!serverUrl || !token) throw new PlexConfigurationError("Configure a Plex server URL and token before syncing.");
+  archiveDb.prepare(`
+    INSERT INTO provider_refresh
+      (refresh_id, owner_id, provider, started_at, status, snapshot_completeness, authoritative, snapshot_reference)
+    VALUES (?, ?, 'plex', ?, 'syncing', 'unknown', 0, ?)
+  `).run(refreshId, ownerId, startedAt, `provider-refresh:${refreshId}`);
   writeState(ownerId, {
     plexSyncStatus: "syncing",
+    plexLastAttemptedRefreshId: refreshId,
     plexLastAttemptedAt: new Date().toISOString(),
     plexLastError: null,
   });
@@ -705,17 +647,54 @@ export async function syncPlexInventory(ownerId: string) {
       }
       remoteInventory.push({ ...library, complete, items: await mapItemsInBatches(rawItems) });
     }
-    await reconcileInventory(ownerId, serverUrl, remoteInventory);
+    if (warnings.length) {
+      // A partial provider observation is not authoritative. Keep the last
+      // complete persisted inventory untouched so missing remote items cannot
+      // become fictional absences.
+      archiveDb.prepare(`
+        UPDATE provider_refresh
+        SET completed_at = ?, status = 'sync_error', snapshot_completeness = 'partial',
+            item_count = ?, authoritative = 0, reason = ?
+        WHERE refresh_id = ? AND owner_id = ?
+      `).run(new Date().toISOString(), remoteInventory.reduce((count, library) => count + library.items.length, 0), warnings.join(" "), refreshId, ownerId);
+      writeState(ownerId, {
+        plexSyncStatus: "sync_error",
+        plexSnapshotCompleteness: "partial",
+        plexCompletenessReason: warnings.join(" "),
+        plexLastError: warnings.join(" "),
+      });
+      for (const warning of warnings) addEvent("warning", warning, "plex", ownerId);
+      return;
+    }
     const successfulAt = new Date().toISOString();
+    await reconcileInventory(ownerId, serverUrl, remoteInventory, refreshId, successfulAt, remoteInventory.reduce((count, library) => count + library.items.length, 0));
     writeState(ownerId, {
       plexSyncStatus: "synced",
+      plexSnapshotCompleteness: "complete",
+      plexCompletenessReason: null,
       plexLastSuccessfulSyncAt: successfulAt,
+      plexLastSuccessfulRefreshId: refreshId,
       plexLastError: null,
     });
+    // The provider snapshot is now authoritative for this refresh. Reconcile
+    // locally from that persisted snapshot; never perform a second provider
+    // request just to populate findings and workload.
+    try {
+      const { syncControlPlaneReviewItems } = await import("./review-sync");
+      await syncControlPlaneReviewItems(ownerId);
+    } catch (findingError) {
+      addEvent("warning", `Plex findings were not synchronized: ${publicError(findingError)}`, "plex", ownerId);
+    }
     for (const warning of warnings) addEvent("warning", warning, "plex", ownerId);
     addEvent("success", `Plex inventory synchronized: ${libraries.length} libraries`, "plex", ownerId);
   } catch (error) {
     const message = publicError(error);
+    archiveDb.prepare(`
+      UPDATE provider_refresh
+      SET completed_at = ?, status = 'sync_error', snapshot_completeness = 'unknown',
+          authoritative = 0, reason = ?
+      WHERE refresh_id = ? AND owner_id = ?
+    `).run(new Date().toISOString(), message, refreshId, ownerId);
     writeState(ownerId, { plexSyncStatus: "sync_error", plexLastError: message });
     addEvent("error", `Plex inventory sync failed: ${message}`, "plex", ownerId);
   }
@@ -728,6 +707,63 @@ export function startPlexSync(ownerId: string) {
   const operation = syncPlexInventory(ownerId).finally(() => syncs.delete(ownerId));
   syncs.set(ownerId, operation);
   return getPlexConfig(ownerId);
+}
+
+export async function readPlexArtwork(ownerId: string, ratingKey: string) {
+  const { serverUrl, token } = readPlexCredentials(ownerId);
+  if (!serverUrl || !token) throw new PlexConfigurationError("Plex artwork is unavailable until Plex is configured.");
+  if (!/^\d+$/.test(ratingKey)) throw new PlexConfigurationError("The Plex artwork identifier is invalid.");
+  const target = await validateTargetForProvider(serverUrl, {
+    label: PROVIDER_LABEL,
+    networkMode: String(readSettings().networkMode),
+    configurationError: plexConfigurationError,
+    requestError: plexRequestError,
+  });
+  const row = archiveDb.prepare("SELECT thumb_url FROM plex_item WHERE owner_id = ? AND rating_key = ?").get(ownerId, ratingKey) as { thumb_url?: string | null } | undefined;
+  if (!row?.thumb_url) throw new PlexRequestError("Plex has no artwork for this item.");
+  const path = new URL(row.thumb_url, target.url).pathname + (new URL(row.thumb_url, target.url).search || "");
+  return requestTargetBinary({
+    target,
+    path,
+    label: PROVIDER_LABEL,
+    requestError: plexRequestError,
+    headers: { "X-Plex-Token": token, "X-Plex-Client-Identifier": "archive-assistant", "X-Plex-Product": "Archive Assistant" },
+    allowedContentTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    maxResponseBytes: 8 * 1024 * 1024,
+  });
+}
+
+export function readPlexHierarchy(ownerId: string, libraryId?: number, page = 1, pageSize = 24) {
+  const safePage = Math.max(1, Math.floor(page));
+  const safePageSize = Math.min(100, Math.max(1, Math.floor(pageSize)));
+  const inventory = readArchiveInventory(ownerId);
+  const localByRatingKey = new Map<string, Array<{ verified: boolean; id: number }>>();
+  for (const record of inventory.records) {
+    if (!record.plexMatch?.ratingKey) continue;
+    const list = localByRatingKey.get(record.plexMatch.ratingKey) ?? [];
+    list.push({ verified: record.integrityClassification === null && record.scanStatus === "active", id: record.id });
+    localByRatingKey.set(record.plexMatch.ratingKey, list);
+  }
+  const showRows = archiveDb.prepare(`
+    SELECT s.id, s.item_id, s.rating_key, s.title, s.year, i.library_id, i.thumb_url
+    FROM plex_show s JOIN plex_item i ON i.id = s.item_id
+    WHERE s.owner_id = ? ${libraryId ? "AND i.library_id = ?" : ""}
+    ORDER BY s.title COLLATE NOCASE LIMIT ? OFFSET ?
+  `).all(...(libraryId ? [ownerId, libraryId, safePageSize, (safePage - 1) * safePageSize] : [ownerId, safePageSize, (safePage - 1) * safePageSize])) as Array<Record<string, unknown>>;
+  const totalRow = archiveDb.prepare(`SELECT COUNT(*) AS count FROM plex_show s JOIN plex_item i ON i.id = s.item_id WHERE s.owner_id = ? ${libraryId ? "AND i.library_id = ?" : ""}`).get(...(libraryId ? [ownerId, libraryId] : [ownerId])) as { count: number };
+  const series = showRows.map((show) => {
+    const seasons = archiveDb.prepare(`SELECT id, rating_key, season_number, title FROM plex_season WHERE show_id = ? ORDER BY season_number`).all(Number(show.id)) as Array<Record<string, unknown>>;
+    const mappedSeasons = seasons.map((season) => {
+      const episodes = archiveDb.prepare(`SELECT e.rating_key, e.episode_number, e.title, i.thumb_url FROM plex_episode e JOIN plex_item i ON i.id = e.item_id WHERE e.season_id = ? AND e.owner_id = ? ORDER BY e.episode_number`).all(Number(season.id), ownerId) as Array<Record<string, unknown>>;
+      const mappedEpisodes = episodes.map((episode) => {
+        const local = localByRatingKey.get(String(episode.rating_key)) ?? [];
+        return { identity: String(episode.rating_key), episodeNumber: episode.episode_number == null ? null : Number(episode.episode_number), title: String(episode.title), artworkRatingKey: episode.thumb_url ? String(episode.rating_key) : null, localMatch: local.length ? "matched" : "unmatched", verifiedCount: local.filter((item) => item.verified).length, localRecordIds: local.map((item) => item.id) };
+      });
+      return { identity: String(season.rating_key ?? season.id), seasonNumber: Number(season.season_number), title: season.title ? String(season.title) : null, episodeCount: mappedEpisodes.length, localMatchedCount: mappedEpisodes.filter((item) => item.localMatch === "matched").length, verifiedCount: mappedEpisodes.reduce((sum, item) => sum + item.verifiedCount, 0), episodes: mappedEpisodes };
+    });
+    return { identity: String(show.rating_key), title: String(show.title), year: show.year == null ? null : Number(show.year), artworkRatingKey: show.thumb_url ? String(show.rating_key) : null, seasonCount: mappedSeasons.length, episodeCount: mappedSeasons.reduce((sum, season) => sum + season.episodeCount, 0), localMatchedCount: mappedSeasons.reduce((sum, season) => sum + season.localMatchedCount, 0), verifiedCount: mappedSeasons.reduce((sum, season) => sum + season.verifiedCount, 0), seasons: mappedSeasons };
+  });
+  return { page: safePage, pageSize: safePageSize, total: Number(totalRow.count), series };
 }
 
 export function readPlexInventory(ownerId: string) {

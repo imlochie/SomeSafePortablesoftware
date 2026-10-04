@@ -147,8 +147,24 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
 
 export const runtimeConfig = resolveRuntimeConfig();
 
+/**
+ * Origins the packaged desktop webview presents to the local API.
+ *
+ * The scheme is platform-specific: macOS and Linux webviews use
+ * `tauri://localhost`, while the Windows WebView2 host serves the bundled
+ * frontend from `http://tauri.localhost`. Once the desktop shell points the
+ * frontend at `http://127.0.0.1:<port>`, requests become cross-origin and the
+ * browser enforces CORS, so a missing Windows origin blocks every call.
+ */
+const DESKTOP_WEBVIEW_ORIGINS = new Set([
+  "tauri://localhost",
+  "http://tauri.localhost",
+  "https://tauri.localhost",
+]);
+
 export function isAllowedLocalOrigin(origin: string) {
   if (runtimeConfig.allowedCorsOrigins.has(origin)) return true;
+  if (DESKTOP_WEBVIEW_ORIGINS.has(origin)) return true;
   try {
     const url = new URL(origin);
     return (

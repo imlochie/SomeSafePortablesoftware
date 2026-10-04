@@ -7,6 +7,7 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
+- `pnpm run release-check` — fail-fast release gate: API contract, typecheck, and all tests
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Local API storage uses the embedded Node.js `node:sqlite` runtime. `ARCHIVE_DB_PATH` can override the SQLite file location.
@@ -25,8 +26,9 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 
 - `artifacts/archive-assistant` — React/Vite application and the Phase 1 UI.
 - `artifacts/api-server/src/lib/archive-db.ts` — SQLite initialization, schema foundation, settings, and event storage.
-- `artifacts/api-server/src/routes/` — health, system diagnostics, settings, Plex configuration, and integration status APIs.
-- `artifacts/api-server/src/integrations/` — abstract media capabilities, adapter registry, Plex wiring, and explicit disconnected adapters for future integrations.
+- `artifacts/api-server/src/routes/` — health, system diagnostics, settings, Plex and Jellyfin configuration, and integration status APIs.
+- `artifacts/api-server/src/services/scan-events.ts` — live archive-scan observability. A pure instrumentation layer over the scanner: it changes no scan, identity, or storage semantics, keeps a small bounded in-memory picture per owner, and fans events out to `GET /api/archive/scan/events` (Server-Sent Events). The persisted `archive_scan` row behind `GET /api/archive/scan` stays the source of truth; this stream is ephemeral and safe to lose. The browser falls back to interval polling whenever the feed is disconnected.
+- `artifacts/api-server/src/integrations/` — abstract media capabilities, adapter registry, Plex and Jellyfin wiring, and explicit disconnected adapters for future integrations.
 - `artifacts/api-server/src/services/acquisition-jobs.ts` — durable provider-backed acquisition lifecycle and transition history; it does not replace the local download engine or mutate archive files automatically.
 - `artifacts/api-server/src/services/media-acquisition.ts` — owner-scoped registry orchestration for media lookup, missing-media discovery, and archive-context acquisition requests.
 - `lib/api-spec/openapi.yaml` — API contract source of truth.
@@ -36,7 +38,8 @@ Windows-first local media archive control system. Phase 1 provides the shell, lo
 ## Architecture decisions
 
 - SQLite is initialized through Node's embedded `node:sqlite` runtime so a separate database service is not required for the Windows-first product.
-- The API never returns Plex tokens; configuration endpoints expose only safe status fields.
+- The API never returns Plex tokens or Jellyfin API keys; configuration endpoints expose only safe status fields.
+- Plex and Jellyfin are interchangeable reference providers. Exactly one is active per owner, chosen by the `archiveProvider` setting, and archive findings carry the provider that produced them so the UI never mislabels a match.
 - Intelligence/control-plane code must use abstract integration capabilities through the registry; adapters may report disconnected and must not return mocked external data.
 - Sonarr, Radarr, Prowlarr, and qBittorrent use environment configuration only; API keys, passwords, and session cookies stay server-side and are never included in status responses or logs.
 - The control plane uses durable local persistence; external providers remain explicit, replaceable adapters with honest disconnected/error states.
@@ -49,7 +52,7 @@ The app gives a personal media archivist a local control room for archive state,
 ## User preferences
 
 - Keep the product local-first and Windows-first.
-- Do not claim Plex, AI, yt-dlp, FFmpeg, downloading, processing, or archive workflows are implemented until they are actually wired.
+- Do not claim Plex, Jellyfin, AI, yt-dlp, FFmpeg, downloading, processing, or archive workflows are implemented until they are actually wired.
 
 ## Gotchas
 

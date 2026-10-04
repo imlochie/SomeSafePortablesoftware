@@ -29,7 +29,7 @@ describe("integration adapter foundation", () => {
     const statuses = await registry.getStatuses("__local__");
     assert.deepEqual(
       statuses.map((status) => status.id),
-      ["plex", "sonarr", "radarr", "prowlarr", "qbittorrent", "mpilot", "telegram"],
+      ["plex", "jellyfin", "sonarr", "radarr", "prowlarr", "qbittorrent", "mpilot", "telegram"],
     );
 
     const sonarr = statuses.find((status) => status.id === "sonarr");

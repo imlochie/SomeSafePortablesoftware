@@ -140,6 +140,44 @@ export function listReviewItems(
   `).all(...values) as Array<Record<string, unknown>>).map((row) => mapItem(row, ownerId));
 }
 
+export function supersedeReviewItems(ownerId: string, subjectPrefix: string, currentSubjectKeys: ReadonlySet<string>, reason: string) {
+  const rows = archiveDb.prepare(`
+    SELECT id, subject_key, state, payload_json
+    FROM review_item
+    WHERE owner_id = ? AND kind = 'archive_finding' AND subject_key LIKE ?
+      AND state IN ('pending', 'reopened', 'deferred')
+  `).all(ownerId, `${subjectPrefix}%`) as Array<Record<string, unknown>>;
+  const now = new Date().toISOString();
+  let count = 0;
+  archiveDb.exec("BEGIN IMMEDIATE");
+  try {
+    for (const row of rows) {
+      const subjectKey = String(row.subject_key);
+      if (currentSubjectKeys.has(subjectKey)) continue;
+      const payload = json(row.payload_json);
+      payload.lifecycleStatus = "superseded";
+      payload.supersededAt = now;
+      payload.supersessionReason = reason;
+      archiveDb.prepare(`
+        UPDATE review_item
+        SET state = 'rejected', note = ?, decision_at = ?, decided_by = 'system', payload_json = ?, updated_at = ?
+        WHERE id = ? AND owner_id = ?
+      `).run(reason, now, JSON.stringify(payload), now, Number(row.id), ownerId);
+      archiveDb.prepare(`
+        INSERT INTO review_item_decision
+          (review_item_id, owner_id, from_state, to_state, note, decided_by, created_at)
+        VALUES (?, ?, ?, 'rejected', ?, 'system', ?)
+      `).run(Number(row.id), ownerId, String(row.state), reason, now);
+      count += 1;
+    }
+    archiveDb.exec("COMMIT");
+  } catch (error) {
+    archiveDb.exec("ROLLBACK");
+    throw error;
+  }
+  return count;
+}
+
 export function ensureReviewItem(
   ownerId: string,
   input: {
@@ -152,6 +190,11 @@ export function ensureReviewItem(
   if (!ownerId.trim()) throw new Error("A review owner is required.");
   if (!input.subjectKey.trim()) throw new Error("A review subject key is required.");
   if (!input.title.trim()) throw new Error("A review title is required.");
+  const existingRow = archiveDb.prepare(`
+    SELECT id, state, payload_json FROM review_item
+    WHERE owner_id = ? AND kind = ? AND subject_key = ?
+  `).get(ownerId, input.kind, input.subjectKey) as { id: number; state: string; payload_json: string } | undefined;
+  const wasSuperseded = existingRow?.state === "rejected" && json(existingRow.payload_json).lifecycleStatus === "superseded";
   archiveDb.prepare(`
     INSERT INTO review_item
       (owner_id, kind, subject_key, title, state, payload_json)
@@ -165,7 +208,55 @@ export function ensureReviewItem(
     SELECT * FROM review_item
     WHERE owner_id = ? AND kind = ? AND subject_key = ?
   `).get(ownerId, input.kind, input.subjectKey) as Record<string, unknown>;
+  if (wasSuperseded) {
+    const now = new Date().toISOString();
+    archiveDb.prepare(`
+      UPDATE review_item
+      SET state = 'reopened', note = NULL, decision_at = ?, decided_by = 'system', updated_at = ?
+      WHERE id = ? AND owner_id = ?
+    `).run(now, now, Number(row.id), ownerId);
+    archiveDb.prepare(`
+      INSERT INTO review_item_decision
+        (review_item_id, owner_id, from_state, to_state, note, decided_by, created_at)
+      VALUES (?, ?, 'rejected', 'reopened', 'A new observation made this relationship actionable again.', 'system', ?)
+    `).run(Number(row.id), ownerId, now);
+    const reopened = archiveDb.prepare("SELECT * FROM review_item WHERE id = ? AND owner_id = ?").get(Number(row.id), ownerId) as Record<string, unknown>;
+    return mapItem(reopened, ownerId);
+  }
   return mapItem(row, ownerId);
+}
+
+export function recordReviewObservation(
+  ownerId: string,
+  item: ReviewItem,
+  evidenceKey: string,
+  payload: Record<string, unknown>,
+) {
+  const active = archiveDb.prepare(`
+    SELECT id, evidence_key FROM review_item_observation
+    WHERE owner_id = ? AND subject_key = ? AND status = 'active'
+    ORDER BY id DESC LIMIT 1
+  `).get(ownerId, item.subjectKey) as { id: number; evidence_key: string } | undefined;
+  if (active?.evidence_key === evidenceKey) return false;
+  const now = new Date().toISOString();
+  archiveDb.exec("BEGIN IMMEDIATE");
+  try {
+    if (active) {
+      archiveDb.prepare(
+        "UPDATE review_item_observation SET status = 'superseded', superseded_at = ? WHERE id = ? AND owner_id = ?",
+      ).run(now, active.id, ownerId);
+    }
+    archiveDb.prepare(`
+      INSERT INTO review_item_observation
+        (review_item_id, owner_id, subject_key, evidence_key, payload_json, status, observed_at)
+      VALUES (?, ?, ?, ?, ?, 'active', ?)
+    `).run(item.id, ownerId, item.subjectKey, evidenceKey, JSON.stringify(payload), now);
+    archiveDb.exec("COMMIT");
+  } catch (error) {
+    archiveDb.exec("ROLLBACK");
+    throw error;
+  }
+  return true;
 }
 
 export function decideReviewItem(

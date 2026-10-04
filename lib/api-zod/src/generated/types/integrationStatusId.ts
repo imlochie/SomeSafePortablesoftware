@@ -11,6 +11,7 @@ export type IntegrationStatusId = typeof IntegrationStatusId[keyof typeof Integr
 
 export const IntegrationStatusId = {
   plex: 'plex',
+  jellyfin: 'jellyfin',
   sonarr: 'sonarr',
   radarr: 'radarr',
   prowlarr: 'prowlarr',

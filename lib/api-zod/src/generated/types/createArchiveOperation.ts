@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ArchiveBatchMapping } from './archiveBatchMapping';
 import type { ArchiveOperationAction } from './archiveOperationAction';
 
 export interface CreateArchiveOperation {
@@ -14,11 +15,12 @@ export interface CreateArchiveOperation {
   /** @nullable */
   sourceId?: string | null;
   /** @minLength 1 */
-  sourcePath: string;
+  sourcePath?: string;
   /** @minLength 1 */
-  destinationPath: string;
+  destinationPath?: string;
+  batch?: ArchiveBatchMapping[];
   /** @minimum 1 */
-  reviewItemId: number;
+  reviewItemId?: number;
   /**
      * @minimum 1
      * @nullable
@@ -31,4 +33,5 @@ export interface CreateArchiveOperation {
   downloadJobId?: number | null;
   dryRun?: boolean;
   idempotencyKey?: string;
+  proposalId?: string;
 }

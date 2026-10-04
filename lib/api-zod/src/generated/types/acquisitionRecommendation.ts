@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AcquisitionIdentity } from './acquisitionIdentity';
 import type { AcquisitionRecommendationDestination } from './acquisitionRecommendationDestination';
 import type { AcquisitionRecommendationEvidence } from './acquisitionRecommendationEvidence';
 import type { AcquisitionRecommendationPreferredQuality } from './acquisitionRecommendationPreferredQuality';
@@ -22,6 +23,7 @@ export interface AcquisitionRecommendation {
   year: number | null;
   /** @nullable */
   externalId: string | null;
+  identity: AcquisitionIdentity | null;
   target: AcquisitionRecommendationTarget;
   evidence: AcquisitionRecommendationEvidence;
   preferredQuality: AcquisitionRecommendationPreferredQuality;

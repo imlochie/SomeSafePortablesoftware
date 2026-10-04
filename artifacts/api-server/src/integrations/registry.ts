@@ -1,5 +1,6 @@
 import { resolveExternalIntegrationConfiguration } from "./config";
 import { createDisconnectedAdapter } from "./disconnected-adapter";
+import { createJellyfinAdapter } from "./jellyfin-adapter";
 import { createPlexAdapter } from "./plex-adapter";
 import { createProwlarrAdapter } from "./prowlarr-adapter";
 import { createQBittorrentAdapter } from "./qbittorrent-adapter";
@@ -30,7 +31,7 @@ export interface ResolvedCapability<K extends IntegrationCapability> {
 }
 
 export class IntegrationRegistry {
-  private readonly adaptersById: ReadonlyMap<IntegrationId, MediaIntegrationAdapter>;
+  private adaptersById: ReadonlyMap<IntegrationId, MediaIntegrationAdapter>;
 
   constructor(adapters: readonly MediaIntegrationAdapter[]) {
     const ids = adapters.map((adapter) => adapter.id);
@@ -38,6 +39,11 @@ export class IntegrationRegistry {
       throw new Error("Integration registry cannot contain duplicate adapter IDs.");
     }
     this.adaptersById = new Map(adapters.map((adapter) => [adapter.id, adapter]));
+  }
+
+  reload(env: NodeJS.ProcessEnv = process.env) {
+    const fresh = createDefaultIntegrationRegistry(env);
+    this.adaptersById = fresh.adaptersById;
   }
 
   getAdapter(id: IntegrationId) {
@@ -157,6 +163,7 @@ export function createDefaultIntegrationRegistry(
   const configuration = resolveExternalIntegrationConfiguration(env);
   return new IntegrationRegistry([
     createPlexAdapter(),
+    createJellyfinAdapter(),
     createSonarrAdapter({
       ...configuration.sonarr,
       webhookSecrets: () => readWebhookSecretCandidates("sonarr", env),

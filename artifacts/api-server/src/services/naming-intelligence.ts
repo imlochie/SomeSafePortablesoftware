@@ -1,10 +1,24 @@
 import { setImmediate } from "node:timers/promises";
+import { performance } from "node:perf_hooks";
 import { basename, dirname, extname, relative, resolve, sep } from "node:path";
 import { archiveDb } from "../lib/archive-db";
 import { localEpisodeIdentity, normalizeTitle, titleYear } from "./archive";
 
 export type NamingConfidence = "high" | "medium" | "low" | "uncertain";
 export type ProposalOperation = "rename" | "restructure" | "move" | "uncertain/no_action";
+export type NamingResearchGrade = "corroborated" | "observed" | "blocked";
+
+function researchGrade(candidate: Candidate | null, resolvedCandidate: Candidate | null, destination: string | null) : { grade: NamingResearchGrade; sources: string[]; blockers: string[] } {
+  const sources = new Set<string>();
+  if (candidate?.source) sources.add(candidate.source);
+  if (resolvedCandidate?.evidence.some((item) => item.startsWith("Plex corroboration:"))) sources.add("plex");
+  const blockers: string[] = [];
+  if (!destination) blockers.push("no deterministic destination");
+  if (resolvedCandidate?.ambiguity !== "resolved") blockers.push("identity is not resolved");
+  if (resolvedCandidate?.confidence !== "high") blockers.push("confidence is below high");
+  const grade: NamingResearchGrade = blockers.length ? "blocked" : sources.size >= 2 ? "corroborated" : "observed";
+  return { grade, sources: [...sources], blockers };
+}
 
 type LocalRow = {
   id: number;
@@ -48,6 +62,8 @@ type PlexEpisode = {
   showRatingKey: string | null;
 };
 
+type PlexMovie = { ratingKey: string; title: string; year: number | null };
+
 const canonicalVolumes: Volume[] = [
   { id: "d-movies", root: "D:\\Movies", mediaType: "movie" },
   { id: "d-tv", root: "D:\\Tv Shows", mediaType: "tv" },
@@ -56,7 +72,8 @@ const canonicalVolumes: Volume[] = [
 ];
 
 function volumeForPath(path: string) {
-  const target = resolve(path).replaceAll("/", "\\").toLowerCase().replace(/[\\]+$/, "");
+  const raw = path.replaceAll("/", "\\");
+  const target = (/^[a-z]:\\/i.test(raw) ? raw : resolve(path).replaceAll("/", "\\")).toLowerCase().replace(/[\\]+$/, "");
   return canonicalVolumes.find((volume) => {
     const root = volume.root.toLowerCase();
     return target === root || target.startsWith(`${root}\\`);
@@ -256,7 +273,8 @@ function makeProposal(row: LocalRow, volume: Volume, candidate: Candidate | null
   const destination = resolvedCandidate ? proposedPath(row, volume, resolvedCandidate) : null;
   const normalizedDestination = destination?.toLowerCase() ?? null;
   const collision = Boolean(normalizedDestination && knownPaths.has(normalizedDestination) && normalizedDestination !== row.path.toLowerCase());
-  const executable = Boolean(destination && !collision && resolvedCandidate?.confidence === "high");
+  const research = researchGrade(candidate, resolvedCandidate, destination);
+  const executable = Boolean(destination && !collision && research.grade === "corroborated");
   const operation: ProposalOperation = collision
     ? "uncertain/no_action"
     : executable && destination
@@ -285,8 +303,11 @@ function makeProposal(row: LocalRow, volume: Volume, candidate: Candidate | null
     patternId: resolvedCandidate?.patternId ?? "unrecognized",
     confidence: resolvedCandidate?.confidence ?? "uncertain",
     operation,
-    reason: collision ? "Proposed destination collides with a known file record." : resolvedCandidate?.evidence.join("; ") ?? "No safe naming convention recognized.",
+    reason: collision ? "Proposed destination collides with a known file record." : research.grade !== "corroborated" ? `Research gate: ${research.blockers.join("; ") || "an independent corroborating source is required"}.` : resolvedCandidate?.evidence.join("; ") ?? "No safe naming convention recognized.",
     evidence: resolvedCandidate?.evidence ?? [],
+    researchGrade: research.grade,
+    researchSources: research.sources,
+    researchBlockers: research.blockers,
     mediaType: volume.mediaType,
     volumeId: row.volume_id ?? volume.id,
     archiveRoot: row.archive_root ?? volume.root,
@@ -338,14 +359,35 @@ function readPlexEpisodes(ownerId: string) {
   return index;
 }
 
+function readPlexMovies(ownerId: string) {
+  const rows = archiveDb.prepare(`SELECT rating_key, title, year FROM plex_item WHERE owner_id = ? AND item_type = 'movie'`).all(ownerId) as Array<{ rating_key: string; title: string; year: number | null }>;
+  return rows.map((row): PlexMovie => ({ ratingKey: row.rating_key, title: row.title, year: row.year == null ? null : Number(row.year) }));
+}
+
 export async function readNamingProposals(
   ownerId: string,
   filters: { page?: number; pageSize?: number; confidence?: string; operation?: string; pattern?: string; mediaType?: string; volume?: string; state?: string; uncertain?: boolean } = {},
 ) {
+  const timings: Record<string, number> = {};
+  const startedAt = performance.now();
   const rows = readRows(ownerId);
+  timings.localRowQuery = performance.now() - startedAt;
+  const plexEpisodesStartedAt = performance.now();
   const plexByShow = readPlexEpisodes(ownerId);
+  timings.plexEpisodeQueryIndex = performance.now() - plexEpisodesStartedAt;
+  const plexMoviesStartedAt = performance.now();
+  const plexMovies = readPlexMovies(ownerId);
+  const plexMoviesByTitle = new Map<string, PlexMovie[]>();
+  for (const movie of plexMovies) {
+    const title = normalizeTitle(movie.title);
+    const values = plexMoviesByTitle.get(title) ?? [];
+    values.push(movie);
+    plexMoviesByTitle.set(title, values);
+  }
+  timings.plexMovieQueryIndex = performance.now() - plexMoviesStartedAt;
   const knownPaths = new Set(rows.map((row) => row.path.toLowerCase()));
   const proposals: Array<Record<string, unknown>> = [];
+  const proposalGenerationStartedAt = performance.now();
   for (let start = 0; start < rows.length; start += 500) {
     for (const row of rows.slice(start, start + 500)) {
       const volume = volumeForPath(row.path);
@@ -355,29 +397,39 @@ export async function readNamingProposals(
       } else {
         const title = normalizeTitle(row.filename);
         const year = titleYear(row.filename);
+        const match = (plexMoviesByTitle.get(title) ?? []).find((movie) => year === null || movie.year === null || movie.year === year);
+        const proposedFilename = match ? `${match.title}${match.year ? ` (${match.year})` : ""}${extname(row.filename).toLowerCase()}` : null;
+        const destination = proposedFilename ? resolve(volume.root, proposedFilename) : null;
+        const collision = Boolean(destination && knownPaths.has(destination.toLowerCase()) && destination.toLowerCase() !== row.path.toLowerCase());
+        const corroborated = Boolean(match && destination && !collision);
         proposals.push({
           fileRecordId: row.id,
           localIdentityId: row.local_identity_id,
           sourcePath: row.path,
-          proposedPath: null,
+          proposedPath: corroborated ? destination : null,
           sourceFilename: row.filename,
-          proposedFilename: null,
+          proposedFilename: corroborated ? proposedFilename : null,
           currentIdentity: title ? { title, year } : null,
-          proposedIdentity: title ? { title, year } : null,
-          patternId: title ? "movie_title_year" : "unrecognized",
-          confidence: title ? "high" : "uncertain",
-          operation: "uncertain/no_action",
-          reason: "Movie naming is reported read-only; no automatic restructuring proposal is generated.",
-          evidence: title ? ["existing movie title normalization"] : ["empty normalized movie title"],
+          proposedIdentity: match ? { title: normalizeTitle(match.title), year: match.year } : title ? { title, year } : null,
+          patternId: match ? "movie_plex_corroborated" : title ? "movie_title_year" : "unrecognized",
+          confidence: corroborated ? "high" : title ? "medium" : "uncertain",
+          operation: corroborated ? "rename" : "uncertain/no_action",
+          reason: corroborated ? "Plex title and year corroborate a deterministic movie filename." : collision ? "Movie destination collides with a known file record." : "Movie identity lacks sufficient independent corroboration for an executable rename.",
+          evidence: match ? ["filename title normalization", `Plex corroboration: ${match.ratingKey}`, ...(match.year ? [`Plex year: ${match.year}`] : [])] : title ? ["existing movie title normalization"] : ["empty normalized movie title"],
+          researchGrade: corroborated ? "corroborated" : "blocked",
+          researchSources: match ? ["filename", "plex"] : ["filename"],
+          researchBlockers: corroborated ? [] : [match ? "destination collision or missing deterministic path" : "independent Plex movie corroboration is required"],
           mediaType: volume.mediaType,
           volumeId: row.volume_id ?? volume.id,
           archiveRoot: row.archive_root ?? volume.root,
-          collision: false,
+          collision,
         });
       }
     }
     await setImmediate();
   }
+  timings.proposalGeneration = performance.now() - proposalGenerationStartedAt;
+  const filteringStartedAt = performance.now();
   const filtered = proposals.filter((proposal) => {
     if (filters.confidence && proposal.confidence !== filters.confidence) return false;
     if (filters.operation && proposal.operation !== filters.operation) return false;
@@ -388,6 +440,10 @@ export async function readNamingProposals(
     if (filters.uncertain !== undefined && (proposal.operation === "uncertain/no_action") !== filters.uncertain) return false;
     return true;
   });
+  timings.filtering = performance.now() - filteringStartedAt;
+  if (process.env.ARCHIVE_ASSISTANT_TIMINGS === "1") {
+    console.error(JSON.stringify({ event: "naming_proposals_timings", rows: rows.length, plexMovies: plexMovies.length, proposals: proposals.length, filtered: filtered.length, timings }));
+  }
   const pageSize = Math.max(1, Math.min(500, Number.isInteger(filters.pageSize) ? filters.pageSize ?? 100 : 100));
   const page = Math.max(1, Number.isInteger(filters.page) ? filters.page ?? 1 : 1);
   const offset = (page - 1) * pageSize;

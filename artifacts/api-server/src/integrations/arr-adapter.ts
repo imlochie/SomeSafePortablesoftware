@@ -222,13 +222,26 @@ function mapMissing(kind: ArrKind, value: unknown) {
       : {};
   const title = stringField(nested, "title") ?? stringField(record, "title", "seriesName");
   if (!title) throw malformedResponse(`${nameFor(kind)} returned missing media without a title.`);
+  const isSonarr = kind === "sonarr";
+  const seriesId = isSonarr ? numberField(nested, "id", "seriesId") : null;
+  const seasonNumber = isSonarr ? numberField(record, "seasonNumber") : null;
+  const episodeNumber = isSonarr ? numberField(record, "episodeNumber") : null;
+  const episodeId = isSonarr ? numberField(record, "id", "episodeId") : null;
+  const seriesTitle = isSonarr ? stringField(nested, "title", "seriesName") : null;
+  const episodeTitle = isSonarr ? stringField(record, "title") : null;
   return {
-    externalId: String(numberField(record, "id", "episodeId", "movieId") ?? title),
+    externalId: String(episodeId ?? numberField(record, "movieId", "id") ?? title),
     title,
-    mediaType: kind === "sonarr" ? "episode" : "movie",
+    mediaType: isSonarr ? "episode" : "movie",
     year: numberField(nested, "year") ?? numberField(record, "year"),
-    detail: kind === "sonarr"
-      ? `Season ${numberField(record, "seasonNumber") ?? 0}, episode ${numberField(record, "episodeNumber") ?? 0} is missing.`
+    ...(isSonarr && seriesId !== null ? { seriesId: String(seriesId) } : {}),
+    ...(seriesTitle ? { seriesTitle } : {}),
+    ...(isSonarr && seasonNumber !== null ? { seasonNumber } : {}),
+    ...(isSonarr && episodeNumber !== null ? { episodeNumber } : {}),
+    ...(isSonarr && episodeId !== null ? { episodeId: String(episodeId) } : {}),
+    ...(episodeTitle ? { episodeTitle } : {}),
+    detail: isSonarr
+      ? `Season ${seasonNumber ?? 0}, episode ${episodeNumber ?? 0} is missing.`
       : "Movie file is missing.",
   };
 }
