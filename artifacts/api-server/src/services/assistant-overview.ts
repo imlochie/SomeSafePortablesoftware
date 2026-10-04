@@ -300,10 +300,16 @@ export async function readAssistantOverview(ownerId: string) {
   end("readStorage");
   phaseEvent("storage", phaseStarts.get("readStorage") ?? startedAt);
   const recommendations: AssistantRecommendation[] = [];
+  let mediaMatchCount = 0;
+  let mediaMatchElapsedMs = 0;
   const mediaMatchFor = (title: string, seriesTitle?: string | null) => {
+    const matchStartedAt = performance.now();
     const wanted = [title, seriesTitle].filter(Boolean).map((value) => String(value).toLowerCase());
-    return mediaExperience.items.find((item) => wanted.includes(item.title.toLowerCase())
+    const result = mediaExperience.items.find((item) => wanted.includes(item.title.toLowerCase())
       || (item.seriesTitle !== null && wanted.includes(item.seriesTitle.toLowerCase()))) ?? null;
+    mediaMatchCount += 1;
+    mediaMatchElapsedMs += performance.now() - matchStartedAt;
+    return result;
   };
   const personalContextFor = (title: string, seriesTitle?: string | null) => {
     const match = mediaMatchFor(title, seriesTitle);
@@ -362,12 +368,22 @@ export async function readAssistantOverview(ownerId: string) {
     });
   }
   end("acquisition recommendation mapping");
+  phaseEvent("acquisition recommendation mapping", phaseStarts.get("acquisition recommendation mapping") ?? startedAt);
+  if (process.env.ARCHIVE_ASSISTANT_TIMINGS === "1") {
+    console.error(JSON.stringify({
+      event: "assistant_overview_phase",
+      phase: "mediaMatch lookups",
+      count: mediaMatchCount,
+      elapsedMs: mediaMatchElapsedMs,
+    }));
+  }
   begin("inventory recommendation mapping");
   for (const record of inventory.records) {
     const finding = integrityRecommendation(record);
     if (finding) recommendations.push(finding);
   }
   end("inventory recommendation mapping");
+  phaseEvent("inventory recommendation mapping", phaseStarts.get("inventory recommendation mapping") ?? startedAt);
   begin("naming recommendation mapping");
   for (const proposal of naming.results) {
     const confidence = String(proposal.confidence ?? "uncertain");
@@ -388,15 +404,19 @@ export async function readAssistantOverview(ownerId: string) {
     });
   }
   end("naming recommendation mapping");
+  phaseEvent("naming recommendation mapping", phaseStarts.get("naming recommendation mapping") ?? startedAt);
   begin("recommendation sorting");
   recommendations.sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority));
   end("recommendation sorting");
+  phaseEvent("recommendation sorting", phaseStarts.get("recommendation sorting") ?? startedAt);
   begin("personalizedBriefing");
   const personalizedBriefing = rankPersonalizedBriefing(recommendations);
   end("personalizedBriefing");
+  phaseEvent("personalizedBriefing", phaseStarts.get("personalizedBriefing") ?? startedAt);
   begin("buildDiscoverySections");
   const discovery = buildDiscoverySections(mediaExperience);
   end("buildDiscoverySections");
+  phaseEvent("buildDiscoverySections", phaseStarts.get("buildDiscoverySections") ?? startedAt);
   begin("blocked/uncertain/attention/counts");
   const blocked = recommendations.filter((item) => item.state === "blocked");
   const uncertain = recommendations.filter((item) => item.state === "uncertain");
@@ -406,9 +426,11 @@ export async function readAssistantOverview(ownerId: string) {
     { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
   );
   end("blocked/uncertain/attention/counts");
+  phaseEvent("blocked/uncertain/attention/counts", phaseStarts.get("blocked/uncertain/attention/counts") ?? startedAt);
   begin("groupRecommendations");
   const groups = groupRecommendations(recommendations);
   end("groupRecommendations");
+  phaseEvent("groupRecommendations", phaseStarts.get("groupRecommendations") ?? startedAt);
   begin("duplicateGroups");
   const duplicateRows = inventory.records.filter((record) => record.qualityStatus === "duplicate" && record.duplicateOfId !== null);
   const duplicateGroups = [...new Map(duplicateRows.map((record) => {
@@ -428,6 +450,7 @@ export async function readAssistantOverview(ownerId: string) {
     itemCount: ids.length,
   }));
   end("duplicateGroups");
+  phaseEvent("duplicateGroups", phaseStarts.get("duplicateGroups") ?? startedAt);
   begin("identityGroups");
   const identityGroups = [...new Map(identityAudit.results.map((result) => {
     const key = result.auditType;
@@ -447,11 +470,16 @@ export async function readAssistantOverview(ownerId: string) {
     }];
   })).values()];
   end("identityGroups");
-  begin("activeWork query");
+  phaseEvent("identityGroups", phaseStarts.get("identityGroups") ?? startedAt);
+  begin("semanticGroups sorting");
   const semanticGroups = [...groups, ...duplicateGroups, ...identityGroups]
     .sort((left, right) => priorityRank(left.priority) - priorityRank(right.priority) || left.title.localeCompare(right.title));
+  end("semanticGroups sorting");
+  phaseEvent("semanticGroups sorting", phaseStarts.get("semanticGroups sorting") ?? startedAt);
+  begin("activeWork query");
   const activeWork = archiveDb.prepare("SELECT COUNT(*) AS count FROM acquisition_job WHERE owner_id = ? AND state IN ('planned', 'downloading', 'processing', 'verifying')").get(ownerId) as { count: number };
   end("activeWork query");
+  phaseEvent("activeWork query", phaseStarts.get("activeWork query") ?? startedAt);
   if (process.env.ARCHIVE_ASSISTANT_TIMINGS === "1") {
     console.error(JSON.stringify({
       event: "archive_assistant_timings",
@@ -462,6 +490,8 @@ export async function readAssistantOverview(ownerId: string) {
       phases: timings,
     }));
   }
+  phaseEvent("final response object construction", startedAt);
+  phaseEvent("final return boundary", startedAt);
   return {
     summary: {
       health: counts.critical || counts.high ? "attention_required" : recommendations.length ? "mostly_healthy" : "healthy",
