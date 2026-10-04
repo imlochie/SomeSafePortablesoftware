@@ -19,4 +19,12 @@ describe('pilot surface consistency', () => {
     expect(appSource).not.toContain('RESERVED</span>');
     expect(appSource).toContain("provider.configured ? provider.state : 'not_configured'");
   });
+
+  it('loads the assistant briefing on Home and never infers health from an unavailable readout', () => {
+    expect(appSource).toContain('const assistantOverview = useGetAssistantOverview();');
+    expect(appSource).not.toContain("enabled: false, queryKey: ['assistant-overview-deferred']");
+    expect(appSource).toContain('data-testid="panel-home-briefing-unavailable"');
+    expect(appSource).toContain('const assistantReady = !assistantOverview.isLoading && !assistantOverview.isError');
+    expect(appSource).toContain("!assistantReady ? 'Briefing is not confirmed.'");
+  });
 });
